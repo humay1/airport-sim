@@ -100,7 +100,18 @@ Question:    T-021 ("One runway, taxiway graph, four contact stands") needs an
 Why it matters: Movement, stand assignment and milestone emission are exactly
              the kind of interface `03-module-map.md` requires be spec'd before
              a worker starts.
-Status:      OPEN
+Answer:      New file `spec/12-interfaces-airside.md`. `IAirsideSystem` is
+             query-only (§12.9); the self-owned taxiway/runway/stand graph
+             format and its routing are §12.4; the runway pacing/occupancy
+             model and its hold queue are §12.5; the single-lane taxiway
+             conflict model is §12.6; stand compatibility, assignment and the
+             `Inject`/`Absorb` calls at the door are §12.7; the milestone
+             ownership split against `sim.turnaround` (resolving
+             `10-events.md` §10.4's ambiguity) is §12.3; the no-`sim.turnaround`
+             fallback that lets T-021 ship before T-022 is §12.8; hashing, the
+             no-RNG rule and the budget shape are §12.12; the fixture
+             requirements and expected test names are §12.13.
+Status:      ANSWERED (spec/12-interfaces-airside.md)
 
 ### Q-006 — `sim.turnaround` has no published interface
 Raised by:   planner / queue expansion for T-022

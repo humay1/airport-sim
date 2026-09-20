@@ -189,3 +189,64 @@ Reason:      Bookkeeping, so the index names the interface rather than the map.
 Raised by:   Q-004
 Impact:      none.
 Signed off:  not required
+
+## 2026-09-21 — spec/12-interfaces-airside.md — new file: `sim.airside` public interfaces
+Reason:      T-021 was BLOCKED on Q-005: no published `sim.airside` interface
+             existed, so runway pacing, taxiway conflicts, stand assignment and
+             milestone emission would each have been invented by the worker.
+             Defines `IAirsideSystem` (query-only), a self-owned taxiway/
+             runway/stand graph (§12.4), the runway pacing-plus-occupancy hold
+             model (§12.5), single-lane taxiway conflicts (§12.6), stand
+             compatibility and assignment plus the door-side `Inject`/`Absorb`
+             calls (§12.7), and a no-`sim.turnaround` fallback so T-021 can ship
+             and be tested before T-022 exists (§12.8).
+Raised by:   Q-005 (planner / queue expansion for T-021)
+Impact:      none, additive — no `src/` code exists yet. Unblocks T-021 and
+             transitively T-022, T-024. T-022's brief should read §12.8's
+             handshake contract (the `BoardingComplete` event `sim.turnaround`
+             must emit) as binding on its own interface, once Q-006 is answered.
+Signed off:  not required
+Notes:       `sim.world` has no published interface either (a separate,
+             unopened question); rather than block T-021 on that too, this file
+             scopes Phase 0/1 narrowly — `sim.airside` owns and loads its own
+             taxiway/runway/stand graph, independent of `sim.world`. Folding it
+             into `sim.world` later is additive, not a redesign, since the
+             shape is already a plain graph. Consumes no RNG at Phase 0/1, same
+             posture as `sim.schedule`. Arrival passenger injection is
+             explicitly deferred: `11-interfaces-schedule.md` only defines pax
+             counts for departures, so the `Inject`-at-`DoorsOpen` call this
+             file's §12.1 references from the schedule spec is a no-op until a
+             future amendment adds arrival demand data.
+
+## 2026-09-21 — spec/10-events.md §10.4 — resolves milestone ownership: airside vs. turnaround
+Reason:      "sim.airside for the movement milestones, sim.turnaround for the
+             stand milestones" never enumerated which milestone belonged to
+             which, and `11-interfaces-schedule.md` §11.1 (merged) already
+             committed `sim.airside` to acting on `DoorsOpen`, which only works
+             if `sim.airside`, not `sim.turnaround`, emits it. Enumerates all
+             nine explicitly: doors stay with `sim.airside` (aircraft envelope),
+             `sim.turnaround` keeps only `DeboardComplete`, `ReadyToBoard`,
+             `BoardingComplete` (ground-service progress).
+Raised by:   Q-005, while writing `12-interfaces-airside.md` §12.3
+Impact:      Corrects an ambiguity, not a stated contradiction — no merged code
+             depended on the old wording since none exists yet. Binding on
+             `sim.turnaround`'s eventual interface (Q-006): it does not own
+             door milestones.
+Signed off:  not required
+
+## 2026-09-21 — spec/10-events.md §10.6 — `AircraftHeldOnTaxiway` field corrected from `EdgeId` to `TaxiEdgeId`
+Reason:      The field referenced `EdgeId`, which is already `sim.flow`'s
+             landside corridor-edge type (`09-interfaces-flow.md` §9.2) — a
+             real type collision, since a taxiway edge and a landside corridor
+             edge are different graphs owned by different modules. Renamed to
+             `TaxiEdgeId`, defined in `12-interfaces-airside.md` §12.4.
+Raised by:   Q-005, while writing `12-interfaces-airside.md`
+Impact:      none, additive correction. No code exists yet.
+Signed off:  not required
+
+## 2026-09-21 — spec/03-module-map.md, spec/00-overview.md — point `sim.airside` at its interface file
+Reason:      Bookkeeping to match the new file, same as Q-004's equivalent
+             entries.
+Raised by:   Q-005
+Impact:      none.
+Signed off:  not required
