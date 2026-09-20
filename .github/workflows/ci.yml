@@ -30,9 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Install content validator deps
+        run: pip install jsonschema
       - name: Static analysis and build
         run: bash ci/run-checks.sh --fast
 
@@ -42,6 +46,8 @@ jobs:
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -54,6 +60,8 @@ jobs:
     if: github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'

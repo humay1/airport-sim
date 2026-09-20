@@ -65,10 +65,12 @@ else ok "no per-agent A*"; fi
 
 # ---------------------------------------------------------------- content
 step "content schema validation"
-if [ -d data/schemas ] && command -v python3 >/dev/null; then
-  python3 ci/validate-content.py && ok "content valid" || fail "content schema"
+if [ ! -f ci/validate-content.py ]; then
+  fail "ci/validate-content.py is missing"
+elif ! command -v python3 >/dev/null; then
+  fail "python3 not available — cannot validate content"
 else
-  echo "  (skipped)"
+  python3 ci/validate-content.py && ok "content valid" || fail "content schema"
 fi
 
 # ---------------------------------------------------------------- path guard

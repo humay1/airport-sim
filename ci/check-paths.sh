@@ -7,8 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASE=${BASE_REF:-origin/main}
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 
 # Paths no branch may touch except the role that owns them.
 protected_for_role() {
@@ -22,8 +21,49 @@ protected_for_role() {
 ROLE=${BRANCH%%/*}
 TASK=$(echo "$BRANCH" | sed -n 's|^[^/]*/\(T-[0-9]\{3\}\).*|\1|p')
 
-CHANGED=$(git diff --name-only "$BASE"...HEAD || git diff --name-only --cached)
-[ -z "$CHANGED" ] && { echo "no changes"; exit 0; }
+# ---------------------------------------------------------------- base ref
+# Work out what to diff against. A guard that cannot see the changes must FAIL,
+# never print "no changes" and exit 0. That is failing open, which is worse than
+# having no guard at all, because it looks like it is working.
+resolve_base() {
+  if [ -n "${BASE_REF:-}" ] && git rev-parse --verify -q "$BASE_REF" >/dev/null; then
+    echo "$BASE_REF"; return 0
+  fi
+  if [ -n "${GITHUB_BASE_REF:-}" ]; then
+    git fetch --no-tags --depth=200 origin "$GITHUB_BASE_REF" >/dev/null 2>&1 || true
+    for cand in "origin/$GITHUB_BASE_REF" FETCH_HEAD; do
+      git rev-parse --verify -q "$cand" >/dev/null && { echo "$cand"; return 0; }
+    done
+  fi
+  for cand in origin/main origin/master main master; do
+    git rev-parse --verify -q "$cand" >/dev/null && { echo "$cand"; return 0; }
+  done
+  if git rev-parse --verify -q HEAD~1 >/dev/null; then
+    echo "HEAD~1"; return 0
+  fi
+  return 1
+}
+
+if ! BASE=$(resolve_base); then
+  echo "BLOCKED: cannot resolve a base ref to diff against."
+  echo "  branch=$BRANCH  BASE_REF=${BASE_REF:-unset}  GITHUB_BASE_REF=${GITHUB_BASE_REF:-unset}"
+  echo "  In CI, check out with fetch-depth: 0 so the base branch is present."
+  echo "  Refusing to report ok when the guard cannot see the changes."
+  exit 1
+fi
+
+if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+  if ! CHANGED=$(git diff --name-only "$BASE" HEAD 2>/dev/null); then
+    echo "BLOCKED: git diff against '$BASE' failed. Refusing to pass."
+    exit 1
+  fi
+fi
+
+if [ -z "$CHANGED" ]; then
+  echo "path guard: no changes against $BASE"
+  exit 0
+fi
+echo "path guard: comparing against $BASE"
 
 STATUS=0
 
