@@ -124,7 +124,18 @@ Question:    T-022 ("Turnaround as job list, 4 vehicles, driver assignment")
 Why it matters: Same as Q-005 — job scheduling and vehicle assignment logic is
              exactly the kind of design decision the module-map reserves for a
              published interface.
-Status:      OPEN
+Answer:      New file `spec/13-interfaces-turnaround.md`. `ITurnaroundSystem`
+             is query-only (§13.7); the job catalogue and vehicle fleet
+             (self-owned, not `data/` content at Phase 0/1) are §13.4; FIFO
+             vehicle dispatch by ascending blocking `EventId` is §13.5; job
+             creation off `sim.airside`'s `OnStand` milestone, the
+             arrival/departure job split and the `DeboardComplete`/
+             `ReadyToBoard`/`BoardingComplete` emission rules (fulfilling the
+             handshake `12-interfaces-airside.md` §12.8 already committed to)
+             are §13.6; hashing, the no-RNG rule and the budget shape are
+             §13.10; the fixture requirements and expected test names are
+             §13.11.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md)
 
 ### Q-007 — `sim.delay` has no published module interface
 Raised by:   planner / queue expansion for T-024

@@ -250,3 +250,80 @@ Reason:      Bookkeeping to match the new file, same as Q-004's equivalent
 Raised by:   Q-005
 Impact:      none.
 Signed off:  not required
+
+## 2026-09-21 — spec/13-interfaces-turnaround.md — new file: `sim.turnaround` public interfaces
+Reason:      T-022 was BLOCKED on Q-006: no published `sim.turnaround`
+             interface existed, so the job list, vehicle dispatch and the
+             `DeboardComplete`/`ReadyToBoard`/`BoardingComplete` emission rules
+             `sim.airside` (`12-interfaces-airside.md` §12.8) already depends
+             on would each have been invented by the worker. Defines
+             `ITurnaroundSystem` (query-only), a self-owned job catalogue and
+             vehicle fleet (§13.4), FIFO vehicle dispatch by ascending
+             blocking `EventId` (§13.5), and job creation keyed off
+             `sim.airside`'s `OnStand` milestone with the fixed
+             `Boarding`-waits-on-five-prerequisite-jobs rule (§13.6).
+Raised by:   Q-006 (planner / queue expansion for T-022)
+Impact:      none, additive — no `src/` code exists yet. Unblocks T-022 and
+             transitively T-024 (via Q-007, still open).
+Signed off:  not required
+Notes:       `sim.staff` has no published interface either (a separate,
+             unopened question); narrowed the same way `12-interfaces-
+             airside.md` narrowed around `sim.world` — at Phase 0/1 a vehicle
+             is its own crew, "driver assignment" means assigning a vehicle,
+             and no calls are made into `sim.staff`. Consumes no RNG, same
+             posture as `sim.schedule` and `sim.airside`. One LOW CONFIDENCE
+             flag: dispatch is deliberately distance-blind (FIFO by blocking
+             order only), even though `06-delay-attribution.md`'s own worked
+             example reads as if distance matters — modelling that needs a
+             distance metric this module has no dependency to compute.
+
+## 2026-09-21 — spec/12-interfaces-airside.md — amends §12.3, §12.7, §12.8, §12.11: two-`FlightId` handoff and rotation-less flights
+Reason:      Writing `sim.turnaround`'s interface (Q-006) exposed a real gap in
+             the unmerged `sim.airside` spec: `11-interfaces-schedule.md` gives
+             an arrival and its linked departure separate `FlightId`s, so the
+             nine airside/turnaround milestones split across two tracks, not
+             one — and nothing said which `FlightId` got which milestone, how
+             the stand handed off between the two tracks, or what happens to a
+             flight with no rotation counterpart (which the Phase 0 schedule
+             fixture, `11-interfaces-schedule.md` §11.10, requires at least
+             one of). §12.3 gets a "which `FlightId` gets which milestone"
+             subsection; §12.7 gets a "Rotation-less flights" subsection;
+             §12.8 is rewritten as a five-step handshake plus a corrected
+             fallback (previously it fired `DoorsClosed` off `DoorsOpen`'s own
+             tick as if both were the same `FlightId`, which no longer holds);
+             §12.11's consumed-events table adds `DeboardComplete`.
+Raised by:   architect, self-identified while writing Q-006
+Impact:      none, additive/corrective — `spec/12-interfaces-airside.md` was
+             committed on an unmerged branch (`architect/Q-005-airside-
+             interface`) and has not gone through Integrator review, so this
+             is a same-cycle correction, not a break of merged work. T-021's
+             task file (rewritten by the Planner, also unmerged) should be
+             re-checked against the corrected §12.8 before that branch merges
+             — its consumed-events list is missing `DeboardComplete` and its
+             fallback description predates the two-`FlightId` handoff.
+Signed off:  not required
+Notes:       One new LOW CONFIDENCE flag: a rotation-less departure gets no
+             real ground time under the no-`sim.turnaround` fallback, because
+             `MinTurnaround` is spent once to place the aircraft and has
+             nothing left to cover boarding. Left as a known gap rather than
+             guessed shut — the Phase 0/1 fixture only needs such a row to
+             exist for `TICK_UNSCHEDULED` coverage, not to complete a
+             plausible turnaround.
+
+## 2026-09-21 — spec/10-events.md §10.6 — `TurnaroundJobBlocked`'s category list drops `pushback`
+Reason:      `13-interfaces-turnaround.md` §13.4 fixes `PushbackPrep`'s
+             category as `ground_handling` always — `pushback` as a delay
+             category is reserved for `sim.airside`'s own `Pushback`
+             milestone, not this module's prep job, so a catalogue mapping the
+             two together fails to load. The events table's category list
+             said otherwise.
+Raised by:   Q-006, while writing `13-interfaces-turnaround.md` §13.4
+Impact:      none, additive correction. No code exists yet.
+Signed off:  not required
+
+## 2026-09-21 — spec/03-module-map.md, spec/00-overview.md — point `sim.turnaround` at its interface file
+Reason:      Bookkeeping to match the new file, same as Q-004/Q-005's
+             equivalent entries.
+Raised by:   Q-006
+Impact:      none.
+Signed off:  not required

@@ -92,6 +92,28 @@ injecting arriving passengers "at the aircraft door on the `DoorsOpen`
 milestone." Assigning `DoorsOpen` to `sim.turnaround` would have contradicted
 that merged text; this table is the correction, made once, here.
 
+### Which `FlightId` gets which milestone
+
+`11-interfaces-schedule.md` §11.3 gives an arrival and its linked departure
+**separate `FlightId`s**. Each `AircraftTrack` (§12.9) belongs to exactly one
+`FlightId`, so the milestone sequence splits across the two:
+
+- The **arrival**'s `FlightId` carries `InboundAirborne`, `Landed`,
+  `OffRunway`, `OnStand`, `DoorsOpen`, and (`sim.turnaround`'s)
+  `DeboardComplete`. Its track's useful `AircraftLegPhase` sequence ends at
+  `OnStand` — it never reaches `AwaitingPushbackClearance` or `Departed`.
+- The **departure**'s `FlightId` carries (`sim.turnaround`'s) `ReadyToBoard`
+  and `BoardingComplete`, then `DoorsClosed`, `Pushback`, `TakeoffRoll`,
+  `Airborne`. Its track is created directly in `AircraftLegPhase.OnStand`
+  (§12.9's "resumes from `OnStand`, no approach") — it never receives its own
+  `Landed`/`OffRunway`/`DoorsOpen`, because the door only opens once, for
+  deplaning, under the arrival's `FlightId`.
+- The stand itself does not change occupant between the two: the departure's
+  track is created at the arrival's `Stand` the tick `sim.turnaround` (or the
+  §12.8 fallback) reaches the equivalent of "ready to hand off" — precisely,
+  the tick the arrival's `DeboardComplete` fires — carrying `StandState`
+  forward without a `StandAssigned` event, since the stand was never freed.
+
 ---
 
 ## 12.4 Layout: the airside graph
@@ -267,33 +289,91 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   `Absorb`'s return value is not re-published — `sim.flow` owns that event)
   and reconciles the flow-side head count for the flight.
 
+### Rotation-less flights (no `Rotation` counterpart)
+
+- A rotation-less **Arrival** (`HasRotation = false`) completes its
+  arrival-side lifecycle exactly as normal, through `DoorsOpen` and (with
+  `sim.turnaround` present) `DeboardComplete`, and then simply **stays on
+  stand**: no departure track is ever created, `StandState.Occupant` stays
+  set, and the stand is unavailable for the remainder of the run. This is
+  intentional at Phase 0/1, not a bug — a single-leg arrival has nowhere to
+  go without a linked departure. A scenario needing it to vacate needs a
+  schedule amendment (e.g. a synthetic empty ferry departure), not a
+  workaround here.
+- A rotation-less **Departure** (`HasRotation = false`) is assumed already on
+  its assigned stand at `ScheduledTick - MinTurnaround`: `sim.airside` creates
+  its `AircraftTrack` directly in `OnStand` phase at that tick, claims the
+  earliest compatible free stand under the normal assignment rule above, and
+  fires its own `FlightMilestoneReached{OnStand}` (`PlannedTick = ActualTick
+  = ScheduledTick - MinTurnaround`) — the same trigger `sim.turnaround` uses
+  to start jobs for any departure, rotation-linked or not.
+
+  > **LOW CONFIDENCE — rotation-less departures get no real ground time under
+  > the §12.8 fallback.** Without `sim.turnaround`, the fallback timer also
+  > measures `MinTurnaround` from this same creation tick, so `DoorsClosed`
+  > fires the instant the track is created — `MinTurnaround` is spent once to
+  > place the aircraft and has nothing left to cover boarding. The Phase 0/1
+  > fixture requirement (`11-interfaces-schedule.md` §11.10) only needs one
+  > such row to exist to exercise `TICK_UNSCHEDULED`, not to complete a
+  > plausible turnaround, so this is left as a known gap rather than guessed
+  > shut. A fixture that needs a *working* standalone departure needs a real
+  > formula (e.g. `ScheduledTick - 2 * MinTurnaround` as the creation tick) —
+  > a deliberate amendment, flagged for the human owner, not decided here.
+
 ---
 
-## 12.8 The turnaround handshake, and the no-`sim.turnaround` fallback
+## 12.8 The turnaround handshake, stand handoff, and the no-`sim.turnaround` fallback
 
-Between `DoorsOpen` and `DoorsClosed`, `sim.airside` waits for
-`sim.turnaround`'s `BoardingComplete` (`FlightMilestoneReached`, §12.3). It
-learns of this **only** through the event bus: `sim.turnaround` depends on
-`sim.airside` (`03-module-map.md`), so the call can never run the other way,
-and this is the "upward information flows as events" rule in practice.
-`sim.airside` subscribes to `FlightMilestoneReached` and reacts to
-`BoardingComplete` for a flight it has on stand by transitioning to
-`DoorsClosed` on its next `Tick`.
+### With `sim.turnaround` registered
+
+1. `sim.turnaround` subscribes to the arrival's `OnStand`
+   (`FlightMilestoneReached`) and starts that flight's jobs. It learns of
+   this **only** through the event bus: `sim.turnaround` depends on
+   `sim.airside` (`03-module-map.md`), so the call can never run the other
+   way, and this is the "upward information flows as events" rule in
+   practice.
+2. `sim.turnaround` emits `DeboardComplete` for the **arrival**'s `FlightId`
+   when deboarding finishes.
+3. `sim.airside` subscribes to `DeboardComplete`. On its next `Tick`, for an
+   arrival it still has on stand: if `HasRotation`
+   (`IScheduleSystem.TryGetRotation`), it creates the departure's
+   `AircraftTrack` directly in `OnStand` phase at the same `Stand`,
+   reassigns `StandState.Occupant` to the departure's `FlightId`, and fires
+   `FlightMilestoneReached{OnStand}` for the **departure** (`PlannedTick =
+   ScheduledTick - MinTurnaround`, `ActualTick` = this tick, `Cause` set to
+   the `DeboardComplete` event). No `StandAssigned` event fires — the stand
+   was never freed, only handed off. If the arrival has no rotation, nothing
+   further happens automatically; see "Rotation-less flights" above.
+4. `sim.turnaround`, seeing the departure's `OnStand`, starts
+   departure-prep jobs and eventually emits `ReadyToBoard` then
+   `BoardingComplete` for the **departure**'s `FlightId`.
+5. `sim.airside` subscribes to `BoardingComplete`. On its next `Tick`, for a
+   departure it has on stand: calls `Absorb` (§12.7), fires
+   `FlightMilestoneReached{DoorsClosed}` for the departure, then `Pushback`.
+
+### Without `sim.turnaround` — the fallback T-021 ships and tests
 
 **T-021 ships before `sim.turnaround` exists** (`00-overview.md` build order).
 A build with `sim.airside` but no `sim.turnaround` registered would otherwise
-wait forever and violate the "every `*Blocked` has an `*Unblocked`" invariant
-trivially by never producing a second milestone at all. So, precisely as
-`11-interfaces-schedule.md` §11.6 does for `sim.flow`:
+wait forever for events nobody will ever publish, and `10-events.md` §10.3's
+emission discipline forbids `sim.airside` emitting `DeboardComplete`,
+`ReadyToBoard` or `BoardingComplete` on `sim.turnaround`'s behalf — each event
+has exactly one owning module. So, precisely as `11-interfaces-schedule.md`
+§11.6 does for `sim.flow`, the whole ground stay collapses into one fixed
+block:
 
 > If `sim.turnaround` is not registered in this build, `sim.airside` treats
 > `FlightRecord.MinTurnaround` (from `IScheduleSystem.TryGetFlight`) as the
-> full ground time: `DoorsClosed` fires unconditionally at `DoorsOpen tick +
-> MinTurnaround` (converted via `TICKS_PER_SIM_MINUTE`), and `Absorb` is called
-> at that same tick. Once `sim.turnaround` **is** registered, this fallback
-> never fires — the event handshake above takes over entirely and
-> `MinTurnaround` is read only as the *planned* ground time for `sim.delay`'s
-> gap arithmetic, never as a timer.
+> full ground time. At `DoorsOpen tick + MinTurnaround` (converted via
+> `TICKS_PER_SIM_MINUTE`), for an arrival with `HasRotation`, in the same
+> tick: create the departure's `AircraftTrack` in `OnStand` phase at the same
+> `Stand`, reassign `StandState.Occupant`, fire `FlightMilestoneReached
+> {OnStand}` for the departure, call `Absorb`, then fire
+> `FlightMilestoneReached{DoorsClosed}` for the departure. For an arrival with
+> no rotation, only "Rotation-less flights" above applies; none of this fires.
+> Once `sim.turnaround` **is** registered, this fallback never fires — the
+> handshake above takes over entirely and `MinTurnaround` is read only as the
+> *planned* ground time for `sim.delay`'s gap arithmetic, never as a timer.
 
 This is the same decoupling pattern as `11-interfaces-schedule.md` §11.6
 ("running without `sim.flow`"): a module's own hash and behaviour must not
@@ -377,7 +457,12 @@ Full field lists in `10-events.md` §10.6 except where this file adds a
 
 | Event | From | Reaction |
 |---|---|---|
+| `FlightMilestoneReached { Milestone = DeboardComplete }` | `sim.turnaround` | §12.8, create the departure's track and hand off the stand, next tick |
 | `FlightMilestoneReached { Milestone = BoardingComplete }` | `sim.turnaround` | §12.8, transition to `DoorsClosed` next tick |
+
+`sim.airside` also calls `IScheduleSystem.TryGetRotation` (query, downward,
+`11-interfaces-schedule.md` §11.7) at the handoff in §12.8 step 3, to find the
+departure `FlightId` to create a track for.
 
 `sim.airside` calls `IScheduleSystem.TryGetFlight` (query, downward,
 `11-interfaces-schedule.md` §11.7) to read `ScheduledTick`, `MinTurnaround` and

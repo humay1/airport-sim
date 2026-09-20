@@ -176,10 +176,14 @@ a branch in `sim.delay`. That is how `immigration_queue` exists without
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
 | `TurnaroundJobStarted` / `Completed` | `FlightId`, `JobKind`, `Tick plannedStart` | — | 1 |
-| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading`, `pushback` | 1 |
+| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading` | 1 |
 | `CrewUnavailable` / `CrewReady` | `FlightId`, reason key | `crew` | 2 |
 
-`JobKind` maps to the delay category through the job's content definition.
+`JobKind` maps to the delay category through the job's catalogue definition
+(`13-interfaces-turnaround.md` §13.4). `pushback` as a category is reserved
+for the aircraft-side act itself (`sim.airside`'s `Pushback` milestone);
+`sim.turnaround`'s `PushbackPrep` job is always `ground_handling` (§13.4), so
+`pushback` is removed from this row's category list.
 
 ### From `sim.baggage`
 
