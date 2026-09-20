@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Job names below become the status checks you select in branch protection:
+#   path-guard / build-and-test / determinism
+# They appear in the search box only AFTER this workflow has run once.
+
+jobs:
+  path-guard:
+    name: path-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # check-paths.sh diffs against the base ref
+      - name: Check writes stay inside declared paths
+        env:
+          BASE_REF: origin/${{ github.base_ref || 'main' }}
+        run: |
+          git fetch origin ${{ github.base_ref || 'main' }} --depth=50 || true
+          bash ci/check-paths.sh
+
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Static analysis and build
+        run: bash ci/run-checks.sh --fast
+
+  determinism:
+    name: determinism
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Determinism gates and performance budgets
+        run: bash ci/run-checks.sh
+
+  soak:
+    name: soak-500-days
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 500-day soak against golden hashes
+        run: |
+          if [ -d tools/SimHarness ]; then
+            dotnet run --project tools/SimHarness -c Release -- soak --days 500 \
+              --golden tests/golden/soak-500.hashes
+          else
+            echo "harness not built yet (T-001)"
+          fi

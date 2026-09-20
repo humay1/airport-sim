@@ -1,0 +1,29 @@
+name: Nightly soak
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  soak:
+    name: soak-500-days
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 500-day soak against golden hashes
+        run: |
+          if [ -d tools/SimHarness ]; then
+            dotnet run --project tools/SimHarness -c Release -- soak --days 500 \
+              --golden tests/golden/soak-500.hashes
+          else
+            echo "harness not built yet (T-001) — nothing to soak"
+          fi
+      - name: Performance trend
+        run: |
+          if [ -d tools/SimHarness ]; then
+            dotnet run --project tools/SimHarness -c Release -- budget --tier max --report
+          fi
