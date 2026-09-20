@@ -1,0 +1,20 @@
+# Layer 1 of the path guards: the only layer no agent can modify.
+# Replace @you with your GitHub handle before pushing.
+
+# Locked architecture. Changing these invalidates downstream work.
+/spec/01-architecture.md   @you
+/spec/02-determinism.md    @you
+
+# The rest of the spec: architect writes, human signs off.
+/spec/                     @you
+
+# Tests define correctness. Workers must never touch them.
+/tests/                    @you
+
+# Balance values shape player experience. Never an agent decision.
+/data/balance/             @you
+
+# The guards themselves, and the agent definitions that carry them.
+/ci/                       @you
+/.claude/                  @you
+/.github/                  @you

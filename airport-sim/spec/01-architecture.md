@@ -3,15 +3,58 @@
 > **Locked document.** Agents may not modify this file. Changes require human
 > sign-off, recorded in `spec/CHANGELOG.md`.
 
-## TODO for the human owner before the Architect runs
+## Platform decisions
 
-- [ ] Engine: _(Unity + ECS/DOTS | Godot | custom)_
-- [ ] Language: _(C# | C++ | Rust)_
-- [ ] Target platform and minimum spec:
-- [ ] Target airport size at max tier (daily movements / daily passengers):
-- [ ] Frame budget for the sim layer at max tier:
+Set by the human owner. Locked. Changing any of these invalidates downstream work
+and requires a recorded sign-off in `spec/CHANGELOG.md`.
 
-Nothing downstream is valid until these are filled in.
+| Decision | Value |
+|---|---|
+| Simulation | Pure C# class library, .NET 8, **zero engine references** |
+| Presentation | Unity 6 LTS, importing the sim library as a compiled assembly |
+| Language | C# for both layers |
+| Target platform | Windows and Linux desktop; macOS best-effort |
+| Minimum spec | 4-core CPU, 8 GB RAM, GPU with 2 GB VRAM |
+| Max tier size | 800 daily movements, 90,000 daily passengers, 60 stands, 3 runways |
+| Sim tick rate | 10 Hz (`TICK_MS = 100`) at 1× game speed |
+| Sim frame budget | **6 ms per tick** at max tier, total across all sim modules |
+| Render target | 60 fps at max tier on minimum spec |
+
+### Why the sim is a plain .NET library, not an engine project
+
+This is the decision everything else rests on, so the reasoning is recorded here:
+
+1. **The determinism gates become trivial.** `dotnet test` runs the whole sim in CI
+   with no engine, no license, no GPU, no headless display. A gate that is hard to
+   run is a gate that gets disabled.
+2. **The soak test is possible at all.** 500 simulated days must run in minutes on
+   a build agent. That rules out driving the sim through an engine's update loop.
+3. **Layer separation is enforced by the compiler**, not by review. The sim library
+   has no engine reference, so a worker *cannot* call into rendering by accident.
+   This is the cheapest possible enforcement of the rule in "Layer separation".
+4. **Swapping the presentation layer stays possible.** If Unity turns out wrong,
+   the sim is unaffected.
+
+The cost is that the sim cannot use the engine's job system or ECS. That is
+acceptable: the hierarchical simulation described below exists precisely so that
+the per-tick work stays small enough not to need it.
+
+### Budget allocation at max tier
+
+6 ms per tick, apportioned by the Architect in `03-module-map.md`. Starting split,
+to be refined once T-011 measures reality:
+
+| Module | ms/tick |
+|---|---|
+| `sim.flow` | 2.5 |
+| `sim.baggage` | 1.0 |
+| `sim.airside` | 0.8 |
+| `sim.turnaround` | 0.5 |
+| `sim.delay` | 0.4 |
+| everything else combined | 0.8 |
+
+`sim.world` flow-field recomputation is amortised and excluded from the per-tick
+budget; it has its own budget of 50 ms per construction change, off the hot path.
 
 ## Layer separation
 

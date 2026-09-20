@@ -1,0 +1,32 @@
+{
+  "$comment": "Layer 3 of the path guards. Layer 1 (branch protection + CODEOWNERS) is the one that actually holds; this one tells the agent in-turn instead of ten minutes later in CI.",
+  "permissions": {
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git commit --no-verify *)",
+      "Bash(rm -rf /*)",
+      "Agent(Explore)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "./ci/hooks/guard-paths.sh" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "./ci/hooks/on-subagent-stop.sh" }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "6"
+  }
+}
