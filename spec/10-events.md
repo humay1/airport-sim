@@ -91,10 +91,15 @@ event FlightMilestoneReached {
 ```
 
 Emitted by whichever module owns the transition — `sim.schedule` for
-`PlanPublished`, `sim.airside` for the movement milestones, `sim.turnaround` for
-the stand milestones. Each is emitted **once per flight**. `PlannedTick` is the
-plan as it stood when the *previous* milestone completed, so replanning is visible
-rather than retroactively hiding a delay.
+`PlanPublished`; `sim.airside` for `InboundAirborne`, `Landed`, `OffRunway`,
+`OnStand`, `DoorsOpen`, `DoorsClosed`, `Pushback`, `TakeoffRoll`, `Airborne`
+(`12-interfaces-airside.md` §12.3 — doors are aircraft envelope, not ground
+service, so they stay with the module that owns the aircraft's physical state);
+`sim.turnaround` for the remaining ground-service milestones,
+`DeboardComplete`, `ReadyToBoard`, `BoardingComplete`. Each is emitted **once
+per flight**. `PlannedTick` is the plan as it stood when the *previous*
+milestone completed, so replanning is visible rather than retroactively hiding
+a delay.
 
 ---
 
@@ -146,7 +151,7 @@ rule for.
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
 | `AircraftHeldForRunway` / `Released` | `FlightId`, `RunwayId`, `int queuePosition` | `runway_congestion` | 1 |
-| `AircraftHeldOnTaxiway` / `Released` | `FlightId`, `EdgeId`, blocking `FlightId?` | `taxi_congestion` | 1 |
+| `AircraftHeldOnTaxiway` / `Released` | `FlightId`, `TaxiEdgeId`, blocking `FlightId?` | `taxi_congestion` | 1 |
 | `StandUnavailable` / `StandAssigned` | `FlightId`, `StandId?`, occupying `FlightId?` | `stand_unavailable` | 1 |
 | `RunwayDirectionChanged` | `RunwayId`, `int headingDeg`, `SimMinutes settleTime` | `weather` | 2 |
 | `RunwayClosed` / `Reopened` | `RunwayId`, reason key | `weather`, `incident` | 2 |
@@ -171,10 +176,14 @@ a branch in `sim.delay`. That is how `immigration_queue` exists without
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
 | `TurnaroundJobStarted` / `Completed` | `FlightId`, `JobKind`, `Tick plannedStart` | — | 1 |
-| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading`, `pushback` | 1 |
+| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading` | 1 |
 | `CrewUnavailable` / `CrewReady` | `FlightId`, reason key | `crew` | 2 |
 
-`JobKind` maps to the delay category through the job's content definition.
+`JobKind` maps to the delay category through the job's catalogue definition
+(`13-interfaces-turnaround.md` §13.4). `pushback` as a category is reserved
+for the aircraft-side act itself (`sim.airside`'s `Pushback` milestone);
+`sim.turnaround`'s `PushbackPrep` job is always `ground_handling` (§13.4), so
+`pushback` is removed from this row's category list.
 
 ### From `sim.baggage`
 

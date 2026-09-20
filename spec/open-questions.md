@@ -100,7 +100,18 @@ Question:    T-021 ("One runway, taxiway graph, four contact stands") needs an
 Why it matters: Movement, stand assignment and milestone emission are exactly
              the kind of interface `03-module-map.md` requires be spec'd before
              a worker starts.
-Status:      OPEN
+Answer:      New file `spec/12-interfaces-airside.md`. `IAirsideSystem` is
+             query-only (§12.9); the self-owned taxiway/runway/stand graph
+             format and its routing are §12.4; the runway pacing/occupancy
+             model and its hold queue are §12.5; the single-lane taxiway
+             conflict model is §12.6; stand compatibility, assignment and the
+             `Inject`/`Absorb` calls at the door are §12.7; the milestone
+             ownership split against `sim.turnaround` (resolving
+             `10-events.md` §10.4's ambiguity) is §12.3; the no-`sim.turnaround`
+             fallback that lets T-021 ship before T-022 is §12.8; hashing, the
+             no-RNG rule and the budget shape are §12.12; the fixture
+             requirements and expected test names are §12.13.
+Status:      ANSWERED (spec/12-interfaces-airside.md)
 
 ### Q-006 — `sim.turnaround` has no published interface
 Raised by:   planner / queue expansion for T-022
@@ -113,7 +124,18 @@ Question:    T-022 ("Turnaround as job list, 4 vehicles, driver assignment")
 Why it matters: Same as Q-005 — job scheduling and vehicle assignment logic is
              exactly the kind of design decision the module-map reserves for a
              published interface.
-Status:      OPEN
+Answer:      New file `spec/13-interfaces-turnaround.md`. `ITurnaroundSystem`
+             is query-only (§13.7); the job catalogue and vehicle fleet
+             (self-owned, not `data/` content at Phase 0/1) are §13.4; FIFO
+             vehicle dispatch by ascending blocking `EventId` is §13.5; job
+             creation off `sim.airside`'s `OnStand` milestone, the
+             arrival/departure job split and the `DeboardComplete`/
+             `ReadyToBoard`/`BoardingComplete` emission rules (fulfilling the
+             handshake `12-interfaces-airside.md` §12.8 already committed to)
+             are §13.6; hashing, the no-RNG rule and the budget shape are
+             §13.10; the fixture requirements and expected test names are
+             §13.11.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md)
 
 ### Q-007 — `sim.delay` has no published module interface
 Raised by:   planner / queue expansion for T-024

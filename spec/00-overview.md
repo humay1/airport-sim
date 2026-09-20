@@ -34,9 +34,9 @@ Written here so no agent ever proposes them:
 | Tick, time, RNG | `02-determinism.md`, `08-interfaces-core.md` | `sim.core` |
 | Event catalogue | `10-events.md` | `sim.core` (defined), all (emitted) |
 | Schedule | `11-interfaces-schedule.md` | `sim.schedule` |
-| Airside movement | `03-module-map.md` | `sim.airside` |
+| Airside movement | `12-interfaces-airside.md` | `sim.airside` |
 | Passenger flow | `03-module-map.md`, `09-interfaces-flow.md` | `sim.flow` |
-| Turnaround jobs | `03-module-map.md` | `sim.turnaround` |
+| Turnaround jobs | `13-interfaces-turnaround.md` | `sim.turnaround` |
 | Delay attribution | `06-delay-attribution.md` | `sim.delay` |
 | Baggage | `03-module-map.md` | `sim.baggage` |
 | Staff | `03-module-map.md` | `sim.staff` |
