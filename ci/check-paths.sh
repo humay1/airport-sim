@@ -7,7 +7,33 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+# ---------------------------------------------------------------- branch name
+# GitHub Actions checks out a DETACHED HEAD on pull requests, so
+# `git rev-parse --abbrev-ref HEAD` returns the literal string "HEAD" and the role
+# parse silently degrades to the most restrictive case. Prefer the CI-provided
+# branch name, then fall back to local resolution.
+resolve_branch() {
+  # Pull request: the source branch
+  [ -n "${GITHUB_HEAD_REF:-}" ] && { echo "$GITHUB_HEAD_REF"; return 0; }
+  # Push event: refs/heads/<branch>
+  if [ -n "${GITHUB_REF:-}" ]; then
+    case "$GITHUB_REF" in refs/heads/*) echo "${GITHUB_REF#refs/heads/}"; return 0 ;; esac
+  fi
+  # Local
+  local b
+  b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ -n "$b" ] && [ "$b" != "HEAD" ]; then echo "$b"; return 0; fi
+  # Detached locally: find a branch containing HEAD
+  b=$(git for-each-ref --format='%(refname:short)' --points-at HEAD refs/heads 2>/dev/null | head -1)
+  [ -n "$b" ] && { echo "$b"; return 0; }
+  return 1
+}
+
+if ! BRANCH=$(resolve_branch); then
+  echo "BLOCKED: cannot determine the branch name, so the role cannot be established."
+  echo "  Refusing to guess. In CI this usually means a detached checkout without GITHUB_HEAD_REF."
+  exit 1
+fi
 
 # Paths no branch may touch except the role that owns them.
 protected_for_role() {
@@ -18,7 +44,11 @@ protected_for_role() {
   esac
 }
 
-ROLE=${BRANCH%%/*}
+case "$BRANCH" in
+  */*) ROLE=${BRANCH%%/*} ;;
+  *)   ROLE="(none)"
+       echo "NOTE: branch '$BRANCH' has no <role>/ prefix; applying the strictest rules." ;;
+esac
 TASK=$(echo "$BRANCH" | sed -n 's|^[^/]*/\(T-[0-9]\{3\}\).*|\1|p')
 
 # ---------------------------------------------------------------- base ref
