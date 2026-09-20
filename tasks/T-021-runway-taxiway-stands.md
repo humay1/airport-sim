@@ -141,13 +141,34 @@ Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
   `DoorsOpen`, the call is a documented no-op until a future amendment adds
   arrival demand data. At `DoorsClosed`, call
   `IFlowSystem.Absorb(stand.DepartureSinkNode, flight)` once, unconditionally.
-- **The `sim.turnaround` handshake and its fallback** (§12.8): subscribe to
-  `FlightMilestoneReached{Milestone=BoardingComplete}` and transition to
-  `DoorsClosed` on the next `Tick` after receiving it. **If `sim.turnaround`
-  is not registered in this build** — the case this task actually ships and
-  tests — `DoorsClosed` fires unconditionally at `DoorsOpen tick +
-  MinTurnaround` (from `IScheduleSystem.TryGetFlight`), and `Absorb` is called
-  at that same tick.
+- **Two `FlightId`s per rotation, one stand handoff** (§12.3 "Which
+  `FlightId` gets which milestone", §12.7 "Rotation-less flights", §12.8):
+  an arrival and its linked departure are **separate `FlightId`s**
+  (`spec/11-interfaces-schedule.md` §11.3), each with its own
+  `AircraftTrack`. The arrival's track carries `InboundAirborne` through
+  `DoorsOpen`; the departure's track is created directly in `OnStand` phase
+  at the same `Stand` and carries `DoorsClosed` through `Airborne`. A
+  rotation-less arrival (`HasRotation = false`) never gets a departure track
+  and stays on stand indefinitely — intentional, not a bug. A rotation-less
+  departure is assumed already on stand at `ScheduledTick - MinTurnaround`
+  and creates its own track there directly.
+- **The `sim.turnaround` handshake and its fallback** (§12.8, five-step
+  sequence): subscribe to `FlightMilestoneReached{Milestone=DeboardComplete}`
+  for the **arrival** — on the next `Tick`, if `HasRotation`
+  (`IScheduleSystem.TryGetRotation`), create the departure's track in
+  `OnStand` phase at the same `Stand`, reassign `StandState.Occupant`, and
+  fire `FlightMilestoneReached{OnStand}` for the departure. Separately,
+  subscribe to `FlightMilestoneReached{Milestone=BoardingComplete}` for the
+  **departure** — on the next `Tick`, call `Absorb` and fire `DoorsClosed`
+  for the departure, then `Pushback`. **If `sim.turnaround` is not
+  registered in this build** — the case this task actually ships and tests
+  — neither `DeboardComplete` nor `BoardingComplete` is ever emitted
+  (`10-events.md` §10.3 forbids `sim.airside` emitting another module's
+  events), so both steps above collapse into one: at `DoorsOpen tick +
+  MinTurnaround` (arrival's `MinTurnaround`), if `HasRotation`, do the
+  handoff (create departure track, reassign occupant, fire departure
+  `OnStand`), call `Absorb`, and fire departure `DoorsClosed` — all in the
+  same tick.
 - **Registry position 3** (§12.9), after `sim.schedule` (2), before
   `sim.flow` (4) and `sim.turnaround` (5).
 - **`ReassignStand` command** (§12.10): only while `Phase == OnStand`;
@@ -162,7 +183,8 @@ Emitted: `FlightMilestoneReached` (for the nine milestones listed above),
 `AircraftHeldOnTaxiway`/`AircraftHeldOnTaxiwayReleased`,
 `StandUnavailable`/`StandAssigned`
 
-Consumed: `FlightMilestoneReached{Milestone=BoardingComplete}` (from
+Consumed: `FlightMilestoneReached{Milestone=DeboardComplete}` and
+`FlightMilestoneReached{Milestone=BoardingComplete}` (both from
 `sim.turnaround`, when registered)
 
 ## Tests to pass
@@ -182,6 +204,8 @@ at least:
 - `test_taxi_edge_single_occupant_holds_second_aircraft`
 - `test_stand_assignment_prefers_lowest_id_among_compatible_free_stands`
 - `test_doors_close_after_min_turnaround_when_turnaround_absent`
+- `test_stand_hands_off_from_arrival_to_departure_flightid_without_freeing`
+- `test_rotationless_arrival_stays_on_stand_indefinitely`
 - `test_arrival_pax_count_zero_skips_inject`
 - `test_airside_tick_consumes_no_rng`
 
@@ -219,7 +243,11 @@ taxiway/runway/stand graph is this module's own data, loaded via
 was written; do not follow an older mental model where "stand milestones"
 meant all five door/service transitions.
 
-If `sim.turnaround`'s eventual interface (Q-006, still open) ends up needing
-a different event than `FlightMilestoneReached{BoardingComplete}` to signal
-readiness, that is a spec amendment to `spec/12-interfaces-airside.md` §12.8,
-not a local workaround here.
+Q-006 is now answered (`spec/13-interfaces-turnaround.md`); the handshake this
+task implements — `DeboardComplete` triggers the stand handoff to the
+departure's `FlightId`, `BoardingComplete` triggers `DoorsClosed` — is the
+one `sim.turnaround`'s own spec commits to producing, so no further amendment
+is expected here. If a future change to either spec needs a different
+handshake, that is a coordinated amendment to both `§12.8` and
+`13-interfaces-turnaround.md` §13.6, not a local workaround in either
+module's code.
