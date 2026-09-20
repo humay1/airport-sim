@@ -61,8 +61,8 @@ concurrently with another sim.core task touching the same files). Order:
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
 | T-020 | Minimal top-down renderer, flat colours | app.render | T-009 | BLOCKED (Q-008) |
-| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | BLOCKED (Q-005) |
-| T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-021 | BLOCKED (Q-006, via T-021) |
+| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | QUEUED |
+| T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-021 | BLOCKED (Q-006) |
 | T-023 | Security lanes openable/closable live, visible queues | sim.flow | T-007, T-005 | QUEUED |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023 | BLOCKED (Q-007, and Q-006 via T-022) |
 | T-025 | Playtest build, 20 external testers | — | T-024 | BLOCKED (human gate; via T-024) |
@@ -79,20 +79,33 @@ of which is blocked. It writes `src/sim/flow/**`, the same directory as
 T-007/T-010/T-011, so it is released only after those three have merged, one
 sim.flow task in flight at a time.
 
-Q-004 is answered (`spec/11-interfaces-schedule.md`), so T-008/T-009 no
-longer block the chain. What remains `BLOCKED`:
+Q-004 is answered (`spec/11-interfaces-schedule.md`) and Q-005 is answered
+(`spec/12-interfaces-airside.md`), so T-008, T-009 and T-021 no longer block
+the chain. What remains `BLOCKED`:
 
 - **T-020** on Q-008 (`app.render` interface/scope — still open).
-- **T-021** on Q-005 (`sim.airside` interface — still open).
-- **T-022** on Q-006 (`sim.turnaround` interface — still open), and
-  transitively on T-021.
+- **T-022** on Q-006 (`sim.turnaround` interface — still open).
 - **T-024** on Q-007 (`sim.delay` interface — still open), and transitively
-  on T-022/T-021.
+  on T-022 (via Q-006).
 - **T-025** is additionally a human-only gate per `spec/00-overview.md` and
   is never agent-completable regardless of blocks clearing.
 
-T-021's dependency on T-008 is no longer itself a blocker — T-008 is
-`QUEUED` — but T-021 still cannot be released until Q-005 is answered.
+T-021's dependency on T-008 is no longer a blocker — T-008 is `QUEUED` — and
+Q-005 is answered, so T-021 itself is `QUEUED`. T-022's dependency on T-021 is
+now an ordinary merge-order dependency, not a compounding block; Q-006 alone
+still stops it. `spec/12-interfaces-airside.md` §12.8 already constrains part
+of Q-006's eventual answer: `sim.turnaround` must emit
+`FlightMilestoneReached` for exactly `DeboardComplete`, `ReadyToBoard`,
+`BoardingComplete`, and `sim.airside` reacts to `BoardingComplete` specifically
+to close the aircraft doors.
+
+### Release order note: T-021 and T-023 both touch `sim.flow`'s consumer side
+
+T-021 calls `IFlowSystem.Inject`/`Absorb` (currently a documented no-op for
+`Inject`, per `spec/12-interfaces-airside.md` §12.7) but writes only
+`src/sim/airside/**` — no file overlap with T-023's `src/sim/flow/**`. They
+may run concurrently once T-021's own dependency (T-008) and T-023's
+dependencies (T-007, T-005) are merged. Neither blocks the other.
 
 ## Planner scope note
 
