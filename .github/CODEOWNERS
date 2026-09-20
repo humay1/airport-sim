@@ -1,20 +1,20 @@
 # Layer 1 of the path guards: the only layer no agent can modify.
-# Replace @humay1 with your GitHub handle before pushing.
+# Replace @you with your GitHub handle before pushing.
 
 # Locked architecture. Changing these invalidates downstream work.
-/spec/01-architecture.md   @humay1
-/spec/02-determinism.md    @humay1
+/spec/01-architecture.md   @you
+/spec/02-determinism.md    @you
 
 # The rest of the spec: architect writes, human signs off.
-/spec/                     @humay1
+/spec/                     @you
 
 # Tests define correctness. Workers must never touch them.
-/tests/                    @humay1
+/tests/                    @you
 
 # Balance values shape player experience. Never an agent decision.
-/data/balance/             @humay1
+/data/balance/             @you
 
 # The guards themselves, and the agent definitions that carry them.
-/ci/                       @humay1
-/.claude/                  @humay1
-/.github/                  @humay1
+/ci/                       @you
+/.claude/                  @you
+/.github/                  @you
