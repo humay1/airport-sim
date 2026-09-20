@@ -63,4 +63,4 @@ have seen the Worker's reasoning — only the diff and the spec.
 4. Run the Planner to generate `tasks/queue.md`.
 5. Start workers on tasks whose dependencies are met.
 
-Do not skip step 3. 
+Do not skip step 3.
