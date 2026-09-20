@@ -2,37 +2,149 @@
 
 | Field | Value |
 |---|---|
-| Status | BLOCKED |
+| Status | QUEUED |
 | Module | `sim.schedule` |
 | Assigned role | worker |
 | Depends on | T-001 |
-| Spec source | `spec/00-overview.md` build order #2; `spec/03-module-map.md` (module row only, no interface) |
-| Blocked by | Q-004 |
+| Spec source | `spec/00-overview.md` build order #2; `spec/11-interfaces-schedule.md` (answers Q-004) |
+| Blocked by | — |
 
-## Why this task cannot be released
-
-`spec/03-module-map.md` states plainly: for every module other than
-`sim.core` and `sim.flow`, "not yet specified — a worker may not start
-without one." `sim.schedule` has no published `08/09`-style interface file.
-Without it there is no `IScheduleSystem` signature to copy verbatim, no
-declared shape for the CSV fixture, and no declared contract for how
-`sim.schedule` calls `IFlowSystem.Inject` or emits `FlightPlanPublished` /
-`FlightMilestoneReached(PlanPublished)`. Filling any of that in here would be
-inventing an interface, which `CLAUDE.md` rule 2 and `agents/planner.md`
-both forbid.
-
-See `spec/open-questions.md` Q-004 for the full question. This task file will
-be completed and re-released once the Architect publishes
-`spec/1x-interfaces-schedule.md` (or equivalent) and resolves Q-004.
-
-## Writable paths (provisional, not yet binding)
+## Writable paths
 
 ```
-src/sim/schedule/**, tests/sim/schedule/**
+src/sim/schedule/**, tests/sim/schedule/**, tests/fixtures/schedule/**
 ```
+
+`sim.schedule` depends on `core` and `flow` (`spec/03-module-map.md`, corrected
+by the Q-004 answer) but this task must build and pass **without** `sim.flow`
+registered — §11.6 "Running without `sim.flow`" is binding: the module's state
+hash must be identical with and without the injector wired in. Do not add a
+hard dependency on T-007 merging first.
+
+## Readable specs
+
+`CLAUDE.md`, `spec/00-overview.md`, `spec/01-architecture.md`,
+`spec/02-determinism.md`, `spec/03-module-map.md`, `spec/07-conventions.md`,
+`spec/08-interfaces-core.md`, `spec/11-interfaces-schedule.md`,
+`spec/09-interfaces-flow.md` §9.7 (the `Inject` contract this module calls),
+`spec/10-events.md` §10.4, §10.6 ("From sim.schedule")
+
+## Interface to implement
+
+```
+struct AirlineId { uint32 Value }
+
+enum MovementKind { Arrival, Departure }
+
+readonly struct FlightRecord {
+  FlightId     Id
+  AirlineId    Airline
+  ContentId    AircraftType
+  MovementKind Kind
+  uint32       DayIndex
+  Tick         ScheduledTick
+  Tick         PublishTick
+  FlightId     Rotation
+  bool         HasRotation
+  SimMinutes   MinTurnaround
+  ContentId    PaxProfile
+  int32        PaxCount
+  int32        HoldBagPermille
+  int32        AssistPermille
+  NodeId       EntryNode
+}
+
+readonly struct ScheduleTable {
+  IReadOnlyList<FlightTemplate> Rows          // ascending flight_ref, ordinal
+  uint64                        FixtureHash   // FNV-1a-64 over the raw file bytes
+}
+
+interface IScheduleLoader {
+  ScheduleTable Load(ReadOnlySpan<byte> csv, string sourceName)
+}
+
+interface IScheduleSystem : ISimSystem {
+  bool TryGetFlight(FlightId id, out FlightRecord flight)
+  IReadOnlyList<FlightId> PublishedFlights()
+  IReadOnlyList<FlightId> MovementsBetween(Tick fromInclusive,
+                                           Tick toExclusive,
+                                           MovementKind kind)
+  bool TryGetRotation(FlightId flight, out FlightId counterpart)
+  int32 PendingInjectionCount(FlightId flight)
+}
+```
+
+Binding, copied from `spec/11-interfaces-schedule.md`, not paraphrased:
+
+- **Id derivation** (§11.3): `FlightId.Value = DayIndex * FLIGHT_ID_DAY_STRIDE
+  + RowOrdinal + 1`, `RowOrdinal` from ordinal sort of `flight_ref`. Never
+  `IIdAllocator`.
+- **Fixture format** (§11.4): exact header byte-match, UTF-8/no-BOM/LF, no
+  quoting/comments/blank lines, every violation a hard load failure naming
+  file and 1-based line number. Header is reproduced verbatim in §11.4.
+- **Publication** (§11.5): `PublishTick = ScheduledTick - PLAN_PUBLISH_LEAD_TICKS`
+  clamped to 0; emits `FlightPlanPublished` then
+  `FlightMilestoneReached{PlanPublished}` (with `Cause` set to the former's
+  `EventId`) once per flight, in ascending `FlightId` order among flights
+  publishing the same tick.
+- **Passenger demand** (§11.6): show-up curve is content (`pax_profile`), no
+  RNG; largest-remainder splitting across buckets then across the four
+  `(HasHoldBaggage, RequiresAssistance)` classes, ties by ascending index;
+  injection tick clamped to 0; `Inject` called once per due
+  `(FlightId, bucketIndex, classIndex)` in that ascending order, only for
+  `Departing` passengers.
+- **Registry position 2** (§11.7), before `sim.airside` and `sim.flow`.
+- **No mutating entry point.** Nothing may write to `sim.schedule`.
+- **No commands consumed at Phase 0** (§11.8).
+
+## Events
+
+Emitted: `FlightPlanPublished`, `FlightMilestoneReached` (Milestone =
+`PlanPublished` only)
+Consumed: none
+
+## Tests to pass
+
+```
+tests/sim/schedule/**
+```
+
+Written by the Test Author, against the fixture `tests/fixtures/schedule/phase0-200.csv`
+whose binding requirements are §11.10. Expect at least:
+
+- `test_loader_rejects_reordered_header_with_line_number`
+- `test_flight_ids_are_independent_of_row_order`
+- `test_show_up_split_conserves_head_count`
+- `test_publication_emits_plan_then_milestone_once_per_flight`
+- `test_schedule_hash_identical_with_and_without_flow_registered`
+- `test_schedule_tick_consumes_no_rng`
+
+**Do not edit them.** If a test contradicts `11-interfaces-schedule.md`, file
+an open question and stop.
+
+## Performance budget
+
+`0.10` ms/tick at max tier (`spec/03-module-map.md`, `spec/11-interfaces-schedule.md`
+§11.9). Per-tick work is O(flights published this tick + injections due this
+tick) only — due-ordered queues built at load/day-materialisation, never a
+scan of the whole flight table inside `Tick`. No allocation in the update
+path; day materialisation for `repeat_daily` rows may allocate off the
+injection path, at the day boundary.
 
 ## Done when
 
-- [ ] Q-004 answered in `spec/open-questions.md`
-- [ ] This file is rewritten with the real interface, events, tests and
-      budget, then re-queued as QUEUED
+- [ ] Interface matches spec exactly
+- [ ] All assigned tests pass
+- [ ] `ci/run-checks.sh` green
+- [ ] Budget met
+- [ ] No writes outside writable paths
+- [ ] Reviewer approved
+- [ ] Verifier gates green
+
+## Worker notes
+
+`sim.schedule` consumes **no RNG** at Phase 0 (§11.9) — do not add a stream
+speculatively for "future" demand variation; that is a later spec amendment.
+Cross-midnight rotations (`STA < STD` required same-day) are explicitly
+unsupported; a fixture needing one is a fixture bug, not a feature to add
+here.

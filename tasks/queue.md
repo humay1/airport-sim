@@ -19,8 +19,8 @@ answered and the row is moved back to `QUEUED` with the task file rewritten.
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | QUEUED |
 | T-006 | Determinism gates in CI (same/cross process) | tools.simharness | T-004 | QUEUED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003 | QUEUED |
-| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001 | BLOCKED (Q-004) |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008 | BLOCKED (Q-004, via T-008) |
+| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001 | QUEUED |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
 
@@ -44,19 +44,27 @@ concurrently with another sim.core task touching the same files). Order:
    (`src/sim/flow/**`) from T-001–T-006, so it may run **concurrently** with
    any still-open `sim.core` task once T-003 itself has merged.
 6. **T-006** — after T-004 merges.
-7. **T-008** — `BLOCKED` on Q-004. Not releasable.
-8. **T-009, T-010, T-011** — T-010/T-011 releasable once T-007 merges,
-   independent of T-008/T-009's block. T-009 stays `BLOCKED`.
+7. **T-008** — after T-001 merges. `src/sim/schedule/**` is its own directory,
+   so it may run **concurrently** with any open `sim.core`/`sim.flow` task.
+   Unblocked by the Architect's answer to Q-004
+   (`spec/11-interfaces-schedule.md`); builds and tests standalone, without
+   `sim.flow` registered, per that file's §11.6.
+8. **T-009** — after T-006, T-007 and T-008 all merge (writes
+   `tools/SimHarness/**`, shared with T-006 — do not release concurrently
+   with a still-open T-006).
+9. **T-010, T-011** — releasable once T-007 merges, in `src/sim/flow/**`
+   sequence after T-007 (and, since T-023 also lands in that directory,
+   serialised against it too — see Phase 1 below).
 
 ## Phase 1 — fun prototype
 
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
-| T-020 | Minimal top-down renderer, flat colours | app.render | T-009 | BLOCKED (Q-008, and Q-004 via T-009) |
-| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | BLOCKED (Q-005, and Q-004 via T-008) |
+| T-020 | Minimal top-down renderer, flat colours | app.render | T-009 | BLOCKED (Q-008) |
+| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | BLOCKED (Q-005) |
 | T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-021 | BLOCKED (Q-006, via T-021) |
 | T-023 | Security lanes openable/closable live, visible queues | sim.flow | T-007, T-005 | QUEUED |
-| T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023 | BLOCKED (Q-007, via T-022) |
+| T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023 | BLOCKED (Q-007, and Q-006 via T-022) |
 | T-025 | Playtest build, 20 external testers | — | T-024 | BLOCKED (human gate; via T-024) |
 
 **Gate: T-025 is a human decision, not an agent one.** One question only: is
@@ -65,18 +73,26 @@ proceed on hope. No agent may mark this task complete.
 
 ### Phase 1 releasability
 
-Only **T-023** is releasable now: it depends on T-007 (sim.flow, published
+**T-023** is releasable now: it depends on T-007 (sim.flow, published
 interface) and T-005 (sim.core command queue, published interface), neither
 of which is blocked. It writes `src/sim/flow/**`, the same directory as
 T-007/T-010/T-011, so it is released only after those three have merged, one
 sim.flow task in flight at a time.
 
-T-020, T-021, T-022, T-024 are `BLOCKED` on missing interface specs for
-`app.render`, `sim.airside`, `sim.turnaround` and `sim.delay` respectively
-(`spec/open-questions.md` Q-005–Q-008), each compounding transitively through
-its `Depends` chain back to T-008's block (Q-004). T-025 is additionally a
-human-only gate per `spec/00-overview.md` and is never agent-completable
-regardless of blocks clearing.
+Q-004 is answered (`spec/11-interfaces-schedule.md`), so T-008/T-009 no
+longer block the chain. What remains `BLOCKED`:
+
+- **T-020** on Q-008 (`app.render` interface/scope — still open).
+- **T-021** on Q-005 (`sim.airside` interface — still open).
+- **T-022** on Q-006 (`sim.turnaround` interface — still open), and
+  transitively on T-021.
+- **T-024** on Q-007 (`sim.delay` interface — still open), and transitively
+  on T-022/T-021.
+- **T-025** is additionally a human-only gate per `spec/00-overview.md` and
+  is never agent-completable regardless of blocks clearing.
+
+T-021's dependency on T-008 is no longer itself a blocker — T-008 is
+`QUEUED` — but T-021 still cannot be released until Q-005 is answered.
 
 ## Planner scope note
 
