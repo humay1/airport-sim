@@ -214,6 +214,12 @@ readonly struct PassengerRef { CohortId Cohort; int32 Index }
 calls** from `sim.schedule` and `sim.airside` (`03-module-map.md`). Nothing calls
 upward; `sim.baggage` and `sim.delay` use the queries and the event bus only.
 
+`Inject` requires `at` to be an existing node of kind `Source`, and `count > 0`.
+An unknown node, a node of any other kind, or a non-positive count is a
+**programmer error** and throws (`07-conventions.md`) — it is never clamped and
+never silently dropped, because a swallowed injection loses passengers and the
+head-count conservation test would then be asserting nothing.
+
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
 

@@ -8,7 +8,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.core` | `src/sim/core` | — | Tick loop, RNG service, command queue, event bus, fixed-point math, state hashing |
 | `sim.save` | `src/sim/save` | core | Serialisation, snapshots, migrations |
 | `sim.world` | `src/sim/world` | core | Grid, construction, rooms, navigation graph, flow fields |
-| `sim.schedule` | `src/sim/schedule` | core | Flight schedule, slots, seasons, published timetable |
+| `sim.schedule` | `src/sim/schedule` | core, flow | Flight schedule, slots, seasons, published timetable |
 | `sim.airside` | `src/sim/airside` | core, world, schedule | Runways, taxiways, stands, aircraft movement, wind/active direction |
 | `sim.flow` | `src/sim/flow` | core, world | Passenger cohorts, queue nodes, promotion/demotion, corridors |
 | `sim.turnaround` | `src/sim/turnaround` | core, airside, staff | Handling jobs, ground vehicles, job scheduling |
@@ -40,6 +40,7 @@ its own test directory. Everything else is read-only to it.
 |---|---|
 | `sim.core` | `08-interfaces-core.md` |
 | `sim.flow` | `09-interfaces-flow.md` |
+| `sim.schedule` | `11-interfaces-schedule.md` |
 | event catalogue (all emitters, consumed by `sim.delay`) | `10-events.md` |
 | everything else | not yet specified — a worker may not start without one |
 

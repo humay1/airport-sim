@@ -134,3 +134,58 @@ Raised by:   architect, during Phase 0 completion
 Impact:      Q-002 blocks nothing today but should be settled before T-009 commits
              golden hashes. Q-003 affects the nightly soak only.
 Signed off:  **PENDING HUMAN** on both
+
+## 2026-09-21 — spec/11-interfaces-schedule.md — new file: `sim.schedule` public interfaces
+Reason:      T-008 was BLOCKED on Q-004: `03-module-map.md` forbids starting a
+             module with no published interface, and `sim.schedule` had none.
+             Defines `IScheduleSystem` (query-only), `FlightRecord`, derived
+             `FlightId`s, the CSV fixture schema and its validation, plan
+             publication, the show-up curve that drives `IFlowSystem.Inject`,
+             hashing, budget shape and the Phase 0 fixture's requirements.
+Raised by:   Q-004 (planner / queue expansion for T-008)
+Impact:      none, additive — no `src/` code exists yet, so nothing merged is
+             invalidated. Unblocks T-008 and transitively T-009, T-021, T-022,
+             T-023 (schedule-fed fixtures), T-024.
+Signed off:  not required
+Notes:       Deliberately narrow. `sim.schedule` injects **departing** passengers
+             only; arriving passengers are `sim.airside`'s at `DoorsOpen`. It
+             consumes **no RNG** at Phase 0, so the schedule is a pure function of
+             the fixture. It emits only `PlanPublished`; revision and cancellation
+             stay Phase 1. `FlightId` is derived arithmetically from day and row
+             rather than allocated, so file order cannot change behaviour and a
+             flight id in a log names its fixture row. The fixture's raw-byte hash
+             is fed into the module's state hash, so an edited fixture fails the
+             determinism gate loudly instead of silently rewriting a golden.
+
+## 2026-09-21 — spec/03-module-map.md — `sim.schedule` depends on `core, flow`
+Reason:      The dependency column said `core`, but `09-interfaces-flow.md` §9.7
+             already named `sim.schedule` as a caller of `IFlowSystem.Inject`.
+             The map was the side that was wrong. `sim.flow` depends on core and
+             world only, so schedule -> flow remains a downward call and the
+             "downward calls only" rule still holds.
+Raised by:   Q-004
+Impact:      none, additive — corrects an existing internal contradiction.
+Signed off:  not required
+
+## 2026-09-21 — spec/09-interfaces-flow.md §9.7 — `Inject` preconditions made explicit
+Reason:      `11-interfaces-schedule.md` §11.6 relies on a bad injection target
+             failing rather than being swallowed; that rule has to be binding on
+             `sim.flow`, not asserted from the caller's spec.
+Raised by:   Q-004
+Impact:      none, additive. `sim.flow` is unimplemented (T-007 not started).
+Signed off:  not required
+
+## 2026-09-21 — spec/04-data-schemas.md — `pax_profile` schema row, fixtures-are-not-content note
+Reason:      `09-interfaces-flow.md` referenced a passenger profile in content that
+             the schema table never listed, and `11-interfaces-schedule.md` adds
+             the show-up curve to it. Also records that Phase 0 CSV schedules are
+             test fixtures and commit the shipping build to nothing.
+Raised by:   Q-004
+Impact:      none, additive.
+Signed off:  not required
+
+## 2026-09-21 — spec/00-overview.md — systems index points Schedule at its interface file
+Reason:      Bookkeeping, so the index names the interface rather than the map.
+Raised by:   Q-004
+Impact:      none.
+Signed off:  not required
