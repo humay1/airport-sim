@@ -31,10 +31,11 @@ Written here so no agent ever proposes them:
 
 | System | Spec | Owner module |
 |---|---|---|
-| Tick, time, RNG | `02-determinism.md` | `sim.core` |
+| Tick, time, RNG | `02-determinism.md`, `08-interfaces-core.md` | `sim.core` |
+| Event catalogue | `10-events.md` | `sim.core` (defined), all (emitted) |
 | Schedule | `03-module-map.md` | `sim.schedule` |
 | Airside movement | `03-module-map.md` | `sim.airside` |
-| Passenger flow | `03-module-map.md` | `sim.flow` |
+| Passenger flow | `03-module-map.md`, `09-interfaces-flow.md` | `sim.flow` |
 | Turnaround jobs | `03-module-map.md` | `sim.turnaround` |
 | Delay attribution | `06-delay-attribution.md` | `sim.delay` |
 | Baggage | `03-module-map.md` | `sim.baggage` |
