@@ -61,3 +61,80 @@ Proposed:    Soak runs a mid-tier fixture sized so per-tick cost stays under
              tests in `03-module-map.md`. Needs sign-off because it narrows what
              the nightly gate actually proves.
 Status:      OPEN — HUMAN DECISION
+
+### Q-004 — `sim.schedule` has no published interface
+Raised by:   planner / queue expansion for T-008
+Blocking:    T-008, and transitively T-009, T-021, T-022, T-023(schedule-fed
+             fixtures), T-024
+Question:    `03-module-map.md` states every module besides `sim.core` and
+             `sim.flow` is "not yet specified — a worker may not start without
+             one." T-008 ("Schedule loader from CSV fixture, 200 movements")
+             needs at minimum: the `IScheduleSystem` shape (an `ISimSystem`),
+             what it injects into `sim.flow` via `Inject` and how, the CSV
+             fixture's column schema, and how `FlightPlanPublished` /
+             `FlightMilestoneReached` (for `PlanPublished`) are populated from
+             it. None of this is in `04-data-schemas.md` or `10-events.md` at
+             signature level.
+Why it matters: Without a binding interface a worker would have to invent
+             `IScheduleSystem`, which `CLAUDE.md` rule 2 forbids outright.
+Status:      OPEN
+
+### Q-005 — `sim.airside` has no published interface
+Raised by:   planner / queue expansion for T-021
+Blocking:    T-021, and transitively T-022, T-024
+Question:    T-021 ("One runway, taxiway graph, four contact stands") needs an
+             `IAirsideSystem` (or equivalent) interface: how stands are
+             represented, how `sim.airside` calls `sim.flow.Inject`/`Absorb` at
+             door/gate transitions, how it emits the airside milestones and
+             `AircraftHeldForRunway`/`StandUnavailable` events (`10-events.md`),
+             and its relationship to `sim.world`'s navigation graph. None of
+             this has a signature-level spec yet.
+Why it matters: Movement, stand assignment and milestone emission are exactly
+             the kind of interface `03-module-map.md` requires be spec'd before
+             a worker starts.
+Status:      OPEN
+
+### Q-006 — `sim.turnaround` has no published interface
+Raised by:   planner / queue expansion for T-022
+Blocking:    T-022, and transitively T-024
+Question:    T-022 ("Turnaround as job list, 4 vehicles, driver assignment")
+             needs `ITurnaroundSystem`, the `JobKind`/vehicle data shapes, and
+             how job start/completion drives `TurnaroundJobStarted/Completed`
+             and `TurnaroundJobBlocked/Unblocked` (`10-events.md`). Not
+             specified anywhere yet.
+Why it matters: Same as Q-005 — job scheduling and vehicle assignment logic is
+             exactly the kind of design decision the module-map reserves for a
+             published interface.
+Status:      OPEN
+
+### Q-007 — `sim.delay` has no published module interface
+Raised by:   planner / queue expansion for T-024
+Blocking:    T-024, and transitively T-025
+Question:    `06-delay-attribution.md` specifies the `DelayEvent` payload and
+             the allocation rules, and `10-events.md` §10.7 says `sim.delay`
+             emits only `DelayEvent`. Neither specifies the `ISimSystem`-facing
+             interface (`IDelaySystem`?) — what queries `app.ui`'s delay-tree
+             view calls, the exact hashed-state layout for the attribution
+             tree, and how `DelayEventId` is allocated/ordered relative to
+             `EventId`.
+Why it matters: T-024 is the Phase 1 headline feature and the module the
+             overview explicitly calls out as gating every later balance
+             decision (`00-overview.md`). Guessing its query surface risks a
+             rebuild once `app.ui` needs it.
+Status:      OPEN
+
+### Q-008 — `app.render` has no published interface or scope note
+Raised by:   planner / queue expansion for T-020
+Blocking:    T-020, and transitively T-025
+Question:    `03-module-map.md` lists `app.render` as owning "Rendering,
+             cameras, overlays" and reading sim state read-only, but there is
+             no spec section describing what "minimal top-down renderer, flat
+             colours" (T-020) must actually draw (which sim queries it polls,
+             at what cadence, how it drives `IFlowSystem.SetPromoted` for the
+             promotion-neutrality gate it must not break) or what a done
+             condition/test for a renderer even looks like given the sim is
+             headless by design (`01-architecture.md`).
+Why it matters: Without this, T-020's done-condition cannot be stated as a
+             passing test, per the Planner's own sizing rule, and every
+             agent's interpretation of "top-down renderer" would differ.
+Status:      OPEN

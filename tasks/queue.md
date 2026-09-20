@@ -3,7 +3,10 @@
 Maintained by the Planner. Strictly follows the build order in
 `spec/00-overview.md`. Do not reorder.
 
-Below is the Phase 0 and Phase 1 seed. The Planner expands from here.
+Each row's task file is `tasks/T-<nnn>-<slug>.md`. Status values follow
+`tasks/README.md`'s lifecycle. `BLOCKED` rows carry an open-question id from
+`spec/open-questions.md`; do not release them until that question is
+answered and the row is moved back to `QUEUED` with the task file rewritten.
 
 ## Phase 0 — feasibility spike (the kill gate)
 
@@ -14,27 +17,70 @@ Below is the Phase 0 and Phase 1 seed. The Planner expands from here.
 | T-003 | Fixed-point math type `Fx` | sim.core | — | QUEUED |
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | QUEUED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | QUEUED |
-| T-006 | Determinism gates in CI (same/cross process) | ci | T-004 | QUEUED |
+| T-006 | Determinism gates in CI (same/cross process) | tools.simharness | T-004 | QUEUED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003 | QUEUED |
-| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001 | QUEUED |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008 | QUEUED |
+| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001 | BLOCKED (Q-004) |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008 | BLOCKED (Q-004, via T-008) |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
 
+### Release order within Phase 0 (respecting shared-path serialisation)
+
+`src/sim/core/**` is a shared write surface across T-001–T-006, so those are
+released one at a time in dependency order even where two show no direct
+`Depends` edge (e.g. T-003 has no declared dependency but still may not run
+concurrently with another sim.core task touching the same files). Order:
+
+1. **T-001** and **T-003** — no shared files, no shared dependency: releasable
+   concurrently.
+2. **T-002** — after T-001 merges.
+3. **T-004** — after T-001 and T-003 merge.
+4. **T-005** — after T-001 merges (may run concurrently with T-002/T-004 only
+   if file-level review confirms no overlap; default to sequential).
+5. **T-007** — after T-003 merges. Different module directory
+   (`src/sim/flow/**`) from T-001–T-006, so it may run **concurrently** with
+   any still-open `sim.core` task once T-003 itself has merged.
+6. **T-006** — after T-004 merges.
+7. **T-008** — `BLOCKED` on Q-004. Not releasable.
+8. **T-009, T-010, T-011** — T-010/T-011 releasable once T-007 merges,
+   independent of T-008/T-009's block. T-009 stays `BLOCKED`.
+
 ## Phase 1 — fun prototype
 
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
-| T-020 | Minimal top-down renderer, flat colours | app.render | T-009 | QUEUED |
-| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | QUEUED |
-| T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-021 | QUEUED |
+| T-020 | Minimal top-down renderer, flat colours | app.render | T-009 | BLOCKED (Q-008, and Q-004 via T-009) |
+| T-021 | One runway, taxiway graph, four contact stands | sim.airside | T-008 | BLOCKED (Q-005, and Q-004 via T-008) |
+| T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-021 | BLOCKED (Q-006, via T-021) |
 | T-023 | Security lanes openable/closable live, visible queues | sim.flow | T-007, T-005 | QUEUED |
-| T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023 | QUEUED |
-| T-025 | Playtest build, 20 external testers | — | T-024 | QUEUED |
+| T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023 | BLOCKED (Q-007, via T-022) |
+| T-025 | Playtest build, 20 external testers | — | T-024 | BLOCKED (human gate; via T-024) |
 
 **Gate: T-025 is a human decision, not an agent one.** One question only: is
 unblocking flow fun with no construction at all? If no, kill or pivot. Do not
 proceed on hope. No agent may mark this task complete.
+
+### Phase 1 releasability
+
+Only **T-023** is releasable now: it depends on T-007 (sim.flow, published
+interface) and T-005 (sim.core command queue, published interface), neither
+of which is blocked. It writes `src/sim/flow/**`, the same directory as
+T-007/T-010/T-011, so it is released only after those three have merged, one
+sim.flow task in flight at a time.
+
+T-020, T-021, T-022, T-024 are `BLOCKED` on missing interface specs for
+`app.render`, `sim.airside`, `sim.turnaround` and `sim.delay` respectively
+(`spec/open-questions.md` Q-005–Q-008), each compounding transitively through
+its `Depends` chain back to T-008's block (Q-004). T-025 is additionally a
+human-only gate per `spec/00-overview.md` and is never agent-completable
+regardless of blocks clearing.
+
+## Planner scope note
+
+This queue is expanded only through T-025 per the current planning request.
+No task past T-025 is planned; Phase 2 (build order items 7–12: money,
+staff, policy/reputation, incidents, progression, tutorial) is out of scope
+until the human owner clears the Phase 1 gate.
