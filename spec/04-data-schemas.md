@@ -17,6 +17,18 @@ falls back to a default.
 | `incident.schema.json` | `data/incidents/*.json` | 15 at EA |
 | `policy.schema.json` | `data/policies/*.json` | ~25 |
 | `scenario.schema.json` | `data/scenarios/*.json` | 12 |
+| `pax_profile.schema.json` | `data/pax_profiles/*.json` | — |
+
+`pax_profile` is referenced by `09-interfaces-flow.md` (`CohortKey.PaxProfile`,
+walk speed) and `11-interfaces-schedule.md` §11.6 (show-up curve). Those two
+sections are the authority on its simulation-facing fields.
+
+## Fixture formats are not content formats
+
+Schedules at Phase 0 are CSV **test fixtures**
+(`11-interfaces-schedule.md` §11.4), living beside their tests, never in `data/`
+and never validated by a schema here. Nothing in this table commits the shipping
+build to CSV for anything.
 
 ## Conventions
 

@@ -77,7 +77,15 @@ Question:    `03-module-map.md` states every module besides `sim.core` and
              signature level.
 Why it matters: Without a binding interface a worker would have to invent
              `IScheduleSystem`, which `CLAUDE.md` rule 2 forbids outright.
-Status:      OPEN
+Answer:      New file `spec/11-interfaces-schedule.md`. `IScheduleSystem` is
+             query-only (§11.7); the CSV fixture schema, its validation rules and
+             its byte-level strictness are §11.4; publication and the
+             `FlightPlanPublished` + `FlightMilestoneReached(PlanPublished)` pair
+             are §11.5; the show-up curve and `IFlowSystem.Inject` contract are
+             §11.6; hashing, the no-RNG rule and the budget shape are §11.9; the
+             200-movement fixture's binding requirements and the expected test
+             names are §11.10.
+Status:      ANSWERED (spec/11-interfaces-schedule.md)
 
 ### Q-005 — `sim.airside` has no published interface
 Raised by:   planner / queue expansion for T-021
