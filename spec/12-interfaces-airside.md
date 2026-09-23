@@ -418,6 +418,7 @@ interface IAirsideSystem : ISimSystem {
   IReadOnlyList<StandId> FreeStands()                      // ascending StandId
   int32  RunwayQueueLength(RunwayId runway)                 // pacing + occupancy holds combined
   IReadOnlyList<FlightId> TrackedFlights()                  // ascending FlightId
+  AirsideLayout Layout()                                    // the validated layout of §12.4, immutable
 }
 
 enum AircraftLegPhase {
@@ -440,6 +441,18 @@ readonly struct AircraftTrack {
 
 readonly struct StandState { StandId Id; FlightId? Occupant }
 ```
+
+**`AtNode` and `OnEdge` together.** While `OnEdge` is set, `AtNode` holds the
+node the aircraft **entered the edge from**, and `EdgeProgress` runs from 0 at
+`AtNode` to 1 at the edge's other endpoint. For a `Bidirectional` edge this is
+the only way to know the direction of travel. While `OnEdge` is unset,
+`AtNode` is the node the aircraft is at (including holding at a node, §12.6),
+or unset if the aircraft is off-graph (approaching, or held before `Landed`).
+
+`Layout()` returns the layout `IAirsideLayoutLoader` validated at load. It is
+load-time data, not runtime state, so it is not hashed (§12.12). It exists for
+presentation (`15-interfaces-render.md` §15.4), which must not load the airside
+fixture a second time on its own.
 
 `AircraftLegPhase` is reused across both legs of a rotation: the sequence for
 an `Arrival` runs left to right through `OnStand`; a `Departure` resumes from

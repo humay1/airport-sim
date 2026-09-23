@@ -514,3 +514,107 @@ Reason:      Bookkeeping to match the new file, same as the Q-004 to Q-006
 Raised by:   Q-007
 Impact:      none.
 Signed off:  not required
+
+## 2026-09-23 — spec/15-interfaces-render.md — new file: `app.render` Phase 1 interfaces (partial answer)
+Reason:      T-020 was BLOCKED on Q-008: `app.render` had a module-map row but
+             no scope and no interface, and no test could be written for a
+             renderer that lives entirely in an engine CI cannot run. Splits
+             the module in two. A headless scene layer with no engine
+             reference turns read-only sim queries into a stable, sorted draw
+             list of flat-colour primitives (§15.5), and also owns the
+             promotion controller (§15.7) and a 1x tick pacer with a binding
+             frame order (§15.8). A thin backend draws the list and holds no
+             logic (§15.10, contract only). The complete list of sim members
+             `app.render` may call is §15.6. The presentation-owned layout
+             that positions nodes is §15.4. Budget §15.11, T-020 scope and
+             test names §15.12.
+Raised by:   Q-008 (planner / queue expansion for T-020)
+Impact:      additive; no `src/app` code exists. T-020's scope narrows to the
+             scene layer (`src/app/render/Scene/**`, `tests/app/render/**`,
+             `tests/fixtures/render/**`). Its dependencies grow from T-009 to
+             T-009, T-010 and T-021, because it compiles against
+             `SetPromoted`/`AgentsAt` and `IAirsideSystem.Layout()`. The
+             Planner must rewrite T-020 accordingly. The backend needs its
+             own task, which cannot be queued until the HUMAN DECISIONS below
+             are made.
+Signed off:  not required for the headless scope; see the HUMAN DECISION
+             entry below
+Notes:       Deliberately narrow. The renderer reads nothing from
+             `sim.turnaround`, `sim.delay` or `sim.schedule`. It draws no
+             text, vehicles, corridors or delay state, issues no commands,
+             and does not interpolate between ticks. Promotion neutrality is
+             kept by construction on the sim side (`09` §9.1) and by three
+             constraints here: `SetPromoted` is the only call that changes
+             anything, it is made only between `Step`s, and nothing read is
+             fed back. It is proven by
+             `test_render_loop_is_outcome_neutral_with_scripted_camera`,
+             which runs the module's real call pattern against a headless
+             run and compares checkpoints.
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.2, §15.4, §15.11 — LOW CONFIDENCE: zoom threshold, split layout, frame budget
+Reason:      Three values with no measurement or precedent behind them.
+             `AGENT_ZOOM_THRESHOLD = 120` world units of view height.
+             Positions kept in a presentation-owned layout, separate from the
+             airside graph they position, so that presentation-only data stays
+             out of sim state and its hash; the cost is that two files must
+             agree on ids. Scene build plus promotion update limited to a
+             2.0 ms mean and 4.0 ms p99 per frame.
+Raised by:   Q-008
+Impact:      None of these can move a sim outcome. Each is cheap to retune
+             after the first measurement or the first playable build.
+Signed off:  not required; flagged for the owner
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.13 — HUMAN DECISIONS left open by Q-008
+Reason:      Five things `app.render` needs, beyond T-020's headless scope,
+             that the Architect must not decide:
+             (a) **Unity 6 against a .NET 8 sim library.** The Architect
+             believes, and this should be verified, that Unity 6's scripting
+             runtime loads assemblies built for .NET Standard 2.1 / .NET
+             Framework APIs, not `net8.0`. If so, `01-architecture.md`
+             (locked) cannot hold as written: ".NET 8" and "Unity 6 importing
+             the sim library as a compiled assembly" conflict. One possible
+             reading is to multi-target the sim, but that limits the
+             language and BCL features every sim worker may use and changes a
+             locked file.
+             (b) **The engine project shell.** No module owns the Unity
+             project (location, scenes, settings, build). `app.ui` will need
+             it too.
+             (c) **The composition root.** No spec says how a running sim is
+             built and handed to presentation. It becomes specifiable once
+             (b) is settled.
+             (d) **Game speeds** beyond 1x and pause are pacing.
+             (e) **No player-facing `SetServersOpen`.** T-023 implements the
+             command, but no Phase 1 task lets the player issue it, and
+             T-025's question ("is unblocking flow fun?") needs that lever in
+             the player's hands.
+Raised by:   Q-008
+Impact:      None blocks T-020's headless scope. Together they block the
+             engine backend and so any playable build: T-025 cannot happen
+             without them. (a) also bears on T-001, which creates the solution
+             and chooses its target framework; if the answer is
+             multi-targeting, it is cheapest before T-001 merges. (e) is
+             scope and planning, raised here because writing `app.render`'s
+             "issues no commands" rule exposed it.
+Signed off:  **PENDING HUMAN** on all five; (a) requires a recorded sign-off
+             because it touches `01-architecture.md`
+
+## 2026-09-23 — spec/12-interfaces-airside.md §12.9 — `Layout()` query; `AtNode` defined while `OnEdge` is set
+Reason:      The renderer needs the validated layout, and must not load the
+             airside fixture a second time on its own. It also needs the
+             direction of travel on a `Bidirectional` edge, which
+             `AircraftTrack` did not give: `EdgeProgress` had no stated origin.
+             `AtNode` now holds the edge-entry node while `OnEdge` is set, and
+             `EdgeProgress` runs from it.
+Raised by:   Q-008
+Impact:      T-021 (QUEUED, no code) exposes one more query and keeps `AtNode`
+             set during edge traversal instead of clearing it. `AtNode` is a
+             hashed field, but no golden exists yet. The task file is stale on
+             both points.
+Signed off:  not required
+
+## 2026-09-23 — spec/03-module-map.md, spec/00-overview.md, spec/08-interfaces-core.md §8.1 — point `app.render` at its interface file
+Reason:      Bookkeeping to match the new file. §8.1 now names where
+             `AGENT_ZOOM_THRESHOLD` is defined.
+Raised by:   Q-008
+Impact:      none.
+Signed off:  not required

@@ -34,7 +34,7 @@ designers should tune belongs in `data/`, not here.
 | `FX_FRACTIONAL_BITS` | 32 | this file, §8.3 |
 
 `AGENT_ZOOM_THRESHOLD` is a presentation constant and does **not** live in
-`sim.core`. The sim is told which nodes are promoted; it never asks about cameras.
+`sim.core`; it is defined in `15-interfaces-render.md` §15.2. The sim is told which nodes are promoted; it never asks about cameras.
 
 ---
 

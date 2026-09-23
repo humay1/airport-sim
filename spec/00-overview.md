@@ -45,6 +45,7 @@ Written here so no agent ever proposes them:
 | Reputation | `05-policy-system.md` | `sim.reputation` |
 | Incidents | `03-module-map.md` | `sim.incident` |
 | Progression | `03-module-map.md` | `sim.progression` |
+| Rendering (presentation) | `15-interfaces-render.md` | `app.render` |
 
 ## Build order (dependency order — do not reorder)
 
