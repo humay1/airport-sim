@@ -1093,3 +1093,18 @@ Impact:      Scope added by amendment, running total **7**, of which 4 are
              (`16`, `17`), 1 event pair, 1 query, and roughly 8 tasks for the
              Planner to queue.
 Signed off:  not required (reporting)
+
+## 2026-09-23 — spec/INDEX.md — new file: spec index for agent onboarding
+Reason:      A freshly spawned agent had to read about 5 000 lines of spec to
+             find its sections. The index gives a per-module quick map, and for
+             each file: what it owns, its key decisions (D1–D9 included), its
+             LOW CONFIDENCE markers, and who should read which sections. The
+             index is navigation only; where it disagrees with a file, the
+             file wins. **Maintenance rule:** every spec amendment updates
+             `INDEX.md` in the same commit.
+Raised by:   human directive (owner-approved, relayed by the coordinator)
+Impact:      none on interfaces. It adds one file the Architect must keep in
+             step. The rule is written in the index's header. It also belongs
+             in `agents/architect.md`, which is outside `spec/` and so was not
+             edited here.
+Signed off:  human (owner-approved)
