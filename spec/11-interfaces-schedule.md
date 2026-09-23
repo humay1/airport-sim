@@ -219,8 +219,9 @@ pax_profile definition, schedule-relevant fields:
 
 - Buckets are strictly ascending in `minutes_before_std`, distinct, and
   `share_permille` sums to exactly 1000. Anything else fails content load.
-- The profile's `walk_speed` (`09-interfaces-flow.md` §9.6) belongs to `sim.flow`
-  and is not read here.
+- The profile's `walk_speed_mps` (`09-interfaces-flow.md` §9.6) belongs to
+  `sim.flow` and is not read here. The definition type is
+  `PaxProfileDefinition` (`08` §8.11).
 
 ### Expansion to injections
 

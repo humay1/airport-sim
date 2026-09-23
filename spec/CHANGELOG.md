@@ -1240,6 +1240,45 @@ Impact:      unblocks T-007 (and so T-009, T-010, T-011 and T-023) once a
 Signed off:  not required for the interface. **The gate-pooling stopgap is
              flagged for the owner**, because real gate assignment is
              player-facing scope.
+
+## 2026-09-23 — spec/08 §8.11, §8.11a; 04 Files, "Phase 0/1 content fields"; 11 §11.6; 15 §15.13; 16 §16.1, §16.3, §16.11, §16.12; 03 — Q-011: content definition types and the `data/` loader
+Reason:      `IContentIndex` had no concrete definition types, `ContentId` and
+             `ContentKind` were never defined, and nothing turned `data/`
+             into definitions. Every consumer would have invented its own
+             type, and lane rates would have been hardcoded into fixtures.
+             Answer:
+             - **Types, in `sim.core`** (the T-026 pattern): `ContentId`
+               (ordinal string), `ContentKind { SizeCategory, Aircraft,
+               PaxProfile, QueueProfile }`, and one definition struct per
+               kind.
+             - **The loader:** `IContentLoader` over an `IContentSource`,
+               also in `sim.core`. It maps four fixed directories to kinds and
+               reads files in ordinal path order. It hand-parses a strict
+               JSON subset: no package, no floating point, decimals as
+               strings, and unknown, missing or duplicate keys fail. Hard
+               validation names the path and field.
+             - **`04`** lists each kind's fields and pairs each schema name
+               with its directory name, because the validator in `ci/`
+               pairs them by name. `pax_profile.schema.json` becomes
+               `pax_profiles.schema.json`, and no schema file existed yet.
+             - **`16`** loads content in the player from a build-time copy of
+               `data/`.
+Raised by:   Q-011
+Impact:      additive. It unblocks the player build's content path, and
+             lets T-007, T-008, T-021 and T-023 read typed definitions. Stale:
+             T-026 or a `sim.core` task (the types plus the loader); T-008
+             (`PaxProfileDefinition`); T-007/T-023 (`QueueProfileDefinition`
+             replaces "content-declared" rates and thresholds); T-021
+             (`AircraftDefinition` and `SizeCategoryDefinition` for stand
+             compatibility); the host task (`LoadContent`). New content task:
+             the four schemas, plus size-category and aircraft files.
+             **For the owner:** Phase 1 pax-profile and queue-profile values
+             (walking speed, show-up curve, lane service rates, thresholds,
+             hysteresis) are balance values to be written by the owner. The
+             `ci/` path guard protects only `data/balance/`, so the owner may
+             want to extend it to those two directories.
+Signed off:  not required for the interface; the values are **PENDING
+             HUMAN**
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
              D5; reversible. Approved by the coordinator under the owner's
              delegation.

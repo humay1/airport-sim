@@ -494,6 +494,80 @@ interface IContentIndex {
   save header, so a save opened against edited content fails loudly instead of
   drifting quietly.
 
+### Definition types (Q-011)
+
+The Phase 0/1 set. These are `sim.core` types for the same reason event
+payloads are: several modules read each one. A new kind is appended by
+amendment, together with its row in `04-data-schemas.md`.
+
+```
+readonly struct ContentId { string Value }     // ordinal equality and order; hashed as its UTF-8 bytes
+
+enum ContentKind { SizeCategory, Aircraft, PaxProfile, QueueProfile }
+
+interface IContentDefinition { ContentId Id { get }; ContentKind Kind { get } }
+
+readonly struct SizeCategoryDefinition : IContentDefinition { ContentId Id; int32 Ordinal }
+readonly struct AircraftDefinition     : IContentDefinition { ContentId Id; ContentId SizeCategory }
+
+readonly struct ShowUpBucket { uint32 MinutesBeforeStd; uint32 SharePermille }
+readonly struct PaxProfileDefinition   : IContentDefinition {
+  ContentId Id
+  Fx        WalkSpeedMps                       // 09 §9.6
+  IReadOnlyList<ShowUpBucket> ShowUpCurve      // 11 §11.6
+}
+
+readonly struct QueueProfileDefinition : IContentDefinition {
+  ContentId     Id
+  Fx            ServiceRatePerServerPerMinute  // 09 §9.4
+  int32         CapacityStanding               // 09 §9.5
+  Fx            ThresholdWaitMinutes           // QueueThresholdExceeded, 10 §10.6
+  Fx            HysteresisMinutes              // cleared below threshold − hysteresis, 10 §10.3 rule 4
+  DelayCategory Category                       // security_queue | immigration_queue
+}
+```
+
+Ids are unique across **all** kinds. `ContentKind` is fixed by the definition
+type.
+
+### The loader (Q-011)
+
+```
+interface IContentSource {
+  IReadOnlyList<string> Files()            // paths relative to data/, '/'-separated, any order
+  byte[]                ReadAll(string path)
+}
+
+interface IContentLoader {
+  IReadOnlyList<IContentDefinition> Load(IContentSource source)
+}
+
+ContentLoaderFactory.Create() -> IContentLoader
+```
+
+- **Directories to kinds:** `size_categories/`, `aircraft/`, `pax_profiles/`
+  and `queue_profiles/`, one definition per `*.json` file. Every other
+  directory (`schemas/`, `policies/`, `balance/`, ...) is ignored by this
+  loader at Phase 0/1.
+- **Order:** files are read in ordinal path order, whatever `Files()`
+  returns, so the result never depends on file-system enumeration.
+- **Format:** a strict JSON subset, hand-parsed inside `sim.core`. There is
+  no package (`07` "Runtime portability" rule 7), and no floating point
+  anywhere. The file is UTF-8 without a BOM and may contain objects, arrays,
+  strings, integers, `true` and `false`. A number with a fraction or an
+  exponent is a load failure: fixed-point values are **decimal strings**,
+  read with `Fx.Parse` (`04-data-schemas.md`). Duplicate keys, unknown keys,
+  missing keys and `schema_version != 1` are load failures.
+- **Validation**, each a hard failure naming the path and the field
+  (`07-conventions.md`): the field rules of `04-data-schemas.md`; ids unique
+  across all files; `AircraftDefinition.SizeCategory` resolves; size
+  ordinals unique; `ShowUpCurve` per `11` §11.6; `WalkSpeedMps > 0`;
+  `ServiceRatePerServerPerMinute >= 0`; `CapacityStanding > 0`;
+  `0 <= HysteresisMinutes < ThresholdWaitMinutes`; `Category` is
+  `security_queue` or `immigration_queue`.
+- The output goes to `ContentIndexFactory.Create` (§8.11a). Tests may skip the
+  loader and build definitions directly.
+
 ---
 
 ## 8.11a Construction (Q-009)
@@ -544,8 +618,8 @@ ContentIndexFactory.Create(IReadOnlyList<IContentDefinition> definitions) -> ICo
   checkpoint and log sinks, and returns the host at tick 0. A builder cannot
   be reused after `Build`.
 - `ContentIndexFactory.Create` sorts definitions by ordinal id and throws on
-  a duplicate id. Parsing `data/` files into definitions is not specified
-  yet; that is `open-questions.md` Q-011.
+  a duplicate id. Parsing `data/` files into definitions is §8.11's
+  `IContentLoader` (Q-011).
 - **A module that is not registered is also not constructed.** Callers pass
   `null` for an optional downward interface. The module's own spec says what
   it does then, for example `11` §11.6 and `12` §12.8.

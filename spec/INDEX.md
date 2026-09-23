@@ -85,7 +85,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: the content schema list, content conventions, balance ownership.
 - Key: all content is data and validated; fixtures are not content;
   `data/balance/` is human-only; **the first balance file is
-  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6)**.
+  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6)**;
+  **Phase 0/1 content fields for size categories, aircraft, pax profiles and
+  queue profiles, with pax-profile and queue-profile values owner-authored as
+  balance (Q-011)**; a schema's name must equal its directory's name.
 - LC: none.
 - Read if: content tasks; anyone about to write a number that might be
   balance.
@@ -132,7 +135,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   xoshiro256\*\* + SplitMix64 (§8.8);
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
-  in dependency order, register in registry order**.
+  in dependency order, register in registry order**; **content definition
+  types and a strict, package-free JSON `IContentLoader` (§8.11, Q-011)**.
 - LC: none left.
 - Read if: T-001–T-006, T-026; §8.5 and §8.9 for the harness and `app.host`.
 
@@ -228,7 +232,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   is UI, then promotion, then `Step`, then build (§16.6); the byte-exact
   checkpoint dump and the harness `checkpoints` subcommand (§16.8); exact
   bundle file names and the composition steps (§16.3, §16.4), using the
-  Q-009 factories. **The player build waits on Q-011 (content).**
+  Q-009 factories; content in the player comes from a copy of `data/`
+  through `HostFactory.LoadContent` (§16.3).
 - LC: the gate runs nightly on the real player (§16.9, proposed, not adopted).
 - Read if: the host tasks, the harness `checkpoints` subcommand, and the
   cross-runtime gate.
@@ -263,8 +268,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: **Q-011** (content definitions and the `data/` loader; blocks
-  the player build). Q-002 to Q-010 and Q-012 are answered; Q-001 was
-  deleted (D9).
+- Open now: none. Q-002 to Q-012 are answered; Q-001 was deleted (D9).
+  Owner items still pending: gate assignment (`18` §18.5), the Phase 1
+  balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
 - Read if: before starting any task, check that your task is not blocked
   here.

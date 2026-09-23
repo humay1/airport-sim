@@ -4,8 +4,7 @@ Implements the `app.host` module created by owner decision D7: HUMAN
 DECISION — owner (delegated), 2026-09-23, reversible. It answers
 `15-interfaces-render.md` §15.13(b) and (c). Composition uses the published
 construction surface of `08` §8.11a and each module's "Construction" section
-(Q-009). Building the content index from `data/` remains open as
-`open-questions.md` Q-011. Notation is as in `08-interfaces-core.md`. Where
+(Q-009), with content loaded by `08` §8.11 (Q-011). Notation is as in `08-interfaces-core.md`. Where
 this file appears to contradict `01-architecture.md` or `02-determinism.md`,
 those win and it is a spec bug.
 
@@ -122,11 +121,12 @@ module's worker chose; the name says nothing about the format.
   never reordered (`08` §8.5). `sim.delay` needs no file of its own.
 - The seed is parsed with the invariant culture (`07-conventions.md`,
   "Runtime portability" rule 4).
-- The content index is part of the input as well. It is created with
-  `ContentIndexFactory.Create` (`08` §8.11a), but parsing `data/` into
-  definitions is not published; that is Q-011. Until Q-011 is answered, the
-  host takes the definitions as a constructor argument of its composer, and
-  tests supply them.
+- The content is part of the input as well. The composer takes it as
+  definitions (`HostFactory.CreateSimComposer(content)`, §16.4). In the
+  player those come from `HostFactory.LoadContent(IContentSource source)`,
+  which calls `08` §8.11's `IContentLoader` over
+  `Assets/StreamingAssets/Content/`, a build-time copy of `data/` made by the
+  build step. Tests may supply definitions directly.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
   `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, the `sim.flow`
@@ -157,7 +157,7 @@ interface ISimComposer {
 
 `ISimComposer` is created with the content definitions:
 `HostFactory.CreateSimComposer(IReadOnlyList<IContentDefinition> content)`
-(see §16.3 and Q-011).
+(see §16.3).
 
 `Compose` does exactly this, in this order:
 
@@ -404,12 +404,13 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
   `app.render` (T-020) and `app.ui` (`17` §17.10) scene-layer interfaces.
   `ISimComposer`, `IPresentationComposer`, `IHeadlessRun` and the
   harness-equivalence test need the module factories to exist (T-007/T-023,
-  T-008, T-021, T-022, T-024). Tests supply content definitions directly
-  until Q-011 is answered.
+  T-008, T-021, T-022, T-024, and the `sim.world` task). Tests may supply
+  content definitions directly.
 - **Unity project shell:** `unity/AirportSim/**`, including the bootstrap and
   the playtest `bundle.json`. It waits for the headless host, for the
-  `app.render` and `app.ui` backends, and for Q-011: a player build has no
-  other source of content definitions. It is not testable in CI (§16.2).
+  `app.render` and `app.ui` backends, and for the Phase 1 content files in
+  `data/` (`04-data-schemas.md`). The pax-profile and queue-profile values
+  among them are the owner's. It is not testable in CI (§16.2).
 
 Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
@@ -429,6 +430,7 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
 ## 16.12 Open
 
-- **Q-011**: content definitions and the `data/` loader (§16.3).
+- **Gate assignment** (`18` §18.5): deferred to the owner; Phase 0/1 pools
+  gates.
 - **§16.9 adoption**: an owner decision, because it touches
   `02-determinism.md` and `ci/`.

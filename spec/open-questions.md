@@ -316,8 +316,22 @@ Proposed:    Definition types in `sim.core` beside the event types (the
              `ContentIndexFactory.Create`. Phase 1 balance-bearing values
              (lane service rates, queue thresholds) under `data/balance/`, as
              D6 did for the hold.
-Status:      OPEN — Architect to answer; the balance values themselves are
-             the owner's
+Answer:      Definition types and a loader in `sim.core` (`08` §8.11):
+             - `ContentId` (an ordinal string), `ContentKind`, and the
+               definitions `SizeCategory`, `Aircraft`, `PaxProfile` and
+               `QueueProfile`;
+             - `IContentLoader` over an `IContentSource`: it maps four
+               directories to kinds, reads files in ordinal path order, and
+               hand-parses a strict JSON subset with no package and no float
+               (decimals are strings read by `Fx.Parse`, and unknown or
+               missing keys fail);
+             - validation rules as listed there.
+             `04` lists the fields and renames the pax profile schema to
+             `pax_profiles.schema.json` so that its name matches the validator.
+             `16` loads content from a build-time copy of `data/`. Pax-profile
+             and queue-profile *values* are balance, authored by the owner.
+Status:      ANSWERED (spec/08-interfaces-core.md#definition-types-q-011);
+             the Phase 1 balance values are the owner's
 
 ### Q-012 — `sim.flow` has no way to route without `sim.world`
 Raised by:   architect / Q-009 (making `FlowGraph` opaque)

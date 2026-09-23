@@ -538,8 +538,8 @@ Author:
 
 These were left open by Q-008, and the owner decided all five on 2026-09-23
 (D1, D4, D5, D7). None ever blocked T-020's headless scope. What still stands
-between them and a playable build is tracked in `open-questions.md`
-(Q-011, Q-012), not here.
+between them and a playable build is the Phase 1 tasks and the owner's
+Phase 1 content values (`04-data-schemas.md`), not anything here.
 
 **(a) Unity 6 against a .NET 8 sim library — DECIDED.** HUMAN DECISION —
 owner (delegated), 2026-09-23 (D1). The current Unity 6 LTS runs Mono, which
