@@ -243,6 +243,17 @@ not a guess; `sim.delay`'s gap arithmetic (`06-delay-attribution.md` §10.5)
 needs a plan, and this is the only one available without inventing a separate
 "planned duration" content field beyond what §13.4 already declares.
 
+`PlannedTick` for the departure's milestones follows the same
+schedule-anchored rule (`10-events.md` §10.4): `ReadyToBoard` is the
+departure's planned `OnStand` (`12-interfaces-airside.md` §12.3, `STD −
+MinTurnaround`) plus the largest `NominalDurationTicks` among `CabinClean`,
+`Catering`, `Fuel`, `BaggageLoad` and `PushbackPrep` (they run in parallel when
+unimpeded); `BoardingComplete` is planned `ReadyToBoard` plus `Boarding`'s
+`NominalDurationTicks`. `sim.delay` measures none of this module's three
+milestones (`DeboardComplete`, `ReadyToBoard`, `BoardingComplete`;
+`14-interfaces-delay.md` §14.4); their `PlannedTick`s are binding for the UI
+and for later checkpoints.
+
 No job for a flight is created more than once — `OnStand` fires exactly once
 per `FlightId` (`10-events.md` §10.3 rule 1), so job creation is naturally
 idempotent per flight.
@@ -284,7 +295,7 @@ Full field lists in `10-events.md` §10.6.
 | Event | When |
 |---|---|
 | `TurnaroundJobStarted` / `Completed` | §13.5 step 3 (start), §13.5 step 1 (complete) |
-| `TurnaroundJobBlocked` / `Unblocked` | Created needing an unavailable vehicle / assigned one thereafter, §13.5 |
+| `TurnaroundJobBlocked` / `Unblocked` | Created needing an unavailable vehicle / assigned one thereafter, §13.5. `category` is the job's `JobDef.Category` (§13.4), copied onto the event because `sim.delay` cannot read this catalogue (`10-events.md` §10.6) |
 | `FlightMilestoneReached` | `DeboardComplete`, `ReadyToBoard`, `BoardingComplete` only, §13.6 |
 
 `CrewUnavailable`/`CrewReady` are **not emitted** — they are Phase 2, gated on

@@ -37,7 +37,7 @@ Written here so no agent ever proposes them:
 | Airside movement | `12-interfaces-airside.md` | `sim.airside` |
 | Passenger flow | `03-module-map.md`, `09-interfaces-flow.md` | `sim.flow` |
 | Turnaround jobs | `13-interfaces-turnaround.md` | `sim.turnaround` |
-| Delay attribution | `06-delay-attribution.md` | `sim.delay` |
+| Delay attribution | `06-delay-attribution.md`, `14-interfaces-delay.md` | `sim.delay` |
 | Baggage | `03-module-map.md` | `sim.baggage` |
 | Staff | `03-module-map.md` | `sim.staff` |
 | Economy | `03-module-map.md` | `sim.economy` |

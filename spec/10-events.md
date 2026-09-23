@@ -62,8 +62,13 @@ the `sim.core` budget and keep the delay tree bounded.
 1. **One event per state transition.** Never per entity per tick. A module that
    emits while a condition merely persists is wrong.
 2. **Blocking events come in pairs.** Every `*Blocked` is matched by exactly one
-   `*Unblocked`/`*Resolved` for the same subject. An unclosed interval at end of
-   day is a broken invariant: throw.
+   `*Unblocked`/`*Resolved` for the same subject. An interval still open when
+   its subject leaves the simulation (a flight's last milestone — `Airborne`
+   for a departure, the stand handoff for an arrival — or a cohort's
+   absorption) is a broken invariant: throw. An interval **may** stay open
+   across a day boundary — a job that never gets a vehicle stays blocked
+   indefinitely by design (`13-interfaces-turnaround.md` §13.4), and
+   `sim.delay` carries such intervals forward (`14-interfaces-delay.md` §14.8).
 3. **Emit at the transition tick**, not at the next convenient one. Deferring
    shifts minutes into the wrong interval and quietly corrupts attribution.
 4. **Deduplicate at the source.** Threshold events use hysteresis, declared in
@@ -101,6 +106,15 @@ per flight**. `PlannedTick` is the plan as it stood when the *previous*
 milestone completed, so replanning is visible rather than retroactively hiding
 a delay.
 
+`PlannedTick` is **schedule-anchored and cumulative**: it is derived from the
+published schedule plus the nominal (unimpeded) durations of the steps before
+it, and is never shifted by the actual lateness of an earlier milestone.
+`ActualTick − PlannedTick` is therefore the flight's whole lateness at that
+milestone, not the lateness added since the previous one — which is what lets
+`sim.delay` measure only at a few checkpoints (`14-interfaces-delay.md`
+§14.4). The per-milestone derivations are binding on their emitters:
+`12-interfaces-airside.md` §12.3 and `13-interfaces-turnaround.md` §13.6.
+
 ---
 
 ## 10.5 Allocation rule
@@ -119,9 +133,18 @@ expressed in `SimMinutes`, minus any gap already attributed at milestone `n−1`
 4. Any residue not covered by any interval is a single leaf with category
    `propagated` and `root_cause` set. An unexplained residue is honest; an invented
    cause is not.
-5. Rounding: allocate in `Fx` and settle the final minute by **largest remainder**,
-   ties broken by ascending `EventId`, so the leaves sum to the total exactly.
-   `sum_of_leaves_equals_total` depends on this rule and nothing else.
+5. Arithmetic: allocate in **integer ticks**, never in `Fx`. Every milestone
+   and every interval boundary is a tick, so the leaves sum to the total
+   exactly with no rounding step; `SimMinutes` are derived for display only.
+   `sum_of_leaves_equals_total` is asserted on ticks. (This replaces the
+   earlier "allocate in `Fx`, settle by largest remainder" wording: in ticks
+   there is no remainder to settle. If a later source ever reports a
+   non-tick-aligned duration, largest remainder with ties by ascending
+   `EventId` is the rule to reinstate, by amendment.)
+
+The operational form of these rules — which milestones are measured, what
+happens when blocking exceeds the gap, and what happens when a flight makes up
+time — is `14-interfaces-delay.md` §14.4–§14.6.
 
 > **LOW CONFIDENCE — rule 3, first-blocker-wins.** It is exact, deterministic and
 > cheap, and it makes the tree readable. It will also under-report a genuine second
@@ -142,7 +165,7 @@ rule for.
 
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
-| `FlightPlanPublished` | `FlightId`, `AirlineId`, `ContentId aircraftType`, `Tick schedArr`, `Tick schedDep`, `SimMinutes minTurnaround` | — (baseline) | 0 |
+| `FlightPlanPublished` | `FlightId`, `MovementKind kind`, `FlightId rotation`, `bool hasRotation`, `AirlineId`, `ContentId aircraftType`, `Tick schedArr`, `Tick schedDep`, `SimMinutes minTurnaround` | — (baseline) | 0 |
 | `FlightPlanRevised` | `FlightId`, `Tick newSchedDep`, reason key | — | 1 |
 | `FlightCancelled` | `FlightId`, reason key | — | 1 |
 
@@ -176,11 +199,13 @@ a branch in `sim.delay`. That is how `immigration_queue` exists without
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
 | `TurnaroundJobStarted` / `Completed` | `FlightId`, `JobKind`, `Tick plannedStart` | — | 1 |
-| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading` | 1 |
+| `TurnaroundJobBlocked` / `Unblocked` | `FlightId`, `JobKind`, `ResourceKind waitingOn`, `EntityId?`, `DelayCategory category` | `ground_handling`, `fuel`, `catering`, `cleaning`, `loading` | 1 |
 | `CrewUnavailable` / `CrewReady` | `FlightId`, reason key | `crew` | 2 |
 
 `JobKind` maps to the delay category through the job's catalogue definition
-(`13-interfaces-turnaround.md` §13.4). `pushback` as a category is reserved
+(`13-interfaces-turnaround.md` §13.4), and the emitter copies it into the
+event's `category` field: the catalogue is `sim.turnaround`'s own data, which
+`sim.delay` may not read (`06-delay-attribution.md` rule 2). `pushback` as a category is reserved
 for the aircraft-side act itself (`sim.airside`'s `Pushback` milestone);
 `sim.turnaround`'s `PushbackPrep` job is always `ground_handling` (§13.4), so
 `pushback` is removed from this row's category list.
@@ -209,9 +234,15 @@ This keeps one delayed minute in one branch (`06-delay-attribution.md` rule 1).
 
 ## 10.7 Events `sim.delay` emits
 
-Only `DelayEvent`, exactly as specified in `06-delay-attribution.md`. `sim.delay`
-publishes no other event and mutates nothing outside its own tree.
+Only `DelayEvent`, exactly as specified in `06-delay-attribution.md`, one per
+tree node, published when a flight's attribution is finalised and never for a
+provisional tree (`14-interfaces-delay.md` §14.8). `sim.delay` publishes no
+other event and mutates nothing outside its own tree.
 `delay_module_never_writes` is the static check that enforces it.
+
+`FlightPlanPublished`'s `kind`, `rotation` and `hasRotation` fields exist for
+`sim.delay`: it may not call `IScheduleSystem.TryGetRotation`, so the rotation
+link has to arrive on the bus (`11-interfaces-schedule.md` §11.7).
 
 ---
 

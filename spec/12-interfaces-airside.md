@@ -92,6 +92,31 @@ injecting arriving passengers "at the aircraft door on the `DoorsOpen`
 milestone." Assigning `DoorsOpen` to `sim.turnaround` would have contradicted
 that merged text; this table is the correction, made once, here.
 
+### `PlannedTick` per milestone
+
+Binding, per `10-events.md` §10.4 (schedule-anchored and cumulative: never
+shifted by an earlier milestone's actual lateness). `STA` is the arrival's
+`ScheduledTick`, `STD` the departure's. `RouteTicks(a, b)` is the sum of
+`TraversalTicks` along the precomputed route of §12.4 — the unimpeded taxi
+time, holds excluded.
+
+| Milestone | `FlightId` | `PlannedTick` |
+|---|---|---|
+| `InboundAirborne` | arrival | `STA − CRUISE_LEAD_TICKS` (§12.6) |
+| `Landed` | arrival | `STA` |
+| `OffRunway` | arrival | `STA + OccupancyTicks` |
+| `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
+| `DoorsOpen` | arrival | planned `OnStand` + the fixed door delay |
+| `OnStand` | departure | `STD − MinTurnaround` (§12.8 step 3; §12.7 for a rotation-less departure) |
+| `DoorsClosed` | departure | `STD` |
+| `Pushback` | departure | `STD` |
+| `TakeoffRoll` | departure | `STD + RouteTicks(stand, threshold)` |
+| `Airborne` | departure | planned `TakeoffRoll` + `OccupancyTicks` |
+
+`sim.delay` measures only `Landed` and arrival `OnStand`, and departure
+`OnStand`, `Pushback` and `Airborne` (`14-interfaces-delay.md` §14.4); the
+others are still binding, for the UI and for later checkpoints.
+
 ### Which `FlightId` gets which milestone
 
 `11-interfaces-schedule.md` §11.3 gives an arrival and its linked departure
