@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `sim.airside` |
 | Assigned role | worker |
-| Depends on | T-008 |
-| Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005) |
+| Depends on | T-008, T-026 |
+| Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005; §12.8's boarding hold answers part of Q-007 §14.9, HD D6) |
 | Blocked by | — |
 
 ## Writable paths
@@ -15,13 +15,19 @@
 src/sim/airside/**, tests/sim/airside/**, tests/fixtures/airside/**
 ```
 
-`sim.airside` depends on `core`, `world` and `schedule` (`spec/03-module-map.md`),
-but this task must build and pass **without** calling into `sim.world` at all —
+`sim.airside` depends on `core`, `world`, `schedule` and `flow`
+(`spec/03-module-map.md`, the last added by D6), but this task must build
+and pass **without** calling into `sim.world` at all —
 `spec/12-interfaces-airside.md` §12.1 ("On `sim.world`") is binding: the
 taxiway/runway/stand graph is self-owned, loaded directly by this module, not
 queried from `sim.world`. It must also build and pass **without**
 `sim.turnaround` registered — §12.8's fallback is what this task actually
-exercises; do not add a hard dependency on T-022 merging first.
+exercises; do not add a hard dependency on T-022 merging first. It must also
+build and pass **with `sim.flow` absent or with a fake `IFlowSystem`** — the
+boarding hold (below) is the only call into `sim.flow`
+(`IFlowSystem.TryGetOutstanding`, T-023), and this task's own tests use a
+fake for it per `spec/12-interfaces-airside.md` §12.13; do not add a hard
+dependency on T-023 merging first.
 
 ## Readable specs
 
@@ -91,10 +97,15 @@ readonly struct AircraftTrack {
   StandId?         Stand
   RunwayId?        Runway
   Tick             PhaseEnteredAt
-  Tick             DueAt
+  Tick             DueAt               // the hold deadline during a boarding hold, D6
+  Tick             PassengerHoldSince  // §12.8 boarding hold start; TICK_UNSCHEDULED unless held
 }
 
 readonly struct StandState { StandId Id; FlightId? Occupant }
+
+readonly struct AirsideRules {           // construction data, beside the layout; D6
+  uint32 BoardingHoldMaxMinutes          // §12.8 "The boarding hold"; 0 disables the hold
+}
 
 interface IAirsideSystem : ISimSystem {
   bool   TryGetTrack(FlightId flight, out AircraftTrack track)
@@ -102,8 +113,28 @@ interface IAirsideSystem : ISimSystem {
   IReadOnlyList<StandId> FreeStands()
   int32  RunwayQueueLength(RunwayId runway)
   IReadOnlyList<FlightId> TrackedFlights()
+  AirsideLayout Layout()                                    // the validated layout of §12.4, immutable
 }
 ```
+
+`AirsideRules` is construction data: immutable for the session, not hashed,
+**never a compiled constant**. `BoardingHoldMaxMinutes` is a **balance
+value** — this task reads it as a constructor argument; it does not author
+`data/balance/airside_rules.json` itself (human-only, D6). Its schema
+(`balance.schema.json`) is a separate content task (T-028).
+
+**`AtNode` and `OnEdge` together** (§12.9, amended by Q-008): while `OnEdge`
+is set, `AtNode` holds the node the aircraft **entered the edge from** (not
+cleared during traversal, as an earlier reading might assume), and
+`EdgeProgress` runs from 0 at `AtNode` to 1 at the edge's other endpoint. For
+a `Bidirectional` edge this is the only way to know direction of travel.
+While `OnEdge` is unset, `AtNode` is the node the aircraft is at (including
+holding at a node, §12.6), or unset if the aircraft is off-graph.
+
+`Layout()` returns the layout `IAirsideLayoutLoader` validated at load. It is
+load-time data, not runtime state, so it is **not hashed** (§12.12). It
+exists for `app.render` (T-020, `spec/15-interfaces-render.md` §15.4), which
+must not load the airside fixture a second time on its own.
 
 Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
 
@@ -111,6 +142,26 @@ Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
   `Landed`, `OffRunway`, `OnStand`, `DoorsOpen`, `DoorsClosed`, `Pushback`,
   `TakeoffRoll`, `Airborne`. It does **not** emit `DeboardComplete`,
   `ReadyToBoard` or `BoardingComplete` — those stay `sim.turnaround`'s.
+- **`PlannedTick` per milestone** (§12.3, added by the Q-007 amendment —
+  binding, schedule-anchored and cumulative per `10-events.md` §10.4;
+  `RouteTicks(a,b)` is the precomputed unimpeded taxi time, holds excluded):
+
+  | Milestone | `FlightId` | `PlannedTick` |
+  |---|---|---|
+  | `InboundAirborne` | arrival | `STA − CRUISE_LEAD_TICKS` |
+  | `Landed` | arrival | `STA` |
+  | `OffRunway` | arrival | `STA + OccupancyTicks` |
+  | `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)` |
+  | `DoorsOpen` | arrival | planned `OnStand` + the fixed door delay |
+  | `OnStand` | departure | `STD − MinTurnaround` |
+  | `DoorsClosed` | departure | `STD` |
+  | `Pushback` | departure | `STD` |
+  | `TakeoffRoll` | departure | `STD + RouteTicks(stand, threshold)` |
+  | `Airborne` | departure | planned `TakeoffRoll` + `OccupancyTicks` |
+
+  `sim.delay` measures only `Landed`, arrival `OnStand`, and departure
+  `OnStand`/`Pushback`/`Airborne` (`spec/14-interfaces-delay.md` §14.4); every
+  row above is still binding, for the UI and for later checkpoints.
 - **Layout and routing** (§12.4): load-time validation (every node/edge
   reference resolves, graph connected, ids unique within the layout) is a
   hard failure naming the offending id. Threshold-to-stand routing is
@@ -169,23 +220,90 @@ Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
   handoff (create departure track, reassign occupant, fire departure
   `OnStand`), call `Absorb`, and fire departure `DoorsClosed` — all in the
   same tick.
+- **The boarding hold, both paths** (§12.8, HD D6): the **doors-close
+  point** of a departure is the tick step 5 of the handshake, or the
+  fallback, would call `Absorb`/fire `DoorsClosed`. At that point, if
+  `sim.flow` is registered, `BoardingHoldMaxMinutes > 0`, and
+  `IFlowSystem.TryGetOutstanding(flight)` returns true, do **not** close
+  the doors: that tick, emit `DepartureHeldForPassengers { Flight,
+  outstanding = o.Count, heldAt = o.MostHeldAt }` (`Cause` = the event that
+  led to the doors-close point), set `PassengerHoldSince = tick`,
+  `DueAt = tick + BoardingHoldMaxMinutes × TICKS_PER_SIM_MINUTE`. On every
+  later `Tick`, re-evaluate each held departure in ascending `FlightId`.
+  When `TryGetOutstanding` returns false or `tick >= DueAt`: emit
+  `DepartureHeldForPassengersReleased { Flight, outstanding }` (`outstanding`
+  = count still upstream, 0 if all arrived, `Cause` = the hold event), clear
+  `PassengerHoldSince` to `TICK_UNSCHEDULED`, then proceed as at an unheld
+  doors-close point (`Absorb`, `DoorsClosed`, `Pushback`). A departure is
+  held **at most once**. The hold is measured from the actual doors-close
+  point, not the planned one; `DoorsClosed`'s `PlannedTick` stays `STD`, so
+  the hold's ticks show up as lateness at `Pushback`. The stand stays
+  occupied during the hold — an aircraft waiting for it gets an ordinary
+  `StandUnavailable` interval. Anyone still outstanding at the eventual
+  `Absorb` becomes a missed passenger, exactly as before (§12.7). `sim.flow`
+  not registered, or `BoardingHoldMaxMinutes == 0`: no hold, neither event
+  fires. `sim.airside` runs before `sim.flow` in the registry (3 before 4),
+  so it sees `sim.flow`'s state as of the end of the previous tick —
+  deterministic, same on every run.
 - **Registry position 3** (§12.9), after `sim.schedule` (2), before
   `sim.flow` (4) and `sim.turnaround` (5).
-- **`ReassignStand` command** (§12.10): only while `Phase == OnStand`;
-  rejected `NotPermitted` if the target stand is occupied or incompatible;
-  takes effect at the next tick boundary; no milestone re-fires.
+- **`ReassignStand` command** (§12.10, Q-010 — amended): the handler's
+  `Validate` checks the payload only (a length other than 10 bytes, or an
+  unknown `StandId`, is `MalformedPayload`). Whether the flight is
+  `OnStand`, whether the target stand is occupied, and whether it is
+  compatible are **runtime state**, so they are checked at `Apply`, not at
+  admission. A command that fails them there is a **logged no-op**, not a
+  rejection — this replaces the earlier "rejected `NotPermitted` if occupied
+  or incompatible", which admission cannot decide deterministically. On
+  success: takes effect at the next tick boundary; old stand's occupant
+  clears, new stand's occupant is set; no milestone re-fires. Register the
+  handler through `SystemServices.Commands` in `AirsideFactory.CreateSystem`
+  (below), using the `ICommandHandler` contract T-005 publishes.
 - **No RNG at Phase 0/1** (§12.12). Do not add a stream speculatively.
+
+## Construction (`12` §12.12a, Q-009)
+
+```
+interface IAirsideLayoutLoader {
+  AirsideLayout Load(AirsideLayout raw)                              // validate
+  AirsideLayout Parse(ReadOnlySpan<byte> file, string sourceName)    // parse the fixture, then Load
+}
+
+AirsideFactory.CreateLayoutLoader() -> IAirsideLayoutLoader
+AirsideFactory.CreateSystem(in SystemServices services, in AirsideLayout layout,
+                            in AirsideRules rules, IScheduleSystem schedule,
+                            IFlowSystem? flow, bool turnaroundRegistered) -> IAirsideSystem
+```
+
+- `layout` must come from `IAirsideLayoutLoader` (validated). `Parse` is
+  new — this task's own `IAirsideLayoutLoader` interface previously named
+  only `Load`; add `Parse` so nothing else has to load the fixture file a
+  second time.
+- `rules` is parsed by the **caller** (the harness, or `app.host` later,
+  §16.3) — `AirsideRules` is two integers, and no sim module parses JSON.
+- `flow` null: no `Inject`/`Absorb` calls and no boarding hold.
+- `turnaroundRegistered` selects §12.8's handshake (true) or its fallback
+  (false). It was previously implicit ("is `sim.turnaround` registered in
+  this build"); it is now an **explicit construction input**, fixed for the
+  session — do not infer it from anything at runtime.
+- `schedule` is required; `sim.airside` is not constructed without
+  `sim.schedule`.
 
 ## Events
 
 Emitted: `FlightMilestoneReached` (for the nine milestones listed above),
 `AircraftHeldForRunway`/`AircraftHeldForRunwayReleased`,
 `AircraftHeldOnTaxiway`/`AircraftHeldOnTaxiwayReleased`,
-`StandUnavailable`/`StandAssigned`
+`StandUnavailable`/`StandAssigned`,
+`DepartureHeldForPassengers`/`DepartureHeldForPassengersReleased` (§12.8, D6)
 
 Consumed: `FlightMilestoneReached{Milestone=DeboardComplete}` and
 `FlightMilestoneReached{Milestone=BoardingComplete}` (both from
 `sim.turnaround`, when registered)
+
+Calls (downward, query-only): `IFlowSystem.TryGetOutstanding` (T-023, `09`
+§9.7a) — the module's only `sim.flow` read, made once at a departure's
+doors-close point and once per tick per held departure.
 
 ## Tests to pass
 
@@ -208,6 +326,17 @@ at least:
 - `test_rotationless_arrival_stays_on_stand_indefinitely`
 - `test_arrival_pax_count_zero_skips_inject`
 - `test_airside_tick_consumes_no_rng`
+
+Boarding-hold tests (§12.13, D6), run with `sim.flow` registered or with a
+fake `IFlowSystem` answering `TryGetOutstanding` — this task's own to carry,
+per that section's explicit assignment to "whichever task the Planner
+assigns the hold to":
+
+- `test_departure_holds_while_passengers_outstanding_and_releases_when_all_at_gate`
+- `test_departure_hold_times_out_at_boarding_hold_max_and_remainder_is_missed`
+- `test_departure_hold_emits_one_event_pair_with_most_held_at_node`
+- `test_no_hold_when_flow_absent_or_hold_max_zero`
+- `test_boarding_hold_applies_in_turnaround_fallback_path`
 
 **Do not edit them.** If a test contradicts `spec/12-interfaces-airside.md`,
 file an open question and stop.
@@ -242,6 +371,25 @@ taxiway/runway/stand graph is this module's own data, loaded via
 `spec/10-events.md` §10.4 was corrected to say so explicitly when this spec
 was written; do not follow an older mental model where "stand milestones"
 meant all five door/service transitions.
+
+Q-007 and Q-008 amendments (both same-cycle, before this file's own branch
+merges) add the `PlannedTick` table above and the `Layout()` query plus the
+`AtNode`-stays-set-during-`OnEdge` clarification. If this task is picked up
+from an older local checkout, re-pull this file before starting.
+
+`RunwayId`, `StandId`, `TaxiNodeId` and `TaxiEdgeId` (used above and in
+`AircraftTrack`/`RunwayDef`/`TaxiNodeDef`/`TaxiEdgeDef`/`StandDef`) are now
+authored in `src/sim/core/**` by T-026, not here — they are event-payload
+types by `03-module-map.md`'s rule that events are defined in `sim.core`,
+and this task may write only `src/sim/airside/**`. Reference them from
+`sim.core`; do not redeclare them locally. T-026 must merge before this task
+is released.
+
+The boarding hold's LOW CONFIDENCE flags (§12.8) — measuring from the actual
+doors-close point rather than the plan, and releasing at a zero outstanding
+count rather than accounting for not-yet-injected passengers — are not this
+task's to resolve; build to the rule as written and leave the flags for the
+owner to revisit after T-025.
 
 Q-006 is now answered (`spec/13-interfaces-turnaround.md`); the handshake this
 task implements — `DeboardComplete` triggers the stand handoff to the

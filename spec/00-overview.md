@@ -33,6 +33,7 @@ Written here so no agent ever proposes them:
 |---|---|---|
 | Tick, time, RNG | `02-determinism.md`, `08-interfaces-core.md` | `sim.core` |
 | Event catalogue | `10-events.md` | `sim.core` (defined), all (emitted) |
+| Walk graph (Phase 0/1 subset) | `18-interfaces-world.md` | `sim.world` |
 | Schedule | `11-interfaces-schedule.md` | `sim.schedule` |
 | Airside movement | `12-interfaces-airside.md` | `sim.airside` |
 | Passenger flow | `03-module-map.md`, `09-interfaces-flow.md` | `sim.flow` |
@@ -46,6 +47,8 @@ Written here so no agent ever proposes them:
 | Incidents | `03-module-map.md` | `sim.incident` |
 | Progression | `03-module-map.md` | `sim.progression` |
 | Rendering (presentation) | `15-interfaces-render.md` | `app.render` |
+| Composition root, frame loop, Unity project | `16-interfaces-host.md` | `app.host` |
+| Player controls (Phase 1: pause, speed, lane click) | `17-interfaces-ui.md` | `app.ui` |
 
 ## Build order (dependency order — do not reorder)
 

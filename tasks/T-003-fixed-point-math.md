@@ -46,6 +46,19 @@ Binding rules (`08-interfaces-core.md` §8.3):
 
 - `Mul` and `Div` compute through a 128-bit intermediate, then narrow. No
   64-bit intermediate anywhere.
+- **The 128-bit arithmetic, and any leading-zero count, is hand-rolled**
+  (D1, `08` §8.3). The sim targets `netstandard2.1`, which has no
+  `Int128`/`UInt128`, no `Math.BigMul(long, long, out long)` and no
+  `System.Numerics.BitOperations`. Write the 64×64→128-bit multiply behind
+  `Mul`, the 128-by-64-bit division behind `Div`, and `Sqrt`'s leading-zero
+  count in plain integer code over `uint64` halves inside `Fx`. Do **not**
+  use `BigInteger` either — it allocates, and it would be a second
+  implementation to keep bit-exact. Check overflow and sign cases
+  (including `long.MinValue / -1`) explicitly, before any BCL operator could
+  throw; behaviour must never depend on which exception a runtime raises.
+  **Test projects target `net8.0` and may use `Int128`/`BigInteger` as a
+  reference oracle for `Fx`'s own tests only** — that code never ships in
+  `src/sim/**`.
 - Rounding is truncation toward negative infinity for every narrowing
   operation (`Mul`, `Div`, all `To*` conversions), with no per-call-site
   exception. `RoundHalfUp` is the only explicit half-up path.
@@ -70,9 +83,11 @@ tests/sim/core/**
 
 Written by the Test Author. Expect: round-trip precision tests,
 truncation-direction tests for negative values, overflow/div-by-zero throw
-tests, and a bit-exactness test comparing results across two independent
+tests, a bit-exactness test comparing results across two independent
 process runs (feeding the determinism gate `determinism_same_process`
-indirectly). **Do not edit them.**
+indirectly), and a test cross-checking `Mul`/`Div`/`Sqrt` against an
+`Int128`/`BigInteger` oracle over a wide random range (`07-conventions.md`:
+seeded, not unseeded). **Do not edit them.**
 
 ## Performance budget
 

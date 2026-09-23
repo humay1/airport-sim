@@ -1,10 +1,10 @@
 # 15 — Public interfaces: `app.render`
 
 Implements the `app.render` row of `03-module-map.md` for Phase 1: the minimal
-top-down, flat-colour renderer of T-020. Answers `open-questions.md` Q-008,
-**partially** — the headless part is fully specified here; the engine-side
-part depends on human decisions listed in §15.13 and is specified as a
-contract only. Notation is as in `08-interfaces-core.md`; where this file
+top-down, flat-colour renderer of T-020. Answers `open-questions.md` Q-008.
+The headless part is fully specified here. The engine-side part is specified
+as a contract only (§15.10). The human decisions it waited on are recorded in
+§15.13. Notation is as in `08-interfaces-core.md`; where this file
 appears to contradict `01-architecture.md` or `02-determinism.md`, those win
 and it is a spec bug.
 
@@ -28,9 +28,9 @@ side**:
   (§15.5). It also owns the promotion controller (§15.7) and the tick pacer
   (§15.8). It is built and tested by `dotnet test` like the sim.
 - **The backend** (`app.render.unity`) — a thin engine adapter that draws the
-  draw list, turns input into a camera, and runs the frame order of §15.8. It
-  contains no decisions. Its contract is §15.10; its implementation is **not**
-  part of T-020 (§15.13).
+  draw list and turns input into a camera. The frame order is run by
+  `app.host` (`16-interfaces-host.md` §16.6). It contains no decisions. Its
+  contract is §15.10, and its implementation is **not** part of T-020.
 
 At Phase 1, `app.render` owns:
 
@@ -39,17 +39,20 @@ At Phase 1, `app.render` owns:
   (§15.4),
 - the promotion controller — the one caller of `IFlowSystem.SetPromoted`
   (§15.7),
-- the tick pacer — how many ticks to `Step` per rendered frame at 1x (§15.8),
+- the tick pacer — how many ticks to `Step` per rendered frame at a given
+  speed (§15.8),
 - the backend contract (§15.10).
 
 `app.render` explicitly does **not** own, and must not do:
 
 - any text, label, panel, tooltip or delay-tree view — `app.ui`;
-- any player command. `app.render` never calls `ISimHost.TrySubmit` at Phase 1.
-  Camera movement is not a command: it never enters the sim
-  (`08-interfaces-core.md` §8.1);
-- constructing the sim, or owning the engine project it runs in (§15.13);
-- game speeds other than 1x and pause (§15.8, §15.13);
+- any player command. `app.render` never calls `ISimHost.TrySubmit`; at
+  Phase 1 `app.ui` does (`17-interfaces-ui.md`). Camera movement is not a
+  command: it never enters the sim (`08-interfaces-core.md` §8.1);
+- constructing the sim, owning the engine project it runs in, or running the
+  frame loop. All three are `app.host`'s (`16-interfaces-host.md`);
+- choosing the game speed or pausing. The pacer is told both (§15.8), and
+  `app.ui` chooses them;
 - any sim module's state beyond the queries in §15.6. In particular it reads
   nothing from `sim.turnaround`, `sim.delay` or `sim.schedule` at Phase 1.
 
@@ -65,6 +68,7 @@ and none of them affects a sim outcome.
 |---|---|---|
 | `AGENT_ZOOM_THRESHOLD` | 120 world units of view height | §15.7; `01-architecture.md` promotion rule 1 — **LOW CONFIDENCE** |
 | `MAX_DRAWN_AGENTS_PER_NODE` | 256 | §15.5; bodies beyond this are shown only by the queue fill |
+| `MAX_DRAWN_LANES_PER_NODE` | 32 | §15.5; lane pips per queue node (Q-010) |
 | `MAX_CATCHUP_TICKS_PER_FRAME` | 3 | §15.8 |
 | `REAL_MICROSECONDS_PER_TICK_1X` | `TICK_MS × 1000` = 100 000 | §15.8, from `01-architecture.md` |
 
@@ -76,6 +80,8 @@ nothing to the sim.
 > player sees against how many agent views are derived per frame; it moves no
 > sim outcome (§15.7), so it is cheap to retune after the first playable build.
 > Flagged for the human owner's eye, not as a balance value.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -85,8 +91,8 @@ nothing to the sim.
 |---|---|---|
 | Directory | `src/app/render/Scene/` | `src/app/render/Unity/` |
 | Engine references | **none**, asserted by test | Unity 6 |
-| Built by | `AirportSim.sln`, `dotnet test` | the engine project (§15.13) |
-| Reads the sim | the queries in §15.6 only | never; it calls `ISimHost.Step` only |
+| Built by | `AirportSim.sln`, `dotnet test` | the Unity project owned by `app.host` (`16` §16.2) |
+| Reads the sim | the queries in §15.6 only | never; it calls no sim member at all |
 | Tested in CI | yes, all of §15.12 | no |
 | In T-020 | yes | no — contract only |
 
@@ -99,9 +105,10 @@ Rules binding on the scene layer:
   its tests exact and repeatable.
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
-- It targets whatever framework the sim library targets. That is exactly the
-  open question in §15.13(a); the scene layer inherits the answer and makes no
-  choice of its own.
+- It targets `netstandard2.1` with `LangVersion 9`, the same as the sim
+  (`01-architecture.md`, D1), because Unity consumes it as a precompiled
+  plugin. `07-conventions.md` "Runtime portability" rules 3, 4 and 7 apply to
+  it as well. Its tests target `net8.0`.
 
 ---
 
@@ -159,6 +166,8 @@ widening `09-interfaces-flow.md`.
 > presentation-only data into sim state and its hash. When `sim.world` is
 > specified with real geometry, this layout is expected to shrink to sizes
 > only, by amendment.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -175,6 +184,7 @@ total, stable order.
 | each stand | `Box` | centred on the stand's `Node` position, side `StandSize` | `StandOccupied` if `StandState.Occupant` is set, else `StandFree` | `Stand` |
 | each `FlowNodeBox` | `Box` | the box | `LandsideNode` | `LandsideNode` |
 | queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` |
+| lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` |
 | agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize` | `Agent` | `Agent` |
 | each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` |
 
@@ -183,6 +193,12 @@ total, stable order.
 of *k* and the box. The exact arrangement is the worker's choice, and tests
 assert only count and containment. `ProgressAlongEdge` is not used at
 Phase 1, because corridors are not drawn.
+
+**Lane pips** (Q-010, the visible half of D5's lane control). The *k*-th pip's
+position is a pure function of *k*, the pip count and the box. As with
+agents, the arrangement is the worker's choice, and tests assert only count,
+colour split and containment. A node for which `TryGetLaneState` returns false
+gets no pips.
 
 **Aircraft position** (from `AircraftTrack`, `12-interfaces-airside.md`
 §12.9, as amended):
@@ -225,12 +241,13 @@ rejection, and the fakes in §15.12 throw if one is called.
 | Member | Spec | Called by | When |
 |---|---|---|---|
 | `ISimHost.CurrentTick` | `08` §8.5 | scene builder | every `Build` |
-| `ISimHost.Step` | `08` §8.5 | backend runner only | §15.8 step 3 |
+| `ISimHost.Step` | `08` §8.5 | **not called by `app.render`**; `app.host`'s frame loop is its only caller (`16` §16.6) | — |
 | `IAirsideSystem.Layout` | `12` §12.9 | scene builder, loader | once, at construction |
 | `IAirsideSystem.TrackedFlights`, `TryGetTrack` | `12` §12.9 | scene builder | per rebuild |
 | `IAirsideSystem.TryGetStand`, `RunwayQueueLength` | `12` §12.9 | scene builder | per rebuild |
 | `IFlowSystem.Population` | `09` §9.7 | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.AgentsAt` | `09` §9.7 | scene builder | per rebuild, per promoted `FlowNodeBox` |
+| `IFlowSystem.TryGetLaneState` | `09` §9.7b | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.SetPromoted` | `09` §9.7 | promotion controller only | §15.7 |
 
 Cadence:
@@ -285,23 +302,35 @@ for this module's actual call pattern.
 ## 15.8 The tick pacer and the frame order
 
 ```
+enum GameSpeed { X1 = 1, X2 = 2, X4 = 4 }          // the value is the multiplier
+
 interface ITickPacer {
-  uint32 Advance(int64 elapsedRealMicroseconds, bool paused)   // ticks to Step this frame
+  uint32 Advance(int64 elapsedRealMicroseconds, bool paused, GameSpeed speed)   // ticks to Step this frame
 }
 ```
 
-- The pacer holds an integer microsecond accumulator. That is presentation
-  state, not sim state, and it is never saved.
+- **Speeds are pause, 1x, 2x and 4x.** HUMAN DECISION — owner (delegated),
+  2026-09-23 (D4), reversible. At 4x a sim-day lasts 6 real minutes. Higher
+  speeds are deferred until T-011's budget results exist. Adding one is an
+  amendment to `GameSpeed`, never a worker's choice.
+- The pacer holds an integer accumulator of *speed-scaled* microseconds. That
+  is presentation state, not sim state, and it is never saved.
 - `paused`: returns 0 and discards `elapsed`. Unpausing does not replay the
   paused time.
-- Otherwise: `acc += elapsed`; `n = acc / REAL_MICROSECONDS_PER_TICK_1X`;
-  `acc -= n × REAL_MICROSECONDS_PER_TICK_1X`. If `n > MAX_CATCHUP_TICKS_PER_FRAME`,
-  then `n = MAX_CATCHUP_TICKS_PER_FRAME` and `acc = 0`: after a hitch the game
-  runs briefly slower than real time rather than bursting ticks into one frame.
-- A negative `elapsed` is a programmer error and throws.
-- **1x only.** There is deliberately no speed parameter. Which other speeds
-  exist is a pacing decision (§15.13(d)); adding one is an amendment to this
-  interface.
+- Otherwise: `acc += elapsed × (int)speed`;
+  `n = acc / REAL_MICROSECONDS_PER_TICK_1X`;
+  `acc -= n × REAL_MICROSECONDS_PER_TICK_1X`. If
+  `n > MAX_CATCHUP_TICKS_PER_FRAME`, then `n = MAX_CATCHUP_TICKS_PER_FRAME` and
+  `acc = 0`. After a hitch the game runs briefly slower than real time rather
+  than bursting ticks into one frame. The cap is the same at every speed: at
+  4x and 60 fps a frame needs 0.67 ticks, so the cap binds only below about
+  13 fps, and it limits one frame's sim work to 3 ticks (18 ms at max tier).
+- Changing `speed` between calls keeps the accumulator, so no partial tick is
+  lost or duplicated.
+- A negative `elapsed`, or a `speed` outside the enum, is a programmer error
+  and throws.
+- Who chooses `paused` and `speed` is `app.ui` (`17-interfaces-ui.md` §17.4).
+  `app.render` holds neither.
 
 Pacing cannot change outcomes. The sim sees only a sequence of `Step` calls,
 and a fixed-timestep sim run for N ticks is the same however those ticks were
@@ -309,19 +338,12 @@ grouped into frames (`02-determinism.md` rule 1).
 
 ### Frame order
 
-Binding on the backend runner (§15.10). This is the only place `Step` is
-called from.
-
-1. Read input and produce this frame's `CameraView`.
-2. `IPromotionController.Update(camera)`.
-3. `n = ITickPacer.Advance(elapsedMicroseconds, paused)`; if `n > 0`,
-   `ISimHost.Step(n)`.
-4. `frame = ISceneBuilder.Build(camera)`.
-5. Draw `frame`.
-
-Promotion goes before `Step`, so a node that comes into view promotes before
-the tick that will show it. Building goes after `Step`, so the frame shows the
-state just produced.
+The binding frame order now lives in `16-interfaces-host.md` §16.6
+(`app.host`'s frame loop, D7). It moved there because a frame spans more than
+one presentation module. `app.render`'s part of it is unchanged:
+`IPromotionController.Update` runs before `Step`, so a node that comes into
+view promotes before the tick that shows it, and `ISceneBuilder.Build` runs
+after `Step`, so the frame shows the state just produced.
 
 ---
 
@@ -336,19 +358,20 @@ readonly struct CameraView {
   float      Aspect            // width / height; > 0
 }                              // view rectangle: Centre ± (ViewHeight × Aspect / 2, ViewHeight / 2)
 
-enum DrawLayer     { Runway, Taxiway, Stand, LandsideNode, QueueFill, Agent, Aircraft }   // draw order
+enum DrawLayer     { Runway, Taxiway, Stand, LandsideNode, QueueFill, Lane, Agent, Aircraft }   // draw order
 enum PrimitiveKind { Box, Segment, Dot }
 enum ColourRole {
   Runway, RunwayQueued, Taxiway, StandFree, StandOccupied,
   LandsideNode, QueueFill, Agent,
-  AircraftMoving, AircraftHolding, AircraftOnStand
+  AircraftMoving, AircraftHolding, AircraftOnStand,
+  LaneOpen, LaneClosed                                  // appended, Q-010
 }
-enum SourceKind    { Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft }
+enum SourceKind    { Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft, Lane }
 
 readonly struct SourceRef {
   SourceKind Kind
   uint64     Id                // RunwayId / TaxiEdgeId / StandId / NodeId / FlightId value
-  int32      Sub               // agent rank within its node; 0 otherwise
+  int32      Sub               // agent rank or lane index within its node; 0 otherwise
 }
 
 readonly struct DrawPrimitive {
@@ -379,10 +402,21 @@ interface IPromotionController { void Update(in CameraView camera) }
 ```
 
 `ISceneBuilder` and `IPromotionController` are constructed from a
-`RenderSources` and a validated `RenderLayout`. Who builds the
-`RenderSources`, meaning who composes a running sim and hands it to
-presentation, is open (§15.13(c)). Tests build them from fakes and, for the
-integration test, from the same composition the headless harness uses.
+`RenderSources` and a validated `RenderLayout` (Q-009):
+
+```
+RenderFactory.CreateLayoutLoader() -> IRenderLayoutLoader
+RenderFactory.CreateSceneBuilder(in RenderSources sources, in RenderLayout layout) -> ISceneBuilder
+RenderFactory.CreatePromotionController(in RenderSources sources, in RenderLayout layout) -> IPromotionController
+RenderFactory.CreatePacer() -> ITickPacer
+```
+
+`RenderFactory` follows `08` §8.11a's factory rule (stateless static
+methods only). In a playable build,
+`app.host`'s presentation composer builds the `RenderSources` from the
+composed sim (`16-interfaces-host.md` §16.5). Tests build them from fakes and,
+for the integration test, from the same composition the headless harness
+uses.
 
 ---
 
@@ -394,12 +428,13 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   maps `ColourRole` to colour through a palette asset.
 - It turns input (pan, zoom) into a `CameraView` and keeps `ViewHeight` and
   `Aspect` positive.
-- It runs the frame order of §15.8. It converts the engine's frame delta to
-  integer microseconds and hands it to the pacer. The float conversion is
-  fine here; this is presentation.
-- It references the scene layer and `ISimHost` only. It calls **no** sim query,
-  no sim member other than `Step`, and never branches on sim state. Anything
-  that needs a decision belongs in the scene layer, where it can be tested.
+- It does **not** run the frame order. `app.host`'s frame loop does
+  (`16-interfaces-host.md` §16.6), and the Unity bootstrap converts the frame
+  delta (§16.7). The backend supplies the `CameraView` and draws the
+  `RenderFrame` it is handed.
+- It references the scene layer's types only. It calls **no** sim member and
+  never branches on sim state. Anything that needs a decision belongs in the
+  scene layer, where it can be tested.
 - It issues no commands at Phase 1.
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
@@ -432,6 +467,8 @@ layer:
 > it, sized to leave most of the frame to the engine's own rendering. T-020's
 > budget test is the first measurement. If it is badly off, the number is
 > corrected by amendment, never by a worker.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -439,7 +476,8 @@ layer:
 
 **Scope.** The scene layer only. Writable paths: `src/app/render/Scene/**`,
 `tests/app/render/**`, `tests/fixtures/render/**`. The backend
-(`src/app/render/Unity/**`) is out of scope until §15.13 is decided.
+(`src/app/render/Unity/**`) is out of scope for T-020. It gets its own task
+against §15.10, once `app.host`'s Unity project exists (`16` §16.11).
 
 **Dependencies** (for the Planner): the scene layer compiles against
 `ISimHost` (T-001), `IFlowSystem` including `SetPromoted`/`AgentsAt` (T-010),
@@ -467,6 +505,7 @@ Author:
 - `test_scene_aircraft_off_graph_is_not_drawn`
 - `test_scene_queue_fill_scales_with_population_and_clamps`
 - `test_scene_agents_capped_per_node_and_inside_box`
+- `test_scene_lane_pips_follow_lane_state_and_skip_non_queue_nodes`
 - `test_scene_primitive_order_is_stable`
 - `test_scene_omits_primitives_of_absent_modules`
 - `test_scene_rebuilds_only_when_tick_or_camera_changes`
@@ -476,11 +515,15 @@ Author:
 - `test_promotion_calls_only_on_change_in_ascending_node_id`
 - `test_promotion_zoom_threshold_is_inclusive`
 - `test_tick_pacer_steps_ten_ticks_per_real_second`
+- `test_tick_pacer_steps_forty_ticks_per_real_second_at_4x`
+- `test_tick_pacer_speed_change_keeps_accumulated_time`
 - `test_tick_pacer_caps_catch_up_and_drops_backlog`
 - `test_tick_pacer_paused_steps_nothing`
 - `test_render_loop_is_outcome_neutral_with_scripted_camera` — integration.
   Run one sim-day with the real `sim.schedule`, `sim.flow` and `sim.airside`.
-  Run it once through the §15.8 frame order with a scripted camera that sweeps
+  Run it once through the frame order of `16-interfaces-host.md` §16.6, which
+  the test drives itself without depending on `app.host`, with a scripted
+  camera that sweeps
   every `FlowNodeBox` in and out of view across the zoom threshold, with
   irregular frame deltas. Run it once headless with plain `Step` calls. The
   checkpoints must be identical at every checkpoint tick. The test also checks
@@ -491,41 +534,44 @@ Author:
 
 ---
 
-## 15.13 Open — HUMAN DECISIONS this file does not take
+## 15.13 The HUMAN DECISIONS this file left open — all decided 2026-09-23
 
-None of these blocks T-020's headless scope. Each blocks the backend, and
-therefore a playable build (T-025).
+These were left open by Q-008, and the owner decided all five on 2026-09-23
+(D1, D4, D5, D7). None ever blocked T-020's headless scope. What still stands
+between them and a playable build is the Phase 1 tasks and the owner's
+Phase 1 content values (`04-data-schemas.md`), not anything here.
 
-**(a) Unity 6 against a .NET 8 sim library.** `01-architecture.md` (locked)
-says the sim is a ".NET 8" library and that Unity 6 imports it "as a compiled
-assembly". The Architect believes, and this should be verified before anyone
-relies on it, that Unity 6's scripting runtime loads assemblies built against
-.NET Standard 2.1 / .NET Framework APIs, **not** ones targeting `net8.0`. If
-so, the two locked decisions cannot both hold as written. One possible
-reading is to multi-target the sim (`netstandard2.1` for the engine, `net8.0`
-for CI). But that choice constrains the language features and BCL APIs every
-sim worker may use, and it is a change to a locked file. **Human sign-off
-required.** It bears on T-001, which creates the solution. The scene layer
-follows the sim's target (§15.3) and makes no choice of its own.
+**(a) Unity 6 against a .NET 8 sim library — DECIDED.** HUMAN DECISION —
+owner (delegated), 2026-09-23 (D1). The current Unity 6 LTS runs Mono, which
+exposes only .NET Standard 2.1 and C# 9 and cannot load `net8.0` assemblies.
+The sim, this scene layer and every headless `app.*` layer Unity consumes
+therefore target **`netstandard2.1` only**. Single-targeting is deliberate:
+one compiled sim, and no BCL divergence between two builds of it. Tests and
+`tools.simharness` target `net8.0`. `01-architecture.md`'s runtime row is
+amended accordingly, and §15.3 states the scene layer's target. Revisit when
+Unity ships production CoreCLR (.NET 10).
 
-**(b) The engine project shell.** Nothing in `03-module-map.md` owns the Unity
-project itself: its location, scenes, project settings and build
-configuration. `app.ui` will need the same project. Where it lives and which
-module or role owns it is structural. It is not decided here.
+**(b) The engine project shell — DECIDED.** HUMAN DECISION — owner
+(delegated), 2026-09-23 (D7). A new module, `app.host`, owns
+`unity/AirportSim/`: scenes, settings and the build
+(`16-interfaces-host.md` §16.2).
 
-**(c) The composition root.** No spec defines how a running sim (its systems
-plus `ISimHost`) is constructed and handed to presentation as `RenderSources`
-(§15.9). The headless harness (T-001/T-009) composes a sim for tests, but that
-is not a published interface. It becomes specifiable once (b) is settled; it
-is not invented here.
+**(c) The composition root — DECIDED, with its construction step open.**
+HUMAN DECISION — owner (delegated), 2026-09-23 (D7). `app.host`'s headless
+part (`src/app/host/`) builds `ISimHost` and the systems from a scenario
+bundle and hands read-only views to presentation (`16` §16.3 to §16.5). A
+thin Unity bootstrap only calls it (§16.7), and it also runs the frame loop
+(§16.6). How each module's system is constructed is still unpublished; that
+is `open-questions.md` Q-009.
 
-**(d) Game speeds.** `01-architecture.md` fixes 1x. Whether 2x, 4x or a
-fast-forward exist, and how fast they are, is pacing, which is human-owned.
-The pacer is 1x plus pause only (§15.8).
+**(d) Game speeds — DECIDED.** HUMAN DECISION — owner (delegated),
+2026-09-23 (D4). Pause, 1x, 2x and 4x. Higher speeds wait for T-011's budget
+results (§15.8).
 
-**(e) No player-facing way to open a security lane.** T-023 implements
-`SetServersOpen` in `sim.flow`, but no Phase 1 task gives the player a way to
-issue it. `app.render` issues no commands by design (§15.1), and `app.ui` has
-no Phase 1 task. T-025's question ("is unblocking flow fun?") needs that
-lever in the player's hands. Whether it arrives as a minimal `app.ui` task or
-something else is a scope and planning decision, not an Architect one.
+**(e) A player-facing way to open a security lane — DECIDED, with its
+command plumbing open.** HUMAN DECISION — owner (delegated), 2026-09-23
+(D5). A minimal `app.ui`: clicking a flow-node box requests a lane change
+through the command queue, and speed and pause controls drive the pacer. There
+is no other UI at Phase 1 (`17-interfaces-ui.md`). The command plumbing and
+the lane-state read are answered by Q-010 (`08` §8.7, `09` §9.7b), and this
+module draws the lane state as pips (§15.5).

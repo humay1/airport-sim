@@ -79,3 +79,9 @@ A failing budget here is not this task's failure to fix by any means
 necessary — CLAUDE.md's "no confidently wrong agent" rule applies. If the
 architecture cannot meet budget, stop and escalate; do not quietly change the
 node model to hide the cost.
+
+The stress fixture now exercises the Q-012 routing rule
+(`09-interfaces-flow.md` §9.6): cost is O(out-degree × gates × path length)
+per released cohort. If this fixture is the one that shows that cost needs
+caching, the fix belongs in `sim.flow` (`src/sim/flow/**`, T-007's module),
+not in `sim.world`, which stays load-time-only.

@@ -20,15 +20,6 @@ Status:      OPEN | ANSWERED (spec/<file>#<section>)
 
 ---
 
-### Q-001 — Example, delete when the first real question lands
-Raised by:   worker / T-000
-Blocking:    no
-Question:    Does a remote stand bus count as a ground handling vehicle for the
-             purposes of the turnaround job list, or as a passenger flow corridor?
-Why it matters: It decides which module owns it, and therefore which delay
-             category its lateness reports under.
-Status:      OPEN
-
 ### Q-002 — How much sim time does one tick represent?
 Raised by:   architect / Phase 0 spec completion
 Blocking:    T-001, T-008, T-009 (everything expressed in ticks)
@@ -42,8 +33,12 @@ Why it matters: It is a pacing decision — how long a day feels — and pacing 
              delay minute and the tick cost of the 500-day soak. Changing it later
              invalidates every golden hash and every tick-valued fixture, though
              no interface.
-Status:      OPEN — HUMAN DECISION. Workers may build against 6 s/tick; do not
-             author golden hashes until it is confirmed.
+Answer:      Confirmed at 6 (D2). A smaller value would make T-009's
+             100-days-in-60-s gate infeasible, and a larger one coarsens delay
+             resolution. Golden hashes may now be authored.
+             `spec/08-interfaces-core.md` §8.1 and §8.2 record the decision.
+Status:      ANSWERED (spec/08-interfaces-core.md#82-sim-time) — HUMAN
+             DECISION — owner (delegated), 2026-09-23; reversible
 
 ### Q-003 — "500 sim-days in minutes" versus the per-tick budget
 Raised by:   architect / Phase 0 spec completion
@@ -60,7 +55,12 @@ Proposed:    Soak runs a mid-tier fixture sized so per-tick cost stays under
              0.1 ms; max-tier performance is covered separately by the budget
              tests in `03-module-map.md`. Needs sign-off because it narrows what
              the nightly gate actually proves.
-Status:      OPEN — HUMAN DECISION
+Answer:      Proposal accepted (D3). `spec/03-module-map.md` "The soak
+             fixture" makes it binding: a mid-tier fixture under 0.1 ms per
+             tick, every built system registered, and the fixture shrunk rather
+             than the gate weakened if the cost grows.
+Status:      ANSWERED (spec/03-module-map.md#the-soak-fixture) — HUMAN
+             DECISION — owner (delegated), 2026-09-23; reversible
 
 ### Q-004 — `sim.schedule` has no published interface
 Raised by:   planner / queue expansion for T-008
@@ -170,8 +170,16 @@ Answer:      New file `spec/14-interfaces-delay.md`. `IDelaySystem` is
              HUMAN DECISION (§14.9): at Phase 1 no flight waits for a late
              passenger, so security queues can never show up as delay
              minutes, only as missed passengers.
-Status:      ANSWERED (spec/14-interfaces-delay.md) — one HUMAN DECISION
-             noted in §14.9, not blocking T-024
+Decision:    §14.9 resolved — HUMAN DECISION — owner (delegated),
+             2026-09-23 (D6), reversible. A departure holds for passengers
+             still in the terminal for at most `BoardingHoldMaxMinutes`
+             (10 sim-minutes, a balance value in `data/balance/`), then
+             closes; the remainder are missed. The hold is a `sim.airside`
+             blocking interval (`12` §12.8), attributed as `passenger_late`
+             blaming the node holding most of the late passengers (`14`
+             §14.5, §14.9). It needs one new read-only `sim.flow` query,
+             `TryGetOutstanding` (`09` §9.7a, LOW CONFIDENCE).
+Status:      ANSWERED (spec/14-interfaces-delay.md), including §14.9
 
 ### Q-008 — `app.render` has no published interface or scope note
 Raised by:   planner / queue expansion for T-020
@@ -211,6 +219,225 @@ Answer:      New file `spec/15-interfaces-render.md`. `app.render` is split
              than 1x; (e) no Phase 1 task gives the player a way to issue
              `SetServersOpen`. None blocks T-020's headless scope; together
              they block the backend and a playable build.
-Status:      PARTIALLY ANSWERED (spec/15-interfaces-render.md) — the headless
-             scope is answered and T-020 is releasable for it; the engine
-             backend stays open pending the HUMAN DECISIONS in §15.13
+Decisions:   All five §15.13 items are HUMAN DECISION — owner (delegated),
+             2026-09-23, each reversible:
+             (a) D1 — the sim and every Unity-consumed headless layer target
+             `netstandard2.1` only; tests and the harness target `net8.0`
+             (`01-architecture.md` runtime row, `15` §15.3);
+             (b) D7 — new module `app.host` owns `unity/AirportSim/`
+             (`16-interfaces-host.md` §16.2);
+             (c) D7 — `app.host`'s headless composition root and frame loop
+             (`16` §16.3 to §16.7); module construction is open as Q-009;
+             (d) D4 — pause, 1x, 2x and 4x (`15` §15.8);
+             (e) D5 — minimal `app.ui` with pause/speed controls and the lane
+             click (`17-interfaces-ui.md`); its command plumbing is open as
+             Q-010.
+Status:      ANSWERED (spec/15-interfaces-render.md#1513) — the HUMAN
+             DECISIONS are made. What remains of a playable build is Q-009 and
+             Q-010, plus tasks the Planner has yet to queue.
+
+### Q-009 — No module publishes how its system is constructed
+Raised by:   architect / D7 (writing `spec/16-interfaces-host.md`)
+Blocking:    the `app.host` composition task (`16` §16.4, §16.5, §16.8's
+             `IHeadlessRun` and harness-equivalence test). Latent in T-009,
+             which registers `sim.schedule` and `sim.flow` in the harness, and
+             in every integration test that composes several systems (T-020's
+             outcome-neutrality test, T-024's integrated day).
+Question:    D7 has the composition root build `ISimHost` and the registered
+             systems "from fixtures". No spec publishes a construction entry
+             point for any of them: `ISimHost` (master seed, registry,
+             content index, checkpoint sink, log sink), the `IContentIndex`
+             over `data/`, `sim.flow` (node graph and `QueueConfig`s — its
+             fixture format is not specified either), `sim.schedule` (from a
+             `ScheduleTable` and its `IFlowSystem`), `sim.airside` (from an
+             `AirsideLayout`, the `IScheduleSystem` and `IFlowSystem` it calls),
+             `sim.turnaround` (from a `TurnaroundCatalogue`, a
+             `TurnaroundFleet` and its `IScheduleSystem`), `sim.delay` (no
+             data), and the `app.render` scene objects (§15.9 says what they are
+             built from, not how). `08-interfaces-core.md` says anything
+             unpublished is internal to its module and may not be referenced
+             from another one. So the host, and strictly the harness too, would
+             have to reach into module internals or invent factories.
+Why it matters: A composition root built against guessed constructors is
+             rebuilt as each module lands. Worse, the harness and the host
+             could wire the same modules differently and disagree on hashes,
+             which is exactly what D7's equivalence test exists to catch.
+Proposed:    Each interface file gains a short "Construction" section with
+             **one** factory per module. It takes the module's validated
+             construction data and the downward interfaces the module calls,
+             and nothing else: no service locator and no statics. `sim.core`
+             publishes an `ISimHost` builder that takes the seed, the content
+             index, the checkpoint and log sinks, and the systems in registry
+             order. The content loader gets its own small spec. Fixture
+             formats stay the worker's choice, but they are named in the
+             factory's input type, not in a file path.
+Answer:      The proposal is adopted. `08` §8.11a publishes `SimHostConfig`,
+             `SystemServices` (event bus, id allocator, content index),
+             `ISimHostBuilder` (register in registry order, build once) and
+             `ContentIndexFactory`. It also gives the factory rule: one
+             `<Module>Factory` of stateless static methods per module,
+             taking only `SystemServices`, validated data and downward
+             interfaces; construct in dependency order, register in registry
+             order. Each module has a "Construction" section:
+             `09` §9.11 (`IFlowGraphLoader`, with an opaque `FlowGraph`),
+             `11` §11.9a, `12` §12.12a (adds
+             `IAirsideLayoutLoader.Parse` and an explicit
+             `turnaroundRegistered` input), `13` §13.10a
+             (`ITurnaroundSetupLoader`), `14` §14.13a, `15` §15.9
+             (`RenderFactory`), `17` §17.7 (`UiFactory`). `16` §16.3–§16.5
+             now composes with them, and the harness must use the same
+             factories. Two neighbouring gaps are raised separately rather
+             than invented: parsing `data/` into content definitions (Q-011),
+             and what `sim.flow`'s graph must express to route without
+             `sim.world` (Q-012).
+Status:      ANSWERED (spec/08-interfaces-core.md#811a-construction-q-009)
+
+### Q-011 — Content definition types and the `data/` loader are unspecified
+Raised by:   architect / Q-009
+Blocking:    the Unity player build (`16` §16.11), which has no other source
+             of content, and production content for any module. It does not
+             block tests, which supply definitions directly to
+             `ContentIndexFactory.Create` (`08` §8.11a).
+Question:    `IContentIndex.TryGet<T>` needs concrete `IContentDefinition`
+             types. Phase 1 needs at least an aircraft definition (a
+             `size_category` ordinal, `12` §12.7), a pax profile (show-up
+             curve `11` §11.6, `walk_speed` `09` §9.6) and a flow-node or queue
+             definition (service rate, threshold and hysteresis, delay
+             category, `09` §9.4, `10` §10.6). None is typed anywhere. Nor is
+             the loader that turns `data/**/*.json` into definitions, or where
+             it lives (sim assemblies take no JSON package, `07` "Runtime
+             portability" rule 7). No Phase 1 content exists in `data/` either.
+Why it matters: Each consuming module would invent the definition type it
+             reads, and the Phase 1 lane service rates are balance values
+             (`04`) that someone would otherwise hardcode into a fixture.
+Proposed:    Definition types in `sim.core` beside the event types (the
+             T-026 pattern). A loader in a small non-sim assembly (`content`
+             or `app.host`) that parses the JSON and calls
+             `ContentIndexFactory.Create`. Phase 1 balance-bearing values
+             (lane service rates, queue thresholds) under `data/balance/`, as
+             D6 did for the hold.
+Answer:      Definition types and a loader in `sim.core` (`08` §8.11):
+             - `ContentId` (an ordinal string), `ContentKind`, and the
+               definitions `SizeCategory`, `Aircraft`, `PaxProfile` and
+               `QueueProfile`;
+             - `IContentLoader` over an `IContentSource`: it maps four
+               directories to kinds, reads files in ordinal path order, and
+               hand-parses a strict JSON subset with no package and no float
+               (decimals are strings read by `Fx.Parse`, and unknown or
+               missing keys fail);
+             - validation rules as listed there.
+             `04` lists the fields and renames the pax profile schema to
+             `pax_profiles.schema.json` so that its name matches the validator.
+             `16` loads content from a build-time copy of `data/`. Pax-profile
+             and queue-profile *values* are balance, authored by the owner.
+Status:      ANSWERED (spec/08-interfaces-core.md#definition-types-q-011);
+             the Phase 1 balance values are the owner's
+
+### Q-012 — `sim.flow` has no way to route without `sim.world`
+Raised by:   architect / Q-009 (making `FlowGraph` opaque)
+Blocking:    T-007 (`tasks/T-007` already tells its worker to stop if routing
+             needs a `sim.world` query), and so the Phase 0 kill gate chain.
+Question:    `09` §9.6 routes cohorts along `sim.world` flow fields toward a
+             "current destination", with traversal time from `sim.world`
+             distances. `sim.world` has no interface. Nothing says which node
+             a departing cohort is heading for (which `Gate` serves a
+             flight), nor how edge traversal time is known.
+Why it matters: T-007 cannot implement §9.4 step 4 ("served passengers move
+             to the outbound edge per §9.6") without it. Q-009's opaque
+             `FlowGraph` deliberately does not decide it.
+Proposed:    The same narrowing `12` §12.1 applied to airside: at Phase 0/1,
+             `sim.flow`'s graph is self-owned construction data with
+             per-edge `TraversalTicks`. A departing cohort's destination is
+             the `Gate` node(s) the graph declares for the stand, or a
+             fixture-level gate per flight. Folding it into `sim.world` later
+             is an amendment.
+Answer:      A minimal `sim.world` is published, not a flow-owned graph, since
+             `sim.world` already sits in `03`'s map (`18-interfaces-world.md`,
+             the fixed-graph Phase 0/1 subset):
+             - a fixture-loaded walk graph: nodes with integer
+               `LengthMetres`, directed edges;
+             - load-time routes: `CanReach`, `CanReachVia`, and `PathVia`
+               (the shortest path through a given first edge, ties by edge
+               sequence);
+             - a hash that is the fixture hash; no runtime state; registry 1.
+             `sim.flow` (`09` §9.6):
+             - traversal is `ceil(LengthMetres / (walk_speed_mps ×
+               SIM_SECONDS_PER_TICK))`;
+             - a departing cohort's destinations are every reachable `Gate`;
+             - on release it takes the `(edge, gate)` pair with the lowest
+               traversal plus predicted queue wait along `PathVia`, with ties
+               by `NodeId`, then `EdgeId`. Two security queues are two routes.
+             `FlowGraph` now carries node behaviour only over `sim.world`'s
+             nodes (`09` §9.11). `Absorb` boards from any `Gate`.
+             **Deferred, explicitly:** gate assignment. Which gate serves which
+             flight is a gameplay system for the owner, so Phase 0/1 pools
+             gates with one shared lounge in its fixtures. Construction, grid
+             and flow-field recomputation are deferred too (`18` §18.5).
+Status:      ANSWERED (spec/18-interfaces-world.md); gate assignment deferred
+             to the owner
+
+### Q-010 — `SetServersOpen` cannot be issued: command plumbing and lane state are unpublished
+Raised by:   architect / D5 (writing `spec/17-interfaces-ui.md`)
+Blocking:    `17` §17.5 step 4, the production `ILaneCommandSink`. Also
+             bears on T-023, whose command handler has no published dispatch
+             interface to implement, and on T-005 (admission-time
+             validation). The Planner should check both before release.
+Question:    D5 has a click enqueue `SetServersOpen` through the command
+             queue. Five things needed for that are not specified:
+             (1) the **payload byte layout** of `SetServersOpen`. `09` §9.8
+             names the fields (`NodeId`, `int32 count`) but not their
+             encoding, so `app.ui` (encoder) and `sim.flow` (decoder) would
+             each invent one;
+             (2) **`PlayerId`** is used by `Command` (`01`, `08` §8.7) but
+             never defined;
+             (3) **who adds `CommandKind.SetServersOpen`** to `sim.core`.
+             T-023 writes only `src/sim/flow/**`, which is the same scheduling
+             gap T-026 closed for event payload types;
+             (4) **dispatch**: `08` §8.7 says an applied command reaches its
+             owning system "through an interface that system publishes", and
+             that validation happens at admission. `sim.flow` publishes no such
+             interface, and nothing says how `sim.core` validates a payload it
+             does not understand;
+             (5) **lane state**: "one more lane" needs the node's current
+             `ServersOpen` and its `ServerCount`, and needs to know whether
+             the node is a `Queue` at all. `IFlowSystem` exposes none of
+             them.
+Why it matters: Without (1) to (4), T-023 and `app.ui` can each pass their
+             own tests and still disagree on the wire. Without (5), the player
+             clicks blind, and a click on a non-queue node does something the
+             spec does not define.
+Proposed:    (1) 8 bytes: `NodeId.Value` as `uint32` little-endian, then
+             `count` as `int32` little-endian; any other length is
+             `MalformedPayload`. (2) `struct PlayerId { uint16 Value }`, with
+             the single Phase 1 player as 0. (3) a small `sim.core` task, like
+             T-026. (4) `sim.core` publishes a per-kind handler contract
+             (validate the payload at admission, apply at phase 1); `sim.flow`
+             registers one for `SetServersOpen`. (5) a read-only
+             `bool IFlowSystem.TryGetQueue(NodeId node, out QueueConfig
+             config)` returning false for non-`Queue` nodes; `app.ui` clamps
+             `ServersOpen ± 1` into `[0, ServerCount]` before submitting.
+             Item (5) widens `sim.flow`'s interface, which D5 did not name, so
+             it needs the owner's (or delegate's) nod.
+Answer:      (1)–(4), the Architect's, in `08` §8.7:
+             (1) payloads are fixed-layout little-endian with no padding;
+             `SetServersOpen` = `uint32 NodeId.Value, int32 count` (8 bytes).
+             (2) `PlayerId { uint16 Value }`, with `PLAYER_LOCAL = 0`.
+             (3) `CommandKind : uint16 { NoOp = 0, SetServersOpen = 1,
+             ReassignStand = 2 }`, never renumbered. `ReassignStand`
+             (`12` §12.10) had the same gap and is closed too: 10 bytes. A
+             `sim.core` task authors these, following the T-026 pattern.
+             (4) `ICommandHandler { Kind, Validate(payload), Apply(cmd, ctx) }`,
+             registered through `SystemServices.Commands` (`08` §8.11a) at
+             construction. Admission runs `TooLate`, then `UnknownKind`,
+             then `Validate`, which is pure over the payload and load-time
+             data. A state-dependent impossibility found at `Apply` is a
+             logged no-op, not a rejection; `12` §12.10's `ReassignStand` is
+             amended to match.
+             (5) HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
+             D5: read-only `IFlowSystem.TryGetLaneState(NodeId, out LaneState
+             { ServerCount, ServersOpen })`, false for non-`Queue` nodes
+             (`09` §9.7b, LOW CONFIDENCE). `app.render` draws it as lane pips
+             (`15` §15.5). `app.ui`'s sink uses it, plus a pending target so
+             that quick clicks do not collapse (`17` §17.5).
+Status:      ANSWERED (spec/08-interfaces-core.md#issuer-kinds-and-payloads-q-010,
+             spec/09-interfaces-flow.md#97b-lane-state-q-010--low-confidence)

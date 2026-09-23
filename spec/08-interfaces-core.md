@@ -22,7 +22,7 @@ designers should tune belongs in `data/`, not here.
 | Constant | Value | Source |
 |---|---|---|
 | `TICK_MS` | 100 | `01-architecture.md`, locked |
-| `SIM_SECONDS_PER_TICK` | 6 | this file, §8.2 — **LOW CONFIDENCE** |
+| `SIM_SECONDS_PER_TICK` | 6 | this file, §8.2 — HUMAN DECISION — owner (delegated), 2026-09-23 (Q-002) |
 | `TICKS_PER_SIM_MINUTE` | 10 | derived |
 | `TICKS_PER_SIM_HOUR` | 600 | derived |
 | `TICKS_PER_SIM_DAY` | 14400 | derived |
@@ -63,14 +63,16 @@ interface ISimClock {
 `ISimClock` is a pure function of the tick counter. It holds no mutable state and
 contributes nothing to the state hash.
 
-> **LOW CONFIDENCE — `SIM_SECONDS_PER_TICK = 6`.** Chosen so that (a) delay
-> arithmetic has sub-minute resolution instead of quantising every cause to whole
-> minutes, (b) queue and taxi movement update ten times per sim-minute, (c) a
-> sim-day is 14400 ticks, making the nightly 500-day soak 7.2 M ticks. At 1x a
-> sim-day is then 24 real minutes. **That is a pacing decision with gameplay
-> consequences and belongs to the human owner** — see `open-questions.md` Q-002.
-> Changing it later invalidates every golden hash and every fixture expressed in
-> ticks, but no interface in this file.
+> **HUMAN DECISION — owner (delegated), 2026-09-23 (Q-002, D2):
+> `SIM_SECONDS_PER_TICK = 6` is confirmed.** It gives (a) delay arithmetic
+> sub-minute resolution instead of whole-minute quanta, (b) queue and taxi
+> updates ten times per sim-minute, and (c) a sim-day of 14 400 ticks, so the
+> nightly 500-day soak is 7.2 M ticks. At 1x a sim-day lasts 24 real minutes.
+> A smaller value would make T-009's 100-days-in-60-s gate infeasible (1 s per
+> tick is 8.6 M ticks for 100 days); a larger one coarsens delay resolution.
+> Golden hashes may now be authored. The decision is reversible, but reversing
+> it invalidates every golden hash and every tick-valued fixture. No interface
+> in this file changes.
 
 ---
 
@@ -92,6 +94,19 @@ struct Fx { int64 Raw }             // value = Raw / 2^32
   explicitly.
 - Division by zero and overflow on narrowing are **programmer errors**: throw with
   the tick number (`07-conventions.md`).
+- **The 128-bit arithmetic is hand-rolled.** The sim targets `netstandard2.1`
+  (`01-architecture.md`, D1), which has no `Int128`/`UInt128`, no
+  `Math.BigMul(long, long, out long)` and no `System.Numerics.BitOperations`.
+  So the 64×64→128-bit multiply behind `Mul`, the 128-by-64-bit division
+  behind `Div`, and any leading-zero count (for example `Sqrt`'s initial
+  estimate) are written inside `Fx` in plain integer code over `uint64`
+  halves. `BigInteger` is not used either: it allocates, and it would be a
+  second implementation to keep bit-exact. Overflow and sign cases, including
+  `long.MinValue / -1`, are checked explicitly by `Fx` before any BCL
+  operator could throw. Behaviour never relies on which BCL exception a
+  runtime raises. Test projects target `net8.0` and **may** use
+  `Int128`/`BigInteger` as a reference oracle for `Fx`; sim assemblies may
+  not.
 
 ```
 Fx.FromInt(int64 v)
@@ -292,9 +307,69 @@ enum CommandRejection { None, TooLate, UnknownKind, MalformedPayload, NotPermitt
 - Application is dispatched to the owning system through an interface that system
   publishes. `sim.core` knows command kinds, never their meaning.
 
-`CommandKind` is an enum in `sim.core`, extended only by spec amendment. Phase 0
-defines only `NoOp`, used by the determinism harness to prove the queue
-participates in the hash.
+`CommandKind` is an enum in `sim.core`, extended only by spec amendment. `NoOp`
+is used by the determinism harness to prove the queue participates in the
+hash.
+
+### Issuer, kinds and payloads (Q-010)
+
+```
+struct PlayerId { uint16 Value }           // PLAYER_LOCAL = 0, the only player at Phase 1
+
+enum CommandKind : uint16 {                // values are saved in command logs: never renumbered
+  NoOp           = 0,
+  SetServersOpen = 1,
+  ReassignStand  = 2
+}
+```
+
+**Payload encoding.** Fixed layout, little-endian, fields in the order
+listed, no padding, no length prefix. An id encodes its `Value` at its
+declared width.
+
+| Kind | Owner | Payload fields | Bytes | Semantics |
+|---|---|---|---|---|
+| `NoOp` | `sim.core` | none | 0 | none |
+| `SetServersOpen` | `sim.flow` | `NodeId.Value : uint32`, `count : int32` | 8 | `09` §9.8 |
+| `ReassignStand` | `sim.airside` | `FlightId.Value : uint64`, `StandId.Value : uint16` | 10 | `12` §12.10 |
+
+A new kind is appended with the next value, together with its row here, by
+amendment.
+
+### Dispatch (Q-010)
+
+```
+interface ICommandHandler {
+  CommandKind      Kind { get }
+  CommandRejection Validate(ReadOnlySpan<byte> payload)       // at admission
+  void             Apply(in Command cmd, in TickContext ctx)   // phase 1, at cmd.Tick
+}
+
+interface ICommandHandlerRegistry {
+  void Register(SystemId owner, ICommandHandler handler)
+}
+```
+
+- **Registration.** The owning system registers its handler through
+  `SystemServices.Commands` (§8.11a), during construction only. It registers
+  one handler per kind, and only for kinds whose Owner column names it. A
+  duplicate, or a registration after `Build`, throws. `sim.core` handles
+  `NoOp` itself.
+- **Admission** (`TrySubmit`), in this order: `TooLate` (the tick rule
+  above), then `UnknownKind` (no handler registered in this build), then the
+  handler's `Validate`. `Validate` is a **pure function of the payload and
+  the owner's load-time data**, for example "is this a known `Queue` node".
+  It never reads runtime sim state. State can change between admission and
+  application, and a pure check makes a `TrySubmit` result reproducible from
+  its arguments. A wrong payload length is `MalformedPayload`. A well-formed
+  target that can never accept the kind is `NotPermitted`.
+- **Application.** At phase 1 of `cmd.Tick`, in the total order above, the
+  handler's `Apply` runs with that tick's context. A command whose effect is
+  impossible in the *current* state (the flight has left, the stand is
+  taken) is a **deterministic no-op**, recorded through `ISimLog` with the
+  tick. It is never thrown, following `07-conventions.md` "invalid states
+  are data". `Apply` may publish events, which are dispatched in phase 3 as
+  usual.
 
 ---
 
@@ -419,7 +494,135 @@ interface IContentIndex {
   save header, so a save opened against edited content fails loudly instead of
   drifting quietly.
 
+### Definition types (Q-011)
+
+The Phase 0/1 set. These are `sim.core` types for the same reason event
+payloads are: several modules read each one. A new kind is appended by
+amendment, together with its row in `04-data-schemas.md`.
+
+```
+readonly struct ContentId { string Value }     // ordinal equality and order; hashed as its UTF-8 bytes
+
+enum ContentKind { SizeCategory, Aircraft, PaxProfile, QueueProfile }
+
+interface IContentDefinition { ContentId Id { get }; ContentKind Kind { get } }
+
+readonly struct SizeCategoryDefinition : IContentDefinition { ContentId Id; int32 Ordinal }
+readonly struct AircraftDefinition     : IContentDefinition { ContentId Id; ContentId SizeCategory }
+
+readonly struct ShowUpBucket { uint32 MinutesBeforeStd; uint32 SharePermille }
+readonly struct PaxProfileDefinition   : IContentDefinition {
+  ContentId Id
+  Fx        WalkSpeedMps                       // 09 §9.6
+  IReadOnlyList<ShowUpBucket> ShowUpCurve      // 11 §11.6
+}
+
+readonly struct QueueProfileDefinition : IContentDefinition {
+  ContentId     Id
+  Fx            ServiceRatePerServerPerMinute  // 09 §9.4
+  int32         CapacityStanding               // 09 §9.5
+  Fx            ThresholdWaitMinutes           // QueueThresholdExceeded, 10 §10.6
+  Fx            HysteresisMinutes              // cleared below threshold − hysteresis, 10 §10.3 rule 4
+  DelayCategory Category                       // security_queue | immigration_queue
+}
+```
+
+Ids are unique across **all** kinds. `ContentKind` is fixed by the definition
+type.
+
+### The loader (Q-011)
+
+```
+interface IContentSource {
+  IReadOnlyList<string> Files()            // paths relative to data/, '/'-separated, any order
+  byte[]                ReadAll(string path)
+}
+
+interface IContentLoader {
+  IReadOnlyList<IContentDefinition> Load(IContentSource source)
+}
+
+ContentLoaderFactory.Create() -> IContentLoader
+```
+
+- **Directories to kinds:** `size_categories/`, `aircraft/`, `pax_profiles/`
+  and `queue_profiles/`, one definition per `*.json` file. Every other
+  directory (`schemas/`, `policies/`, `balance/`, ...) is ignored by this
+  loader at Phase 0/1.
+- **Order:** files are read in ordinal path order, whatever `Files()`
+  returns, so the result never depends on file-system enumeration.
+- **Format:** a strict JSON subset, hand-parsed inside `sim.core`. There is
+  no package (`07` "Runtime portability" rule 7), and no floating point
+  anywhere. The file is UTF-8 without a BOM and may contain objects, arrays,
+  strings, integers, `true` and `false`. A number with a fraction or an
+  exponent is a load failure: fixed-point values are **decimal strings**,
+  read with `Fx.Parse` (`04-data-schemas.md`). Duplicate keys, unknown keys,
+  missing keys and `schema_version != 1` are load failures.
+- **Validation**, each a hard failure naming the path and the field
+  (`07-conventions.md`): the field rules of `04-data-schemas.md`; ids unique
+  across all files; `AircraftDefinition.SizeCategory` resolves; size
+  ordinals unique; `ShowUpCurve` per `11` §11.6; `WalkSpeedMps > 0`;
+  `ServiceRatePerServerPerMinute >= 0`; `CapacityStanding > 0`;
+  `0 <= HysteresisMinutes < ThresholdWaitMinutes`; `Category` is
+  `security_queue` or `immigration_queue`.
+- The output goes to `ContentIndexFactory.Create` (§8.11a). Tests may skip the
+  loader and build definitions directly.
+
 ---
+
+## 8.11a Construction (Q-009)
+
+How a sim is assembled. The same surface serves `app.host` (`16` §16.4),
+`tools.simharness` and every integration test. There is no other way to
+construct a system.
+
+```
+readonly struct SimHostConfig {
+  uint64          MasterSeed
+  IContentIndex   Content
+  ICheckpointSink Checkpoints
+  ISimLog         Log
+}
+
+readonly struct SystemServices {           // what a module factory may receive from core
+  IEventBus               Events           // Subscribe during construction only
+  IIdAllocator            Ids
+  IContentIndex           Content          // read-only; load-time validation
+  ICommandHandlerRegistry Commands         // §8.7; register during construction only
+}
+
+interface ISimHostBuilder {
+  SystemServices Services { get }
+  void     Register(ISimSystem system)     // strictly ascending registry position (§8.5)
+  ISimHost Build()                         // once
+}
+
+SimHostFactory.CreateBuilder(in SimHostConfig config) -> ISimHostBuilder
+ContentIndexFactory.Create(IReadOnlyList<IContentDefinition> definitions) -> IContentIndex
+```
+
+- **Factories.** Every module publishes exactly one `<Module>Factory` of
+  stateless static methods, named in its interface file's "Construction"
+  section. These are the only static members a module publishes. They hold no
+  state, cache nothing, and read nothing but their arguments. This is the one
+  permitted exception to `CLAUDE.md`'s "no hidden statics", and it is not
+  hidden.
+- **Inputs.** A factory takes `SystemServices`, the module's validated
+  construction data, and the downward interfaces the module calls. Nothing
+  else: no service locator, no registry lookup, no file path.
+- **Order.** Construct in dependency order (a module's downward interfaces
+  must exist first), then `Register` in registry order. `Register` out of
+  order, twice for one `SystemId`, or after `Build` throws. So does
+  `Subscribe` after `Build`.
+- `Build` creates the RNG service from `MasterSeed` (§8.8), wires the
+  checkpoint and log sinks, and returns the host at tick 0. A builder cannot
+  be reused after `Build`.
+- `ContentIndexFactory.Create` sorts definitions by ordinal id and throws on
+  a duplicate id. Parsing `data/` files into definitions is §8.11's
+  `IContentLoader` (Q-011).
+- **A module that is not registered is also not constructed.** Callers pass
+  `null` for an optional downward interface. The module's own spec says what
+  it does then, for example `11` §11.6 and `12` §12.8.
 
 ## 8.12 What `sim.core` does not own
 

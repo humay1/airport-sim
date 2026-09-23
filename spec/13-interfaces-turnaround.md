@@ -336,6 +336,23 @@ flights not currently in turnaround. No allocation in the update path
 
 ---
 
+## 13.10a Construction (Q-009)
+
+```
+readonly struct TurnaroundSetup { TurnaroundCatalogue Catalogue; TurnaroundFleet Fleet }
+
+interface ITurnaroundSetupLoader {
+  TurnaroundSetup Load(ReadOnlySpan<byte> file, string sourceName)   // parse and apply §13.4's validation
+}
+
+TurnaroundFactory.CreateSetupLoader() -> ITurnaroundSetupLoader
+TurnaroundFactory.CreateSystem(in SystemServices services, in TurnaroundSetup setup,
+                               IScheduleSystem schedule) -> ITurnaroundSystem
+```
+
+The file format stays the worker's choice (§13.11). `schedule` is required
+(§13.9).
+
 ## 13.11 The Phase 0/1 fixture (T-022)
 
 `tests/fixtures/turnaround/phase1-four-vehicles.*` (format is the worker's

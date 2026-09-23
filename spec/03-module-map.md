@@ -9,7 +9,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.save` | `src/sim/save` | core | Serialisation, snapshots, migrations |
 | `sim.world` | `src/sim/world` | core | Grid, construction, rooms, navigation graph, flow fields |
 | `sim.schedule` | `src/sim/schedule` | core, flow | Flight schedule, slots, seasons, published timetable |
-| `sim.airside` | `src/sim/airside` | core, world, schedule | Runways, taxiways, stands, aircraft movement, wind/active direction |
+| `sim.airside` | `src/sim/airside` | core, world, schedule, flow | Runways, taxiways, stands, aircraft movement, wind/active direction, boarding hold |
 | `sim.flow` | `src/sim/flow` | core, world | Passenger cohorts, queue nodes, promotion/demotion, corridors |
 | `sim.turnaround` | `src/sim/turnaround` | core, airside, staff | Handling jobs, ground vehicles, job scheduling |
 | `sim.baggage` | `src/sim/baggage` | core, world, flow | Belt network, sorters, carousels, mishandled-bag model |
@@ -22,6 +22,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.progression` | `src/sim/progression` | core, economy, reputation | Tiers, unlocks, ARFF categories |
 | `app.render` | `src/app/render` | sim (read-only) | Rendering, cameras, overlays |
 | `app.ui` | `src/app/ui` | sim (read-only), render | Screens, advisor, delay tree view |
+| `app.host` | `src/app/host`, `unity/AirportSim` | sim, render, ui | Composition root, frame loop, Unity project shell and player build |
 | `content` | `data/` | — | Aircraft, airlines, objects, incidents, policies |
 
 ## Communication rules
@@ -39,12 +40,15 @@ its own test directory. Everything else is read-only to it.
 | Module | Interface spec |
 |---|---|
 | `sim.core` | `08-interfaces-core.md` |
+| `sim.world` | `18-interfaces-world.md` (Phase 0/1 subset only: fixed walk graph and routes; construction, grid and flow fields deferred) |
 | `sim.flow` | `09-interfaces-flow.md` |
 | `sim.schedule` | `11-interfaces-schedule.md` |
 | `sim.airside` | `12-interfaces-airside.md` |
 | `sim.turnaround` | `13-interfaces-turnaround.md` |
 | `sim.delay` | `14-interfaces-delay.md` (principles in `06-delay-attribution.md`) |
 | `app.render` | `15-interfaces-render.md` (Phase 1: headless scene layer, promotion controller, tick pacer; engine backend is a contract only) |
+| `app.host` | `16-interfaces-host.md` (composition root, frame loop, Unity project) |
+| `app.ui` | `17-interfaces-ui.md` (Phase 1 only: pause/speed controls and the lane click) |
 | event catalogue (all emitters, consumed by `sim.delay`) | `10-events.md` |
 | everything else | not yet specified — a worker may not start without one |
 
@@ -115,6 +119,28 @@ the Test Author and the Verifier:
 Budgets are asserted in each module's own tests (`07-conventions.md`,
 "Performance"), so a regression fails the owning module's suite rather than an
 integration suite nobody reads.
+
+### The soak fixture
+
+HUMAN DECISION — owner (delegated), 2026-09-23 (Q-003, D3). The nightly
+`soak_500_days` gate (`02-determinism.md`) runs a **mid-tier** fixture, not
+the max-tier one:
+
+- The fixture is sized so that the whole sim's mean cost is **under
+  0.1 ms per tick** on the reference machine above. 500 sim-days are
+  7.2 M ticks, so the run takes about 12 minutes. The bound is on cost, not
+  on movement or passenger counts. The Test Author chooses the counts, and
+  they are fixture sizing, not balance.
+- Every system registered in the build under test is registered in the soak,
+  with a `repeat_daily` schedule so that every day carries load.
+- The soak proves long-run determinism: drift, counter overflow, unbounded
+  growth of retained state. It does **not** prove max-tier performance. The
+  per-module budget tests above prove that, on the max-tier fixture.
+- If a merged module pushes the soak fixture's mean over 0.1 ms per tick, the
+  fixture is shrunk by the Test Author and its golden re-authored. The gate is
+  never shortened, sampled or disabled.
+- The fixture lives at `tests/fixtures/soak/**` and its golden hash at
+  `tests/golden/`.
 
 ## Module brief template
 

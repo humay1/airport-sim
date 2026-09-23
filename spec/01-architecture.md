@@ -10,7 +10,7 @@ and requires a recorded sign-off in `spec/CHANGELOG.md`.
 
 | Decision | Value |
 |---|---|
-| Simulation | Pure C# class library, .NET 8, **zero engine references** |
+| Simulation | Pure C# class library targeting **netstandard2.1 only** (`LangVersion 9`), **zero engine references**. Tests and `tools.simharness` target `net8.0` and consume it unchanged. (Changed 2026-09-23 by owner sign-off, see `CHANGELOG.md`, D1.) |
 | Presentation | Unity 6 LTS, importing the sim library as a compiled assembly |
 | Language | C# for both layers |
 | Target platform | Windows and Linux desktop; macOS best-effort |

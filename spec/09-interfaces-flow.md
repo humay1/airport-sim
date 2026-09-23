@@ -1,8 +1,8 @@
 # 09 — Public interfaces: `sim.flow`
 
 Implements the `sim.flow` row of `03-module-map.md`: passenger cohorts, queue
-nodes, promotion/demotion, corridors. Depends on `sim.core` and `sim.world`, and
-on nothing else. Notation and binding rules are as in `08-interfaces-core.md`.
+nodes, promotion/demotion, corridors. Depends on `sim.core` and `sim.world`
+(`18-interfaces-world.md`), and on nothing else. Notation and binding rules are as in `08-interfaces-core.md`.
 
 `sim.flow` is the largest consumer of the frame budget (`01-architecture.md`) and
 the module the Phase 0 kill gate tests. Every decision below is made to keep the
@@ -43,9 +43,9 @@ get promotion; it does not get an exception here.
 ## 9.2 Types
 
 ```
-struct NodeId    { uint32 Value }        // stable for the life of the save
+struct NodeId    { uint32 Value }        // sim.core type (events carry it); the graph is sim.world's, 18 §18.2
 struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow
-struct EdgeId    { uint32 Value }
+struct EdgeId    { uint32 Value }        // sim.core type; a sim.world walk edge
 
 enum NodeKind {
   Source,          // kerbside, rail box, arriving aircraft door
@@ -157,20 +157,35 @@ service-standard KPI, and never fed back into the sim.
 
 ## 9.6 Corridors and routing
 
-- The walkable graph, its distances and its flow fields are owned by `sim.world`.
-  `sim.flow` **reads** them and never computes a path. Per-agent A* is a review
+- The walkable graph, its lengths and its routes are owned by `sim.world`
+  (`18-interfaces-world.md`, the fixed-graph Phase 0/1 subset). `sim.flow`
+  **reads** them and never computes a path. Per-agent A* is a review
   rejection (`01-architecture.md`).
 - A corridor traversal is a delay line: on entry the cohort's `DueAt` is set to
   `EnteredNodeAt + traversalTicks`, where
-  `traversalTicks = ceil(distance / walkSpeed)` with `walkSpeed` from the
-  passenger profile in content. On or after `DueAt` the cohort is released to the
-  next node, subject to §9.5.
-- Routing picks the outbound edge from the `sim.world` flow field for the cohort's
-  current destination. Where several destinations are valid (two security halls,
-  three gates for one flight), the choice is a **declared, deterministic rule**:
-  lowest predicted total traversal-plus-wait, ties broken by ascending `NodeId`.
-  No randomness. Passenger "choice" as a behaviour model is out of scope at Phase
-  0 and needs a spec amendment, not a local invention.
+  `traversalTicks = max(1, ceil(LengthMetres / (walk_speed_mps × SIM_SECONDS_PER_TICK)))`
+  in `Fx`. `LengthMetres` comes from `IWorldSystem.LengthMetres`, and
+  `walk_speed_mps` from the cohort's pax profile. On or after `DueAt` the
+  cohort is released to the next node, subject to §9.5. A `Source` or `Hall`
+  node that is not the cohort's destination releases on the tick after entry.
+  Dwell behaviour is later scope.
+- **Destinations (Q-012).** A `Departing` cohort's destination set is every
+  `Gate` node it can reach (`CanReach`). Gates are pooled at Phase 0/1, and
+  gate assignment is deferred (`18` §18.5). A cohort on a `Gate` node stays
+  there until `Absorb` or missed-flight handling (§9.9).
+- **Routing (Q-012).** When a cohort is released from a node, it takes the
+  outbound edge chosen by a **declared, deterministic rule**. Over every pair
+  `(e, g)` with `e` in `OutEdges(node)`, `g` in the destination set and
+  `CanReachVia(e, g)`:
+  `cost = Σ traversalTicks of the nodes on PathVia(e, g)`
+  `+ Σ PredictedWaitMinutes × TICKS_PER_SIM_MINUTE of the Queue nodes on PathVia(e, g)`.
+  Waits are read at the start of the tick (§9.5's rule). The lowest cost wins,
+  with ties broken by ascending `g` `NodeId`, then ascending `EdgeId`. "Two
+  security halls" are therefore two routes to the gate, and the rule chooses
+  between them. No randomness. Passenger "choice" as a behaviour model is out
+  of scope at Phase 0 and needs a spec amendment, not a local invention.
+- Cost: O(out-degree × gates × path length) per released cohort. The budget
+  test (§9.10) is what shows whether this needs caching.
 
 > **LOW CONFIDENCE — deterministic least-cost routing.** It is correct and cheap,
 > but every passenger taking the same door can look wrong on screen and can make
@@ -191,6 +206,8 @@ interface IFlowSystem : ISimSystem {
   int32  PopulationForFlight(FlightId flight, FlowDirection direction)
   IReadOnlyList<CohortId> CohortsAt(NodeId node)          // ascending CohortId
   bool   TryGetCohort(CohortId id, out PassengerCohort cohort)
+  bool   TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)   // §9.7a; false iff none
+  bool   TryGetLaneState(NodeId node, out LaneState lanes)                           // §9.7b; false unless a Queue node
 
   // ---- injection, called only by the systems named ----
   CohortId Inject(in CohortKey key, int32 count, NodeId at)   // sim.schedule, sim.airside
@@ -220,10 +237,78 @@ An unknown node, a node of any other kind, or a non-positive count is a
 never silently dropped, because a swallowed injection loses passengers and the
 head-count conservation test would then be asserting nothing.
 
+`Absorb(sink, flight)` boards the flight's `Departing` passengers that are on
+any `Gate` node, since gates are pooled (§9.6), into `sink`. It returns their
+count, and it reports everyone else of the flight as `PassengersMissedFlight`
+(§9.9). `sink` must be a `Sink` node; anything else throws.
+
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
 
+### 9.7a Outstanding passengers (D6) — LOW CONFIDENCE
+
+```
+readonly struct OutstandingPassengers {
+  FlightId Flight
+  int32    Count          // > 0
+  NodeId   MostHeldAt     // the node holding most of them; ties by ascending NodeId
+}
+```
+
+`TryGetOutstanding(flight)` counts the flight's passengers that are still in
+the terminal and have not reached a gate. These are the passengers in cohorts
+with `Key.Flight == flight` and `Key.Direction == Departing` on any node
+whose `NodeKind` is not `Gate`. It returns false when that count is 0. Only
+`Departing` counts at Phase 1; `Transferring` is added when transfers exist,
+by amendment. `MostHeldAt` is the node holding the largest share of those
+passengers, with ties broken by ascending `NodeId`.
+
+- It is a **query**: read-only, derived from hashed state, and not itself
+  hashed (§9.10). It consumes no RNG and is unaffected by promotion (§9.1).
+- Cost: O(the flight's cohorts), served from the per-flight index §9.10
+  already anticipates. It never scans all nodes or all cohorts, and it does
+  not allocate.
+- Its caller is `sim.airside`'s boarding hold
+  (`12-interfaces-airside.md` §12.8). `sim.airside` already calls downward
+  into `sim.flow` (`Absorb`), so no new dependency edge is created.
+
+> **LOW CONFIDENCE — the smallest addition D6 needed.** `sim.flow` already
+> knows each passenger's flight (`CohortKey.Flight`), and
+> `PopulationForFlight` counts them. What it could not say is how many are
+> still *upstream of the gate*, or where they are. Without that, a departure
+> cannot know whom it is waiting for. That is this one query and nothing
+> else: no per-passenger identity, no new state, no new event from
+> `sim.flow`. Blaming the node that holds the *most* outstanding passengers
+> (rather than, say, the node of the last passenger in FIFO order, which
+> `sim.flow` cannot define across nodes) is the Architect's choice under D6.
+> It usually names the security queue, which is the lever the player has.
+> Flagged for the owner with D6.
+
 ---
+
+### 9.7b Lane state (Q-010) — LOW CONFIDENCE
+
+HUMAN DECISION — owner (delegated), 2026-09-23, consequence of D5,
+reversible. A lane control the player cannot see the state of is not a
+usable control.
+
+```
+readonly struct LaneState { int32 ServerCount; int32 ServersOpen }
+```
+
+`TryGetLaneState(node)` returns the node's current `ServerCount` and
+`ServersOpen`, reflecting every command applied so far. It returns false for
+an unknown node or one that is not a `Queue`. It is read-only and O(1). It is
+not itself hashed: both fields are already in node runtime state (§9.10). It
+consumes no RNG. Its callers are `app.render` (lane pips, `15` §15.5) and
+`app.ui`'s lane sink (`17` §17.5). It deliberately exposes no service rate,
+capacity or wait figures; `PredictedWaitMinutes` already covers the wait.
+
+> **LOW CONFIDENCE — the shape.** Two integers are the least the lane click
+> needs: the base for ±1, the clamp bound, and whether the node is a lane at
+> all. If later UI needs more of `QueueConfig`, it widens by amendment. It is
+> not to be replaced by returning `QueueConfig` itself, which would publish
+> content-derived rates as a presentation contract.
 
 ## 9.8 Commands consumed
 
@@ -231,7 +316,14 @@ Declared here, defined as `CommandKind` values in `sim.core` (§8.7).
 
 | Command | Payload | Effect |
 |---|---|---|
-| `SetServersOpen` | `NodeId`, `int32 count` | Clamped to `[0, ServerCount]`; takes effect at the next tick boundary. Backs T-023. |
+| `SetServersOpen` | `NodeId`, `int32 count` — byte layout `08` §8.7 | Clamped to `[0, ServerCount]`; takes effect at the next tick boundary. Backs T-023. |
+
+`sim.flow` registers its `ICommandHandler` for `SetServersOpen`
+(`08` §8.7) in `FlowFactory.CreateSystem` (§9.11). `Validate`: a length
+other than 8 is `MalformedPayload`; an unknown `NodeId` is
+`MalformedPayload`; a node that is not a `Queue` is `NotPermitted`. Any
+`count` is admitted, because the clamp happens at `Apply`. `Apply` sets
+`ServersOpen` to the clamped value.
 
 Staffing may later constrain `ServersOpen`; that arrives from `sim.staff` through
 the same field, and this table grows by amendment only.
@@ -267,7 +359,8 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 3. The `sim.flow` RNG stream states, excluding `flow.presentation`.
 
 Not hashed, because derived: predicted waits, agent views, per-flight population
-indexes, any cached routing result.
+indexes, `TryGetOutstanding` and `TryGetLaneState` results, any cached
+routing result.
 
 Budget: **2.5 ms/tick at max tier** (`03-module-map.md`). The shape that budget
 demands, stated so it is not discovered late:
@@ -279,3 +372,33 @@ demands, stated so it is not discovered late:
   unbounded cohort count only means the fixture was short.
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
+
+---
+
+## 9.11 Construction (Q-009)
+
+```
+interface IFlowGraphLoader {
+  FlowGraph Load(ReadOnlySpan<byte> file, string sourceName, IWorldSystem world)   // parse and validate
+}
+
+FlowFactory.CreateGraphLoader() -> IFlowGraphLoader
+FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph,
+                         IWorldSystem world) -> IFlowSystem
+```
+
+`FlowGraph` is **opaque outside `sim.flow`**. Its file format is the worker's
+choice, following the posture of `12-interfaces-airside.md` §12.13. It
+carries **node behaviour only**, over `sim.world`'s nodes (Q-012). For each
+node that is its `NodeKind`, and for a `Queue` node its `ServerCount`,
+initial `ServersOpen`, and the `ContentId` of its queue profile. The profile
+holds the service rate, capacity, threshold, hysteresis and delay category
+(§9.4, `10` §10.6), resolved through `services.Content`. Topology and lengths
+are **not** in it; they come from `world`. Load-time validation, each a hard
+failure:
+
+- every `world.Nodes()` entry has exactly one node definition, and no
+  definition names an unknown node;
+- every `Source` can reach at least one `Gate`;
+- a `Gate` has at least one outbound edge to a `Sink`, and a `Sink` has no
+  outbound edge.
