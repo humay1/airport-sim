@@ -48,7 +48,8 @@ enum DelaySource {
   TaxiwayHold,
   StandUnavailable,
   TurnaroundJobWait,
-  Unexplained
+  Unexplained,
+  PassengerHold                              // DepartureHeldForPassengers interval (D6); appended last, no ordinal moves
 }
 
 readonly struct DelayExplanation {
@@ -118,7 +119,14 @@ Binding, copied from `spec/14-interfaces-delay.md`, not paraphrased:
   `stand_unavailable`, source `StandUnavailable`), Turnaround
   (`TurnaroundJobBlocked`/`Unblocked`, key `(Flight, Turnaround, JobKind)`,
   category from the event's own `category` field, source
-  `TurnaroundJobWait`). Pair by key, never by `Cause`. A
+  `TurnaroundJobWait`), and Passenger hold (D6:
+  `DepartureHeldForPassengers`/`Released`, key `(Flight, PassengerHold)`,
+  category `passenger_late`, source `PassengerHold`; explanation `A` =
+  `heldAt` `NodeId.Value`, `B` = `outstanding` at the hold's opening — the
+  hold opens after the departure's `OnStand` checkpoint and closes before
+  `Pushback`, so it is allocated at `Pushback` like any interval in that
+  window; no rule in the allocation algorithm below changes for it). Pair by
+  key, never by `Cause`. A
   `TurnaroundJobBlocked`/`Unblocked` with `waitingOn ==
   ResourceKind.JobDependency` is ignored entirely, open and close alike. Two
   open intervals with the same key, or a closing event with no open interval
@@ -188,6 +196,16 @@ Binding, copied from `spec/14-interfaces-delay.md`, not paraphrased:
 - **Registry position 7** (§14.10), after `sim.airside` (3), `sim.flow` (4)
   and `sim.turnaround` (5).
 
+## Construction (`14` §14.13a, Q-009)
+
+```
+DelayFactory.CreateSystem(in SystemServices services) -> IDelaySystem
+```
+
+Takes no construction data and no other module's interface — this is
+`delay_module_never_writes` by construction. It subscribes to the events of
+the table below through `services.Events` inside `CreateSystem`.
+
 ## Events
 
 Emitted: `DelayEvent` only, at finalisation (§14.8).
@@ -202,6 +220,7 @@ Consumed (full field lists in `10-events.md` §10.6):
 | `AircraftHeldOnTaxiway`/`Released` | `sim.airside` | §14.5, Taxiway |
 | `StandUnavailable`/`StandAssigned` | `sim.airside` | §14.5, Stand |
 | `TurnaroundJobBlocked`/`Unblocked` | `sim.turnaround` | §14.5, Turnaround; `JobDependency` ignored |
+| `DepartureHeldForPassengers`/`Released` | `sim.airside` | §14.5, Passenger-hold family (D6) |
 | `PassengersMissedFlight` | `sim.flow` | §14.9 |
 
 Deliberately not consumed at Phase 0/1 (listed in §14.12): `TurnaroundJobStarted`/`Completed`,
@@ -233,6 +252,7 @@ fixtures. Expect at least:
 - `test_delay_recovery_trims_latest_leaf_first`
 - `test_delay_late_inbound_capped_at_inbound_total`
 - `test_delay_job_dependency_wait_is_ignored`
+- `test_delay_passenger_hold_is_passenger_late_leaf_naming_held_at_node`
 - `test_delay_ids_monotone_and_references_point_backwards`
 - `test_delay_events_published_once_per_node_at_finalisation`
 - `test_delay_rotation_pair_pruned_together_after_retention`
@@ -283,7 +303,15 @@ Two LOW CONFIDENCE flags carried over from the spec, not this task's to
 resolve: (1) the cap/recovery order in the allocation algorithm extends
 first-blocker-wins and is flagged for the human owner once a tree is visible
 in a build; (2) `DELAY_RETENTION_DAYS = 2` is the narrowest window
-satisfying `06-delay-attribution.md` rule 4. §14.9's HUMAN DECISION (whether
-flights should ever wait for late passengers) does **not** block this task —
-build against the Phase 1 behaviour as specified (missed-passenger count
-only, never a delay minute).
+satisfying `06-delay-attribution.md` rule 4. Both, plus every other Q-007/
+Q-008 LOW CONFIDENCE marker, are accepted as provisional (HD, D8) —
+build to the stated values; they are revisited after T-025, not by a
+worker.
+
+§14.9's HUMAN DECISION is now **resolved** (D6): a departure *does* wait,
+for at most `BoardingHoldMaxMinutes`, for passengers still in the terminal
+(`sim.airside`, T-021). The wait is an ordinary blocking interval — the
+Passenger-hold family above — so `passenger_late` now reaches the tree as
+minutes, not only as a missed-passenger count. Anyone still outstanding
+when the hold times out is still recorded as a missed passenger, exactly as
+before; a bad security queue now shows up both ways.

@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `sim.flow` |
 | Assigned role | worker |
-| Depends on | T-003 |
-| Spec source | `spec/09-interfaces-flow.md` §9.1–§9.6, §9.10 |
+| Depends on | T-003, T-012 |
+| Spec source | `spec/09-interfaces-flow.md` §9.1–§9.6, §9.10, §9.11 (answers, jointly with `18-interfaces-world.md`, Q-012) |
 | Blocked by | — |
 
 ## Writable paths
@@ -16,24 +16,24 @@ src/sim/flow/**, tests/sim/flow/**
 ```
 
 Anything else is read-only. `sim.flow` depends on `sim.core` and `sim.world`
-(`spec/03-module-map.md`); `sim.world` does not exist yet in Phase 0, so this
-task's routing/corridor code must depend only on the flow-field query shape
-described in §9.6 conceptually — it may not implement `sim.world` itself. If
-a concrete `sim.world` query interface is needed before it exists, stop and
-file a question rather than build a stand-in inside `sim.flow`.
+(`spec/03-module-map.md`). **`sim.world` now exists as a published interface**
+(`spec/18-interfaces-world.md`, T-012) — this task depends on T-012 merged
+and calls `IWorldSystem` downward for every walk-graph query. It never
+computes a path itself; per-agent A* is a review rejection
+(`01-architecture.md`).
 
 ## Readable specs
 
 `CLAUDE.md`, `spec/00-overview.md`, `spec/01-architecture.md`,
-`spec/02-determinism.md`, `spec/03-module-map.md`, `spec/08-interfaces-core.md`,
-`spec/09-interfaces-flow.md`
+`spec/02-determinism.md`, `spec/03-module-map.md`, `spec/07-conventions.md`,
+`spec/08-interfaces-core.md`, `spec/09-interfaces-flow.md`,
+`spec/18-interfaces-world.md` §18.3 (the `IWorldSystem` queries this module
+calls)
 
 ## Interface to implement
 
 ```
-struct NodeId    { uint32 Value }
-struct CohortId  { uint64 Value }
-struct EdgeId    { uint32 Value }
+struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow
 
 enum NodeKind { Source, Corridor, Hall, Queue, Gate, Sink }
 enum FlowDirection { Departing, Arriving, Transferring }
@@ -84,6 +84,59 @@ Capacity/spillback (§9.5): population above `CapacityStanding` stops the
 upstream edge releasing into the node; evaluated in a single pass in `NodeId`
 order using start-of-tick population.
 
+**Corridors and routing** (§9.6, jointly answered with `18-interfaces-world.md`
+by Q-012), binding, copied not paraphrased:
+
+- The walkable graph, its lengths and its routes are owned by `sim.world`
+  (T-012). `sim.flow` **reads** them through `IWorldSystem` and never
+  computes a path.
+- A corridor traversal is a delay line: on entry the cohort's `DueAt` is set
+  to `EnteredNodeAt + traversalTicks`, where `traversalTicks = max(1,
+  ceil(LengthMetres / (walk_speed_mps × SIM_SECONDS_PER_TICK)))` in `Fx`.
+  `LengthMetres` comes from `IWorldSystem.LengthMetres`, `walk_speed_mps`
+  from the cohort's pax profile. On or after `DueAt` the cohort releases to
+  the next node, subject to §9.5. A `Source`/`Hall` node that is not the
+  cohort's destination releases on the tick after entry.
+- **Destinations.** A `Departing` cohort's destination set is every `Gate`
+  node it can reach (`IWorldSystem.CanReach`). Gates are pooled at
+  Phase 0/1 (`18` §18.5) — the Phase 0/1 fixture declares exactly one. A
+  cohort on a `Gate` node stays there until `Absorb` or missed-flight
+  handling (§9.9).
+- **Routing.** When a cohort is released from a node, it takes the outbound
+  edge chosen by a declared, deterministic rule: over every pair `(e, g)`
+  with `e` in `IWorldSystem.OutEdges(node)`, `g` in the destination set and
+  `IWorldSystem.CanReachVia(e, g)`, `cost = Σ traversalTicks of the nodes on
+  IWorldSystem.PathVia(e, g)` `+ Σ PredictedWaitMinutes × TICKS_PER_SIM_MINUTE`
+  of the `Queue` nodes on that path, waits read at the start of the tick.
+  Lowest cost wins, ties broken by ascending `g` `NodeId`, then ascending
+  `EdgeId`. No randomness — "two security halls" is two routes to the gate,
+  and this rule chooses between them; passenger "choice" as a behaviour
+  model needs a spec amendment, not a local invention.
+- Cost: O(out-degree × gates × path length) per released cohort. If the
+  budget test (§9.10) shows this needs caching, that is this task's problem
+  to solve inside `sim.flow`, not `sim.world`'s to precompute — `sim.world`
+  stays load-time-only.
+
+## Construction (`09` §9.11, Q-009)
+
+```
+interface IFlowGraphLoader {
+  FlowGraph Load(ReadOnlySpan<byte> file, string sourceName, IWorldSystem world)
+}
+
+FlowFactory.CreateGraphLoader() -> IFlowGraphLoader
+FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph,
+                         IWorldSystem world) -> IFlowSystem
+```
+
+`FlowGraph` is **opaque outside `sim.flow`** and carries **node behaviour
+only**, over `sim.world`'s nodes: for each node, its `NodeKind`, and for a
+`Queue` node its `ServerCount`, initial `ServersOpen`, and the `ContentId`
+of its queue profile (resolved through `services.Content` at construction).
+Topology and lengths are **not** in it — they come from `world`. File format
+is this task's own choice, following the posture of `12` §12.13. `sim.flow`
+is not constructed without `sim.world`.
+
 ## Events
 
 Emitted: `QueueThresholdExceeded`, `QueueThresholdCleared`, `FlowBlocked`,
@@ -102,7 +155,9 @@ Written by the Test Author. Expect: throughput-model unit tests (2.5 pax/min
 serves 2 or 3 passengers correctly across ticks via `ServiceCredit`), a
 head-count-conservation property test across merge/split, a FIFO-serving
 order test independent of cohort size, a spillback test with start-of-tick
-population semantics, and `FlowBlocked`/`FlowUnblocked` pairing tests.
+population semantics, `FlowBlocked`/`FlowUnblocked` pairing tests, and a
+routing test against `tests/fixtures/world/phase0-landside.*` (T-012, §18.6)
+covering the "two alternative security queues" case with no randomness.
 **Do not edit them.**
 
 ## Performance budget
@@ -122,6 +177,16 @@ in the update path; cohort storage pooled and index-stable.
 - [ ] Verifier gates green
 
 ## Worker notes
+
+This task was previously `BLOCKED` on Q-012 (`sim.flow` had no way to route
+without `sim.world`). Q-012 is now answered by `spec/18-interfaces-world.md`
+(T-012) plus this file's §9.6 rewrite; T-007 is **not** blocked and does not
+build any part of `sim.world` itself — it calls `IWorldSystem` downward.
+
+`NodeId` and `EdgeId` are now **`sim.core` types** (`09` §9.2, `18` §18.2:
+"because events carry them"), authored in `src/sim/core/**` by T-026
+(extended for this purpose), not declared locally here. Reference them from
+`sim.core`. `CohortId` stays `sim.flow`'s own type, unaffected.
 
 `09-interfaces-flow.md` §9.6 flags deterministic least-cost routing as
 **LOW CONFIDENCE** (may cause visible passenger-choice oddities). Build to

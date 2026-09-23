@@ -136,6 +136,23 @@ Binding, copied from `spec/13-interfaces-turnaround.md`, not paraphrased:
 - **No mutating entry point.** No commands at Phase 0/1 (§13.8).
 - **No RNG at Phase 0/1** (§13.10). Do not add a stream speculatively.
 
+## Construction (`13` §13.10a, Q-009)
+
+```
+readonly struct TurnaroundSetup { TurnaroundCatalogue Catalogue; TurnaroundFleet Fleet }
+
+interface ITurnaroundSetupLoader {
+  TurnaroundSetup Load(ReadOnlySpan<byte> file, string sourceName)   // parse and apply §13.4's validation
+}
+
+TurnaroundFactory.CreateSetupLoader() -> ITurnaroundSetupLoader
+TurnaroundFactory.CreateSystem(in SystemServices services, in TurnaroundSetup setup,
+                               IScheduleSystem schedule) -> ITurnaroundSystem
+```
+
+File format stays this task's own choice (§13.11). `schedule` is required
+(§13.9); `sim.turnaround` is not constructed without `sim.schedule`.
+
 ## Events
 
 Emitted: `TurnaroundJobStarted`/`Completed`, `TurnaroundJobBlocked`/`Unblocked`

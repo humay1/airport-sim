@@ -96,3 +96,7 @@ state is explicitly not hashed (§9.10).
 
 This task is also what T-006's `promotion` harness subcommand needs to stop
 being a no-op; coordinate with whoever picks up T-006 if it lands first.
+
+Unaffected by the Q-012 routing rewrite (`09-interfaces-flow.md` §9.6,
+T-012's `sim.world`): promotion/demotion and `AgentsAt` operate on a node's
+already-resident cohorts and never touch routing or corridor traversal.
