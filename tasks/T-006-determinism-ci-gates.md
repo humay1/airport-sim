@@ -55,6 +55,15 @@ conditions, straight from `spec/02-determinism.md` "Gates":
 | `saveload --ticks 1000 --save-at 500` | `determinism_save_load` | identical to an uninterrupted 1000-tick run — save/load itself does not exist before `sim.save`, so this task's fixture snapshots the in-memory command log plus RNG stream state only, per T-005/T-002, and reloads from that; a real file-backed save format is out of scope until `sim.save` is built |
 | `promotion --days 1` | `determinism_promotion` | Phase 0 has no promotable system yet (`sim.flow` promotion lands at T-010); this subcommand is a no-op pass-through returning success until T-010 exists — do not fabricate a promotion path here |
 
+**Goldens.** `SIM_SECONDS_PER_TICK = 6` is now a confirmed HUMAN DECISION
+(D2, `08` §8.1/§8.2) — golden checkpoint hashes may be authored from this
+task onward. Compose the harness's own test systems through `08` §8.11a's
+`ISimHostBuilder`/`SystemServices` and each module's `<Module>Factory`
+(Q-009) — never by reaching into a module's internals. The separate
+`checkpoints` subcommand of `16-interfaces-host.md` §16.8 (byte-exact dump,
+used by `app.host`'s harness-equivalence test) is **not** this task's job;
+it is T-030, once T-004 and this task exist for it to extend.
+
 ## Events
 
 Emitted: none
