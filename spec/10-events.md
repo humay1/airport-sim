@@ -176,6 +176,7 @@ rule for.
 | `AircraftHeldForRunway` / `Released` | `FlightId`, `RunwayId`, `int queuePosition` | `runway_congestion` | 1 |
 | `AircraftHeldOnTaxiway` / `Released` | `FlightId`, `TaxiEdgeId`, blocking `FlightId?` | `taxi_congestion` | 1 |
 | `StandUnavailable` / `StandAssigned` | `FlightId`, `StandId?`, occupying `FlightId?` | `stand_unavailable` | 1 |
+| `DepartureHeldForPassengers` / `Released` | `FlightId`, `int outstanding`, `NodeId? heldAt` (set on the opening event, null on `Released`) | `passenger_late` | 1 |
 | `RunwayDirectionChanged` | `RunwayId`, `int headingDeg`, `SimMinutes settleTime` | `weather` | 2 |
 | `RunwayClosed` / `Reopened` | `RunwayId`, reason key | `weather`, `incident` | 2 |
 | `DeicingStarted` / `Completed` | `FlightId`, `SimMinutes duration` | `deicing` | 2 |
@@ -193,6 +194,13 @@ rule for.
 The category for a queue node comes from the node's content definition, not from
 a branch in `sim.delay`. That is how `immigration_queue` exists without
 `sim.delay` knowing what immigration is.
+
+`DepartureHeldForPassengers` (from `sim.airside`, above) is how passenger
+lateness becomes delay *minutes* at Phase 1 (D6, `12-interfaces-airside.md`
+§12.8). Its leaf is `passenger_late`, and `heldAt` names the node where most
+of the late passengers were. That node is usually a security queue, whose own
+category becomes reachable through `Cause` chains later
+(`14-interfaces-delay.md` §14.7).
 
 ### From `sim.turnaround`
 

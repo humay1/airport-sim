@@ -219,8 +219,9 @@ pax_profile definition, schedule-relevant fields:
 
 - Buckets are strictly ascending in `minutes_before_std`, distinct, and
   `share_permille` sums to exactly 1000. Anything else fails content load.
-- The profile's `walk_speed` (`09-interfaces-flow.md` §9.6) belongs to `sim.flow`
-  and is not read here.
+- The profile's `walk_speed_mps` (`09-interfaces-flow.md` §9.6) belongs to
+  `sim.flow` and is not read here. The definition type is
+  `PaxProfileDefinition` (`08` §8.11).
 
 ### Expansion to injections
 
@@ -336,6 +337,18 @@ materialisation for a `repeat_daily` fixture happens off the injection path, at
 the day boundary, and may allocate.
 
 ---
+
+## 11.9a Construction (Q-009)
+
+```
+ScheduleFactory.CreateLoader() -> IScheduleLoader                        // §11.4
+ScheduleFactory.CreateSystem(in SystemServices services, in ScheduleTable table,
+                             IFlowSystem? flow) -> IScheduleSystem
+```
+
+`flow` is null when `sim.flow` is not registered (§11.6). `aircraft_type` and
+`pax_profile` resolve through `services.Content` at construction; a miss is a
+load failure (§11.4).
 
 ## 11.10 The Phase 0 fixture (T-008)
 
