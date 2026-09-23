@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.turnaround` |
 | Assigned role | worker |
-| Depends on | T-021 |
+| Depends on | T-021, T-026 |
 | Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006) |
 | Blocked by | — |
 
@@ -116,12 +116,31 @@ Binding, copied from `spec/13-interfaces-turnaround.md`, not paraphrased:
   departure jobs are `Completed`; `ReadyToBoard` fires the same tick, `Cause`
   set to the fifth completion. `BoardingComplete` fires when `Boarding`
   completes.
+- **`PlannedTick` for the departure milestones** (§13.6, added by the Q-007
+  amendment): `ReadyToBoard`'s `PlannedTick` is the departure's planned
+  `OnStand` (`spec/12-interfaces-airside.md` §12.3, `STD − MinTurnaround`)
+  plus the largest `NominalDurationTicks` among `CabinClean`, `Catering`,
+  `Fuel`, `BaggageLoad` and `PushbackPrep` (they run in parallel when
+  unimpeded); `BoardingComplete`'s `PlannedTick` is planned `ReadyToBoard`
+  plus `Boarding`'s `NominalDurationTicks`. `sim.delay` measures none of this
+  module's three milestones (`DeboardComplete`, `ReadyToBoard`,
+  `BoardingComplete`; `spec/14-interfaces-delay.md` §14.4); their
+  `PlannedTick`s are still binding, for the UI and for later checkpoints.
+  `DeboardComplete`'s existing `PlannedTick` (above) is unchanged.
+- **`category` field on job-blocking events** (§13.6/§13.9, added by the
+  Q-007 amendment to `10-events.md` §10.6): both `TurnaroundJobBlocked` and
+  `TurnaroundJobUnblocked` carry a `DelayCategory category` field, copied
+  from the job's `JobDef.Category` (§13.4) at the moment the event fires —
+  `sim.delay` may not read this module's catalogue directly
+  (`06-delay-attribution.md` rule 2), so the category must ride on the event.
 - **No mutating entry point.** No commands at Phase 0/1 (§13.8).
 - **No RNG at Phase 0/1** (§13.10). Do not add a stream speculatively.
 
 ## Events
 
-Emitted: `TurnaroundJobStarted`/`Completed`, `TurnaroundJobBlocked`/`Unblocked`,
+Emitted: `TurnaroundJobStarted`/`Completed`, `TurnaroundJobBlocked`/`Unblocked`
+(the latter pair now carrying `DelayCategory category`, copied from
+`JobDef.Category`, per the Q-007 amendment to `10-events.md` §10.6),
 `FlightMilestoneReached` (`DeboardComplete`, `ReadyToBoard`,
 `BoardingComplete` only — **not** `DoorsOpen`/`DoorsClosed`/`Pushback`, which
 belong to `sim.airside`)
@@ -174,6 +193,20 @@ in turnaround. No allocation in the update path.
 - [ ] Verifier gates green
 
 ## Worker notes
+
+Q-007 amended `10-events.md` §10.6, `12-interfaces-airside.md` §12.3 and this
+module's own §13.6/§13.9 after this task file was first written, adding the
+`category` field above and the `ReadyToBoard`/`BoardingComplete` planned-tick
+rules. If this task is picked up from an older local checkout, re-pull this
+file and `spec/13-interfaces-turnaround.md` before starting.
+
+`JobKind`, `VehicleKind`, `JobStatus`, `ResourceKind` and `DelayCategory`
+(the last now carried on `TurnaroundJobBlocked`/`Unblocked`) are authored in
+`src/sim/core/**` by T-026, not here, for the same reason as T-021's
+`RunwayId` et al. — they are event-payload types under `03-module-map.md`'s
+"events are defined in `sim.core`" rule, and this task may write only
+`src/sim/turnaround/**`. Reference them from `sim.core`; do not redeclare
+them locally. T-026 must merge before this task is released.
 
 The fixed one-way dependency `Boarding` has on the other five departure jobs
 is part of the spec, not something to make content-configurable — `JobKind`
