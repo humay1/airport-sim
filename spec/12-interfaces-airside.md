@@ -92,6 +92,31 @@ injecting arriving passengers "at the aircraft door on the `DoorsOpen`
 milestone." Assigning `DoorsOpen` to `sim.turnaround` would have contradicted
 that merged text; this table is the correction, made once, here.
 
+### `PlannedTick` per milestone
+
+Binding, per `10-events.md` §10.4 (schedule-anchored and cumulative: never
+shifted by an earlier milestone's actual lateness). `STA` is the arrival's
+`ScheduledTick`, `STD` the departure's. `RouteTicks(a, b)` is the sum of
+`TraversalTicks` along the precomputed route of §12.4 — the unimpeded taxi
+time, holds excluded.
+
+| Milestone | `FlightId` | `PlannedTick` |
+|---|---|---|
+| `InboundAirborne` | arrival | `STA − CRUISE_LEAD_TICKS` (§12.6) |
+| `Landed` | arrival | `STA` |
+| `OffRunway` | arrival | `STA + OccupancyTicks` |
+| `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
+| `DoorsOpen` | arrival | planned `OnStand` + the fixed door delay |
+| `OnStand` | departure | `STD − MinTurnaround` (§12.8 step 3; §12.7 for a rotation-less departure) |
+| `DoorsClosed` | departure | `STD` |
+| `Pushback` | departure | `STD` |
+| `TakeoffRoll` | departure | `STD + RouteTicks(stand, threshold)` |
+| `Airborne` | departure | planned `TakeoffRoll` + `OccupancyTicks` |
+
+`sim.delay` measures only `Landed` and arrival `OnStand`, and departure
+`OnStand`, `Pushback` and `Airborne` (`14-interfaces-delay.md` §14.4); the
+others are still binding, for the UI and for later checkpoints.
+
 ### Which `FlightId` gets which milestone
 
 `11-interfaces-schedule.md` §11.3 gives an arrival and its linked departure
@@ -393,6 +418,7 @@ interface IAirsideSystem : ISimSystem {
   IReadOnlyList<StandId> FreeStands()                      // ascending StandId
   int32  RunwayQueueLength(RunwayId runway)                 // pacing + occupancy holds combined
   IReadOnlyList<FlightId> TrackedFlights()                  // ascending FlightId
+  AirsideLayout Layout()                                    // the validated layout of §12.4, immutable
 }
 
 enum AircraftLegPhase {
@@ -415,6 +441,18 @@ readonly struct AircraftTrack {
 
 readonly struct StandState { StandId Id; FlightId? Occupant }
 ```
+
+**`AtNode` and `OnEdge` together.** While `OnEdge` is set, `AtNode` holds the
+node the aircraft **entered the edge from**, and `EdgeProgress` runs from 0 at
+`AtNode` to 1 at the edge's other endpoint. For a `Bidirectional` edge this is
+the only way to know the direction of travel. While `OnEdge` is unset,
+`AtNode` is the node the aircraft is at (including holding at a node, §12.6),
+or unset if the aircraft is off-graph (approaching, or held before `Landed`).
+
+`Layout()` returns the layout `IAirsideLayoutLoader` validated at load. It is
+load-time data, not runtime state, so it is not hashed (§12.12). It exists for
+presentation (`15-interfaces-render.md` §15.4), which must not load the airside
+fixture a second time on its own.
 
 `AircraftLegPhase` is reused across both legs of a rotation: the sequence for
 an `Arrival` runs left to right through `OnStand`; a `Departure` resumes from

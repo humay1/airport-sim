@@ -187,7 +187,10 @@ A flight becomes visible to the rest of the sim when its plan is published.
   1. `FlightPlanPublished`, fields per `10-events.md` §10.6. `schedArr` is the
      arrival side of the rotation (this flight's `ScheduledTick` if it is an
      `Arrival`, the linked arrival's otherwise, `TICK_UNSCHEDULED` if none);
-     `schedDep` is the mirror.
+     `schedDep` is the mirror. `kind`, `rotation` and `hasRotation` are copied
+     from `FlightRecord.Kind`, `Rotation` and `HasRotation` — they are how
+     `sim.delay` learns the rotation link without a query
+     (`14-interfaces-delay.md` §14.12).
   2. `FlightMilestoneReached { Milestone = PlanPublished, PlannedTick = ActualTick
      = PublishTick }`, with `Cause` set to the `EventId` of the
      `FlightPlanPublished` above. Once per flight, never re-emitted.
@@ -286,7 +289,7 @@ interface IScheduleSystem : ISimSystem {
 - `TryGetRotation` is what makes `late_inbound` attributable: a departure's parent
   cause is the arrival that feeds it (`06-delay-attribution.md`). Consumers read
   it; `sim.delay` does not — it is event-only by rule 2 and gets the link from
-  `FlightPlanPublished`.
+  `FlightPlanPublished`'s `rotation`/`hasRotation` fields (§11.5).
 - `PendingInjectionCount` exists for tests and the UI. It is derived from hashed
   state, not separate state.
 - There is no mutating entry point. Nothing may write to `sim.schedule`.

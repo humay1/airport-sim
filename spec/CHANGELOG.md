@@ -327,3 +327,294 @@ Reason:      Bookkeeping to match the new file, same as Q-004/Q-005's
 Raised by:   Q-006
 Impact:      none.
 Signed off:  not required
+
+## 2026-09-23 — spec/14-interfaces-delay.md — new file: `sim.delay` public interfaces
+Reason:      T-024 was BLOCKED on Q-007: `06-delay-attribution.md` and
+             `10-events.md` gave the principles and the allocation rules but no
+             module interface, no hashed-state layout, and no rule for
+             `DelayEventId` against `EventId`. Defines `IDelaySystem`
+             (query-only, §14.10), the per-flight record and node types
+             (§14.3), the checkpoint milestones the delay clock measures
+             (§14.4), four blocking-interval families keyed without relying on
+             `Cause` (§14.5), the allocation algorithm in integer ticks
+             (§14.6), tree shape, id allocation and depth (§14.7),
+             finalisation-time `DelayEvent` publication and two-day retention
+             (§14.8), missed passengers as a non-minute record (§14.9),
+             hashing, no RNG and budget shape (§14.13), and fixtures and test
+             names (§14.14).
+Raised by:   Q-007 (planner / queue expansion for T-024)
+Impact:      additive for `sim.delay`, which has no code. The consistency
+             amendments below touch five other specs; none of their modules
+             has code either (no `src/` exists), so **no merged code is
+             invalidated**, but task files the Planner already wrote are now
+             stale and must be refreshed before release: T-008 (three new
+             `FlightPlanPublished` fields), T-021 (the `PlannedTick` table in
+             `12` §12.3), T-022 (the `category` field on
+             `TurnaroundJobBlocked`/`Unblocked`, `PlannedTick` for
+             `ReadyToBoard`/`BoardingComplete`), and T-024 itself. Unblocks
+             T-024 once T-022 and T-023 merge.
+Signed off:  not required, but see the LOW CONFIDENCE and HUMAN DECISION
+             entries below
+Notes:       Deliberately narrow. Trees are two levels deep (flight total and
+             allocation leaves) plus a cross-tree `late_inbound` link; the
+             envelope `Cause` chain is **not** followed at Phase 1 (§14.7,
+             "Cause chains"), because resolving an `EventRef` from an earlier
+             tick needs a retained index of past events: new state, new
+             budget, new retention problem. Every Phase 1 explanation is
+             already in the opening event's own fields. `sim.delay` reads no
+             content and follows no references to other modules, so
+             `delay_module_never_writes` can be a plain assembly-reference
+             check. `DelayEventId` is a module counter, not an `EventId` and
+             not from `IIdAllocator`; it is monotone in dispatch order and
+             every `Parent`/link points to a lower id, so `no_cycles` holds by
+             construction. Explanations are `(DelaySource, A, B)` integers;
+             `app.ui` derives the `LocalisedKey`, so no text enters the hash.
+             Two things noticed and **not** changed, for the next consistency
+             pass: (1) `12-interfaces-airside.md` §12.8 pushes back as soon as
+             `BoardingComplete` arrives, with no wait for STD, so a departure
+             can leave early; `sim.delay` clamps early to lateness 0, but a
+             player may find early pushbacks odd. (2) Every event type, and
+             every type an event field carries (`RunwayId`, `JobKind`,
+             `DelayCategory`, ...), must be a `sim.core` type, because events
+             are defined in `sim.core` (`03-module-map.md`) and
+             `delay_module_never_writes` forbids `sim.delay` from referencing
+             another module's assembly. T-021/T-022 may write only their own
+             directories, so who authors those `sim.core` payload types is a
+             Planner scheduling question, not a spec one.
+
+## 2026-09-23 — spec/14-interfaces-delay.md §14.4, §14.6 — LOW CONFIDENCE: checkpoints, cap, recovery order, inbound cap
+Reason:      `10-events.md` §10.5 did not say (a) which milestones to measure,
+             (b) what happens when blocking intervals cover more than the gap,
+             (c) what happens when a flight makes up time, so that the tree
+             total falls, or (d) how much of a late handover to charge to the
+             inbound. Each needed exactly one deterministic rule. Chose:
+             (a) arrival `Landed`/`OnStand`, departure
+             `OnStand`/`Pushback`/`Airborne`; (b) intervals take their owned
+             ticks in ascending opener `EventId` until the gap is used up;
+             (c) the most recently created leaf gives up ticks first, so the
+             earliest cause keeps the blame; (d) `late_inbound` never exceeds
+             the inbound's own delay, and the rest is `propagated`.
+Raised by:   Q-007
+Impact:      Affects tree *contents*, not interfaces. (b) and (c) extend the
+             already-flagged first-blocker-wins rule. Alternatives
+             (proportional trimming, oldest-first forgiveness) are equally
+             deterministic and could be swapped in by amendment without a
+             schema change, though any swap moves golden hashes.
+Signed off:  not required; the owner should review it alongside the existing
+             first-blocker-wins flag once a tree is visible in a build
+
+## 2026-09-23 — spec/14-interfaces-delay.md §14.2, §14.8 — LOW CONFIDENCE: `DELAY_RETENTION_DAYS = 2`
+Reason:      `06-delay-attribution.md` rule 4 requires yesterday's tree to be
+             openable; keeping every tree forever grows the hashed and saved
+             state without bound (on the order of a million nodes per season
+             at max tier) and would eventually break the 20 ms checkpoint
+             ceiling. Two days is the narrowest window satisfying rule 4.
+             Rotation pairs are pruned together so no `late_inbound` link
+             dangles.
+Raised by:   Q-007
+Impact:      none today. How far back a player can look is player-facing;
+             season-long history is expected to come from compact per-day
+             aggregates, which are unscoped.
+Signed off:  not required; flagged for the owner
+
+## 2026-09-23 — spec/14-interfaces-delay.md §14.9 — HUMAN DECISION: flights never wait for late passengers at Phase 1
+Reason:      Writing the delay interface showed that, as specified, a Phase 1
+             flight never waits for a passenger: `Boarding` has a fixed
+             duration (`13` §13.6) and `DoorsClosed` absorbs whoever is at the
+             gate (`12` §12.7). So `security_queue` and `passenger_late` can
+             never appear as delay *minutes*. The one live player lever in
+             Phase 1 (T-023, opening security lanes) then shows up only as a
+             missed-passenger count, which `sim.delay` records on the flight
+             (§14.9) as the narrowest honest thing it can do without changing
+             another module's behaviour.
+Raised by:   Q-007
+Impact:      Not decided here. If flights should hold for late passengers,
+             that is a `sim.turnaround`/`sim.airside` behaviour amendment, and
+             `sim.delay` then attributes the wait as an ordinary blocking
+             interval with no interface change. It bears directly on the
+             Phase 1 gate question (T-025: "is unblocking flow fun?").
+Signed off:  **PENDING HUMAN** — gameplay decision. Does not block T-024.
+
+## 2026-09-23 — spec/06-delay-attribution.md — `DelayEvent` contract made consistent with `10-events.md` and a multi-branch tree
+Reason:      Three internal contradictions. (1) "Every module that can cause
+             delay emits `DelayEvent`" contradicted `10-events.md` §10.1/§10.7,
+             where modules emit milestones and intervals and only `sim.delay`
+             emits `DelayEvent`. (2) `parent: DelayEventId?` with "null means
+             root cause" cannot describe a flight with several causes: a
+             flight-total node would need several parents. `parent` now points
+             to the node a leaf is part of, and `root_cause` is a separate
+             flag. (3) Minutes in `Fx` cannot sum exactly (one tick is 0.1
+             minute, not representable in Q31.32); `ticks: uint64` is added
+             as the authoritative duration and `minutes` becomes derived.
+             Also adds `id`, `root_cause`, `linked`, a typed explanation, and
+             states that depth counts `late_inbound` links.
+Raised by:   Q-007
+Impact:      none, no code. Rule 1's intent (one parent per minute, leaves sum
+             to total) is unchanged and now checkable exactly.
+Signed off:  not required
+
+## 2026-09-23 — spec/10-events.md §10.3, §10.4, §10.5, §10.6, §10.7 — amendments required by `sim.delay`
+Reason:      §10.3 rule 2 said an interval still open at end of day must throw,
+             while `13-interfaces-turnaround.md` §13.4 says a job with no
+             available vehicle legitimately stays blocked forever. Now: throw
+             only when an interval is still open as its subject leaves the sim;
+             crossing a day boundary is allowed. §10.4 now states that
+             `PlannedTick` is schedule-anchored and cumulative, the only
+             reading under which "minus any gap already attributed at n−1"
+             in §10.5 is well-defined. §10.5 rule 5 now allocates in integer
+             ticks (no remainder to settle) and points to `14` §14.4–§14.6 for
+             the operational form. §10.6: `FlightPlanPublished` gains
+             `kind`, `rotation`, `hasRotation` (`11` §11.7 already claimed
+             `sim.delay` "gets the link from `FlightPlanPublished`", but the
+             event had no such field); `TurnaroundJobBlocked`/`Unblocked` gain
+             `DelayCategory category`, because the category lives in
+             `sim.turnaround`'s own catalogue, which `sim.delay` may not read.
+             §10.7 states that `DelayEvent` is published at finalisation only.
+Raised by:   Q-007
+Impact:      none on code (none exists). T-008 and T-022 task files are stale
+             on the new fields; the Planner must refresh them before release.
+Signed off:  not required
+
+## 2026-09-23 — spec/11-interfaces-schedule.md §11.5, §11.7 — populate the new `FlightPlanPublished` fields
+Reason:      Emitter side of the `10-events.md` §10.6 field addition.
+Raised by:   Q-007
+Impact:      T-008 (QUEUED, no code) publishes three more fields, copied from
+             `FlightRecord`. No behaviour change.
+Signed off:  not required
+
+## 2026-09-23 — spec/12-interfaces-airside.md §12.3 — `PlannedTick` defined for every airside milestone
+Reason:      Only `InboundAirborne` and the departure's `OnStand` had a defined
+             `PlannedTick`; every other airside milestone would have been
+             invented by the T-021 worker, and `sim.delay`'s lateness depends
+             on it. Adds a table, schedule-anchored per `10-events.md` §10.4:
+             `Landed` at STA, arrival `OnStand` at STA plus runway occupancy
+             plus unimpeded taxi time, `DoorsClosed`/`Pushback` at STD,
+             `TakeoffRoll`/`Airborne` at STD plus unimpeded taxi-out and
+             occupancy.
+Raised by:   Q-007
+Impact:      T-021 (QUEUED, no code) must emit these values; its task file
+             should cite §12.3's new table. The table uses `OccupancyTicks`
+             for `Airborne`, following §12.6; §12.3's older "fixed content
+             delay after `TakeoffRoll`" trigger wording is left as is and is
+             read as the same thing.
+Signed off:  not required
+
+## 2026-09-23 — spec/13-interfaces-turnaround.md §13.6, §13.9 — `PlannedTick` for `ReadyToBoard`/`BoardingComplete`, `category` on job events
+Reason:      Same gap as `12` §12.3 for the two departure-side turnaround
+             milestones, and the emitter side of the new `category` field.
+Raised by:   Q-007
+Impact:      T-022 (QUEUED, no code) task file is stale on both.
+             `DeboardComplete`'s existing `PlannedTick` (STA plus deboard time)
+             is left unchanged: `sim.delay` does not measure it.
+Signed off:  not required
+
+## 2026-09-23 — spec/03-module-map.md, spec/00-overview.md — point `sim.delay` at its interface file
+Reason:      Bookkeeping to match the new file, same as the Q-004 to Q-006
+             entries.
+Raised by:   Q-007
+Impact:      none.
+Signed off:  not required
+
+## 2026-09-23 — spec/15-interfaces-render.md — new file: `app.render` Phase 1 interfaces (partial answer)
+Reason:      T-020 was BLOCKED on Q-008: `app.render` had a module-map row but
+             no scope and no interface, and no test could be written for a
+             renderer that lives entirely in an engine CI cannot run. Splits
+             the module in two. A headless scene layer with no engine
+             reference turns read-only sim queries into a stable, sorted draw
+             list of flat-colour primitives (§15.5), and also owns the
+             promotion controller (§15.7) and a 1x tick pacer with a binding
+             frame order (§15.8). A thin backend draws the list and holds no
+             logic (§15.10, contract only). The complete list of sim members
+             `app.render` may call is §15.6. The presentation-owned layout
+             that positions nodes is §15.4. Budget §15.11, T-020 scope and
+             test names §15.12.
+Raised by:   Q-008 (planner / queue expansion for T-020)
+Impact:      additive; no `src/app` code exists. T-020's scope narrows to the
+             scene layer (`src/app/render/Scene/**`, `tests/app/render/**`,
+             `tests/fixtures/render/**`). Its dependencies grow from T-009 to
+             T-009, T-010 and T-021, because it compiles against
+             `SetPromoted`/`AgentsAt` and `IAirsideSystem.Layout()`. The
+             Planner must rewrite T-020 accordingly. The backend needs its
+             own task, which cannot be queued until the HUMAN DECISIONS below
+             are made.
+Signed off:  not required for the headless scope; see the HUMAN DECISION
+             entry below
+Notes:       Deliberately narrow. The renderer reads nothing from
+             `sim.turnaround`, `sim.delay` or `sim.schedule`. It draws no
+             text, vehicles, corridors or delay state, issues no commands,
+             and does not interpolate between ticks. Promotion neutrality is
+             kept by construction on the sim side (`09` §9.1) and by three
+             constraints here: `SetPromoted` is the only call that changes
+             anything, it is made only between `Step`s, and nothing read is
+             fed back. It is proven by
+             `test_render_loop_is_outcome_neutral_with_scripted_camera`,
+             which runs the module's real call pattern against a headless
+             run and compares checkpoints.
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.2, §15.4, §15.11 — LOW CONFIDENCE: zoom threshold, split layout, frame budget
+Reason:      Three values with no measurement or precedent behind them.
+             `AGENT_ZOOM_THRESHOLD = 120` world units of view height.
+             Positions kept in a presentation-owned layout, separate from the
+             airside graph they position, so that presentation-only data stays
+             out of sim state and its hash; the cost is that two files must
+             agree on ids. Scene build plus promotion update limited to a
+             2.0 ms mean and 4.0 ms p99 per frame.
+Raised by:   Q-008
+Impact:      None of these can move a sim outcome. Each is cheap to retune
+             after the first measurement or the first playable build.
+Signed off:  not required; flagged for the owner
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.13 — HUMAN DECISIONS left open by Q-008
+Reason:      Five things `app.render` needs, beyond T-020's headless scope,
+             that the Architect must not decide:
+             (a) **Unity 6 against a .NET 8 sim library.** The Architect
+             believes, and this should be verified, that Unity 6's scripting
+             runtime loads assemblies built for .NET Standard 2.1 / .NET
+             Framework APIs, not `net8.0`. If so, `01-architecture.md`
+             (locked) cannot hold as written: ".NET 8" and "Unity 6 importing
+             the sim library as a compiled assembly" conflict. One possible
+             reading is to multi-target the sim, but that limits the
+             language and BCL features every sim worker may use and changes a
+             locked file.
+             (b) **The engine project shell.** No module owns the Unity
+             project (location, scenes, settings, build). `app.ui` will need
+             it too.
+             (c) **The composition root.** No spec says how a running sim is
+             built and handed to presentation. It becomes specifiable once
+             (b) is settled.
+             (d) **Game speeds** beyond 1x and pause are pacing.
+             (e) **No player-facing `SetServersOpen`.** T-023 implements the
+             command, but no Phase 1 task lets the player issue it, and
+             T-025's question ("is unblocking flow fun?") needs that lever in
+             the player's hands.
+Raised by:   Q-008
+Impact:      None blocks T-020's headless scope. Together they block the
+             engine backend and so any playable build: T-025 cannot happen
+             without them. (a) also bears on T-001, which creates the solution
+             and chooses its target framework; if the answer is
+             multi-targeting, it is cheapest before T-001 merges. (e) is
+             scope and planning, raised here because writing `app.render`'s
+             "issues no commands" rule exposed it.
+Signed off:  **PENDING HUMAN** on all five; (a) requires a recorded sign-off
+             because it touches `01-architecture.md`
+
+## 2026-09-23 — spec/12-interfaces-airside.md §12.9 — `Layout()` query; `AtNode` defined while `OnEdge` is set
+Reason:      The renderer needs the validated layout, and must not load the
+             airside fixture a second time on its own. It also needs the
+             direction of travel on a `Bidirectional` edge, which
+             `AircraftTrack` did not give: `EdgeProgress` had no stated origin.
+             `AtNode` now holds the edge-entry node while `OnEdge` is set, and
+             `EdgeProgress` runs from it.
+Raised by:   Q-008
+Impact:      T-021 (QUEUED, no code) exposes one more query and keeps `AtNode`
+             set during edge traversal instead of clearing it. `AtNode` is a
+             hashed field, but no golden exists yet. The task file is stale on
+             both points.
+Signed off:  not required
+
+## 2026-09-23 — spec/03-module-map.md, spec/00-overview.md, spec/08-interfaces-core.md §8.1 — point `app.render` at its interface file
+Reason:      Bookkeeping to match the new file. §8.1 now names where
+             `AGENT_ZOOM_THRESHOLD` is defined.
+Raised by:   Q-008
+Impact:      none.
+Signed off:  not required

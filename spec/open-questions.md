@@ -151,7 +151,27 @@ Why it matters: T-024 is the Phase 1 headline feature and the module the
              overview explicitly calls out as gating every later balance
              decision (`00-overview.md`). Guessing its query surface risks a
              rebuild once `app.ui` needs it.
-Status:      OPEN
+Answer:      New file `spec/14-interfaces-delay.md`. `IDelaySystem` is
+             query-only (§14.10); the per-flight record and node types are
+             §14.3; the checkpoint milestones the delay clock measures, and
+             the schedule-anchored `PlannedTick` rule they rely on, are
+             §14.4; the four blocking-interval families and their pairing
+             keys are §14.5; the allocation algorithm (first-blocker-wins,
+             cap, `late_inbound` capped at the inbound's own delay, residue,
+             recovery) is §14.6; tree shape, `DelayEventId` allocation — a
+             module-owned counter, never compared with `EventId`, monotone
+             in dispatch order, every reference pointing backwards — and the
+             depth rule are §14.7; finalisation, `DelayEvent` publication
+             and two-day retention are §14.8; hashed state, the no-RNG rule
+             and the budget shape are §14.13; fixtures and expected test
+             names are §14.14. Consistency amendments to `06`, `10` §10.3/
+             §10.4/§10.5/§10.6/§10.7, `11` §11.5, `12` §12.3 and `13` §13.6/
+             §13.9 are listed in `CHANGELOG.md`. One part is left open as a
+             HUMAN DECISION (§14.9): at Phase 1 no flight waits for a late
+             passenger, so security queues can never show up as delay
+             minutes, only as missed passengers.
+Status:      ANSWERED (spec/14-interfaces-delay.md) — one HUMAN DECISION
+             noted in §14.9, not blocking T-024
 
 ### Q-008 — `app.render` has no published interface or scope note
 Raised by:   planner / queue expansion for T-020
@@ -167,4 +187,30 @@ Question:    `03-module-map.md` lists `app.render` as owning "Rendering,
 Why it matters: Without this, T-020's done-condition cannot be stated as a
              passing test, per the Planner's own sizing rule, and every
              agent's interpretation of "top-down renderer" would differ.
-Status:      OPEN
+Answer:      New file `spec/15-interfaces-render.md`. `app.render` is split
+             into a headless scene layer with no engine reference, tested by
+             `dotnet test`, and a thin engine backend that holds no logic
+             (§15.1, §15.3). What is drawn is §15.5. The presentation-owned
+             layout that positions nodes is §15.4. The complete list of sim
+             members polled, and the rebuild-only-on-tick-or-camera cadence,
+             is §15.6. The promotion controller, the only caller of
+             `SetPromoted`, is §15.7: first update sets every node, later
+             updates only changes, in ascending `NodeId`, only between
+             `Step`s. It is proven outcome-neutral by an integration test.
+             The 1x tick pacer and the binding frame order are §15.8, the
+             types §15.9, the backend contract §15.10, the budget §15.11,
+             and T-020's scope, fixture and test names §15.12. Consistency
+             amendments: `12` §12.9 gains `Layout()` and defines `AtNode`
+             while `OnEdge` is set. T-020 now depends on T-009, T-010 and
+             T-021.
+             **Left open as HUMAN DECISIONS (§15.13):**
+             (a) Unity 6 appears unable to load a `net8.0` assembly, which
+             puts two locked `01-architecture.md` decisions in tension;
+             (b) who owns the Unity project shell; (c) the composition root
+             that hands a running sim to presentation; (d) game speeds other
+             than 1x; (e) no Phase 1 task gives the player a way to issue
+             `SetServersOpen`. None blocks T-020's headless scope; together
+             they block the backend and a playable build.
+Status:      PARTIALLY ANSWERED (spec/15-interfaces-render.md) — the headless
+             scope is answered and T-020 is releasable for it; the engine
+             backend stays open pending the HUMAN DECISIONS in §15.13
