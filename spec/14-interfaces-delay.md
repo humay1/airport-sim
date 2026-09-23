@@ -69,6 +69,8 @@ of attributed delay ticks. It performs no inference and no reconstruction
 > (the season-long ranking in "Aggregate views") is expected to be served by
 > compact per-day aggregates, which are later scope. How far back a player may
 > look is player-facing; flagged for the human owner.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -197,6 +199,8 @@ Finishing early (`ActualTick < PlannedTick`) is lateness 0, never negative.
 > the UI *headlines* ("dep 07:35 — 34 min late", `06-delay-attribution.md`) is
 > `app.ui`'s choice among the queries of §14.10. Adding a checkpoint later is
 > additive; removing one changes tree contents.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -314,6 +318,8 @@ see the amended `10-events.md` §10.5 rule 5.
 > trimming or forgiving the oldest first, are equally deterministic and change
 > tree contents only, never an interface. Flagged for the human owner to judge
 > once the tree is visible in a build.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 

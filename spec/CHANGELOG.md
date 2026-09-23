@@ -673,3 +673,17 @@ Impact:      additive. It narrows what the nightly gate proves, which is why
              fixture or its golden. The Planner should queue one once T-009
              lands its first goldens.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D3); reversible
+
+## 2026-09-23 — spec/14-interfaces-delay.md §14.2, §14.4, §14.6; spec/15-interfaces-render.md §15.2, §15.4, §15.11 — D8: Q-007/Q-008 LOW CONFIDENCE items accepted as provisional
+Reason:      The owner accepted every LOW CONFIDENCE call from Q-007 and Q-008
+             as provisional: the checkpoint set (§14.4), the cap and recovery
+             allocation order (§14.6), the 2-day retention (§14.2), the zoom
+             threshold of 120 (§15.2), the split render layout (§15.4) and the
+             2 ms scene budget (§15.11). Each marker gains one acceptance line.
+             **The markers stay.** They are to be revisited after the T-025
+             playtest.
+Raised by:   D8
+Impact:      none. No value or rule changes. The older LOW CONFIDENCE items
+             from Phase 0 and Q-004 to Q-006 are not covered by D8 and remain
+             open for the owner's review as before.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D8); reversible

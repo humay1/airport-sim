@@ -76,6 +76,8 @@ nothing to the sim.
 > player sees against how many agent views are derived per frame; it moves no
 > sim outcome (§15.7), so it is cheap to retune after the first playable build.
 > Flagged for the human owner's eye, not as a balance value.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -159,6 +161,8 @@ widening `09-interfaces-flow.md`.
 > presentation-only data into sim state and its hash. When `sim.world` is
 > specified with real geometry, this layout is expected to shrink to sizes
 > only, by amendment.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
@@ -432,6 +436,8 @@ layer:
 > it, sized to leave most of the frame to the engine's own rendering. T-020's
 > budget test is the first measurement. If it is badly off, the number is
 > corrected by amendment, never by a worker.
+> *Accepted as provisional — HUMAN DECISION — owner (delegated), 2026-09-23
+> (D8). Revisit after the T-025 playtest; the marker stays until then.*
 
 ---
 
