@@ -169,9 +169,13 @@ interface IUiController {
 }
 ```
 
-`IUiController` is built from a validated `RenderLayout` and an
-`ILaneCommandSink`. The construction entry point belongs to Q-009, like every
-other module's. Tests use a fake sink.
+Construction (Q-009), following `08` §8.11a's factory rule:
+
+```
+UiFactory.CreateController(in RenderLayout layout, ILaneCommandSink sink) -> IUiController
+```
+
+Tests use a fake sink. The production sink's factory is added by Q-010.
 
 ---
 

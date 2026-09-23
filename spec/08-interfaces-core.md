@@ -436,6 +436,59 @@ interface IContentIndex {
 
 ---
 
+## 8.11a Construction (Q-009)
+
+How a sim is assembled. The same surface serves `app.host` (`16` §16.4),
+`tools.simharness` and every integration test. There is no other way to
+construct a system.
+
+```
+readonly struct SimHostConfig {
+  uint64          MasterSeed
+  IContentIndex   Content
+  ICheckpointSink Checkpoints
+  ISimLog         Log
+}
+
+readonly struct SystemServices {           // what a module factory may receive from core
+  IEventBus     Events                     // Subscribe during construction only
+  IIdAllocator  Ids
+  IContentIndex Content                    // read-only; load-time validation
+}
+
+interface ISimHostBuilder {
+  SystemServices Services { get }
+  void     Register(ISimSystem system)     // strictly ascending registry position (§8.5)
+  ISimHost Build()                         // once
+}
+
+SimHostFactory.CreateBuilder(in SimHostConfig config) -> ISimHostBuilder
+ContentIndexFactory.Create(IReadOnlyList<IContentDefinition> definitions) -> IContentIndex
+```
+
+- **Factories.** Every module publishes exactly one `<Module>Factory` of
+  stateless static methods, named in its interface file's "Construction"
+  section. These are the only static members a module publishes. They hold no
+  state, cache nothing, and read nothing but their arguments. This is the one
+  permitted exception to `CLAUDE.md`'s "no hidden statics", and it is not
+  hidden.
+- **Inputs.** A factory takes `SystemServices`, the module's validated
+  construction data, and the downward interfaces the module calls. Nothing
+  else: no service locator, no registry lookup, no file path.
+- **Order.** Construct in dependency order (a module's downward interfaces
+  must exist first), then `Register` in registry order. `Register` out of
+  order, twice for one `SystemId`, or after `Build` throws. So does
+  `Subscribe` after `Build`.
+- `Build` creates the RNG service from `MasterSeed` (§8.8), wires the
+  checkpoint and log sinks, and returns the host at tick 0. A builder cannot
+  be reused after `Build`.
+- `ContentIndexFactory.Create` sorts definitions by ordinal id and throws on
+  a duplicate id. Parsing `data/` files into definitions is not specified
+  yet; that is `open-questions.md` Q-011.
+- **A module that is not registered is also not constructed.** Callers pass
+  `null` for an optional downward interface. The module's own spec says what
+  it does then, for example `11` §11.6 and `12` §12.8.
+
 ## 8.12 What `sim.core` does not own
 
 Stated because the temptation is obvious and the cost is a god-module:

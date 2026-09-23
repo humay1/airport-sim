@@ -337,6 +337,18 @@ the day boundary, and may allocate.
 
 ---
 
+## 11.9a Construction (Q-009)
+
+```
+ScheduleFactory.CreateLoader() -> IScheduleLoader                        // §11.4
+ScheduleFactory.CreateSystem(in SystemServices services, in ScheduleTable table,
+                             IFlowSystem? flow) -> IScheduleSystem
+```
+
+`flow` is null when `sim.flow` is not registered (§11.6). `aircraft_type` and
+`pax_profile` resolve through `services.Content` at construction; a miss is a
+load failure (§11.4).
+
 ## 11.10 The Phase 0 fixture (T-008)
 
 `tests/fixtures/schedule/phase0-200.csv`, binding on the Test Author:

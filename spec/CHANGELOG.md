@@ -1108,3 +1108,42 @@ Impact:      none on interfaces. It adds one file the Architect must keep in
              in `agents/architect.md`, which is outside `spec/` and so was not
              edited here.
 Signed off:  human (owner-approved)
+
+## 2026-09-23 — spec/08 §8.11a; 09 §9.11; 11 §11.9a; 12 §12.4, §12.12a; 13 §13.10a; 14 §14.13a; 15 §15.9; 16 §16.3–§16.5, §16.11, §16.12; 17 §17.7 — Q-009: the construction surface
+Reason:      No module published how its system is built. The composition
+             root (D7), the harness and every multi-system test would have
+             reached into module internals or invented factories. Answer:
+             - **`sim.core` (§8.11a):** `SimHostConfig`, `SystemServices`
+               (event bus, id allocator, content index), `ISimHostBuilder`
+               and `ContentIndexFactory`.
+             - **The factory rule:** one `<Module>Factory` of stateless
+               static methods per module. It takes `SystemServices`,
+               validated construction data and downward interfaces, and
+               nothing else. Construct in dependency order; register in
+               registry order.
+             - **Per module:**
+               - loaders that parse bytes: `IFlowGraphLoader`,
+                 `IAirsideLayoutLoader.Parse`, `ITurnaroundSetupLoader`;
+                 `IScheduleLoader` and `IRenderLayoutLoader` already existed;
+               - factories for each system and for the render and UI scene
+                 objects.
+             - **`FlowGraph` is opaque** outside `sim.flow`, so the answer
+               does not design the graph `sim.world` should own.
+             - **`sim.airside` gains an explicit `turnaroundRegistered`
+               construction input.** §12.8's fallback depended on "whether
+               `sim.turnaround` is registered", and nothing told `sim.airside`
+               that.
+             - **`16` bundle names:** the bundle's file names are now exact
+               (`*.fixture`). The harness must build with the same factories.
+Raised by:   Q-009
+Impact:      interface additions for every module. No module has code. Stale
+             task files: T-001 (the builder), T-005 (the builder sits beside
+             the queue), T-007/T-010/T-023 (flow factory and graph loader),
+             T-008, T-009 (the harness composes through these factories), T-020,
+             T-021 (factory, `Parse`, `turnaroundRegistered`), T-022, T-024,
+             and the host and UI tasks not yet queued. Two gaps next to this
+             one are raised rather than answered: **Q-011** (content
+             definition types and the `data/` loader, which blocks the player
+             build) and **Q-012** (`sim.flow` routing without `sim.world`,
+             which blocks T-007 and was already latent in its task file).
+Signed off:  not required (Architect's interface domain)

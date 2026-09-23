@@ -46,7 +46,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.turnaround` | `13-interfaces-turnaround.md` |
 | `sim.delay` | `14-interfaces-delay.md` (principles in `06-delay-attribution.md`) |
 | `app.render` | `15-interfaces-render.md` (Phase 1: headless scene layer, promotion controller, tick pacer; engine backend is a contract only) |
-| `app.host` | `16-interfaces-host.md` (composition root, frame loop, Unity project; module construction pending Q-009) |
+| `app.host` | `16-interfaces-host.md` (composition root, frame loop, Unity project; content loading pending Q-011) |
 | `app.ui` | `17-interfaces-ui.md` (Phase 1 only: pause/speed controls and the lane click; command plumbing pending Q-010) |
 | event catalogue (all emitters, consumed by `sim.delay`) | `10-events.md` |
 | everything else | not yet specified — a worker may not start without one |

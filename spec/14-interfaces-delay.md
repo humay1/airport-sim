@@ -591,6 +591,16 @@ Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). The shape:
 
 ---
 
+## 14.13a Construction (Q-009)
+
+```
+DelayFactory.CreateSystem(in SystemServices services) -> IDelaySystem
+```
+
+It takes no construction data and no other module's interface, which is
+`delay_module_never_writes` by construction. It subscribes to the events of
+§14.12 through `services.Events` inside `CreateSystem`.
+
 ## 14.14 Fixtures and tests (T-024)
 
 ### Synthetic event streams

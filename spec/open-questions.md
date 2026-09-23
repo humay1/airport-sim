@@ -271,8 +271,73 @@ Proposed:    Each interface file gains a short "Construction" section with
              order. The content loader gets its own small spec. Fixture
              formats stay the worker's choice, but they are named in the
              factory's input type, not in a file path.
-Status:      OPEN — Architect to answer; not a human decision unless the
-             answer changes a locked file
+Answer:      The proposal is adopted. `08` §8.11a publishes `SimHostConfig`,
+             `SystemServices` (event bus, id allocator, content index),
+             `ISimHostBuilder` (register in registry order, build once) and
+             `ContentIndexFactory`. It also gives the factory rule: one
+             `<Module>Factory` of stateless static methods per module,
+             taking only `SystemServices`, validated data and downward
+             interfaces; construct in dependency order, register in registry
+             order. Each module has a "Construction" section:
+             `09` §9.11 (`IFlowGraphLoader`, with an opaque `FlowGraph`),
+             `11` §11.9a, `12` §12.12a (adds
+             `IAirsideLayoutLoader.Parse` and an explicit
+             `turnaroundRegistered` input), `13` §13.10a
+             (`ITurnaroundSetupLoader`), `14` §14.13a, `15` §15.9
+             (`RenderFactory`), `17` §17.7 (`UiFactory`). `16` §16.3–§16.5
+             now composes with them, and the harness must use the same
+             factories. Two neighbouring gaps are raised separately rather
+             than invented: parsing `data/` into content definitions (Q-011),
+             and what `sim.flow`'s graph must express to route without
+             `sim.world` (Q-012).
+Status:      ANSWERED (spec/08-interfaces-core.md#811a-construction-q-009)
+
+### Q-011 — Content definition types and the `data/` loader are unspecified
+Raised by:   architect / Q-009
+Blocking:    the Unity player build (`16` §16.11), which has no other source
+             of content, and production content for any module. It does not
+             block tests, which supply definitions directly to
+             `ContentIndexFactory.Create` (`08` §8.11a).
+Question:    `IContentIndex.TryGet<T>` needs concrete `IContentDefinition`
+             types. Phase 1 needs at least an aircraft definition (a
+             `size_category` ordinal, `12` §12.7), a pax profile (show-up
+             curve `11` §11.6, `walk_speed` `09` §9.6) and a flow-node or queue
+             definition (service rate, threshold and hysteresis, delay
+             category, `09` §9.4, `10` §10.6). None is typed anywhere. Nor is
+             the loader that turns `data/**/*.json` into definitions, or where
+             it lives (sim assemblies take no JSON package, `07` "Runtime
+             portability" rule 7). No Phase 1 content exists in `data/` either.
+Why it matters: Each consuming module would invent the definition type it
+             reads, and the Phase 1 lane service rates are balance values
+             (`04`) that someone would otherwise hardcode into a fixture.
+Proposed:    Definition types in `sim.core` beside the event types (the
+             T-026 pattern). A loader in a small non-sim assembly (`content`
+             or `app.host`) that parses the JSON and calls
+             `ContentIndexFactory.Create`. Phase 1 balance-bearing values
+             (lane service rates, queue thresholds) under `data/balance/`, as
+             D6 did for the hold.
+Status:      OPEN — Architect to answer; the balance values themselves are
+             the owner's
+
+### Q-012 — `sim.flow` has no way to route without `sim.world`
+Raised by:   architect / Q-009 (making `FlowGraph` opaque)
+Blocking:    T-007 (`tasks/T-007` already tells its worker to stop if routing
+             needs a `sim.world` query), and so the Phase 0 kill gate chain.
+Question:    `09` §9.6 routes cohorts along `sim.world` flow fields toward a
+             "current destination", with traversal time from `sim.world`
+             distances. `sim.world` has no interface. Nothing says which node
+             a departing cohort is heading for (which `Gate` serves a
+             flight), nor how edge traversal time is known.
+Why it matters: T-007 cannot implement §9.4 step 4 ("served passengers move
+             to the outbound edge per §9.6") without it. Q-009's opaque
+             `FlowGraph` deliberately does not decide it.
+Proposed:    The same narrowing `12` §12.1 applied to airside: at Phase 0/1,
+             `sim.flow`'s graph is self-owned construction data with
+             per-edge `TraversalTicks`. A departing cohort's destination is
+             the `Gate` node(s) the graph declares for the stand, or a
+             fixture-level gate per flight. Folding it into `sim.world` later
+             is an amendment.
+Status:      OPEN — Architect to answer
 
 ### Q-010 — `SetServersOpen` cannot be issued: command plumbing and lane state are unpublished
 Raised by:   architect / D5 (writing `spec/17-interfaces-ui.md`)

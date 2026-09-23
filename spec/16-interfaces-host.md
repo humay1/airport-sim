@@ -2,14 +2,16 @@
 
 Implements the `app.host` module created by owner decision D7: HUMAN
 DECISION — owner (delegated), 2026-09-23, reversible. It answers
-`15-interfaces-render.md` §15.13(b) and (c). The composition itself (§16.4)
-is specified by its inputs and outputs only. How each module's system is
-constructed is not published anywhere, and that is open as
-`open-questions.md` Q-009. Notation is as in `08-interfaces-core.md`. Where
+`15-interfaces-render.md` §15.13(b) and (c). Composition uses the published
+construction surface of `08` §8.11a and each module's "Construction" section
+(Q-009). Building the content index from `data/` remains open as
+`open-questions.md` Q-011. Notation is as in `08-interfaces-core.md`. Where
 this file appears to contradict `01-architecture.md` or `02-determinism.md`,
 those win and it is a spec bug.
 
-Reading order for an `app.host` worker: `01`, `02`, `07`, `08` §8.5 and §8.9,
+Reading order for an `app.host` worker: `01`, `02`, `07`, `08` §8.5, §8.9 and §8.11a,
+the Construction section of each module (`09` §9.11, `11` §11.9a, `12` §12.12a,
+`13` §13.10a, `14` §14.13a),
 `15` §15.3, §15.8, §15.9, `17` §17.4, §17.7, this file.
 
 ---
@@ -103,12 +105,15 @@ interface IScenarioBundle {
 | File | Format | Consumed by |
 |---|---|---|
 | `bundle.json` | `{ "schema_version": 1, "seed": "<uint64 decimal>", "systems": [ "<module name>", ... ] }` | the host |
-| `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader` |
-| `airside.*` | `12-interfaces-airside.md` §12.4, in the format of T-021's fixture | `IAirsideLayoutLoader` |
-| `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host, for `sim.airside`'s construction |
-| `turnaround.*` | `13-interfaces-turnaround.md` §13.4, in the format of T-022's fixture | pending Q-009 |
-| `flow.*` | `sim.flow`'s node graph and `QueueConfig`s, in the format of T-007/T-023's fixtures | pending Q-009 |
-| `render_layout.*` | `15-interfaces-render.md` §15.4 | `IRenderLayoutLoader` |
+| `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader.Load` |
+| `airside.fixture` | `12-interfaces-airside.md` §12.4, in the format of T-021's fixture | `IAirsideLayoutLoader.Parse` |
+| `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules` |
+| `turnaround.fixture` | `13-interfaces-turnaround.md` §13.4, in the format of T-022's fixture | `ITurnaroundSetupLoader.Load` |
+| `flow.fixture` | `sim.flow`'s opaque `FlowGraph`, in the format of T-007/T-023's fixtures | `IFlowGraphLoader.Load` |
+| `render_layout.fixture` | `15-interfaces-render.md` §15.4 | `IRenderLayoutLoader.Load` |
+
+File names are exact. The `.fixture` files keep whatever byte format their
+module's worker chose; the name says nothing about the format.
 
 - `systems` lists module names (`ISimSystem.Name`). A listed system whose
   file is missing is a hard load failure naming the file
@@ -116,8 +121,11 @@ interface IScenarioBundle {
   never reordered (`08` §8.5). `sim.delay` needs no file of its own.
 - The seed is parsed with the invariant culture (`07-conventions.md`,
   "Runtime portability" rule 4).
-- The content index (`IContentIndex` over `data/`) is part of the input as
-  well. How it is built is not published; that is part of Q-009.
+- The content index is part of the input as well. It is created with
+  `ContentIndexFactory.Create` (`08` §8.11a), but parsing `data/` into
+  definitions is not published; that is Q-011. Until Q-011 is answered, the
+  host takes the definitions as a constructor argument of its composer, and
+  tests supply them.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
   `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, the `sim.flow`
@@ -129,7 +137,7 @@ interface IScenarioBundle {
 
 ---
 
-## 16.4 Composition — PENDING Q-009
+## 16.4 Composition
 
 ```
 readonly struct ComposedSim {
@@ -146,7 +154,23 @@ interface ISimComposer {
 }
 ```
 
-Binding, independent of Q-009:
+`ISimComposer` is created with the content definitions:
+`HostFactory.CreateSimComposer(IReadOnlyList<IContentDefinition> content)`
+(see §16.3 and Q-011).
+
+`Compose` does exactly this, in this order:
+
+1. Parse `bundle.json`, then
+   `SimHostFactory.CreateBuilder({ seed, ContentIndexFactory.Create(content), checkpoints, log })`.
+   The log sink is the host's (`08` §8.10).
+2. Load each listed module's file with that module's loader (§16.3).
+3. Construct the listed systems **in dependency order**, each with
+   `builder.Services`, its data, and its downward interfaces or `null`:
+   flow; schedule(flow); airside(schedule, flow, `turnaroundRegistered`);
+   turnaround(schedule); delay.
+4. `Register` them **in registry order** (`08` §8.5), then `Build`.
+
+Rules:
 
 - Systems register in the registry order of `08` §8.5. The Phase 1 set is
   `sim.schedule`, `sim.airside`, `sim.flow`, `sim.turnaround`, `sim.delay`.
@@ -159,11 +183,12 @@ Binding, independent of Q-009:
 - Composition happens once per session. There is no recomposition and no hot
   swap while a sim is running.
 - Every checkpoint (`08` §8.9) goes to the given sink.
-
-**Not specified here, and not invented here:** the construction entry point of
-each module's system, of `ISimHost` (seed, registry, content, checkpoint
-sink) and of the content index. No spec publishes them, and `08` says
-anything unpublished is internal to its module. Q-009 asks for them.
+- A listed system whose required downward interface is not listed (airside
+  or turnaround without schedule) is a load failure.
+- `tools.simharness`'s `checkpoints` subcommand (§16.8) uses the **same
+  factories**. It may wire them in its own code, which is what the
+  equivalence test compares, but it must not construct any system another
+  way.
 
 ---
 
@@ -188,9 +213,14 @@ interface IPresentationComposer {
 - Loads `render_layout.*` through `IRenderLayoutLoader`, passing
   `Airside.Layout()` when `sim.airside` is registered. A layout failure is a
   hard load failure.
-- Constructs the scene builder, the promotion controller, the pacer and the UI
-  controller (with its lane sink, `17` §17.5) from those. Their construction
-  entry points are part of Q-009.
+- Constructs the scene builder, the promotion controller and the pacer with
+  `RenderFactory` (`15` §15.9), and the UI controller and its lane sink with
+  `UiFactory` (`17` §17.7).
+- It builds the frame loop (§16.6) over those parts and `sim.Host`, and
+  returns it as `Presentation.Frame`.
+- `HostFactory.CreatePresentationComposer()`, `HostFactory.CreateCommandLine()`
+  and `HostFactory.CreateHeadlessRun(ISimComposer composer)` are `app.host`'s
+  own factories, under the same rule as `08` §8.11a.
 - Presentation receives the sim's read-only interfaces and `ISimHost`. It
   never receives a system's internals.
 
@@ -370,12 +400,15 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
 
 - **Headless host:** `src/app/host/**`, `tests/app/host/**`. The frame loop,
   the command-line parse and the dump writer can be built now against the
-  `app.render` (T-020) and `app.ui` (`17` §17.10) scene-layer interfaces. `ISimComposer`,
-  `IPresentationComposer`, `IHeadlessRun` and the harness-equivalence test
-  wait for Q-009.
+  `app.render` (T-020) and `app.ui` (`17` §17.10) scene-layer interfaces.
+  `ISimComposer`, `IPresentationComposer`, `IHeadlessRun` and the
+  harness-equivalence test need the module factories to exist (T-007/T-023,
+  T-008, T-021, T-022, T-024). Tests supply content definitions directly
+  until Q-011 is answered.
 - **Unity project shell:** `unity/AirportSim/**`, including the bootstrap and
-  the playtest `bundle.json`. It waits for the headless host and for the
-  `app.render` and `app.ui` backends. It is not testable in CI (§16.2).
+  the playtest `bundle.json`. It waits for the headless host, for the
+  `app.render` and `app.ui` backends, and for Q-011: a player build has no
+  other source of content definitions. It is not testable in CI (§16.2).
 
 Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
@@ -387,12 +420,14 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - `test_command_line_parses_checkpoint_run_and_rejects_others`
 - `test_checkpoint_dump_format_is_byte_exact`
 - `test_headless_run_result_independent_of_step_batch_size`
-- `test_host_composition_matches_harness_checkpoints` — after Q-009
+- `test_compose_constructs_in_dependency_order_and_registers_in_registry_order`
+- `test_compose_rejects_airside_without_schedule`
+- `test_host_composition_matches_harness_checkpoints`
 
 ---
 
 ## 16.12 Open
 
-- **Q-009**: module construction entry points (§16.4, §16.5).
+- **Q-011**: content definitions and the `data/` loader (§16.3).
 - **§16.9 adoption**: an owner decision, because it touches
   `02-determinism.md` and `ci/`.

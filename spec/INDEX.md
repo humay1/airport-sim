@@ -23,6 +23,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 | You are working on | Read, beyond `01`/`02`/`07` |
 |---|---|
+| Anyone constructing a system (harness, host, integration tests) | `08` §8.11a, then the module's Construction section: `09` §9.11, `11` §11.9a, `12` §12.12a, `13` §13.10a, `14` §14.13a, `15` §15.9, `17` §17.7 |
 | `sim.core` (T-001–T-006, T-026) | `08` all; `10` §10.2, §10.3; `03` budgets. T-003: `08` §8.3. T-026: `10` §10.6 plus the type blocks of `12` §12.4, `13` §13.3, `14` §14.3 |
 | `tools.simharness` (T-006, T-009) | `02` Gates; `08` §8.5, §8.9; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
 | `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
@@ -125,7 +126,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
   handlers in registry order (§8.6); commands admitted only at ≥ 1 tick of
   lead and never re-dated (§8.7); xoshiro256\*\* + SplitMix64 (§8.8);
-  FNV-1a-64 (§8.9).
+  FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
+  `SystemServices`, and one stateless `<Module>Factory` per module; construct
+  in dependency order, register in registry order**.
 - LC: none left.
 - Read if: T-001–T-006, T-026; §8.5 and §8.9 for the harness and `app.host`.
 
@@ -135,7 +138,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: the cohort is the only authoritative state and agents are derived
   views (§9.1); integer heads with `Fx` service credit (§9.4); **new query
   `TryGetOutstanding` for the boarding hold (§9.7a, D6)**; mandatory merging
-  is a budget requirement (§9.3).
+  is a budget requirement (§9.3); factory plus `IFlowGraphLoader`, with
+  `FlowGraph` opaque (§9.11); routing without `sim.world` is open (Q-012).
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
   blame rule (§9.7a).
 - Read if: T-007, T-010, T-011, T-023; §9.7/§9.7a for callers.
@@ -165,7 +169,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   per rotation, with the stand handed off (§12.3, §12.8); **boarding hold:
   hold at the doors-close point while passengers are outstanding, at most
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
-  (§12.8, HD, D6)**; no RNG.
+  (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
+  and `IAirsideLayoutLoader.Parse` (§12.12a).
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
@@ -176,7 +181,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: job catalogue, vehicle fleet, FIFO dispatch, `DeboardComplete`,
   `ReadyToBoard`, `BoardingComplete`.
 - Key: a vehicle is its own crew at Phase 0/1; dispatch by lowest blocking
-  `EventId`; `Boarding` waits on five jobs; unchanged by D6.
+  `EventId`; `Boarding` waits on five jobs; unchanged by D6; factory plus
+  `ITurnaroundSetupLoader` (§13.10a).
 - LC: distance-blind dispatch (§13.5).
 - Read if: T-022.
 
@@ -209,8 +215,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: **Mono backend and the CI-tested assemblies as plugins (§16.2)**;
   composition is a pure function of the bundle's bytes (§16.4); frame order
   is UI, then promotion, then `Step`, then build (§16.6); the byte-exact
-  checkpoint dump and the harness `checkpoints` subcommand (§16.8). **The
-  composition's module constructors are pending Q-009.**
+  checkpoint dump and the harness `checkpoints` subcommand (§16.8); exact
+  bundle file names and the composition steps (§16.3, §16.4), using the
+  Q-009 factories. **The player build waits on Q-011 (content).**
 - LC: the gate runs nightly on the real player (§16.9, proposed, not adopted).
 - Read if: the host tasks, the harness `checkpoints` subcommand, and the
   cross-runtime gate.
@@ -233,9 +240,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: **Q-009** (module construction entry points; blocks `app.host`
-  composition), **Q-010** (`SetServersOpen` payload, `PlayerId`, command
+- Open now: **Q-010** (`SetServersOpen` payload, `PlayerId`, command
   dispatch, lane-state read; blocks `app.ui`'s lane sink and bears on T-023
-  and T-005). Q-002 to Q-008 are answered; Q-001 was deleted (D9).
+  and T-005), **Q-011** (content definitions and the `data/` loader; blocks
+  the player build), **Q-012** (`sim.flow` routing without `sim.world`;
+  blocks T-007). Q-002 to Q-009 are answered; Q-001 was deleted (D9).
 - Read if: before starting any task, check that your task is not blocked
   here.

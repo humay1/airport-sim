@@ -392,7 +392,17 @@ interface IPromotionController { void Update(in CameraView camera) }
 ```
 
 `ISceneBuilder` and `IPromotionController` are constructed from a
-`RenderSources` and a validated `RenderLayout`. In a playable build,
+`RenderSources` and a validated `RenderLayout` (Q-009):
+
+```
+RenderFactory.CreateLayoutLoader() -> IRenderLayoutLoader
+RenderFactory.CreateSceneBuilder(in RenderSources sources, in RenderLayout layout) -> ISceneBuilder
+RenderFactory.CreatePromotionController(in RenderSources sources, in RenderLayout layout) -> IPromotionController
+RenderFactory.CreatePacer() -> ITickPacer
+```
+
+`RenderFactory` follows `08` §8.11a's factory rule (stateless static
+methods only). In a playable build,
 `app.host`'s presentation composer builds the `RenderSources` from the
 composed sim (`16-interfaces-host.md` §16.5). Tests build them from fakes and,
 for the integration test, from the same composition the headless harness

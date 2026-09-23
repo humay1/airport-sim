@@ -319,3 +319,25 @@ demands, stated so it is not discovered late:
   unbounded cohort count only means the fixture was short.
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
+
+---
+
+## 9.11 Construction (Q-009)
+
+```
+interface IFlowGraphLoader {
+  FlowGraph Load(ReadOnlySpan<byte> file, string sourceName)   // parse and validate; hard failure names file and id
+}
+
+FlowFactory.CreateGraphLoader() -> IFlowGraphLoader
+FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph) -> IFlowSystem
+```
+
+`FlowGraph` is **opaque outside `sim.flow`**. Its fields and its file format
+are the worker's choice, following the posture of
+`12-interfaces-airside.md` §12.13. Other modules only carry it from the
+loader to the factory. That keeps this answer from designing the graph that
+`sim.world` is meant to own. What the graph must express for routing is the
+separate open `open-questions.md` Q-012. Per-node content (service rates,
+thresholds, category) is resolved through `services.Content` at construction
+(§9.4, `10` §10.6).

@@ -189,7 +189,10 @@ readonly struct AirsideLayout {
   IReadOnlyList<StandDef>    Stands
 }
 
-interface IAirsideLayoutLoader { AirsideLayout Load(AirsideLayout raw) }
+interface IAirsideLayoutLoader {
+  AirsideLayout Load(AirsideLayout raw)                              // validate
+  AirsideLayout Parse(ReadOnlySpan<byte> file, string sourceName)    // parse the fixture file, then Load (Q-009)
+}
 
 readonly struct AirsideRules {           // construction data, beside the layout; D6
   uint32 BoardingHoldMaxMinutes          // §12.8 "The boarding hold"; 0 disables the hold
@@ -625,6 +628,25 @@ update path (`07-conventions.md`); the routing table is computed once at load,
 off the tick path.
 
 ---
+
+## 12.12a Construction (Q-009)
+
+```
+AirsideFactory.CreateLayoutLoader() -> IAirsideLayoutLoader
+AirsideFactory.CreateSystem(in SystemServices services, in AirsideLayout layout,
+                            in AirsideRules rules, IScheduleSystem schedule,
+                            IFlowSystem? flow, bool turnaroundRegistered) -> IAirsideSystem
+```
+
+- `layout` must come from `IAirsideLayoutLoader` (validated).
+- `rules` is parsed by the caller: `AirsideRules` is two integers, and no sim
+  module parses JSON. The format is `04-data-schemas.md`.
+- `flow` null: no `Inject`/`Absorb` calls and no boarding hold (§12.7, §12.8).
+- `turnaroundRegistered` is what selects §12.8's handshake (true) or its
+  fallback (false). It was previously implicit, and it is now an explicit
+  construction input, fixed for the session.
+- `schedule` is required. `sim.airside` is not constructed without
+  `sim.schedule`.
 
 ## 12.13 The Phase 0/1 fixture (T-021)
 
