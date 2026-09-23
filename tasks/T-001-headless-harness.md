@@ -6,7 +6,7 @@
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | — |
-| Spec source | `spec/01-architecture.md` "Layer separation", "Command pattern"; `spec/08-interfaces-core.md` §8.2, §8.5 |
+| Spec source | `spec/01-architecture.md` "Platform decisions" (D1), "Layer separation", "Command pattern"; `spec/08-interfaces-core.md` §8.2, §8.5, §8.11a; `spec/07-conventions.md` "Runtime portability" |
 | Blocked by | — |
 
 ## Writable paths
@@ -19,6 +19,13 @@ Anything else is read-only. Writing outside these paths is an automatic
 rejection. `tools/SimHarness` is the console entry point CI's
 `ci/run-checks.sh` already invokes (`dotnet run --project tools/SimHarness`);
 create it as a thin host over `ISimHost`, not as a place to put sim logic.
+
+**Targets (D1, `01-architecture.md` "Platform decisions"):** `AirportSim.sln`
+must build `src/sim/**` (and every headless `app.*` layer later) as
+`netstandard2.1`, `LangVersion 9`, zero engine references. `tests/**` and
+`tools/SimHarness/**` target `net8.0` and consume the sim unchanged. This is
+this task's job to set up correctly at solution-creation time — a later
+retarget is expensive across every sim project.
 
 ## Readable specs
 
@@ -62,6 +69,41 @@ interface ISimHost {
   bool   TrySubmit(in Command cmd, out CommandRejection reason)
 }
 ```
+
+Construction (`08` §8.11a, Q-009 — the same surface every later module
+factory, `app.host` and `tools.simharness` build against):
+
+```
+readonly struct SimHostConfig {
+  uint64          MasterSeed
+  IContentIndex   Content
+  ICheckpointSink Checkpoints
+  ISimLog         Log
+}
+
+readonly struct SystemServices {
+  IEventBus               Events
+  IIdAllocator            Ids
+  IContentIndex           Content
+  ICommandHandlerRegistry Commands
+}
+
+interface ISimHostBuilder {
+  SystemServices Services { get }
+  void     Register(ISimSystem system)     // strictly ascending registry position
+  ISimHost Build()                         // once
+}
+
+SimHostFactory.CreateBuilder(in SimHostConfig config) -> ISimHostBuilder
+```
+
+This task builds `ISimHostBuilder`/`SimHostFactory` themselves; it does not
+need `ICommandHandlerRegistry` to do anything beyond exist as a seam (T-005
+gives it behaviour) and does not need `ContentIndexFactory` to load real
+content (T-026/T-027 do). `Register` out of order, twice for one `SystemId`,
+or after `Build`, throws; so does `Subscribe` after `Build`. `Build` creates
+the RNG service from `MasterSeed`, wires the sinks, and returns the host at
+tick 0. A builder cannot be reused after `Build`.
 
 Fixed phase order per tick (`08-interfaces-core.md` §8.5), binding and not to
 be reordered: (1) command application, (2) system update in registry order,
@@ -114,7 +156,16 @@ with later systems.
 
 ## Worker notes
 
-`spec/open-questions.md` Q-002 leaves `SIM_SECONDS_PER_TICK` provisional at 6.
-Build against that value (permitted explicitly by Q-002's status line) but do
-not author golden hashes against it — that is `soak_500_days`, out of scope
-here.
+`SIM_SECONDS_PER_TICK = 6` is now a confirmed **HUMAN DECISION** (D2,
+`08-interfaces-core.md` §8.1/§8.2), not provisional — the earlier note here
+that it was provisional and that golden hashes must not be authored against
+it is stale and is withdrawn by this amendment. Golden hashes may now be
+authored (the soak fixture and its golden are T-013's job, not this one's).
+
+Also stale, replaced above: the earlier assumption that the sim targets
+`net8.0`. D1 retargets the sim (and every headless `app.*` layer later) to
+`netstandard2.1`/`LangVersion 9`; only `tests/**` and `tools/SimHarness/**`
+stay on `net8.0`. Read `spec/07-conventions.md` "Runtime portability" before
+writing anything that sorts, hashes, or parses a string or a number — Mono
+and CoreCLR must agree, and that section's seven rules are binding on
+`src/sim/**` from this task onward.
