@@ -105,6 +105,7 @@ interface IScenarioBundle {
 | File | Format | Consumed by |
 |---|---|---|
 | `bundle.json` | `{ "schema_version": 1, "seed": "<uint64 decimal>", "systems": [ "<module name>", ... ] }` | the host |
+| `world.fixture` | `18-interfaces-world.md` §18.2; required whenever `sim.flow` is listed | `IWalkGraphLoader.Load` |
 | `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader.Load` |
 | `airside.fixture` | `12-interfaces-airside.md` §12.4, in the format of T-021's fixture | `IAirsideLayoutLoader.Parse` |
 | `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules` |
@@ -166,15 +167,15 @@ interface ISimComposer {
 2. Load each listed module's file with that module's loader (§16.3).
 3. Construct the listed systems **in dependency order**, each with
    `builder.Services`, its data, and its downward interfaces or `null`:
-   flow; schedule(flow); airside(schedule, flow, `turnaroundRegistered`);
-   turnaround(schedule); delay.
+   world; flow(world); schedule(flow); airside(schedule, flow,
+   `turnaroundRegistered`); turnaround(schedule); delay.
 4. `Register` them **in registry order** (`08` §8.5), then `Build`.
 
 Rules:
 
 - Systems register in the registry order of `08` §8.5. The Phase 1 set is
-  `sim.schedule`, `sim.airside`, `sim.flow`, `sim.turnaround`, `sim.delay`.
-  `sim.world` is unspecified and never registered at Phase 1.
+  `sim.world`, `sim.schedule`, `sim.airside`, `sim.flow`, `sim.turnaround`,
+  `sim.delay`. `sim.world` is the fixed-graph subset of `18`.
 - **Composition is a pure function of the bundle's bytes and the content
   data.** The same bundle gives the same checkpoint sequence wherever it is
   composed: in the harness, in a test, or in a Unity player on either
@@ -183,8 +184,8 @@ Rules:
 - Composition happens once per session. There is no recomposition and no hot
   swap while a sim is running.
 - Every checkpoint (`08` §8.9) goes to the given sink.
-- A listed system whose required downward interface is not listed (airside
-  or turnaround without schedule) is a load failure.
+- A listed system whose required downward interface is not listed (flow
+  without world, airside or turnaround without schedule) is a load failure.
 - `tools.simharness`'s `checkpoints` subcommand (§16.8) uses the **same
   factories**. It may wire them in its own code, which is what the
   equivalence test compares, but it must not construct any system another

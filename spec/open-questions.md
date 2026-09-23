@@ -337,7 +337,30 @@ Proposed:    The same narrowing `12` §12.1 applied to airside: at Phase 0/1,
              the `Gate` node(s) the graph declares for the stand, or a
              fixture-level gate per flight. Folding it into `sim.world` later
              is an amendment.
-Status:      OPEN — Architect to answer
+Answer:      A minimal `sim.world` is published, not a flow-owned graph, since
+             `sim.world` already sits in `03`'s map (`18-interfaces-world.md`,
+             the fixed-graph Phase 0/1 subset):
+             - a fixture-loaded walk graph: nodes with integer
+               `LengthMetres`, directed edges;
+             - load-time routes: `CanReach`, `CanReachVia`, and `PathVia`
+               (the shortest path through a given first edge, ties by edge
+               sequence);
+             - a hash that is the fixture hash; no runtime state; registry 1.
+             `sim.flow` (`09` §9.6):
+             - traversal is `ceil(LengthMetres / (walk_speed_mps ×
+               SIM_SECONDS_PER_TICK))`;
+             - a departing cohort's destinations are every reachable `Gate`;
+             - on release it takes the `(edge, gate)` pair with the lowest
+               traversal plus predicted queue wait along `PathVia`, with ties
+               by `NodeId`, then `EdgeId`. Two security queues are two routes.
+             `FlowGraph` now carries node behaviour only over `sim.world`'s
+             nodes (`09` §9.11). `Absorb` boards from any `Gate`.
+             **Deferred, explicitly:** gate assignment. Which gate serves which
+             flight is a gameplay system for the owner, so Phase 0/1 pools
+             gates with one shared lounge in its fixtures. Construction, grid
+             and flow-field recomputation are deferred too (`18` §18.5).
+Status:      ANSWERED (spec/18-interfaces-world.md); gate assignment deferred
+             to the owner
 
 ### Q-010 — `SetServersOpen` cannot be issued: command plumbing and lane state are unpublished
 Raised by:   architect / D5 (writing `spec/17-interfaces-ui.md`)

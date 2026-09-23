@@ -40,6 +40,7 @@ its own test directory. Everything else is read-only to it.
 | Module | Interface spec |
 |---|---|
 | `sim.core` | `08-interfaces-core.md` |
+| `sim.world` | `18-interfaces-world.md` (Phase 0/1 subset only: fixed walk graph and routes; construction, grid and flow fields deferred) |
 | `sim.flow` | `09-interfaces-flow.md` |
 | `sim.schedule` | `11-interfaces-schedule.md` |
 | `sim.airside` | `12-interfaces-airside.md` |

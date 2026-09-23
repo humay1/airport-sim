@@ -33,6 +33,7 @@ Written here so no agent ever proposes them:
 |---|---|---|
 | Tick, time, RNG | `02-determinism.md`, `08-interfaces-core.md` | `sim.core` |
 | Event catalogue | `10-events.md` | `sim.core` (defined), all (emitted) |
+| Walk graph (Phase 0/1 subset) | `18-interfaces-world.md` | `sim.world` |
 | Schedule | `11-interfaces-schedule.md` | `sim.schedule` |
 | Airside movement | `12-interfaces-airside.md` | `sim.airside` |
 | Passenger flow | `03-module-map.md`, `09-interfaces-flow.md` | `sim.flow` |

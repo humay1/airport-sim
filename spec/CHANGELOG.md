@@ -1200,6 +1200,46 @@ Impact:      interface additions. Stale: T-023 or a flow task (the query),
              sink. The query's shape and the use of render pips rather than a
              UI overlay are LOW CONFIDENCE. **The running scope total becomes
              8** (item 8: the lane-state query and lane pips).
+
+## 2026-09-23 — spec/18-interfaces-world.md (new); 09 intro, §9.2, §9.6, §9.7, §9.11; 03; 00; 16 §16.3, §16.4 — Q-012: minimal `sim.world` so `sim.flow` can route
+Reason:      `09` §9.6 routed cohorts along `sim.world` flow fields, and
+             `sim.world` had no interface. T-007 could not move a served
+             passenger anywhere, which blocked the Phase 0 kill-gate chain.
+             Answer: the fixed-graph subset of `sim.world`.
+             - **The graph:** a fixture-loaded walk graph (nodes with integer
+               `LengthMetres`, directed edges). Routes are computed once at
+               load: shortest by length, ties by the smallest `EdgeId`
+               sequence. `IWorldSystem` exposes `Nodes`, `LengthMetres`,
+               `OutEdges`, `EdgeTo`, `CanReach`, `CanReachVia` and `PathVia`.
+               It has no runtime state; its hash is the fixture hash.
+             - **`sim.flow`:** traversal ticks come from length and the
+               profile's walking speed. The destinations are all reachable
+               `Gate` nodes. The route is the `(edge, gate)` pair with the
+               lowest traversal plus predicted wait of the queues on its
+               path, read at start of tick, ties by `NodeId` then `EdgeId`.
+               A non-destination `Source` or `Hall` releases the next tick.
+             - **`FlowGraph`:** reduced to node behaviour over the world's
+               nodes. `Absorb` boards from any `Gate`.
+             - **Types:** `NodeId` and `EdgeId` are stated to be `sim.core`
+               types, since events carry them.
+             - **Deferred:** gate assignment (flight to gate) is a gameplay
+               system, **deferred to the owner**. Phase 0/1 pools gates, and
+               its fixtures declare one shared lounge. Construction, grid and
+               flow-field recomputation are deferred as well.
+Raised by:   Q-012
+Impact:      unblocks T-007 (and so T-009, T-010, T-011 and T-023) once a
+             `sim.world` task lands. **New task:** `sim.world` fixed graph
+             (`src/sim/world/**`), depending on T-001 and T-003. It should be
+             prioritised because it gates the kill gate. Stale: T-007, T-010,
+             T-011, T-023 (world-backed routing, the new factory and loader
+             signatures, `Absorb` from pooled gates), T-009 and the harness
+             (register `sim.world`, add the `world` fixture), T-026 (`NodeId`
+             and `EdgeId` in `sim.core`), T-020 (render layout fixture shares
+             the world fixture's node ids), and the host task (`world.fixture`,
+             composition order). No merged code.
+Signed off:  not required for the interface. **The gate-pooling stopgap is
+             flagged for the owner**, because real gate assignment is
+             player-facing scope.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
              D5; reversible. Approved by the coordinator under the owner's
              delegation.

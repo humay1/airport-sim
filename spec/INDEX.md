@@ -26,7 +26,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 | Anyone constructing a system (harness, host, integration tests) | `08` §8.11a, then the module's Construction section: `09` §9.11, `11` §11.9a, `12` §12.12a, `13` §13.10a, `14` §14.13a, `15` §15.9, `17` §17.7 |
 | `sim.core` (T-001–T-006, T-026) | `08` all; `10` §10.2, §10.3; `03` budgets. T-003: `08` §8.3. T-026: `10` §10.6 plus the type blocks of `12` §12.4, `13` §13.3, `14` §14.3 |
 | `tools.simharness` (T-006, T-009) | `02` Gates; `08` §8.5, §8.9; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
-| `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
+| `sim.world` (fixed walk graph) | `18` all; `08` §8.9, §8.11a; `09` §9.6 (its consumer) |
+| `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `18` §18.2, §18.3, §18.5; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
 | `sim.schedule` (T-008) | `11` all; `08` §8.2, §8.4; `09` §9.7; `10` §10.4, §10.6 |
 | `sim.airside` (T-021 and the D6 hold) | `12` all; `11` §11.3, §11.7; `09` §9.7, §9.7a; `10` §10.3, §10.4, §10.6 |
 | `sim.turnaround` (T-022) | `13` all; `12` §12.3, §12.8; `10` §10.4, §10.6 |
@@ -143,8 +144,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `TryGetOutstanding` for the boarding hold (§9.7a, D6)**; **read-only
   `TryGetLaneState` (§9.7b, HD, consequence of D5)**; the `SetServersOpen`
   handler's `Validate`/`Apply` rules (§9.8); mandatory merging
-  is a budget requirement (§9.3); factory plus `IFlowGraphLoader`, with
-  `FlowGraph` opaque (§9.11); routing without `sim.world` is open (Q-012).
+  is a budget requirement (§9.3); **routing over `sim.world`'s walk graph:
+  pooled `Gate` destinations, lowest traversal plus queue wait along
+  `PathVia` (§9.6, Q-012)**; factory plus `IFlowGraphLoader`, where
+  `FlowGraph` is node behaviour only (§9.11).
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
   blame rule (§9.7a); the `LaneState` shape (§9.7b).
 - Read if: T-007, T-010, T-011, T-023; §9.7, §9.7a and §9.7b for callers.
@@ -241,6 +244,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
 - Read if: the UI scene-layer and UI backend tasks.
 
+### `18-interfaces-world.md` — `sim.world`, Phase 0/1 subset (new, Q-012)
+- Owns: the fixed landside walk graph (node lengths, directed edges) and
+  its load-time routes.
+- Key: `IWorldSystem` offers `CanReach`, `CanReachVia` and `PathVia` (shortest
+  path, ties by edge sequence); no runtime state; the hash is the fixture
+  hash; registry 1. **Gate assignment is deferred to the owner**, and Phase 0/1
+  pools gates in one lounge (§18.5). Construction, grid and flow fields are
+  deferred.
+- LC: none marked; the gate-pooling stopgap is flagged in `CHANGELOG.md`.
+- Read if: the `sim.world` task; `sim.flow` (§18.2, §18.3, §18.5).
+
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
   running scope total (8, after Q-010 (5)).
@@ -250,7 +264,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
 - Open now: **Q-011** (content definitions and the `data/` loader; blocks
-  the player build), **Q-012** (`sim.flow` routing without `sim.world`;
-  blocks T-007). Q-002 to Q-010 are answered; Q-001 was deleted (D9).
+  the player build). Q-002 to Q-010 and Q-012 are answered; Q-001 was
+  deleted (D9).
 - Read if: before starting any task, check that your task is not blocked
   here.

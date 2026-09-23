@@ -1,8 +1,8 @@
 # 09 — Public interfaces: `sim.flow`
 
 Implements the `sim.flow` row of `03-module-map.md`: passenger cohorts, queue
-nodes, promotion/demotion, corridors. Depends on `sim.core` and `sim.world`, and
-on nothing else. Notation and binding rules are as in `08-interfaces-core.md`.
+nodes, promotion/demotion, corridors. Depends on `sim.core` and `sim.world`
+(`18-interfaces-world.md`), and on nothing else. Notation and binding rules are as in `08-interfaces-core.md`.
 
 `sim.flow` is the largest consumer of the frame budget (`01-architecture.md`) and
 the module the Phase 0 kill gate tests. Every decision below is made to keep the
@@ -43,9 +43,9 @@ get promotion; it does not get an exception here.
 ## 9.2 Types
 
 ```
-struct NodeId    { uint32 Value }        // stable for the life of the save
+struct NodeId    { uint32 Value }        // sim.core type (events carry it); the graph is sim.world's, 18 §18.2
 struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow
-struct EdgeId    { uint32 Value }
+struct EdgeId    { uint32 Value }        // sim.core type; a sim.world walk edge
 
 enum NodeKind {
   Source,          // kerbside, rail box, arriving aircraft door
@@ -157,20 +157,35 @@ service-standard KPI, and never fed back into the sim.
 
 ## 9.6 Corridors and routing
 
-- The walkable graph, its distances and its flow fields are owned by `sim.world`.
-  `sim.flow` **reads** them and never computes a path. Per-agent A* is a review
+- The walkable graph, its lengths and its routes are owned by `sim.world`
+  (`18-interfaces-world.md`, the fixed-graph Phase 0/1 subset). `sim.flow`
+  **reads** them and never computes a path. Per-agent A* is a review
   rejection (`01-architecture.md`).
 - A corridor traversal is a delay line: on entry the cohort's `DueAt` is set to
   `EnteredNodeAt + traversalTicks`, where
-  `traversalTicks = ceil(distance / walkSpeed)` with `walkSpeed` from the
-  passenger profile in content. On or after `DueAt` the cohort is released to the
-  next node, subject to §9.5.
-- Routing picks the outbound edge from the `sim.world` flow field for the cohort's
-  current destination. Where several destinations are valid (two security halls,
-  three gates for one flight), the choice is a **declared, deterministic rule**:
-  lowest predicted total traversal-plus-wait, ties broken by ascending `NodeId`.
-  No randomness. Passenger "choice" as a behaviour model is out of scope at Phase
-  0 and needs a spec amendment, not a local invention.
+  `traversalTicks = max(1, ceil(LengthMetres / (walk_speed_mps × SIM_SECONDS_PER_TICK)))`
+  in `Fx`. `LengthMetres` comes from `IWorldSystem.LengthMetres`, and
+  `walk_speed_mps` from the cohort's pax profile. On or after `DueAt` the
+  cohort is released to the next node, subject to §9.5. A `Source` or `Hall`
+  node that is not the cohort's destination releases on the tick after entry.
+  Dwell behaviour is later scope.
+- **Destinations (Q-012).** A `Departing` cohort's destination set is every
+  `Gate` node it can reach (`CanReach`). Gates are pooled at Phase 0/1, and
+  gate assignment is deferred (`18` §18.5). A cohort on a `Gate` node stays
+  there until `Absorb` or missed-flight handling (§9.9).
+- **Routing (Q-012).** When a cohort is released from a node, it takes the
+  outbound edge chosen by a **declared, deterministic rule**. Over every pair
+  `(e, g)` with `e` in `OutEdges(node)`, `g` in the destination set and
+  `CanReachVia(e, g)`:
+  `cost = Σ traversalTicks of the nodes on PathVia(e, g)`
+  `+ Σ PredictedWaitMinutes × TICKS_PER_SIM_MINUTE of the Queue nodes on PathVia(e, g)`.
+  Waits are read at the start of the tick (§9.5's rule). The lowest cost wins,
+  with ties broken by ascending `g` `NodeId`, then ascending `EdgeId`. "Two
+  security halls" are therefore two routes to the gate, and the rule chooses
+  between them. No randomness. Passenger "choice" as a behaviour model is out
+  of scope at Phase 0 and needs a spec amendment, not a local invention.
+- Cost: O(out-degree × gates × path length) per released cohort. The budget
+  test (§9.10) is what shows whether this needs caching.
 
 > **LOW CONFIDENCE — deterministic least-cost routing.** It is correct and cheap,
 > but every passenger taking the same door can look wrong on screen and can make
@@ -221,6 +236,11 @@ An unknown node, a node of any other kind, or a non-positive count is a
 **programmer error** and throws (`07-conventions.md`) — it is never clamped and
 never silently dropped, because a swallowed injection loses passengers and the
 head-count conservation test would then be asserting nothing.
+
+`Absorb(sink, flight)` boards the flight's `Departing` passengers that are on
+any `Gate` node, since gates are pooled (§9.6), into `sink`. It returns their
+count, and it reports everyone else of the flight as `PassengersMissedFlight`
+(§9.9). `sink` must be a `Sink` node; anything else throws.
 
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
@@ -359,18 +379,26 @@ demands, stated so it is not discovered late:
 
 ```
 interface IFlowGraphLoader {
-  FlowGraph Load(ReadOnlySpan<byte> file, string sourceName)   // parse and validate; hard failure names file and id
+  FlowGraph Load(ReadOnlySpan<byte> file, string sourceName, IWorldSystem world)   // parse and validate
 }
 
 FlowFactory.CreateGraphLoader() -> IFlowGraphLoader
-FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph) -> IFlowSystem
+FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph,
+                         IWorldSystem world) -> IFlowSystem
 ```
 
-`FlowGraph` is **opaque outside `sim.flow`**. Its fields and its file format
-are the worker's choice, following the posture of
-`12-interfaces-airside.md` §12.13. Other modules only carry it from the
-loader to the factory. That keeps this answer from designing the graph that
-`sim.world` is meant to own. What the graph must express for routing is the
-separate open `open-questions.md` Q-012. Per-node content (service rates,
-thresholds, category) is resolved through `services.Content` at construction
-(§9.4, `10` §10.6).
+`FlowGraph` is **opaque outside `sim.flow`**. Its file format is the worker's
+choice, following the posture of `12-interfaces-airside.md` §12.13. It
+carries **node behaviour only**, over `sim.world`'s nodes (Q-012). For each
+node that is its `NodeKind`, and for a `Queue` node its `ServerCount`,
+initial `ServersOpen`, and the `ContentId` of its queue profile. The profile
+holds the service rate, capacity, threshold, hysteresis and delay category
+(§9.4, `10` §10.6), resolved through `services.Content`. Topology and lengths
+are **not** in it; they come from `world`. Load-time validation, each a hard
+failure:
+
+- every `world.Nodes()` entry has exactly one node definition, and no
+  definition names an unknown node;
+- every `Source` can reach at least one `Gate`;
+- a `Gate` has at least one outbound edge to a `Sink`, and a `Sink` has no
+  outbound edge.
