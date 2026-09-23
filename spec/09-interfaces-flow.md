@@ -191,6 +191,7 @@ interface IFlowSystem : ISimSystem {
   int32  PopulationForFlight(FlightId flight, FlowDirection direction)
   IReadOnlyList<CohortId> CohortsAt(NodeId node)          // ascending CohortId
   bool   TryGetCohort(CohortId id, out PassengerCohort cohort)
+  bool   TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)   // §9.7a; false iff none
 
   // ---- injection, called only by the systems named ----
   CohortId Inject(in CohortKey key, int32 count, NodeId at)   // sim.schedule, sim.airside
@@ -222,6 +223,45 @@ head-count conservation test would then be asserting nothing.
 
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
+
+### 9.7a Outstanding passengers (D6) — LOW CONFIDENCE
+
+```
+readonly struct OutstandingPassengers {
+  FlightId Flight
+  int32    Count          // > 0
+  NodeId   MostHeldAt     // the node holding most of them; ties by ascending NodeId
+}
+```
+
+`TryGetOutstanding(flight)` counts the flight's passengers that are still in
+the terminal and have not reached a gate. These are the passengers in cohorts
+with `Key.Flight == flight` and `Key.Direction == Departing` on any node
+whose `NodeKind` is not `Gate`. It returns false when that count is 0. Only
+`Departing` counts at Phase 1; `Transferring` is added when transfers exist,
+by amendment. `MostHeldAt` is the node holding the largest share of those
+passengers, with ties broken by ascending `NodeId`.
+
+- It is a **query**: read-only, derived from hashed state, and not itself
+  hashed (§9.10). It consumes no RNG and is unaffected by promotion (§9.1).
+- Cost: O(the flight's cohorts), served from the per-flight index §9.10
+  already anticipates. It never scans all nodes or all cohorts, and it does
+  not allocate.
+- Its caller is `sim.airside`'s boarding hold
+  (`12-interfaces-airside.md` §12.8). `sim.airside` already calls downward
+  into `sim.flow` (`Absorb`), so no new dependency edge is created.
+
+> **LOW CONFIDENCE — the smallest addition D6 needed.** `sim.flow` already
+> knows each passenger's flight (`CohortKey.Flight`), and
+> `PopulationForFlight` counts them. What it could not say is how many are
+> still *upstream of the gate*, or where they are. Without that, a departure
+> cannot know whom it is waiting for. That is this one query and nothing
+> else: no per-passenger identity, no new state, no new event from
+> `sim.flow`. Blaming the node that holds the *most* outstanding passengers
+> (rather than, say, the node of the last passenger in FIFO order, which
+> `sim.flow` cannot define across nodes) is the Architect's choice under D6.
+> It usually names the security queue, which is the lever the player has.
+> Flagged for the owner with D6.
 
 ---
 
@@ -267,7 +307,7 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 3. The `sim.flow` RNG stream states, excluding `flow.presentation`.
 
 Not hashed, because derived: predicted waits, agent views, per-flight population
-indexes, any cached routing result.
+indexes, `TryGetOutstanding` results, any cached routing result.
 
 Budget: **2.5 ms/tick at max tier** (`03-module-map.md`). The shape that budget
 demands, stated so it is not discovered late:

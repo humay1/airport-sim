@@ -959,3 +959,99 @@ Impact:      blocks `app.ui`'s production lane sink. Items (1) to (4) are
              by guessing. The Planner should hold T-023's command-handler
              work until they are answered.
 Signed off:  not required for (1)–(4); **PENDING HUMAN** for (5)
+
+## 2026-09-23 — spec/12-interfaces-airside.md §12.1, §12.4, §12.8, §12.9, §12.11–§12.13; spec/10-events.md §10.6; spec/14-interfaces-delay.md §14.3, §14.5, §14.9, §14.12, §14.14 — D6: bounded boarding hold for late passengers
+Reason:      As specified, no Phase 1 flight ever waited for a passenger, so a
+             security queue could never reach the delay tree (§14.9). That
+             would have cut the core feedback loop out of the T-025 playtest.
+             The owner chose a bounded hold:
+             - **`sim.airside`** gains a boarding hold at the departure's
+               *doors-close point*, in both the handshake and the fallback
+               path. If passengers are outstanding it emits
+               `DepartureHeldForPassengers`. It waits until everyone has
+               reached a gate or until `BoardingHoldMaxMinutes` has passed,
+               then emits `...Released` and closes as before. The remainder
+               becomes missed passengers through the existing
+               `PassengersMissedFlight`. `AircraftTrack` gains
+               `PassengerHoldSince`. `AirsideRules.BoardingHoldMaxMinutes` is
+               construction data, never a constant.
+             - **`10-events.md`** gains the event pair (category
+               `passenger_late`).
+             - **`sim.delay`** gains a fifth interval family and
+               `DelaySource.PassengerHold`, appended so no ordinal moves. The
+               leaf's explanation carries the node holding the most late
+               passengers and the count at opening. §14.6 is unchanged: the
+               hold sits between the `OnStand` and `Pushback` checkpoints and
+               is allocated at `Pushback`.
+             Blame node (D6 left it to the Architect): the node holding the
+             most of the flight's outstanding passengers at the hold's
+             opening, with ties broken by ascending `NodeId`. It is in line
+             with `06`'s example, where a "passengers cleared security late"
+             leaf has the security queue as its cause. The queue's own
+             category is reached later through `Cause` chains, which are not
+             followed at Phase 1.
+Raised by:   Q-007 §14.9, D6
+Impact:      no merged code. **Affected interfaces:** `IFlowSystem` (§9.7,
+             §9.7a, new query), `IAirsideSystem` (behaviour, `AircraftTrack`
+             field, `AirsideRules` construction input, dependency on
+             `sim.flow`), the event catalogue (`10` §10.6, new pair),
+             `IDelaySystem` (§14.3 `DelaySource`, §14.5 family, §14.12). The
+             hashed state of `sim.airside` (a new track field) and of
+             `sim.delay` (a new family ordinal) grows, but no golden exists
+             yet. `ITurnaroundSystem` is **unchanged**: `Boarding` stays a
+             fixed-duration job, and the hold is `sim.airside`'s.
+             **Affected tasks:** T-021 (the hold's behaviour, field, rules
+             input and tests, or a follow-on airside task, since the hold
+             needs T-023's flow query); T-023 or a new `sim.flow` task
+             (`TryGetOutstanding`); T-024 (the new family and the test);
+             T-026 (the new event types and the `DelaySource` value in
+             `sim.core`). A content task writes `data/schemas/balance.schema.json`.
+             The human owner writes `data/balance/airside_rules.json` with the
+             value 10. T-020 and T-022 are unaffected.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D6); reversible.
+             `BoardingHoldMaxMinutes = 10` is a balance value, marked for
+             tuning after T-025.
+
+## 2026-09-23 — spec/09-interfaces-flow.md §9.7, §9.7a, §9.10 — D6: `IFlowSystem.TryGetOutstanding` — LOW CONFIDENCE
+Reason:      D6 said: if `sim.flow` cannot attribute passengers to a flight,
+             spec the smallest addition. **Finding:** it can attribute them.
+             Every cohort carries `CohortKey.Flight`, and `PopulationForFlight`
+             counts a flight's passengers. What it cannot say through the
+             published interface is how many of them are still upstream of a
+             gate, or where. `IFlowSystem` has no node enumeration, so a
+             caller cannot even scan `CohortsAt` for them. The smallest
+             addition is one read-only query returning the count of the
+             flight's `Departing` passengers on non-`Gate` nodes, plus the
+             node holding most of them. It adds no state, no event and no
+             identity.
+Raised by:   D6
+Impact:      additive. `sim.flow` has no code. The query is served from the
+             per-flight index that §9.10 already anticipates, in O(the
+             flight's cohorts), with no allocation.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D6) covers
+             "spec the smallest addition". LOW CONFIDENCE on the query's shape
+             and on the "most passengers" blame rule.
+
+## 2026-09-23 — spec/03-module-map.md — `sim.airside` depends on `core, world, schedule, flow`
+Reason:      A consistency fix exposed by D6. `09-interfaces-flow.md` §9.7
+             already named `sim.airside` as a caller of `Inject`/`Absorb`, and
+             `12` §12.7 calls `Absorb`, but the map's dependency column omitted
+             `flow`. This is the same kind of fix as the Q-004 entry for
+             `sim.schedule`. `sim.flow` depends only on core and world, so
+             airside to flow is downward and no cycle forms.
+Raised by:   D6
+Impact:      none. It corrects the map to match the interfaces already
+             written.
+Signed off:  not required
+
+## 2026-09-23 — spec/04-data-schemas.md, spec/16-interfaces-host.md §16.3 — D6: the first balance file
+Reason:      D6 put `BOARDING_HOLD_MAX` in data rather than in a constant. It
+             is `data/balance/airside_rules.json` (human-only path), validated
+             by `balance.schema.json`. The existing validator maps schemas to
+             directories by name, so `data/balance/` gets a single schema,
+             extended by amendment as balance files are added. The playtest
+             bundle includes the file.
+Raised by:   D6
+Impact:      additive. No agent may write the balance file. A content task
+             writes its schema.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D6); reversible

@@ -105,6 +105,7 @@ interface IScenarioBundle {
 | `bundle.json` | `{ "schema_version": 1, "seed": "<uint64 decimal>", "systems": [ "<module name>", ... ] }` | the host |
 | `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader` |
 | `airside.*` | `12-interfaces-airside.md` §12.4, in the format of T-021's fixture | `IAirsideLayoutLoader` |
+| `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host, for `sim.airside`'s construction |
 | `turnaround.*` | `13-interfaces-turnaround.md` §13.4, in the format of T-022's fixture | pending Q-009 |
 | `flow.*` | `sim.flow`'s node graph and `QueueConfig`s, in the format of T-007/T-023's fixtures | pending Q-009 |
 | `render_layout.*` | `15-interfaces-render.md` §15.4 | `IRenderLayoutLoader` |
@@ -119,8 +120,9 @@ interface IScenarioBundle {
   well. How it is built is not published; that is part of Q-009.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
-  `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, and the `sim.flow`
-  fixture T-023 runs. The build step copies them into
+  `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, the `sim.flow`
+  fixture T-023 runs, and the human-authored `data/balance/airside_rules.json`
+  (D6). The build step copies them into
   `Assets/StreamingAssets/Scenario/`. The copies are build output: the
   fixtures stay test fixtures, beside their tests (`07-conventions.md`), and
   are not moved into `data/`.

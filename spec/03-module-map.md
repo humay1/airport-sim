@@ -9,7 +9,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.save` | `src/sim/save` | core | Serialisation, snapshots, migrations |
 | `sim.world` | `src/sim/world` | core | Grid, construction, rooms, navigation graph, flow fields |
 | `sim.schedule` | `src/sim/schedule` | core, flow | Flight schedule, slots, seasons, published timetable |
-| `sim.airside` | `src/sim/airside` | core, world, schedule | Runways, taxiways, stands, aircraft movement, wind/active direction |
+| `sim.airside` | `src/sim/airside` | core, world, schedule, flow | Runways, taxiways, stands, aircraft movement, wind/active direction, boarding hold |
 | `sim.flow` | `src/sim/flow` | core, world | Passenger cohorts, queue nodes, promotion/demotion, corridors |
 | `sim.turnaround` | `src/sim/turnaround` | core, airside, staff | Handling jobs, ground vehicles, job scheduling |
 | `sim.baggage` | `src/sim/baggage` | core, world, flow | Belt network, sorters, carousels, mishandled-bag model |

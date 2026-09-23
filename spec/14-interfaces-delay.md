@@ -92,7 +92,8 @@ enum DelaySource {                           // what produced a node; UI maps it
   TaxiwayHold,                               // AircraftHeldOnTaxiway interval
   StandUnavailable,                          // StandUnavailable interval
   TurnaroundJobWait,                         // TurnaroundJobBlocked interval
-  Unexplained                                // residue, category propagated
+  Unexplained,                               // residue, category propagated
+  PassengerHold                              // DepartureHeldForPassengers interval (D6)
 }
 
 readonly struct DelayExplanation {           // the "explanation" of 06; ids and integers only
@@ -144,8 +145,10 @@ readonly struct FlightDelay {                // the per-flight record, as querie
 | `StandUnavailable` | `StandId.Value + 1`, or 0 when the event's stand is null (always, at Phase 1: `12-interfaces-airside.md` §12.7) | occupying `FlightId.Value`, or `FLIGHT_ID_NONE` |
 | `TurnaroundJobWait` | `JobKind` ordinal | `ResourceKind` ordinal |
 | `Unexplained` | 0 | 0 |
+| `PassengerHold` | `heldAt` `NodeId.Value` | `outstanding` at the hold's opening |
 
-`StandId` is offset by one only because a `StandId` of 0 is legal and the
+`PassengerHold` is appended last so that the ordinals of the existing values
+do not move. `StandId` is offset by one only because a `StandId` of 0 is legal and the
 field must also say "no stand"; every other id in this table is always present.
 
 No strings and no `LocalisedKey` live in `sim.delay`'s state. `app.ui` derives
@@ -218,6 +221,7 @@ An interval is opened by one event and closed by its pair (`10-events.md`
 | Taxiway | `AircraftHeldOnTaxiway` | `AircraftHeldOnTaxiwayReleased` | `(Flight, Taxiway)` | `taxi_congestion` | `TaxiwayHold` |
 | Stand | `StandUnavailable` | `StandAssigned` | `(Flight, Stand)` | `stand_unavailable` | `StandUnavailable` |
 | Turnaround | `TurnaroundJobBlocked` | `TurnaroundJobUnblocked` | `(Flight, Turnaround, JobKind)` | the event's `category` field (`10-events.md` §10.6) | `TurnaroundJobWait` |
+| Passenger hold (D6) | `DepartureHeldForPassengers` | `DepartureHeldForPassengersReleased` | `(Flight, PassengerHold)` | `passenger_late` | `PassengerHold` |
 
 An interval covers ticks `[StartTick, EndTick)`, where `StartTick` is the
 opening event's tick and `EndTick` the closing event's tick. While open,
@@ -454,20 +458,21 @@ and throws only for an unknown flight.
 
 A missed passenger is not a delay minute. It creates no node, contributes
 nothing to `TotalTicks` and is not published as a `DelayEvent`. It exists so
-that the one Phase 1 outcome of a bad security queue — passengers left behind —
-is visible on the same flight record the player opens.
+that passengers left behind are visible on the same flight record the player
+opens.
 
-> **LOW CONFIDENCE — and a HUMAN DECISION it exposes.** At Phase 1 no flight
-> ever waits for a late passenger: `Boarding` is a fixed-duration job
-> (`13-interfaces-turnaround.md` §13.6) and `DoorsClosed` absorbs whoever is at
-> the gate (`12-interfaces-airside.md` §12.7). So `security_queue` and
-> `passenger_late` can never appear as *minutes* in a Phase 1 tree, and the
-> player's one live lever (T-023, opening security lanes) is visible only as a
-> missed-passenger count. Whether flights should hold for late passengers is a
-> gameplay decision, and it bears directly on the Phase 1 gate question ("is
-> unblocking flow fun?"). It is left to the human owner and **not** decided here;
-> if the answer is yes, it is a `sim.turnaround`/`sim.airside` amendment, and
-> this module then attributes the wait through an ordinary blocking interval.
+**Late passengers as minutes — DECIDED.** HUMAN DECISION — owner
+(delegated), 2026-09-23 (D6), reversible. A departure now waits, for at most
+`BoardingHoldMaxMinutes`, for passengers still in the terminal
+(`12-interfaces-airside.md` §12.8). The wait is an ordinary blocking interval,
+the Passenger-hold family of §14.5, so it lands in the tree as a
+`passenger_late` leaf whose explanation names the node holding most of the
+late passengers (§14.3). No rule in §14.6 changes. The hold opens after the
+departure's `OnStand` checkpoint and closes before its `Pushback` checkpoint,
+so it is allocated at `Pushback` like any other interval in that window. Anyone
+still outstanding when the hold runs out is a missed passenger, recorded as
+above. A bad security queue therefore shows up both ways: as minutes on the
+flight, and as a count of passengers left behind.
 
 ---
 
@@ -520,12 +525,15 @@ None. `sim.delay` has no player-facing state to change.
 | `AircraftHeldOnTaxiway` / `AircraftHeldOnTaxiwayReleased` | `sim.airside` | §14.5, Taxiway family |
 | `StandUnavailable` / `StandAssigned` | `sim.airside` | §14.5, Stand family |
 | `TurnaroundJobBlocked` / `TurnaroundJobUnblocked` | `sim.turnaround` | §14.5, Turnaround family; `JobDependency` ignored |
+| `DepartureHeldForPassengers` / `DepartureHeldForPassengersReleased` | `sim.airside` | §14.5, Passenger-hold family (D6) |
 | `PassengersMissedFlight` | `sim.flow` | §14.9 |
 
 **Deliberately not consumed at Phase 0/1**, although they exist in the
 catalogue: `TurnaroundJobStarted`/`Completed` (lifecycle, not blocking),
-`QueueThresholdExceeded`/`Cleared` and `FlowBlocked`/`FlowUnblocked` (no Phase 1
-path from a queue to a flight's minutes, §14.9), `PassengersArrivedAtGate`,
+`QueueThresholdExceeded`/`Cleared` and `FlowBlocked`/`FlowUnblocked` (a
+queue reaches a flight's minutes only through the passenger hold, §14.9;
+these events would be the hold's deeper `Cause`, which is not followed at
+Phase 1, §14.7), `PassengersArrivedAtGate`,
 `FlightPlanRevised`/`FlightCancelled` (not emitted at Phase 1,
 `11-interfaces-schedule.md` §11.1), and every Phase 2 event. `sim.delay`
 subscribes to none of them; per `10-events.md` §10.6 it has no rule for them.
@@ -637,6 +645,7 @@ Plus the rules this file adds:
 - `test_delay_recovery_trims_latest_leaf_first`
 - `test_delay_late_inbound_capped_at_inbound_total`
 - `test_delay_job_dependency_wait_is_ignored`
+- `test_delay_passenger_hold_is_passenger_late_leaf_naming_held_at_node`
 - `test_delay_ids_monotone_and_references_point_backwards`
 - `test_delay_events_published_once_per_node_at_finalisation`
 - `test_delay_rotation_pair_pruned_together_after_retention`

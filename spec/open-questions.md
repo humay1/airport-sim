@@ -170,8 +170,16 @@ Answer:      New file `spec/14-interfaces-delay.md`. `IDelaySystem` is
              HUMAN DECISION (§14.9): at Phase 1 no flight waits for a late
              passenger, so security queues can never show up as delay
              minutes, only as missed passengers.
-Status:      ANSWERED (spec/14-interfaces-delay.md) — one HUMAN DECISION
-             noted in §14.9, not blocking T-024
+Decision:    §14.9 resolved — HUMAN DECISION — owner (delegated),
+             2026-09-23 (D6), reversible. A departure holds for passengers
+             still in the terminal for at most `BoardingHoldMaxMinutes`
+             (10 sim-minutes, a balance value in `data/balance/`), then
+             closes; the remainder are missed. The hold is a `sim.airside`
+             blocking interval (`12` §12.8), attributed as `passenger_late`
+             blaming the node holding most of the late passengers (`14`
+             §14.5, §14.9). It needs one new read-only `sim.flow` query,
+             `TryGetOutstanding` (`09` §9.7a, LOW CONFIDENCE).
+Status:      ANSWERED (spec/14-interfaces-delay.md), including §14.9
 
 ### Q-008 — `app.render` has no published interface or scope note
 Raised by:   planner / queue expansion for T-020

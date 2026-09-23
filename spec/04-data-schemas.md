@@ -18,6 +18,7 @@ falls back to a default.
 | `policy.schema.json` | `data/policies/*.json` | ~25 |
 | `scenario.schema.json` | `data/scenarios/*.json` | 12 |
 | `pax_profile.schema.json` | `data/pax_profiles/*.json` | — |
+| `balance.schema.json` | `data/balance/*.json` (human-authored, below) | 1 at Phase 1 |
 
 `pax_profile` is referenced by `09-interfaces-flow.md` (`CohortKey.PaxProfile`,
 walk speed) and `11-interfaces-schedule.md` §11.6 (show-up curve). Those two
@@ -45,3 +46,11 @@ build to CSV for anything.
 Content files under `data/balance/` are **not** agent-editable. Agents may build
 the tuning harness and run experiments; deciding which outcome is fun is the
 human owner's call. Any agent PR touching `data/balance/` is auto-rejected.
+
+The first balance file is `data/balance/airside_rules.json`:
+`{ "schema_version": 1, "boarding_hold_max_minutes": <uint32> }`. The Phase 1
+value is 10 (D6, `12-interfaces-airside.md` §12.4 `AirsideRules`), marked for
+tuning after the T-025 playtest. It is validated by `balance.schema.json`,
+because `ci/validate-content.py` maps one schema to one `data/` directory by
+name. The schema may be written by an agent content task. The balance file
+itself is written only by the human owner.
