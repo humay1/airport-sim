@@ -687,3 +687,96 @@ Impact:      none. No value or rule changes. The older LOW CONFIDENCE items
              from Phase 0 and Q-004 to Q-006 are not covered by D8 and remain
              open for the owner's review as before.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D8); reversible
+
+## 2026-09-23 — spec/01-architecture.md (LOCKED) "Platform decisions", Simulation row — D1: the sim targets netstandard2.1 only
+Reason:      The row said ".NET 8". The Presentation row said Unity 6 LTS
+             imports the sim "as a compiled assembly". As of September 2026,
+             Unity 6 LTS runs Mono, exposes only .NET Standard 2.1 and C# 9,
+             and cannot load `net8.0` assemblies, so the two rows could not
+             both hold (Q-008 §15.13(a)). Unity's guidance is that precompiled
+             plugins target `netstandard2.1`, and that stays supported after
+             CoreCLR (.NET 10, still experimental) arrives. New row: sim
+             assemblies target **`netstandard2.1` only** with `LangVersion 9`,
+             and so does every headless `app.*` layer Unity consumes
+             (`15` §15.3, and the new `16` and `17`). Tests and
+             `tools.simharness` target `net8.0` and consume the sim
+             unchanged. Single-targeting is deliberate: one compiled sim and no
+             BCL-divergence risk between two builds of it. "Zero engine
+             references" is unchanged. The locked file changes in that one
+             table cell only.
+Raised by:   Q-008 §15.13(a), D1
+Impact:      no merged code (no `src/` exists). T-001 creates `AirportSim.sln`
+             and must set these targets, so its task file is stale. Every sim
+             worker loses .NET 8-only APIs; T-003 is the one visibly affected
+             (see the next entry). Revisit trigger: Unity ships production
+             CoreCLR (.NET 10).
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D1); reversible.
+             This is the recorded sign-off `01-architecture.md` requires for a
+             change to a locked platform decision.
+
+## 2026-09-23 — spec/08-interfaces-core.md §8.3 — D1: `Fx` hand-rolls its 128-bit arithmetic and leading-zero count
+Reason:      `netstandard2.1` has no `Int128`, no `Math.BigMul(long, long,
+             out long)` and no `BitOperations`. §8.3 already required a 128-bit
+             intermediate for `Mul`/`Div`. It now says that the intermediate,
+             the 128-by-64 division and any leading-zero count are written in
+             plain integer code inside `Fx`, and that `BigInteger` is not used.
+             Otherwise a worker would reach for .NET 8 APIs that do not
+             compile. It also says `Fx` checks overflow cases explicitly
+             instead of relying on which BCL exception a runtime throws.
+             Tests (`net8.0`) may use `Int128`/`BigInteger` as an oracle.
+Raised by:   D1
+Impact:      T-003 (QUEUED, no code). Its task file should cite the new
+             bullet.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D1); reversible
+
+## 2026-09-23 — spec/07-conventions.md "Runtime portability" — D1: audit of the determinism rules for Mono vs CoreCLR BCL differences
+Reason:      D1 ships the sim on Mono and tests it on CoreCLR, so the
+             determinism rules must rule out every BCL behaviour that differs
+             between the two. Audit of `02-determinism.md` and
+             `07-conventions.md` as they stood:
+             - **Dictionary/HashSet enumeration order: covered.** `02` rule 5
+               forbids iterating a hash map or dictionary where order affects
+               outcomes. HashSet counts as a hash map in substance, though it
+               is not named.
+             - **`string.GetHashCode`: not covered.** `02` rule 7 forbids
+               branching on a *default* object hash code, and `02` rule 2
+               forbids hash-based pseudo-randomness on unordered data. Neither
+               reaches a string's (overridden, CoreCLR-randomised) hash used
+               as a seed, id, bucket or sort key. Nor does either reach
+               `System.HashCode`.
+             - **Unstable sort order: not covered.** `02` rule 5's "sort by a
+               stable key" names a key, not a stable algorithm. It says
+               nothing about ties, and `Array.Sort`/`List.Sort` leave tied
+               items in runtime-specific order.
+             - Found in addition, **not covered:** culture-sensitive string
+               comparison and number parsing, reflection member order, and
+               struct memory punning.
+             **`02-determinism.md` is not edited** (it is locked, and these are
+             not strictly the retarget). The gaps are closed in `07`, which
+             the Architect owns. A new "Runtime portability" section adds seven
+             binding rules: hash-collection order, no hash code reaching
+             behaviour, total sort comparers, ordinal and invariant strings, no
+             reflection order, no memory punning, and the netstandard2.1/C# 9
+             API surface with no NuGet polyfills. The owner may want to lift
+             rules 2 and 3 into `02` itself at some point. That needs a
+             separate sign-off.
+             `02-determinism.md` was also checked for assumptions that only
+             hold on .NET 8. **None found.** Nothing in it names a .NET 8 API
+             or runtime. Its one retarget-shaped gap is that no gate runs the
+             shipped runtime; see the cross-runtime gate entry below (written
+             with D7).
+Raised by:   D1
+Impact:      constraining. No code exists. Every sim task brief should cite
+             the new section, and T-001 (solution and target setup), T-003,
+             T-007 and T-008 (the first sorts, string parsing and hashing) are
+             the most exposed.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D1) for the
+             retarget. The `07` rules themselves are Architect-owned and need
+             no sign-off.
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.3, §15.13(a) — D1: the scene layer targets netstandard2.1
+Reason:      §15.3 deferred the scene layer's target to §15.13(a), which is now
+             decided.
+Raised by:   D1
+Impact:      T-020 (QUEUED) targets `netstandard2.1`, with tests on `net8.0`.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D1); reversible

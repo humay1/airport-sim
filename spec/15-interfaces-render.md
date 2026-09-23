@@ -101,9 +101,10 @@ Rules binding on the scene layer:
   its tests exact and repeatable.
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
-- It targets whatever framework the sim library targets. That is exactly the
-  open question in §15.13(a); the scene layer inherits the answer and makes no
-  choice of its own.
+- It targets `netstandard2.1` with `LangVersion 9`, the same as the sim
+  (`01-architecture.md`, D1), because Unity consumes it as a precompiled
+  plugin. `07-conventions.md` "Runtime portability" rules 3, 4 and 7 apply to
+  it as well. Its tests target `net8.0`.
 
 ---
 
@@ -502,17 +503,15 @@ Author:
 None of these blocks T-020's headless scope. Each blocks the backend, and
 therefore a playable build (T-025).
 
-**(a) Unity 6 against a .NET 8 sim library.** `01-architecture.md` (locked)
-says the sim is a ".NET 8" library and that Unity 6 imports it "as a compiled
-assembly". The Architect believes, and this should be verified before anyone
-relies on it, that Unity 6's scripting runtime loads assemblies built against
-.NET Standard 2.1 / .NET Framework APIs, **not** ones targeting `net8.0`. If
-so, the two locked decisions cannot both hold as written. One possible
-reading is to multi-target the sim (`netstandard2.1` for the engine, `net8.0`
-for CI). But that choice constrains the language features and BCL APIs every
-sim worker may use, and it is a change to a locked file. **Human sign-off
-required.** It bears on T-001, which creates the solution. The scene layer
-follows the sim's target (§15.3) and makes no choice of its own.
+**(a) Unity 6 against a .NET 8 sim library — DECIDED.** HUMAN DECISION —
+owner (delegated), 2026-09-23 (D1). The current Unity 6 LTS runs Mono, which
+exposes only .NET Standard 2.1 and C# 9 and cannot load `net8.0` assemblies.
+The sim, this scene layer and every headless `app.*` layer Unity consumes
+therefore target **`netstandard2.1` only**. Single-targeting is deliberate:
+one compiled sim, and no BCL divergence between two builds of it. Tests and
+`tools.simharness` target `net8.0`. `01-architecture.md`'s runtime row is
+amended accordingly, and §15.3 states the scene layer's target. Revisit when
+Unity ships production CoreCLR (.NET 10).
 
 **(b) The engine project shell.** Nothing in `03-module-map.md` owns the Unity
 project itself: its location, scenes, project settings and build

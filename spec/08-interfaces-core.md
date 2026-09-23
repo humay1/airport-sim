@@ -94,6 +94,19 @@ struct Fx { int64 Raw }             // value = Raw / 2^32
   explicitly.
 - Division by zero and overflow on narrowing are **programmer errors**: throw with
   the tick number (`07-conventions.md`).
+- **The 128-bit arithmetic is hand-rolled.** The sim targets `netstandard2.1`
+  (`01-architecture.md`, D1), which has no `Int128`/`UInt128`, no
+  `Math.BigMul(long, long, out long)` and no `System.Numerics.BitOperations`.
+  So the 64×64→128-bit multiply behind `Mul`, the 128-by-64-bit division
+  behind `Div`, and any leading-zero count (for example `Sqrt`'s initial
+  estimate) are written inside `Fx` in plain integer code over `uint64`
+  halves. `BigInteger` is not used either: it allocates, and it would be a
+  second implementation to keep bit-exact. Overflow and sign cases, including
+  `long.MinValue / -1`, are checked explicitly by `Fx` before any BCL
+  operator could throw. Behaviour never relies on which BCL exception a
+  runtime raises. Test projects target `net8.0` and **may** use
+  `Int128`/`BigInteger` as a reference oracle for `Fx`; sim assemblies may
+  not.
 
 ```
 Fx.FromInt(int64 v)
