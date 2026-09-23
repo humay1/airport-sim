@@ -1,10 +1,10 @@
 # 15 — Public interfaces: `app.render`
 
 Implements the `app.render` row of `03-module-map.md` for Phase 1: the minimal
-top-down, flat-colour renderer of T-020. Answers `open-questions.md` Q-008,
-**partially** — the headless part is fully specified here; the engine-side
-part depends on human decisions listed in §15.13 and is specified as a
-contract only. Notation is as in `08-interfaces-core.md`; where this file
+top-down, flat-colour renderer of T-020. Answers `open-questions.md` Q-008.
+The headless part is fully specified here. The engine-side part is specified
+as a contract only (§15.10). The human decisions it waited on are recorded in
+§15.13. Notation is as in `08-interfaces-core.md`; where this file
 appears to contradict `01-architecture.md` or `02-determinism.md`, those win
 and it is a spec bug.
 
@@ -39,18 +39,20 @@ At Phase 1, `app.render` owns:
   (§15.4),
 - the promotion controller — the one caller of `IFlowSystem.SetPromoted`
   (§15.7),
-- the tick pacer — how many ticks to `Step` per rendered frame at 1x (§15.8),
+- the tick pacer — how many ticks to `Step` per rendered frame at a given
+  speed (§15.8),
 - the backend contract (§15.10).
 
 `app.render` explicitly does **not** own, and must not do:
 
 - any text, label, panel, tooltip or delay-tree view — `app.ui`;
-- any player command. `app.render` never calls `ISimHost.TrySubmit` at Phase 1.
-  Camera movement is not a command: it never enters the sim
-  (`08-interfaces-core.md` §8.1);
+- any player command. `app.render` never calls `ISimHost.TrySubmit`; at
+  Phase 1 `app.ui` does (`17-interfaces-ui.md`). Camera movement is not a
+  command: it never enters the sim (`08-interfaces-core.md` §8.1);
 - constructing the sim, owning the engine project it runs in, or running the
   frame loop. All three are `app.host`'s (`16-interfaces-host.md`);
-- game speeds other than 1x and pause (§15.8, §15.13);
+- choosing the game speed or pausing. The pacer is told both (§15.8), and
+  `app.ui` chooses them;
 - any sim module's state beyond the queries in §15.6. In particular it reads
   nothing from `sim.turnaround`, `sim.delay` or `sim.schedule` at Phase 1.
 
@@ -291,23 +293,35 @@ for this module's actual call pattern.
 ## 15.8 The tick pacer and the frame order
 
 ```
+enum GameSpeed { X1 = 1, X2 = 2, X4 = 4 }          // the value is the multiplier
+
 interface ITickPacer {
-  uint32 Advance(int64 elapsedRealMicroseconds, bool paused)   // ticks to Step this frame
+  uint32 Advance(int64 elapsedRealMicroseconds, bool paused, GameSpeed speed)   // ticks to Step this frame
 }
 ```
 
-- The pacer holds an integer microsecond accumulator. That is presentation
-  state, not sim state, and it is never saved.
+- **Speeds are pause, 1x, 2x and 4x.** HUMAN DECISION — owner (delegated),
+  2026-09-23 (D4), reversible. At 4x a sim-day lasts 6 real minutes. Higher
+  speeds are deferred until T-011's budget results exist. Adding one is an
+  amendment to `GameSpeed`, never a worker's choice.
+- The pacer holds an integer accumulator of *speed-scaled* microseconds. That
+  is presentation state, not sim state, and it is never saved.
 - `paused`: returns 0 and discards `elapsed`. Unpausing does not replay the
   paused time.
-- Otherwise: `acc += elapsed`; `n = acc / REAL_MICROSECONDS_PER_TICK_1X`;
-  `acc -= n × REAL_MICROSECONDS_PER_TICK_1X`. If `n > MAX_CATCHUP_TICKS_PER_FRAME`,
-  then `n = MAX_CATCHUP_TICKS_PER_FRAME` and `acc = 0`: after a hitch the game
-  runs briefly slower than real time rather than bursting ticks into one frame.
-- A negative `elapsed` is a programmer error and throws.
-- **1x only.** There is deliberately no speed parameter. Which other speeds
-  exist is a pacing decision (§15.13(d)); adding one is an amendment to this
-  interface.
+- Otherwise: `acc += elapsed × (int)speed`;
+  `n = acc / REAL_MICROSECONDS_PER_TICK_1X`;
+  `acc -= n × REAL_MICROSECONDS_PER_TICK_1X`. If
+  `n > MAX_CATCHUP_TICKS_PER_FRAME`, then `n = MAX_CATCHUP_TICKS_PER_FRAME` and
+  `acc = 0`. After a hitch the game runs briefly slower than real time rather
+  than bursting ticks into one frame. The cap is the same at every speed: at
+  4x and 60 fps a frame needs 0.67 ticks, so the cap binds only below about
+  13 fps, and it limits one frame's sim work to 3 ticks (18 ms at max tier).
+- Changing `speed` between calls keeps the accumulator, so no partial tick is
+  lost or duplicated.
+- A negative `elapsed`, or a `speed` outside the enum, is a programmer error
+  and throws.
+- Who chooses `paused` and `speed` is `app.ui` (`17-interfaces-ui.md` §17.4).
+  `app.render` holds neither.
 
 Pacing cannot change outcomes. The sim sees only a sequence of `Step` calls,
 and a fixed-timestep sim run for N ticks is the same however those ticks were
@@ -442,7 +456,8 @@ layer:
 
 **Scope.** The scene layer only. Writable paths: `src/app/render/Scene/**`,
 `tests/app/render/**`, `tests/fixtures/render/**`. The backend
-(`src/app/render/Unity/**`) is out of scope until §15.13 is decided.
+(`src/app/render/Unity/**`) is out of scope for T-020. It gets its own task
+against §15.10, once `app.host`'s Unity project exists (`16` §16.11).
 
 **Dependencies** (for the Planner): the scene layer compiles against
 `ISimHost` (T-001), `IFlowSystem` including `SetPromoted`/`AgentsAt` (T-010),
@@ -479,6 +494,8 @@ Author:
 - `test_promotion_calls_only_on_change_in_ascending_node_id`
 - `test_promotion_zoom_threshold_is_inclusive`
 - `test_tick_pacer_steps_ten_ticks_per_real_second`
+- `test_tick_pacer_steps_forty_ticks_per_real_second_at_4x`
+- `test_tick_pacer_speed_change_keeps_accumulated_time`
 - `test_tick_pacer_caps_catch_up_and_drops_backlog`
 - `test_tick_pacer_paused_steps_nothing`
 - `test_render_loop_is_outcome_neutral_with_scripted_camera` — integration.
@@ -496,10 +513,11 @@ Author:
 
 ---
 
-## 15.13 Open — HUMAN DECISIONS this file does not take
+## 15.13 The HUMAN DECISIONS this file left open — all decided 2026-09-23
 
-None of these blocks T-020's headless scope. Each blocks the backend, and
-therefore a playable build (T-025).
+These were left open by Q-008, and the owner decided all five on 2026-09-23
+(D1, D4, D5, D7). None ever blocked T-020's headless scope. What still stands
+between them and a playable build is tracked in Q-009 and Q-010, not here.
 
 **(a) Unity 6 against a .NET 8 sim library — DECIDED.** HUMAN DECISION —
 owner (delegated), 2026-09-23 (D1). The current Unity 6 LTS runs Mono, which
@@ -524,13 +542,14 @@ thin Unity bootstrap only calls it (§16.7), and it also runs the frame loop
 (§16.6). How each module's system is constructed is still unpublished; that
 is `open-questions.md` Q-009.
 
-**(d) Game speeds.** `01-architecture.md` fixes 1x. Whether 2x, 4x or a
-fast-forward exist, and how fast they are, is pacing, which is human-owned.
-The pacer is 1x plus pause only (§15.8).
+**(d) Game speeds — DECIDED.** HUMAN DECISION — owner (delegated),
+2026-09-23 (D4). Pause, 1x, 2x and 4x. Higher speeds wait for T-011's budget
+results (§15.8).
 
-**(e) No player-facing way to open a security lane.** T-023 implements
-`SetServersOpen` in `sim.flow`, but no Phase 1 task gives the player a way to
-issue it. `app.render` issues no commands by design (§15.1), and `app.ui` has
-no Phase 1 task. T-025's question ("is unblocking flow fun?") needs that
-lever in the player's hands. Whether it arrives as a minimal `app.ui` task or
-something else is a scope and planning decision, not an Architect one.
+**(e) A player-facing way to open a security lane — DECIDED, with its
+command plumbing open.** HUMAN DECISION — owner (delegated), 2026-09-23
+(D5). A minimal `app.ui`: clicking a flow-node box requests a lane change
+through the command queue, and speed and pause controls drive the pacer. There
+is no other UI at Phase 1 (`17-interfaces-ui.md`). Turning a click into a
+`SetServersOpen` command needs sim-side pieces no spec publishes; that is
+`open-questions.md` Q-010.

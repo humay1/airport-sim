@@ -10,7 +10,7 @@ this file appears to contradict `01-architecture.md` or `02-determinism.md`,
 those win and it is a spec bug.
 
 Reading order for an `app.host` worker: `01`, `02`, `07`, `08` §8.5 and §8.9,
-`15` §15.3, §15.8, §15.9, this file.
+`15` §15.3, §15.8, §15.9, `17` §17.4, §17.7, this file.
 
 ---
 
@@ -172,6 +172,7 @@ readonly struct Presentation {
   ISceneBuilder        Scene
   IPromotionController Promotion
   ITickPacer           Pacer
+  IUiController        Ui                  // 17 §17.7
   IFrameLoop           Frame
 }
 
@@ -185,8 +186,9 @@ interface IPresentationComposer {
 - Loads `render_layout.*` through `IRenderLayoutLoader`, passing
   `Airside.Layout()` when `sim.airside` is registered. A layout failure is a
   hard load failure.
-- Constructs the scene builder, the promotion controller and the pacer from
-  those. Their construction entry points are part of Q-009.
+- Constructs the scene builder, the promotion controller, the pacer and the UI
+  controller (with its lane sink, `17` §17.5) from those. Their construction
+  entry points are part of Q-009.
 - Presentation receives the sim's read-only interfaces and `ISimHost`. It
   never receives a system's internals.
 
@@ -201,13 +203,16 @@ place a playable build calls `ISimHost.Step`.
 
 ```
 readonly struct FrameInput {
-  CameraView camera                        // from the render backend
-  int64      elapsedRealMicroseconds       // engine frame delta, converted by the bootstrap
-  bool       paused
+  CameraView             camera                   // from the render backend
+  float                  screenWidth              // pixels, > 0
+  float                  screenHeight             // pixels, > 0
+  IReadOnlyList<UiInput> ui                       // from the UI backend, arrival order (17 §17.3)
+  int64                  elapsedRealMicroseconds  // engine frame delta, converted by the bootstrap
 }
 
 readonly struct FrameOutput {
   RenderFrame Render                       // valid until the next RunFrame
+  UiFrame     Ui
 }
 
 interface IFrameLoop { FrameOutput RunFrame(in FrameInput input) }
@@ -215,15 +220,19 @@ interface IFrameLoop { FrameOutput RunFrame(in FrameInput input) }
 
 Each `RunFrame`, in this order:
 
-1. `Promotion.Update(input.camera)`.
-2. `n = Pacer.Advance(input.elapsedRealMicroseconds, input.paused)`; if
-   `n > 0`, `Host.Step(n)`.
-3. `render = Scene.Build(input.camera)`.
-4. Return the output.
+1. `Ui.Update(input.ui, input.camera, input.screenWidth, input.screenHeight)`.
+   This may submit commands and change the pacing state (`17` §17.4, §17.5).
+2. `Promotion.Update(input.camera)`.
+3. `n = Pacer.Advance(input.elapsedRealMicroseconds, Ui.Pacing.Paused,
+   Ui.Pacing.Speed)`; if `n > 0`, `Host.Step(n)`.
+4. `render = Scene.Build(input.camera)`.
+5. `ui = Ui.Frame()`. Return both.
 
+UI goes first, so a pause pressed this frame stops this frame's `Step`, and a
+command submitted this frame is already queued before its tick runs.
 Promotion goes before `Step`, so a node that comes into view promotes before
 the tick that shows it. Building goes after `Step`, so the frame shows the
-state just produced. No sim query runs while `Step` is running
+state just produced. Nothing touches the sim while `Step` is running
 (`15` §15.6). No allocation per `RunFrame` after the first.
 
 ---
@@ -238,10 +247,11 @@ against this list:
   `StreamingAssets/Scenario/`, call `ISimComposer.Compose` and then
   `IPresentationComposer.Compose`, and keep the `IFrameLoop`. Hand the backends
   what they draw.
-- **Each engine frame:** get this frame's `CameraView` from the render backend,
+- **Each engine frame:** get this frame's `CameraView` from the render backend
+  and this frame's `UiInput`s from the UI backend, read the screen size,
   convert the engine's frame delta to integer microseconds (the float
   conversion is fine here: this is presentation), call `RunFrame`, and pass
-  the output to the backends to draw.
+  `Render` and `Ui` to their backends to draw.
 - **Batch mode:** pass the process arguments to
   `IHostCommandLine.TryParse` (§16.8). If it returns a checkpoint run, call
   `IHeadlessRun.Run`, then quit with its exit code. No frame loop runs and
@@ -357,8 +367,8 @@ subcommand, `IHeadlessRun`, the dump writer and the bootstrap's batch mode.
 Two pieces of work. Writable paths are proposed; the Planner confirms them.
 
 - **Headless host:** `src/app/host/**`, `tests/app/host/**`. The frame loop,
-  the command-line parse and the dump writer can be built now against
-  `app.render`'s scene-layer interfaces (T-020). `ISimComposer`,
+  the command-line parse and the dump writer can be built now against the
+  `app.render` (T-020) and `app.ui` (`17` §17.10) scene-layer interfaces. `ISimComposer`,
   `IPresentationComposer`, `IHeadlessRun` and the harness-equivalence test
   wait for Q-009.
 - **Unity project shell:** `unity/AirportSim/**`, including the bootstrap and
@@ -368,8 +378,8 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
 Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
 - `test_host_assembly_has_no_engine_reference` — static
-- `test_frame_loop_promotes_before_step_and_builds_after`
-- `test_frame_loop_paused_steps_nothing`
+- `test_frame_loop_runs_ui_then_promotion_then_step_then_build`
+- `test_frame_loop_pause_pressed_this_frame_steps_nothing`
 - `test_bundle_rejects_listed_system_without_file`
 - `test_bundle_unlisted_system_is_not_registered`
 - `test_command_line_parses_checkpoint_run_and_rejects_others`

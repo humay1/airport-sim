@@ -880,3 +880,82 @@ Impact:      blocks the `app.host` composition task. The same gap is latent in
              should check whether T-009's brief lets the harness reach module
              internals.
 Signed off:  not required (Architect to answer)
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.1, §15.8, §15.12, §15.13(d) — D4: game speeds pause, 1x, 2x, 4x
+Reason:      The pacer was 1x-and-pause only, pending a pacing decision. The
+             owner chose pause, 1x, 2x and 4x (a 4x day is 6 real minutes),
+             with higher speeds deferred until T-011's budget results exist.
+             `ITickPacer.Advance` gains a `GameSpeed` parameter. The
+             accumulator counts speed-scaled microseconds, so a speed change
+             loses and duplicates nothing. The catch-up cap stays at 3 ticks
+             per frame at every speed. That bounds one frame's sim work to
+             18 ms at max tier, and at 4x the cap binds only below about
+             13 fps. Two pacer tests are added.
+Raised by:   Q-008 §15.13(d), D4
+Impact:      **interface change** to `ITickPacer` (T-020, QUEUED, no code);
+             T-020's task file quotes "1x only, no speed parameter" and is
+             stale. No sim change: game speed is presentation-side
+             (`08` §8.2).
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D4); reversible
+
+## 2026-09-23 — spec/17-interfaces-ui.md — D5: new file, minimal Phase 1 `app.ui`
+Reason:      No Phase 1 task gave the player `SetServersOpen`, and T-025 asks
+             whether unblocking flow is fun (§15.13(e)). The owner chose a
+             minimal `app.ui` built as a headless input/command layer plus a
+             thin backend, split the same way as `app.render`. The new file
+             specifies:
+             - semantic input in screen coordinates and screen-to-world
+               mapping (§17.3);
+             - pacing state, starting unpaused at 1x (§17.4);
+             - the lane click: an inclusive-edge hit test on the render
+               layout's flow-node boxes, topmost (highest `NodeId`) winning,
+               with primary = one more server and secondary = one fewer,
+               handed to an `ILaneCommandSink` (§17.5);
+             - the complete list of sim members used (§17.6), the types
+               (§17.7), an icon-only backend contract with no text (§17.8),
+               and tests, including a pause/speed outcome-neutrality
+               integration test (§17.10).
+             `16` §16.5 to §16.7 gain the UI step: it runs first in the frame
+             loop, so a pause pressed this frame stops this frame's `Step`.
+Raised by:   Q-008 §15.13(e), D5
+Impact:      additive; no `src/app` code. New work for the Planner: a UI
+             scene-layer task (`src/app/ui/Scene/**`, `tests/app/ui/**`),
+             after T-020, and later a UI backend task. **Stopped short of
+             improvising:** turning a lane request into a `Command` needs a
+             payload layout, a `PlayerId`, a `CommandKind` value, a dispatch
+             contract and a lane-state read, none of which is published. The
+             production sink is therefore marked do-not-write, and Q-010 is
+             raised. The +1/−1 click grammar is the Architect's reading of
+             "clicking a lane enqueues `SetServersOpen`". It is a UI detail,
+             not a balance value, and is flagged here in case the owner wants
+             another grammar.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D5) for the
+             scope; reversible. The interface detail is the Architect's.
+
+## 2026-09-23 — spec/03-module-map.md, spec/00-overview.md, spec/15-interfaces-render.md intro, spec/open-questions.md Q-008 — D5 bookkeeping; Q-008 answered
+Reason:      Points `app.ui` at its interface file. With D1, D4, D5 and D7 all
+             written, every §15.13 HUMAN DECISION is resolved, so Q-008 moves
+             from PARTIALLY ANSWERED to ANSWERED and names where each
+             decision lives. What still blocks a playable build is Q-009 and
+             Q-010, which are Architect questions rather than human ones, and
+             tasks not yet queued.
+Raised by:   D1, D4, D5, D7
+Impact:      `tasks/queue.md`'s T-025 row and its "Unity backend is not
+             taskable" note are stale. The Planner can now queue the backend,
+             host and UI tasks, with their Q-009/Q-010 dependencies.
+Signed off:  not required (bookkeeping for signed-off decisions)
+
+## 2026-09-23 — spec/open-questions.md — Q-010 raised: `SetServersOpen` command plumbing and lane state
+Reason:      The D5 lane click cannot become a command without five
+             unpublished pieces: the payload layout, `PlayerId`,
+             `CommandKind.SetServersOpen` and who authors it, sim.core to
+             sim.flow command dispatch with admission validation, and a read
+             of `ServersOpen`/`ServerCount`/node kind. A proposed answer is
+             attached. Item (5) widens `IFlowSystem`, which D5 did not
+             authorise, so it waits for the owner.
+Raised by:   architect, while writing D5
+Impact:      blocks `app.ui`'s production lane sink. Items (1) to (4) are
+             **pre-existing** gaps that T-023 and T-005 would otherwise fill
+             by guessing. The Planner should hold T-023's command-handler
+             work until they are answered.
+Signed off:  not required for (1)–(4); **PENDING HUMAN** for (5)

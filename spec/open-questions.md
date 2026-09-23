@@ -211,9 +211,22 @@ Answer:      New file `spec/15-interfaces-render.md`. `app.render` is split
              than 1x; (e) no Phase 1 task gives the player a way to issue
              `SetServersOpen`. None blocks T-020's headless scope; together
              they block the backend and a playable build.
-Status:      PARTIALLY ANSWERED (spec/15-interfaces-render.md) — the headless
-             scope is answered and T-020 is releasable for it; the engine
-             backend stays open pending the HUMAN DECISIONS in §15.13
+Decisions:   All five §15.13 items are HUMAN DECISION — owner (delegated),
+             2026-09-23, each reversible:
+             (a) D1 — the sim and every Unity-consumed headless layer target
+             `netstandard2.1` only; tests and the harness target `net8.0`
+             (`01-architecture.md` runtime row, `15` §15.3);
+             (b) D7 — new module `app.host` owns `unity/AirportSim/`
+             (`16-interfaces-host.md` §16.2);
+             (c) D7 — `app.host`'s headless composition root and frame loop
+             (`16` §16.3 to §16.7); module construction is open as Q-009;
+             (d) D4 — pause, 1x, 2x and 4x (`15` §15.8);
+             (e) D5 — minimal `app.ui` with pause/speed controls and the lane
+             click (`17-interfaces-ui.md`); its command plumbing is open as
+             Q-010.
+Status:      ANSWERED (spec/15-interfaces-render.md#1513) — the HUMAN
+             DECISIONS are made. What remains of a playable build is Q-009 and
+             Q-010, plus tasks the Planner has yet to queue.
 
 ### Q-009 — No module publishes how its system is constructed
 Raised by:   architect / D7 (writing `spec/16-interfaces-host.md`)
@@ -252,3 +265,48 @@ Proposed:    Each interface file gains a short "Construction" section with
              factory's input type, not in a file path.
 Status:      OPEN — Architect to answer; not a human decision unless the
              answer changes a locked file
+
+### Q-010 — `SetServersOpen` cannot be issued: command plumbing and lane state are unpublished
+Raised by:   architect / D5 (writing `spec/17-interfaces-ui.md`)
+Blocking:    `17` §17.5 step 4, the production `ILaneCommandSink`. Also
+             bears on T-023, whose command handler has no published dispatch
+             interface to implement, and on T-005 (admission-time
+             validation). The Planner should check both before release.
+Question:    D5 has a click enqueue `SetServersOpen` through the command
+             queue. Five things needed for that are not specified:
+             (1) the **payload byte layout** of `SetServersOpen`. `09` §9.8
+             names the fields (`NodeId`, `int32 count`) but not their
+             encoding, so `app.ui` (encoder) and `sim.flow` (decoder) would
+             each invent one;
+             (2) **`PlayerId`** is used by `Command` (`01`, `08` §8.7) but
+             never defined;
+             (3) **who adds `CommandKind.SetServersOpen`** to `sim.core`.
+             T-023 writes only `src/sim/flow/**`, which is the same scheduling
+             gap T-026 closed for event payload types;
+             (4) **dispatch**: `08` §8.7 says an applied command reaches its
+             owning system "through an interface that system publishes", and
+             that validation happens at admission. `sim.flow` publishes no such
+             interface, and nothing says how `sim.core` validates a payload it
+             does not understand;
+             (5) **lane state**: "one more lane" needs the node's current
+             `ServersOpen` and its `ServerCount`, and needs to know whether
+             the node is a `Queue` at all. `IFlowSystem` exposes none of
+             them.
+Why it matters: Without (1) to (4), T-023 and `app.ui` can each pass their
+             own tests and still disagree on the wire. Without (5), the player
+             clicks blind, and a click on a non-queue node does something the
+             spec does not define.
+Proposed:    (1) 8 bytes: `NodeId.Value` as `uint32` little-endian, then
+             `count` as `int32` little-endian; any other length is
+             `MalformedPayload`. (2) `struct PlayerId { uint16 Value }`, with
+             the single Phase 1 player as 0. (3) a small `sim.core` task, like
+             T-026. (4) `sim.core` publishes a per-kind handler contract
+             (validate the payload at admission, apply at phase 1); `sim.flow`
+             registers one for `SetServersOpen`. (5) a read-only
+             `bool IFlowSystem.TryGetQueue(NodeId node, out QueueConfig
+             config)` returning false for non-`Queue` nodes; `app.ui` clamps
+             `ServersOpen ± 1` into `[0, ServerCount]` before submitting.
+             Item (5) widens `sim.flow`'s interface, which D5 did not name, so
+             it needs the owner's (or delegate's) nod.
+Status:      OPEN — Architect to answer (1)–(4); (5) needs owner approval of
+             the query

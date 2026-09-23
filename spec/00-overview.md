@@ -47,6 +47,7 @@ Written here so no agent ever proposes them:
 | Progression | `03-module-map.md` | `sim.progression` |
 | Rendering (presentation) | `15-interfaces-render.md` | `app.render` |
 | Composition root, frame loop, Unity project | `16-interfaces-host.md` | `app.host` |
+| Player controls (Phase 1: pause, speed, lane click) | `17-interfaces-ui.md` | `app.ui` |
 
 ## Build order (dependency order — do not reorder)
 
