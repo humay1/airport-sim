@@ -307,9 +307,69 @@ enum CommandRejection { None, TooLate, UnknownKind, MalformedPayload, NotPermitt
 - Application is dispatched to the owning system through an interface that system
   publishes. `sim.core` knows command kinds, never their meaning.
 
-`CommandKind` is an enum in `sim.core`, extended only by spec amendment. Phase 0
-defines only `NoOp`, used by the determinism harness to prove the queue
-participates in the hash.
+`CommandKind` is an enum in `sim.core`, extended only by spec amendment. `NoOp`
+is used by the determinism harness to prove the queue participates in the
+hash.
+
+### Issuer, kinds and payloads (Q-010)
+
+```
+struct PlayerId { uint16 Value }           // PLAYER_LOCAL = 0, the only player at Phase 1
+
+enum CommandKind : uint16 {                // values are saved in command logs: never renumbered
+  NoOp           = 0,
+  SetServersOpen = 1,
+  ReassignStand  = 2
+}
+```
+
+**Payload encoding.** Fixed layout, little-endian, fields in the order
+listed, no padding, no length prefix. An id encodes its `Value` at its
+declared width.
+
+| Kind | Owner | Payload fields | Bytes | Semantics |
+|---|---|---|---|---|
+| `NoOp` | `sim.core` | none | 0 | none |
+| `SetServersOpen` | `sim.flow` | `NodeId.Value : uint32`, `count : int32` | 8 | `09` §9.8 |
+| `ReassignStand` | `sim.airside` | `FlightId.Value : uint64`, `StandId.Value : uint16` | 10 | `12` §12.10 |
+
+A new kind is appended with the next value, together with its row here, by
+amendment.
+
+### Dispatch (Q-010)
+
+```
+interface ICommandHandler {
+  CommandKind      Kind { get }
+  CommandRejection Validate(ReadOnlySpan<byte> payload)       // at admission
+  void             Apply(in Command cmd, in TickContext ctx)   // phase 1, at cmd.Tick
+}
+
+interface ICommandHandlerRegistry {
+  void Register(SystemId owner, ICommandHandler handler)
+}
+```
+
+- **Registration.** The owning system registers its handler through
+  `SystemServices.Commands` (§8.11a), during construction only. It registers
+  one handler per kind, and only for kinds whose Owner column names it. A
+  duplicate, or a registration after `Build`, throws. `sim.core` handles
+  `NoOp` itself.
+- **Admission** (`TrySubmit`), in this order: `TooLate` (the tick rule
+  above), then `UnknownKind` (no handler registered in this build), then the
+  handler's `Validate`. `Validate` is a **pure function of the payload and
+  the owner's load-time data**, for example "is this a known `Queue` node".
+  It never reads runtime sim state. State can change between admission and
+  application, and a pure check makes a `TrySubmit` result reproducible from
+  its arguments. A wrong payload length is `MalformedPayload`. A well-formed
+  target that can never accept the kind is `NotPermitted`.
+- **Application.** At phase 1 of `cmd.Tick`, in the total order above, the
+  handler's `Apply` runs with that tick's context. A command whose effect is
+  impossible in the *current* state (the flight has left, the stand is
+  taken) is a **deterministic no-op**, recorded through `ISimLog` with the
+  tick. It is never thrown, following `07-conventions.md` "invalid states
+  are data". `Apply` may publish events, which are dispatched in phase 3 as
+  usual.
 
 ---
 
@@ -451,9 +511,10 @@ readonly struct SimHostConfig {
 }
 
 readonly struct SystemServices {           // what a module factory may receive from core
-  IEventBus     Events                     // Subscribe during construction only
-  IIdAllocator  Ids
-  IContentIndex Content                    // read-only; load-time validation
+  IEventBus               Events           // Subscribe during construction only
+  IIdAllocator            Ids
+  IContentIndex           Content          // read-only; load-time validation
+  ICommandHandlerRegistry Commands         // §8.7; register during construction only
 }
 
 interface ISimHostBuilder {

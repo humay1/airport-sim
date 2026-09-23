@@ -1147,3 +1147,59 @@ Impact:      interface additions for every module. No module has code. Stale
              build) and **Q-012** (`sim.flow` routing without `sim.world`,
              which blocks T-007 and was already latent in its task file).
 Signed off:  not required (Architect's interface domain)
+
+## 2026-09-23 — spec/08 §8.7, §8.11a; 09 §9.8; 12 §12.10 — Q-010 (1)–(4): command payloads, `PlayerId`, `CommandKind`, dispatch
+Reason:      No command could actually be issued. The payload bytes,
+             `PlayerId`, the `CommandKind` values and the route from
+             `ApplyDue` to an owning system were all unspecified, so T-023,
+             T-005 and `app.ui` would each have guessed. Answer:
+             - payloads use a fixed little-endian layout with no padding,
+               with a per-kind table (`SetServersOpen` 8 bytes,
+               `ReassignStand` 10 bytes);
+             - `PlayerId { uint16 }` with `PLAYER_LOCAL = 0`;
+             - `CommandKind : uint16 { NoOp = 0, SetServersOpen = 1,
+               ReassignStand = 2 }`, never renumbered because the values are
+               saved in logs;
+             - `ICommandHandler` / `ICommandHandlerRegistry`, registered at
+               construction through `SystemServices.Commands`;
+             - admission runs `TooLate`, then `UnknownKind`, then a pure
+               payload `Validate`;
+             - an impossibility found at `Apply` is a logged no-op.
+             `ReassignStand` had the same gap and is closed in the same way.
+             Its "Rejected (`NotPermitted`) if occupied or incompatible" is
+             replaced by an `Apply`-time no-op, because admission cannot read
+             runtime state deterministically.
+Raised by:   Q-010
+Impact:      no code exists. Stale: T-005 (admission order, handler
+             registry), T-023 (its handler: `Validate` and `Apply`), T-021
+             (the `ReassignStand` handler and its changed rejection
+             semantics), T-026, or a new `sim.core` task (`PlayerId`,
+             `CommandKind` values, the handler contract). `02-determinism.md`
+             and `01-architecture.md` are untouched: `01`'s `Command` shape is
+             reproduced unchanged, and only its `PlayerId` and payload types
+             are now defined.
+Signed off:  not required (Architect's interface domain)
+
+## 2026-09-23 — spec/09 §9.7, §9.7b, §9.10; 15 §15.2, §15.5, §15.6, §15.9, §15.12, §15.13; 17 §17.1, §17.5–§17.7, §17.10, §17.11 — Q-010 (5): `IFlowSystem.TryGetLaneState` and lane pips — LOW CONFIDENCE
+Reason:      A lane toggle whose state the player cannot see is not a usable
+             control. The coordinator approved this as a direct consequence
+             of D5. Answer:
+             - a read-only `TryGetLaneState(NodeId, out LaneState
+               { ServerCount, ServersOpen })`, returning false for non-queue
+               nodes, O(1), and not hashed;
+             - `app.render` draws it as lane pips: a new `Lane` layer, and
+               `LaneOpen`/`LaneClosed` colour roles appended so no existing
+               ordinal moves;
+             - `app.ui`'s production lane sink computes
+               `clamp(base ± 1, 0, ServerCount)` from a pending target or the
+               read, and submits only when the value changes.
+Raised by:   Q-010 (5)
+Impact:      interface additions. Stale: T-023 or a flow task (the query),
+             T-020 (a new polled member, enum values, a constant and a
+             test). The UI scene-layer task can now include the production
+             sink. The query's shape and the use of render pips rather than a
+             UI overlay are LOW CONFIDENCE. **The running scope total becomes
+             8** (item 8: the lane-state query and lane pips).
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
+             D5; reversible. Approved by the coordinator under the owner's
+             delegation.

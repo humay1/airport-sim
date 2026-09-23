@@ -192,6 +192,7 @@ interface IFlowSystem : ISimSystem {
   IReadOnlyList<CohortId> CohortsAt(NodeId node)          // ascending CohortId
   bool   TryGetCohort(CohortId id, out PassengerCohort cohort)
   bool   TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)   // §9.7a; false iff none
+  bool   TryGetLaneState(NodeId node, out LaneState lanes)                           // §9.7b; false unless a Queue node
 
   // ---- injection, called only by the systems named ----
   CohortId Inject(in CohortKey key, int32 count, NodeId at)   // sim.schedule, sim.airside
@@ -265,13 +266,44 @@ passengers, with ties broken by ascending `NodeId`.
 
 ---
 
+### 9.7b Lane state (Q-010) — LOW CONFIDENCE
+
+HUMAN DECISION — owner (delegated), 2026-09-23, consequence of D5,
+reversible. A lane control the player cannot see the state of is not a
+usable control.
+
+```
+readonly struct LaneState { int32 ServerCount; int32 ServersOpen }
+```
+
+`TryGetLaneState(node)` returns the node's current `ServerCount` and
+`ServersOpen`, reflecting every command applied so far. It returns false for
+an unknown node or one that is not a `Queue`. It is read-only and O(1). It is
+not itself hashed: both fields are already in node runtime state (§9.10). It
+consumes no RNG. Its callers are `app.render` (lane pips, `15` §15.5) and
+`app.ui`'s lane sink (`17` §17.5). It deliberately exposes no service rate,
+capacity or wait figures; `PredictedWaitMinutes` already covers the wait.
+
+> **LOW CONFIDENCE — the shape.** Two integers are the least the lane click
+> needs: the base for ±1, the clamp bound, and whether the node is a lane at
+> all. If later UI needs more of `QueueConfig`, it widens by amendment. It is
+> not to be replaced by returning `QueueConfig` itself, which would publish
+> content-derived rates as a presentation contract.
+
 ## 9.8 Commands consumed
 
 Declared here, defined as `CommandKind` values in `sim.core` (§8.7).
 
 | Command | Payload | Effect |
 |---|---|---|
-| `SetServersOpen` | `NodeId`, `int32 count` | Clamped to `[0, ServerCount]`; takes effect at the next tick boundary. Backs T-023. |
+| `SetServersOpen` | `NodeId`, `int32 count` — byte layout `08` §8.7 | Clamped to `[0, ServerCount]`; takes effect at the next tick boundary. Backs T-023. |
+
+`sim.flow` registers its `ICommandHandler` for `SetServersOpen`
+(`08` §8.7) in `FlowFactory.CreateSystem` (§9.11). `Validate`: a length
+other than 8 is `MalformedPayload`; an unknown `NodeId` is
+`MalformedPayload`; a node that is not a `Queue` is `NotPermitted`. Any
+`count` is admitted, because the clamp happens at `Apply`. `Apply` sets
+`ServersOpen` to the clamped value.
 
 Staffing may later constrain `ServersOpen`; that arrives from `sim.staff` through
 the same field, and this table grows by amendment only.
@@ -307,7 +339,8 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 3. The `sim.flow` RNG stream states, excluding `flow.presentation`.
 
 Not hashed, because derived: predicted waits, agent views, per-flight population
-indexes, `TryGetOutstanding` results, any cached routing result.
+indexes, `TryGetOutstanding` and `TryGetLaneState` results, any cached
+routing result.
 
 Budget: **2.5 ms/tick at max tier** (`03-module-map.md`). The shape that budget
 demands, stated so it is not discovered late:

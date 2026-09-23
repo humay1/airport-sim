@@ -551,7 +551,15 @@ Registry position is **3** (`08-interfaces-core.md` §8.5): after `sim.schedule`
 
 | Command | Payload | Effect |
 |---|---|---|
-| `ReassignStand` | `FlightId`, `StandId newStand` | Only while the flight's `Phase == OnStand`. Rejected (`CommandRejection.NotPermitted`) if `newStand` is occupied or incompatible. Takes effect at the next tick boundary: old stand's occupant clears, new stand's occupant is set, no milestone re-fires. |
+| `ReassignStand` | `FlightId`, `StandId newStand` — byte layout `08` §8.7 | Only while the flight's `Phase == OnStand`. Takes effect at the next tick boundary: old stand's occupant clears, new stand's occupant is set, no milestone re-fires. |
+
+Handler (`08` §8.7, Q-010), registered in `AirsideFactory.CreateSystem`.
+`Validate` checks the payload only: a length other than 10, or an unknown
+`StandId`, is `MalformedPayload`. Whether the stand is occupied, whether it
+is compatible, and whether the flight is `OnStand` are **runtime state**, so
+they are checked at `Apply`. A command that fails them is a logged no-op,
+not a rejection. This replaces the earlier "Rejected (`NotPermitted`) if
+occupied or incompatible", which admission cannot decide deterministically.
 
 Named as the example in `07-conventions.md` ("Commands: imperative, ...,
 `ReassignStand`"); this is that command's binding definition.

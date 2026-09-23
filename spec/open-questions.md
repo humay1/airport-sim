@@ -381,5 +381,26 @@ Proposed:    (1) 8 bytes: `NodeId.Value` as `uint32` little-endian, then
              `ServersOpen ± 1` into `[0, ServerCount]` before submitting.
              Item (5) widens `sim.flow`'s interface, which D5 did not name, so
              it needs the owner's (or delegate's) nod.
-Status:      OPEN — Architect to answer (1)–(4); (5) needs owner approval of
-             the query
+Answer:      (1)–(4), the Architect's, in `08` §8.7:
+             (1) payloads are fixed-layout little-endian with no padding;
+             `SetServersOpen` = `uint32 NodeId.Value, int32 count` (8 bytes).
+             (2) `PlayerId { uint16 Value }`, with `PLAYER_LOCAL = 0`.
+             (3) `CommandKind : uint16 { NoOp = 0, SetServersOpen = 1,
+             ReassignStand = 2 }`, never renumbered. `ReassignStand`
+             (`12` §12.10) had the same gap and is closed too: 10 bytes. A
+             `sim.core` task authors these, following the T-026 pattern.
+             (4) `ICommandHandler { Kind, Validate(payload), Apply(cmd, ctx) }`,
+             registered through `SystemServices.Commands` (`08` §8.11a) at
+             construction. Admission runs `TooLate`, then `UnknownKind`,
+             then `Validate`, which is pure over the payload and load-time
+             data. A state-dependent impossibility found at `Apply` is a
+             logged no-op, not a rejection; `12` §12.10's `ReassignStand` is
+             amended to match.
+             (5) HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
+             D5: read-only `IFlowSystem.TryGetLaneState(NodeId, out LaneState
+             { ServerCount, ServersOpen })`, false for non-`Queue` nodes
+             (`09` §9.7b, LOW CONFIDENCE). `app.render` draws it as lane pips
+             (`15` §15.5). `app.ui`'s sink uses it, plus a pending target so
+             that quick clicks do not collapse (`17` §17.5).
+Status:      ANSWERED (spec/08-interfaces-core.md#issuer-kinds-and-payloads-q-010,
+             spec/09-interfaces-flow.md#97b-lane-state-q-010--low-confidence)

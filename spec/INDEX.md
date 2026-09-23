@@ -32,7 +32,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 | `sim.turnaround` (T-022) | `13` all; `12` §12.3, §12.8; `10` §10.4, §10.6 |
 | `sim.delay` (T-024) | `14` all; `06` all; `10` all; `12` §12.3 and `13` §13.6 for milestone semantics only |
 | `app.render` scene (T-020) | `15` §15.1–§15.12; `08` §8.5; `09` §9.1, §9.7; `12` §12.4, §12.9; `16` §16.6 (frame order) |
-| `app.ui` scene | `17` all; `15` §15.4, §15.5, §15.8, §15.9; `16` §16.6; `08` §8.7; `09` §9.8 |
+| `app.ui` scene | `17` all; `15` §15.4, §15.5, §15.8, §15.9; `16` §16.6; `08` §8.7; `09` §9.7b, §9.8 |
 | `app.host` | `16` all; `15` §15.3, §15.9, §15.10; `17` §17.4, §17.7; `08` §8.5, §8.9 |
 | Unity backends / project shell | `16` §16.2, §16.7; `15` §15.10; `17` §17.8 |
 | Test Author | `07` Testing; the "fixtures and tests" section of your module's file (`11` §11.10, `12` §12.13, `13` §13.11, `14` §14.14, `15` §15.12, `16` §16.11, `17` §17.10) |
@@ -125,7 +125,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   may be authored (HD, D2, §8.2)**; **`Fx` hand-rolls its 128-bit multiply,
   divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
   handlers in registry order (§8.6); commands admitted only at ≥ 1 tick of
-  lead and never re-dated (§8.7); xoshiro256\*\* + SplitMix64 (§8.8);
+  lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
+  little-endian payload table and `ICommandHandler` dispatch, with a pure
+  `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
+  xoshiro256\*\* + SplitMix64 (§8.8);
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
   in dependency order, register in registry order**.
@@ -137,12 +140,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `IFlowSystem`, `SetServersOpen`.
 - Key: the cohort is the only authoritative state and agents are derived
   views (§9.1); integer heads with `Fx` service credit (§9.4); **new query
-  `TryGetOutstanding` for the boarding hold (§9.7a, D6)**; mandatory merging
+  `TryGetOutstanding` for the boarding hold (§9.7a, D6)**; **read-only
+  `TryGetLaneState` (§9.7b, HD, consequence of D5)**; the `SetServersOpen`
+  handler's `Validate`/`Apply` rules (§9.8); mandatory merging
   is a budget requirement (§9.3); factory plus `IFlowGraphLoader`, with
   `FlowGraph` opaque (§9.11); routing without `sim.world` is open (Q-012).
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
-  blame rule (§9.7a).
-- Read if: T-007, T-010, T-011, T-023; §9.7/§9.7a for callers.
+  blame rule (§9.7a); the `LaneState` shape (§9.7b).
+- Read if: T-007, T-010, T-011, T-023; §9.7, §9.7a and §9.7b for callers.
 
 ### `10-events.md` — event catalogue
 - Owns: envelope, emission discipline, milestones, allocation rule, the event
@@ -170,7 +175,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   hold at the doors-close point while passengers are outstanding, at most
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
   (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
-  and `IAirsideLayoutLoader.Parse` (§12.12a).
+  and `IAirsideLayoutLoader.Parse` (§12.12a); `ReassignStand`'s state checks
+  happen at `Apply`, as a no-op (§12.10, Q-010).
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
@@ -203,9 +209,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: logic is headless and the backend is thin; `SetPromoted` is only
   called between `Step`s; **pacer speeds pause, 1x, 2x, 4x (§15.8, HD, D4)**;
   the frame order moved to `16` §16.6 (D7); the scene layer targets
-  `netstandard2.1` (§15.3, D1); all §15.13 decisions made.
+  `netstandard2.1` (§15.3, D1); all §15.13 decisions made; lane pips drawn
+  from `TryGetLaneState` (§15.5, Q-010).
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
-  split layout (§15.4); the 2 ms scene budget (§15.11).
+  split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
+  render rather than as a UI overlay (`CHANGELOG`, Q-010).
 - Read if: T-020; the render backend task (§15.10).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
@@ -227,23 +235,22 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   mapping, the icon-only backend contract.
 - Key: starts unpaused at 1x; primary click = one more server, secondary = one
   fewer; the topmost (highest `NodeId`) box wins; no text or panels at
-  Phase 1. **The command plumbing is pending Q-010, and the production lane
-  sink is not to be written.**
+  Phase 1; the production lane sink computes `clamp(base ± 1)` from a
+  pending target or `TryGetLaneState`, and submits `SetServersOpen` for the
+  next tick (§17.5, Q-010).
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
 - Read if: the UI scene-layer and UI backend tasks.
 
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
-  running scope total (7 as of D1–D9).
+  running scope total (8, after Q-010 (5)).
 - Read if: you are the Planner (Impact lines list stale tasks), you are
   reviewing the Architect, or you need why a rule exists.
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: **Q-010** (`SetServersOpen` payload, `PlayerId`, command
-  dispatch, lane-state read; blocks `app.ui`'s lane sink and bears on T-023
-  and T-005), **Q-011** (content definitions and the `data/` loader; blocks
+- Open now: **Q-011** (content definitions and the `data/` loader; blocks
   the player build), **Q-012** (`sim.flow` routing without `sim.world`;
-  blocks T-007). Q-002 to Q-009 are answered; Q-001 was deleted (D9).
+  blocks T-007). Q-002 to Q-010 are answered; Q-001 was deleted (D9).
 - Read if: before starting any task, check that your task is not blocked
   here.

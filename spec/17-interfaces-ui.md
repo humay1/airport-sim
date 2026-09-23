@@ -5,14 +5,14 @@ decision D5 scopes it: HUMAN DECISION — owner (delegated), 2026-09-23,
 reversible. Clicking a flow-node box requests a lane change through the
 command queue. Speed and pause controls drive the pacer. There is no other UI
 at Phase 1. The split into a headless layer and a thin backend follows
-`15-interfaces-render.md`. Turning a lane request into a `SetServersOpen`
-command needs sim-side pieces that are not published (§17.5); that is open as
-`open-questions.md` Q-010. Notation is as in `08-interfaces-core.md`. Where
+`15-interfaces-render.md`. The command plumbing and the lane-state read it
+relies on were answered by `open-questions.md` Q-010 (`08` §8.7, `09` §9.7b).
+Notation is as in `08-interfaces-core.md`. Where
 this file appears to contradict `01-architecture.md` or `02-determinism.md`,
 those win and it is a spec bug.
 
 Reading order for an `app.ui` worker: `01`, `02`, `07`, `08` §8.5 and §8.7,
-`09` §9.8, `15` §15.4, §15.5, §15.8, §15.9, `16` §16.6, this file.
+`09` §9.7b and §9.8, `15` §15.4, §15.5, §15.8, §15.9, `16` §16.6, this file.
 
 ---
 
@@ -36,8 +36,8 @@ At Phase 1, `app.ui` owns:
   `16` §16.6);
 - any sim query beyond those listed in §17.6, and any command other than the
   lane request's `SetServersOpen`;
-- showing the lane count. It has nothing to read it from until Q-010 is
-  answered.
+- drawing the lane count. `app.render` draws it as lane pips in world space
+  (`15` §15.5); `app.ui` only reads it to compute a request.
 
 ---
 
@@ -119,16 +119,27 @@ readonly struct PacingState { bool Paused; GameSpeed Speed }
    the box is clicking "the lanes".
 3. **Hand-off.** The controller calls its `ILaneCommandSink` (§17.7) with
    `(node, +1)` or `(node, −1)`, once per click, in input order.
-4. **Command — PENDING Q-010.** The sink's production implementation turns a
-   request into one `SetServersOpen` command (`09` §9.8), submitted through
-   `ISimHost.TrySubmit` with `Tick = CurrentTick + COMMAND_MIN_LEAD_TICKS`.
-   It submits only inside `Update`, which the frame loop runs between `Step`s.
-   A rejected command is dropped: it is never retried and never re-dated
-   (`08` §8.7). Computing the absolute count needs the node's current
-   `ServersOpen` and `ServerCount`, and building the `Command` needs the
-   payload layout, the `CommandKind` value and a `PlayerId`. None of those
-   is published; see Q-010. **The sink's production implementation is not to
-   be written until Q-010 is answered.**
+4. **Command (Q-010).** The production sink handles `Request(node, delta)`
+   like this:
+   - If `IFlowSystem.TryGetLaneState(node)` returns false, the node is not a
+     lane, and the request is ignored.
+   - `base` is the node's **pending target** if there is one, otherwise
+     `lanes.ServersOpen`. A pending target is the `count` of this sink's last
+     admitted command for the node, and it stays pending while
+     `CurrentTick <= cmd.Tick`, i.e. until the sim has certainly run that
+     tick. This is what stops two quick clicks before a tick runs from
+     collapsing into one.
+   - `target = clamp(base + delta, 0, lanes.ServerCount)`. If
+     `target == base`, nothing is submitted.
+   - Otherwise it submits one `Command { Tick = CurrentTick +
+     COMMAND_MIN_LEAD_TICKS, Issuer = PLAYER_LOCAL, Kind = SetServersOpen,
+     Payload = (node, target) }`, encoded per `08` §8.7, through
+     `ISimHost.TrySubmit`. If the command is admitted, `target` becomes the
+     node's pending target.
+   - A rejected command is dropped: it is never retried and never re-dated
+     (`08` §8.7).
+   - It runs only inside `Update`, which the frame loop runs between
+     `Step`s. The pending targets are presentation state and are never saved.
 
 While paused, a click is still submitted. It applies at the next tick the
 game runs.
@@ -144,7 +155,7 @@ rejection.
 |---|---|---|---|
 | `ISimHost.CurrentTick` | `08` §8.5 | the lane sink | per request |
 | `ISimHost.TrySubmit` | `08` §8.5, §8.7 | the lane sink | per request, inside `Update` |
-| the lane-state read of Q-010 | pending | the lane sink | per request |
+| `IFlowSystem.TryGetLaneState` | `09` §9.7b | the lane sink | per request |
 
 `Step`, `WorldStateHash` and every other query are not called.
 
@@ -173,9 +184,12 @@ Construction (Q-009), following `08` §8.11a's factory rule:
 
 ```
 UiFactory.CreateController(in RenderLayout layout, ILaneCommandSink sink) -> IUiController
+UiFactory.CreateLaneCommandSink(ISimHost host, IFlowSystem flow) -> ILaneCommandSink   // Q-010
 ```
 
-Tests use a fake sink. The production sink's factory is added by Q-010.
+Controller tests use a fake sink. Sink tests use a fake host and a fake flow.
+When `sim.flow` is not registered, `app.host` passes a sink that ignores every
+request.
 
 ---
 
@@ -211,7 +225,9 @@ Specified so that its task cannot drift.
 
 **Scope.** The UI scene layer: `src/app/ui/Scene/**`, `tests/app/ui/**`. It
 depends on T-020 (it compiles against `app.render`'s scene-layer types). The
-production `ILaneCommandSink` waits for Q-010. The UI backend
+production `ILaneCommandSink` compiles against `sim.core`'s command types
+(`08` §8.7) and `IFlowSystem.TryGetLaneState` (`09` §9.7b), so it also depends
+on the tasks that deliver those. The UI backend
 (`src/app/ui/Unity/**`) is a separate task, after `app.host`'s Unity project
 exists.
 
@@ -234,11 +250,15 @@ Done-condition tests, phrased per `07-conventions.md`:
   `16` §16.6 frame order with scripted pause and speed inputs and no clicks,
   and once headless with plain `Step` calls. Checkpoints must be identical at
   every checkpoint tick.
-- after Q-010: `test_ui_lane_request_submits_set_servers_open_for_next_tick`
-  and `test_ui_rejected_command_is_dropped_not_redated`
+- `test_ui_lane_request_submits_set_servers_open_for_next_tick`
+- `test_ui_lane_request_encodes_payload_per_core_layout`
+- `test_ui_lane_request_ignored_for_non_queue_node`
+- `test_ui_lane_request_clamped_and_no_submit_when_unchanged`
+- `test_ui_two_clicks_before_tick_runs_build_on_pending_target`
+- `test_ui_rejected_command_is_dropped_not_redated`
 
 ---
 
 ## 17.11 Open
 
-- **Q-010**: command plumbing for the lane request (§17.5, §17.6).
+None at Phase 1.

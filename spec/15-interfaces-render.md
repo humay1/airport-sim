@@ -68,6 +68,7 @@ and none of them affects a sim outcome.
 |---|---|---|
 | `AGENT_ZOOM_THRESHOLD` | 120 world units of view height | §15.7; `01-architecture.md` promotion rule 1 — **LOW CONFIDENCE** |
 | `MAX_DRAWN_AGENTS_PER_NODE` | 256 | §15.5; bodies beyond this are shown only by the queue fill |
+| `MAX_DRAWN_LANES_PER_NODE` | 32 | §15.5; lane pips per queue node (Q-010) |
 | `MAX_CATCHUP_TICKS_PER_FRAME` | 3 | §15.8 |
 | `REAL_MICROSECONDS_PER_TICK_1X` | `TICK_MS × 1000` = 100 000 | §15.8, from `01-architecture.md` |
 
@@ -183,6 +184,7 @@ total, stable order.
 | each stand | `Box` | centred on the stand's `Node` position, side `StandSize` | `StandOccupied` if `StandState.Occupant` is set, else `StandFree` | `Stand` |
 | each `FlowNodeBox` | `Box` | the box | `LandsideNode` | `LandsideNode` |
 | queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` |
+| lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` |
 | agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize` | `Agent` | `Agent` |
 | each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` |
 
@@ -191,6 +193,12 @@ total, stable order.
 of *k* and the box. The exact arrangement is the worker's choice, and tests
 assert only count and containment. `ProgressAlongEdge` is not used at
 Phase 1, because corridors are not drawn.
+
+**Lane pips** (Q-010, the visible half of D5's lane control). The *k*-th pip's
+position is a pure function of *k*, the pip count and the box. As with
+agents, the arrangement is the worker's choice, and tests assert only count,
+colour split and containment. A node for which `TryGetLaneState` returns false
+gets no pips.
 
 **Aircraft position** (from `AircraftTrack`, `12-interfaces-airside.md`
 §12.9, as amended):
@@ -239,6 +247,7 @@ rejection, and the fakes in §15.12 throw if one is called.
 | `IAirsideSystem.TryGetStand`, `RunwayQueueLength` | `12` §12.9 | scene builder | per rebuild |
 | `IFlowSystem.Population` | `09` §9.7 | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.AgentsAt` | `09` §9.7 | scene builder | per rebuild, per promoted `FlowNodeBox` |
+| `IFlowSystem.TryGetLaneState` | `09` §9.7b | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.SetPromoted` | `09` §9.7 | promotion controller only | §15.7 |
 
 Cadence:
@@ -349,19 +358,20 @@ readonly struct CameraView {
   float      Aspect            // width / height; > 0
 }                              // view rectangle: Centre ± (ViewHeight × Aspect / 2, ViewHeight / 2)
 
-enum DrawLayer     { Runway, Taxiway, Stand, LandsideNode, QueueFill, Agent, Aircraft }   // draw order
+enum DrawLayer     { Runway, Taxiway, Stand, LandsideNode, QueueFill, Lane, Agent, Aircraft }   // draw order
 enum PrimitiveKind { Box, Segment, Dot }
 enum ColourRole {
   Runway, RunwayQueued, Taxiway, StandFree, StandOccupied,
   LandsideNode, QueueFill, Agent,
-  AircraftMoving, AircraftHolding, AircraftOnStand
+  AircraftMoving, AircraftHolding, AircraftOnStand,
+  LaneOpen, LaneClosed                                  // appended, Q-010
 }
-enum SourceKind    { Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft }
+enum SourceKind    { Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft, Lane }
 
 readonly struct SourceRef {
   SourceKind Kind
   uint64     Id                // RunwayId / TaxiEdgeId / StandId / NodeId / FlightId value
-  int32      Sub               // agent rank within its node; 0 otherwise
+  int32      Sub               // agent rank or lane index within its node; 0 otherwise
 }
 
 readonly struct DrawPrimitive {
@@ -495,6 +505,7 @@ Author:
 - `test_scene_aircraft_off_graph_is_not_drawn`
 - `test_scene_queue_fill_scales_with_population_and_clamps`
 - `test_scene_agents_capped_per_node_and_inside_box`
+- `test_scene_lane_pips_follow_lane_state_and_skip_non_queue_nodes`
 - `test_scene_primitive_order_is_stable`
 - `test_scene_omits_primitives_of_absent_modules`
 - `test_scene_rebuilds_only_when_tick_or_camera_changes`
@@ -527,7 +538,8 @@ Author:
 
 These were left open by Q-008, and the owner decided all five on 2026-09-23
 (D1, D4, D5, D7). None ever blocked T-020's headless scope. What still stands
-between them and a playable build is tracked in Q-009 and Q-010, not here.
+between them and a playable build is tracked in `open-questions.md`
+(Q-011, Q-012), not here.
 
 **(a) Unity 6 against a .NET 8 sim library — DECIDED.** HUMAN DECISION —
 owner (delegated), 2026-09-23 (D1). The current Unity 6 LTS runs Mono, which
@@ -560,6 +572,6 @@ results (§15.8).
 command plumbing open.** HUMAN DECISION — owner (delegated), 2026-09-23
 (D5). A minimal `app.ui`: clicking a flow-node box requests a lane change
 through the command queue, and speed and pause controls drive the pacer. There
-is no other UI at Phase 1 (`17-interfaces-ui.md`). Turning a click into a
-`SetServersOpen` command needs sim-side pieces no spec publishes; that is
-`open-questions.md` Q-010.
+is no other UI at Phase 1 (`17-interfaces-ui.md`). The command plumbing and
+the lane-state read are answered by Q-010 (`08` §8.7, `09` §9.7b), and this
+module draws the lane state as pips (§15.5).
