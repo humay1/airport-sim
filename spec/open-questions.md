@@ -214,3 +214,41 @@ Answer:      New file `spec/15-interfaces-render.md`. `app.render` is split
 Status:      PARTIALLY ANSWERED (spec/15-interfaces-render.md) — the headless
              scope is answered and T-020 is releasable for it; the engine
              backend stays open pending the HUMAN DECISIONS in §15.13
+
+### Q-009 — No module publishes how its system is constructed
+Raised by:   architect / D7 (writing `spec/16-interfaces-host.md`)
+Blocking:    the `app.host` composition task (`16` §16.4, §16.5, §16.8's
+             `IHeadlessRun` and harness-equivalence test). Latent in T-009,
+             which registers `sim.schedule` and `sim.flow` in the harness, and
+             in every integration test that composes several systems (T-020's
+             outcome-neutrality test, T-024's integrated day).
+Question:    D7 has the composition root build `ISimHost` and the registered
+             systems "from fixtures". No spec publishes a construction entry
+             point for any of them: `ISimHost` (master seed, registry,
+             content index, checkpoint sink, log sink), the `IContentIndex`
+             over `data/`, `sim.flow` (node graph and `QueueConfig`s — its
+             fixture format is not specified either), `sim.schedule` (from a
+             `ScheduleTable` and its `IFlowSystem`), `sim.airside` (from an
+             `AirsideLayout`, the `IScheduleSystem` and `IFlowSystem` it calls),
+             `sim.turnaround` (from a `TurnaroundCatalogue`, a
+             `TurnaroundFleet` and its `IScheduleSystem`), `sim.delay` (no
+             data), and the `app.render` scene objects (§15.9 says what they are
+             built from, not how). `08-interfaces-core.md` says anything
+             unpublished is internal to its module and may not be referenced
+             from another one. So the host, and strictly the harness too, would
+             have to reach into module internals or invent factories.
+Why it matters: A composition root built against guessed constructors is
+             rebuilt as each module lands. Worse, the harness and the host
+             could wire the same modules differently and disagree on hashes,
+             which is exactly what D7's equivalence test exists to catch.
+Proposed:    Each interface file gains a short "Construction" section with
+             **one** factory per module. It takes the module's validated
+             construction data and the downward interfaces the module calls,
+             and nothing else: no service locator and no statics. `sim.core`
+             publishes an `ISimHost` builder that takes the seed, the content
+             index, the checkpoint and log sinks, and the systems in registry
+             order. The content loader gets its own small spec. Fixture
+             formats stay the worker's choice, but they are named in the
+             factory's input type, not in a file path.
+Status:      OPEN — Architect to answer; not a human decision unless the
+             answer changes a locked file

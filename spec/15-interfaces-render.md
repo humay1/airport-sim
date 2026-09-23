@@ -48,7 +48,8 @@ At Phase 1, `app.render` owns:
 - any player command. `app.render` never calls `ISimHost.TrySubmit` at Phase 1.
   Camera movement is not a command: it never enters the sim
   (`08-interfaces-core.md` §8.1);
-- constructing the sim, or owning the engine project it runs in (§15.13);
+- constructing the sim, owning the engine project it runs in, or running the
+  frame loop. All three are `app.host`'s (`16-interfaces-host.md`);
 - game speeds other than 1x and pause (§15.8, §15.13);
 - any sim module's state beyond the queries in §15.6. In particular it reads
   nothing from `sim.turnaround`, `sim.delay` or `sim.schedule` at Phase 1.
@@ -87,8 +88,8 @@ nothing to the sim.
 |---|---|---|
 | Directory | `src/app/render/Scene/` | `src/app/render/Unity/` |
 | Engine references | **none**, asserted by test | Unity 6 |
-| Built by | `AirportSim.sln`, `dotnet test` | the engine project (§15.13) |
-| Reads the sim | the queries in §15.6 only | never; it calls `ISimHost.Step` only |
+| Built by | `AirportSim.sln`, `dotnet test` | the Unity project owned by `app.host` (`16` §16.2) |
+| Reads the sim | the queries in §15.6 only | never; it calls no sim member at all |
 | Tested in CI | yes, all of §15.12 | no |
 | In T-020 | yes | no — contract only |
 
@@ -230,7 +231,7 @@ rejection, and the fakes in §15.12 throw if one is called.
 | Member | Spec | Called by | When |
 |---|---|---|---|
 | `ISimHost.CurrentTick` | `08` §8.5 | scene builder | every `Build` |
-| `ISimHost.Step` | `08` §8.5 | backend runner only | §15.8 step 3 |
+| `ISimHost.Step` | `08` §8.5 | **not called by `app.render`**; `app.host`'s frame loop is its only caller (`16` §16.6) | — |
 | `IAirsideSystem.Layout` | `12` §12.9 | scene builder, loader | once, at construction |
 | `IAirsideSystem.TrackedFlights`, `TryGetTrack` | `12` §12.9 | scene builder | per rebuild |
 | `IAirsideSystem.TryGetStand`, `RunwayQueueLength` | `12` §12.9 | scene builder | per rebuild |
@@ -314,19 +315,12 @@ grouped into frames (`02-determinism.md` rule 1).
 
 ### Frame order
 
-Binding on the backend runner (§15.10). This is the only place `Step` is
-called from.
-
-1. Read input and produce this frame's `CameraView`.
-2. `IPromotionController.Update(camera)`.
-3. `n = ITickPacer.Advance(elapsedMicroseconds, paused)`; if `n > 0`,
-   `ISimHost.Step(n)`.
-4. `frame = ISceneBuilder.Build(camera)`.
-5. Draw `frame`.
-
-Promotion goes before `Step`, so a node that comes into view promotes before
-the tick that will show it. Building goes after `Step`, so the frame shows the
-state just produced.
+The binding frame order now lives in `16-interfaces-host.md` §16.6
+(`app.host`'s frame loop, D7). It moved there because a frame spans more than
+one presentation module. `app.render`'s part of it is unchanged:
+`IPromotionController.Update` runs before `Step`, so a node that comes into
+view promotes before the tick that shows it, and `ISceneBuilder.Build` runs
+after `Step`, so the frame shows the state just produced.
 
 ---
 
@@ -384,10 +378,11 @@ interface IPromotionController { void Update(in CameraView camera) }
 ```
 
 `ISceneBuilder` and `IPromotionController` are constructed from a
-`RenderSources` and a validated `RenderLayout`. Who builds the
-`RenderSources`, meaning who composes a running sim and hands it to
-presentation, is open (§15.13(c)). Tests build them from fakes and, for the
-integration test, from the same composition the headless harness uses.
+`RenderSources` and a validated `RenderLayout`. In a playable build,
+`app.host`'s presentation composer builds the `RenderSources` from the
+composed sim (`16-interfaces-host.md` §16.5). Tests build them from fakes and,
+for the integration test, from the same composition the headless harness
+uses.
 
 ---
 
@@ -399,12 +394,13 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   maps `ColourRole` to colour through a palette asset.
 - It turns input (pan, zoom) into a `CameraView` and keeps `ViewHeight` and
   `Aspect` positive.
-- It runs the frame order of §15.8. It converts the engine's frame delta to
-  integer microseconds and hands it to the pacer. The float conversion is
-  fine here; this is presentation.
-- It references the scene layer and `ISimHost` only. It calls **no** sim query,
-  no sim member other than `Step`, and never branches on sim state. Anything
-  that needs a decision belongs in the scene layer, where it can be tested.
+- It does **not** run the frame order. `app.host`'s frame loop does
+  (`16-interfaces-host.md` §16.6), and the Unity bootstrap converts the frame
+  delta (§16.7). The backend supplies the `CameraView` and draws the
+  `RenderFrame` it is handed.
+- It references the scene layer's types only. It calls **no** sim member and
+  never branches on sim state. Anything that needs a decision belongs in the
+  scene layer, where it can be tested.
 - It issues no commands at Phase 1.
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
@@ -487,7 +483,9 @@ Author:
 - `test_tick_pacer_paused_steps_nothing`
 - `test_render_loop_is_outcome_neutral_with_scripted_camera` — integration.
   Run one sim-day with the real `sim.schedule`, `sim.flow` and `sim.airside`.
-  Run it once through the §15.8 frame order with a scripted camera that sweeps
+  Run it once through the frame order of `16-interfaces-host.md` §16.6, which
+  the test drives itself without depending on `app.host`, with a scripted
+  camera that sweeps
   every `FlowNodeBox` in and out of view across the zoom threshold, with
   irregular frame deltas. Run it once headless with plain `Step` calls. The
   checkpoints must be identical at every checkpoint tick. The test also checks
@@ -513,16 +511,18 @@ one compiled sim, and no BCL divergence between two builds of it. Tests and
 amended accordingly, and §15.3 states the scene layer's target. Revisit when
 Unity ships production CoreCLR (.NET 10).
 
-**(b) The engine project shell.** Nothing in `03-module-map.md` owns the Unity
-project itself: its location, scenes, project settings and build
-configuration. `app.ui` will need the same project. Where it lives and which
-module or role owns it is structural. It is not decided here.
+**(b) The engine project shell — DECIDED.** HUMAN DECISION — owner
+(delegated), 2026-09-23 (D7). A new module, `app.host`, owns
+`unity/AirportSim/`: scenes, settings and the build
+(`16-interfaces-host.md` §16.2).
 
-**(c) The composition root.** No spec defines how a running sim (its systems
-plus `ISimHost`) is constructed and handed to presentation as `RenderSources`
-(§15.9). The headless harness (T-001/T-009) composes a sim for tests, but that
-is not a published interface. It becomes specifiable once (b) is settled; it
-is not invented here.
+**(c) The composition root — DECIDED, with its construction step open.**
+HUMAN DECISION — owner (delegated), 2026-09-23 (D7). `app.host`'s headless
+part (`src/app/host/`) builds `ISimHost` and the systems from a scenario
+bundle and hands read-only views to presentation (`16` §16.3 to §16.5). A
+thin Unity bootstrap only calls it (§16.7), and it also runs the frame loop
+(§16.6). How each module's system is constructed is still unpublished; that
+is `open-questions.md` Q-009.
 
 **(d) Game speeds.** `01-architecture.md` fixes 1x. Whether 2x, 4x or a
 fast-forward exist, and how fast they are, is pacing, which is human-owned.

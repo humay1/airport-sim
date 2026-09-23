@@ -780,3 +780,103 @@ Reason:      §15.3 deferred the scene layer's target to §15.13(a), which is no
 Raised by:   D1
 Impact:      T-020 (QUEUED) targets `netstandard2.1`, with tests on `net8.0`.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D1); reversible
+
+## 2026-09-23 — spec/16-interfaces-host.md — D7: new module `app.host`, the composition root and Unity project shell
+Reason:      No module owned the Unity project (§15.13(b)), and no spec said
+             how a running sim reaches presentation (§15.13(c)). The owner
+             created `app.host`. The new file specifies:
+             - the module's scope (§16.1);
+             - the headless/Unity split and the binding Unity settings (§16.2):
+               pinned Unity 6 LTS, **Mono** scripting backend (D1's "shipped
+               runtime"), .NET Standard 2.1 API level, the CI-tested
+               assemblies consumed as plugins and never recompiled by Unity,
+               backends included by reference, and one scene;
+             - the scenario bundle, read by exact file name only, with its
+               `systems` list and the Phase 1 playtest bundle (§16.3);
+             - `ComposedSim`/`ISimComposer`, whose composition is a pure
+               function of the bundle's bytes (§16.4);
+             - presentation assembly (§16.5);
+             - the frame loop (§16.6), the thin bootstrap contract (§16.7),
+               and a headless checkpoint run with a byte-exact text dump
+               format and a matching `tools.simharness checkpoints`
+               subcommand (§16.8). That subcommand is what D7's "same
+               checkpoint hashes as the harness" test compares.
+             The frame loop takes over the binding frame order from
+             `15` §15.8. Once D5 adds a UI step, a frame spans two
+             presentation modules, and `app.render` may not reference
+             `app.ui` (`15` §15.3). Putting the order in headless code also
+             makes it testable, where the engine runner was not.
+Raised by:   Q-008 §15.13(b), (c); D7
+Impact:      additive. No `src/app` code exists. New work for the Planner: a
+             headless-host task (`src/app/host/**`, `tests/app/host/**`) and a
+             Unity-project task (`unity/AirportSim/**`), both needed for
+             T-025, not for T-020. `tools.simharness` (T-006/T-009) gains a
+             `checkpoints` subcommand, and its existing `ci/`-invoked
+             subcommands are unchanged. **Stopped short of improvising:** the
+             construction entry point of every module is unpublished, so
+             §16.4/§16.5 are specified by their inputs and outputs only, and
+             Q-009 is raised. The composition task cannot finish until Q-009
+             is answered.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D7) for the
+             module and its ownership; reversible. The interface detail is the
+             Architect's.
+
+## 2026-09-23 — spec/15-interfaces-render.md §15.1, §15.3, §15.6, §15.8, §15.9, §15.10, §15.12, §15.13(b)(c) — D7: frame order moves to `app.host`; the backend calls no sim member
+Reason:      Follows from the entry above. The render backend no longer runs
+             the frame order or calls `Step`. It supplies the camera and draws
+             what it is handed. §15.8 keeps `app.render`'s part of the order
+             (promotion before `Step`, build after). T-020's
+             outcome-neutrality test now drives the §16.6 order itself, with no
+             dependency on `app.host`. §15.13(b) and (c) are marked decided.
+Raised by:   D7
+Impact:      T-020 (QUEUED, no code): its task file quotes the old §15.8 frame
+             order and the "backend runner calls `Step`" rule, so it is stale.
+             The scene layer's own interfaces are unchanged by D7.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D7); reversible
+
+## 2026-09-23 — spec/16-interfaces-host.md §16.9 — D1: cross-runtime determinism gate, PROPOSED — LOW CONFIDENCE
+Reason:      D1 asked for a gate that runs the sim under Mono as well as
+             CoreCLR and compares checkpoint hashes. **It does need a spec
+             section**, for three reasons. The Mono side can only run as a
+             Unity player, through `app.host`'s batch mode (§16.7, §16.8). Two
+             implementations must emit one dump format byte for byte (§16.8).
+             And the fixture and pass condition must be fixed. Proposed as
+             `determinism_cross_runtime`: `tools.simharness checkpoints` on
+             CoreCLR versus the Mono Unity player in `-batchmode -nographics`,
+             on the Phase 1 playtest bundle, for 10 sim-days, passing on
+             byte-identical dumps. It must be the real player, because Unity
+             ships its own Mono fork and class libraries.
+Raised by:   D1
+Impact:      none until adopted. **Escalated:** making it a gate means adding
+             a row to `02-determinism.md`'s gate table (locked, and not
+             strictly the retarget) and a step to `ci/` (human-only). The
+             Architect does neither. Proposed cadence: nightly, plus on any
+             change of Unity version, target framework or plugin set, because
+             the player build needs the Unity editor and a licence on the
+             agent, which `01-architecture.md` keeps off per-merge gates. The
+             Planner can task the runnable pieces now (harness subcommand, dump
+             writer, headless run, batch mode).
+Signed off:  **PENDING HUMAN** for adoption. LOW CONFIDENCE on nightly rather
+             than per-merge, and on the real player rather than a standalone
+             Mono.
+
+## 2026-09-23 — spec/03-module-map.md, spec/00-overview.md — `app.host` row and interface pointer
+Reason:      Bookkeeping for the new module. `app.host` depends on sim, render
+             and ui. It is the top of the graph, so every call it makes is
+             downward.
+Raised by:   D7
+Impact:      none.
+Signed off:  not required
+
+## 2026-09-23 — spec/open-questions.md — Q-009 raised: module construction entry points
+Reason:      The D7 composition root cannot be written without constructing
+             every module, and no spec publishes a constructor or factory for
+             any of them. That includes `ISimHost` and the content index. The
+             Architect stopped rather than invent six factories under a
+             decision that did not cover them. A proposed answer is attached.
+Raised by:   architect, while writing D7
+Impact:      blocks the `app.host` composition task. The same gap is latent in
+             T-009 and in every multi-system integration test. The Planner
+             should check whether T-009's brief lets the harness reach module
+             internals.
+Signed off:  not required (Architect to answer)

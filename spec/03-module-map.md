@@ -22,6 +22,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.progression` | `src/sim/progression` | core, economy, reputation | Tiers, unlocks, ARFF categories |
 | `app.render` | `src/app/render` | sim (read-only) | Rendering, cameras, overlays |
 | `app.ui` | `src/app/ui` | sim (read-only), render | Screens, advisor, delay tree view |
+| `app.host` | `src/app/host`, `unity/AirportSim` | sim, render, ui | Composition root, frame loop, Unity project shell and player build |
 | `content` | `data/` | — | Aircraft, airlines, objects, incidents, policies |
 
 ## Communication rules
@@ -45,6 +46,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.turnaround` | `13-interfaces-turnaround.md` |
 | `sim.delay` | `14-interfaces-delay.md` (principles in `06-delay-attribution.md`) |
 | `app.render` | `15-interfaces-render.md` (Phase 1: headless scene layer, promotion controller, tick pacer; engine backend is a contract only) |
+| `app.host` | `16-interfaces-host.md` (composition root, frame loop, Unity project; module construction pending Q-009) |
 | event catalogue (all emitters, consumed by `sim.delay`) | `10-events.md` |
 | everything else | not yet specified — a worker may not start without one |
 
