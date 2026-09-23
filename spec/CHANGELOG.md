@@ -618,3 +618,24 @@ Reason:      Bookkeeping to match the new file. §8.1 now names where
 Raised by:   Q-008
 Impact:      none.
 Signed off:  not required
+
+---
+
+## Owner decisions of 2026-09-23 (D1–D9)
+
+On 2026-09-23 the human owner delegated the open HUMAN DECISIONs to the main
+session, which decided them as D1–D9. The entries below write those
+decisions into the spec. Each one is signed off as
+`HUMAN DECISION — owner (delegated), 2026-09-23`, and each is **reversible**
+by the owner. The sign-off covers the changes each decision names and
+nothing more. In particular it covers exactly one change to
+`01-architecture.md` (D1, the runtime row) and **no** change to
+`02-determinism.md`.
+
+## 2026-09-23 — spec/open-questions.md — D9: Q-001 placeholder deleted
+Reason:      Q-001 was the scaffold's example question, and its own title said
+             to delete it once a real question landed. Q-002 to Q-008 are
+             real questions.
+Raised by:   D9
+Impact:      none. Nothing cited Q-001.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D9); reversible

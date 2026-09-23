@@ -20,15 +20,6 @@ Status:      OPEN | ANSWERED (spec/<file>#<section>)
 
 ---
 
-### Q-001 — Example, delete when the first real question lands
-Raised by:   worker / T-000
-Blocking:    no
-Question:    Does a remote stand bus count as a ground handling vehicle for the
-             purposes of the turnaround job list, or as a passenger flow corridor?
-Why it matters: It decides which module owns it, and therefore which delay
-             category its lateness reports under.
-Status:      OPEN
-
 ### Q-002 — How much sim time does one tick represent?
 Raised by:   architect / Phase 0 spec completion
 Blocking:    T-001, T-008, T-009 (everything expressed in ticks)
