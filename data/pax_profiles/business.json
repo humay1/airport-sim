@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "business",
+  "walk_speed_mps": "1.3",
+  "show_up_curve": [
+    { "minutes_before_std": 30, "share_permille": 50 },
+    { "minutes_before_std": 45, "share_permille": 150 },
+    { "minutes_before_std": 60, "share_permille": 300 },
+    { "minutes_before_std": 75, "share_permille": 250 },
+    { "minutes_before_std": 90, "share_permille": 200 },
+    { "minutes_before_std": 120, "share_permille": 50 }
+  ]
+}

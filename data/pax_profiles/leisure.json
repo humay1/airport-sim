@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "leisure",
+  "walk_speed_mps": "1.0",
+  "show_up_curve": [
+    { "minutes_before_std": 45, "share_permille": 50 },
+    { "minutes_before_std": 60, "share_permille": 250 },
+    { "minutes_before_std": 90, "share_permille": 300 },
+    { "minutes_before_std": 120, "share_permille": 250 },
+    { "minutes_before_std": 150, "share_permille": 100 },
+    { "minutes_before_std": 180, "share_permille": 50 }
+  ]
+}

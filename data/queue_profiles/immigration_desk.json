@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "immigration_desk",
+  "service_rate_per_server_per_minute": "1.0",
+  "capacity_standing": 400,
+  "threshold_wait_minutes": "20",
+  "hysteresis_minutes": "5",
+  "delay_category": "immigration_queue"
+}
