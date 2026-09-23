@@ -116,6 +116,28 @@ Budgets are asserted in each module's own tests (`07-conventions.md`,
 "Performance"), so a regression fails the owning module's suite rather than an
 integration suite nobody reads.
 
+### The soak fixture
+
+HUMAN DECISION — owner (delegated), 2026-09-23 (Q-003, D3). The nightly
+`soak_500_days` gate (`02-determinism.md`) runs a **mid-tier** fixture, not
+the max-tier one:
+
+- The fixture is sized so that the whole sim's mean cost is **under
+  0.1 ms per tick** on the reference machine above. 500 sim-days are
+  7.2 M ticks, so the run takes about 12 minutes. The bound is on cost, not
+  on movement or passenger counts. The Test Author chooses the counts, and
+  they are fixture sizing, not balance.
+- Every system registered in the build under test is registered in the soak,
+  with a `repeat_daily` schedule so that every day carries load.
+- The soak proves long-run determinism: drift, counter overflow, unbounded
+  growth of retained state. It does **not** prove max-tier performance. The
+  per-module budget tests above prove that, on the max-tier fixture.
+- If a merged module pushes the soak fixture's mean over 0.1 ms per tick, the
+  fixture is shrunk by the Test Author and its golden re-authored. The gate is
+  never shortened, sampled or disabled.
+- The fixture lives at `tests/fixtures/soak/**` and its golden hash at
+  `tests/golden/`.
+
 ## Module brief template
 
 Every worker task brief must contain:

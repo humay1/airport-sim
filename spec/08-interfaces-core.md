@@ -22,7 +22,7 @@ designers should tune belongs in `data/`, not here.
 | Constant | Value | Source |
 |---|---|---|
 | `TICK_MS` | 100 | `01-architecture.md`, locked |
-| `SIM_SECONDS_PER_TICK` | 6 | this file, §8.2 — **LOW CONFIDENCE** |
+| `SIM_SECONDS_PER_TICK` | 6 | this file, §8.2 — HUMAN DECISION — owner (delegated), 2026-09-23 (Q-002) |
 | `TICKS_PER_SIM_MINUTE` | 10 | derived |
 | `TICKS_PER_SIM_HOUR` | 600 | derived |
 | `TICKS_PER_SIM_DAY` | 14400 | derived |
@@ -63,14 +63,16 @@ interface ISimClock {
 `ISimClock` is a pure function of the tick counter. It holds no mutable state and
 contributes nothing to the state hash.
 
-> **LOW CONFIDENCE — `SIM_SECONDS_PER_TICK = 6`.** Chosen so that (a) delay
-> arithmetic has sub-minute resolution instead of quantising every cause to whole
-> minutes, (b) queue and taxi movement update ten times per sim-minute, (c) a
-> sim-day is 14400 ticks, making the nightly 500-day soak 7.2 M ticks. At 1x a
-> sim-day is then 24 real minutes. **That is a pacing decision with gameplay
-> consequences and belongs to the human owner** — see `open-questions.md` Q-002.
-> Changing it later invalidates every golden hash and every fixture expressed in
-> ticks, but no interface in this file.
+> **HUMAN DECISION — owner (delegated), 2026-09-23 (Q-002, D2):
+> `SIM_SECONDS_PER_TICK = 6` is confirmed.** It gives (a) delay arithmetic
+> sub-minute resolution instead of whole-minute quanta, (b) queue and taxi
+> updates ten times per sim-minute, and (c) a sim-day of 14 400 ticks, so the
+> nightly 500-day soak is 7.2 M ticks. At 1x a sim-day lasts 24 real minutes.
+> A smaller value would make T-009's 100-days-in-60-s gate infeasible (1 s per
+> tick is 8.6 M ticks for 100 days); a larger one coarsens delay resolution.
+> Golden hashes may now be authored. The decision is reversible, but reversing
+> it invalidates every golden hash and every tick-valued fixture. No interface
+> in this file changes.
 
 ---
 

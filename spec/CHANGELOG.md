@@ -639,3 +639,37 @@ Reason:      Q-001 was the scaffold's example question, and its own title said
 Raised by:   D9
 Impact:      none. Nothing cited Q-001.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D9); reversible
+
+## 2026-09-23 — spec/08-interfaces-core.md §8.1, §8.2 — D2: `SIM_SECONDS_PER_TICK = 6` confirmed (Q-002)
+Reason:      The value was provisional, pending the owner, because it is a
+             pacing decision. Confirmed at 6: 14 400 ticks per sim-day, and
+             24 real minutes per day at 1x. At 1 s per tick, T-009's
+             100-days-in-60-s gate would be 8.6 M ticks and infeasible; a
+             larger value coarsens delay resolution. The LOW CONFIDENCE marker
+             becomes a HUMAN DECISION marker.
+Raised by:   Q-002, D2
+Impact:      none on interfaces or code (none exists). Golden hashes may now be
+             authored. T-001 and T-009 carry worker notes saying the value is
+             provisional and forbidding goldens, so those notes are stale and
+             the Planner must refresh them.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D2); reversible,
+             at the cost of every golden and every tick-valued fixture
+
+## 2026-09-23 — spec/03-module-map.md — D3: the soak fixture is mid-tier, under 0.1 ms per tick (Q-003)
+Reason:      At max-tier cost, 500 sim-days take about 12 hours, not "minutes"
+             (`01-architecture.md`). A gate that slow would get disabled, which
+             `02-determinism.md` forbids. The Architect's proposal is accepted
+             and written as a new subsection, "The soak fixture": whole-sim
+             mean under 0.1 ms per tick (about 12 minutes for 7.2 M ticks),
+             every built system registered, a `repeat_daily` schedule, and a
+             fixture that is shrunk rather than a gate that is weakened when a
+             module's cost grows. Max-tier performance stays with the budget
+             tests.
+Raised by:   Q-003, D3
+Impact:      additive. It narrows what the nightly gate proves, which is why
+             it needed sign-off. `02-determinism.md` is **not** edited: its
+             `soak_500_days` row names no fixture size, so the new subsection
+             adds detail without contradicting it. No task yet authors the soak
+             fixture or its golden. The Planner should queue one once T-009
+             lands its first goldens.
+Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D3); reversible

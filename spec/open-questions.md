@@ -33,8 +33,12 @@ Why it matters: It is a pacing decision — how long a day feels — and pacing 
              delay minute and the tick cost of the 500-day soak. Changing it later
              invalidates every golden hash and every tick-valued fixture, though
              no interface.
-Status:      OPEN — HUMAN DECISION. Workers may build against 6 s/tick; do not
-             author golden hashes until it is confirmed.
+Answer:      Confirmed at 6 (D2). A smaller value would make T-009's
+             100-days-in-60-s gate infeasible, and a larger one coarsens delay
+             resolution. Golden hashes may now be authored.
+             `spec/08-interfaces-core.md` §8.1 and §8.2 record the decision.
+Status:      ANSWERED (spec/08-interfaces-core.md#82-sim-time) — HUMAN
+             DECISION — owner (delegated), 2026-09-23; reversible
 
 ### Q-003 — "500 sim-days in minutes" versus the per-tick budget
 Raised by:   architect / Phase 0 spec completion
@@ -51,7 +55,12 @@ Proposed:    Soak runs a mid-tier fixture sized so per-tick cost stays under
              0.1 ms; max-tier performance is covered separately by the budget
              tests in `03-module-map.md`. Needs sign-off because it narrows what
              the nightly gate actually proves.
-Status:      OPEN — HUMAN DECISION
+Answer:      Proposal accepted (D3). `spec/03-module-map.md` "The soak
+             fixture" makes it binding: a mid-tier fixture under 0.1 ms per
+             tick, every built system registered, and the fixture shrunk rather
+             than the gate weakened if the cost grows.
+Status:      ANSWERED (spec/03-module-map.md#the-soak-fixture) — HUMAN
+             DECISION — owner (delegated), 2026-09-23; reversible
 
 ### Q-004 — `sim.schedule` has no published interface
 Raised by:   planner / queue expansion for T-008
