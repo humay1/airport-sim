@@ -36,6 +36,15 @@ struct AirlineId { uint32 Value }
 
 enum MovementKind { Arrival, Departure }
 
+// FlightPlanPublished (emitted event; 10-events.md §10.6, amended by Q-007) —
+// fields: FlightId, MovementKind kind, FlightId rotation, bool hasRotation,
+// AirlineId, ContentId aircraftType, Tick schedArr, Tick schedDep,
+// SimMinutes minTurnaround. `kind`, `rotation` and `hasRotation` are copied
+// verbatim from FlightRecord.Kind/Rotation/HasRotation — sim.delay reads the
+// rotation link from this event, never by querying IScheduleSystem
+// (spec/14-interfaces-delay.md §14.12). `schedArr`/`schedDep` use
+// TICK_UNSCHEDULED for the side with no linked counterpart.
+
 readonly struct FlightRecord {
   FlightId     Id
   AirlineId    Airline
@@ -86,7 +95,10 @@ Binding, copied from `spec/11-interfaces-schedule.md`, not paraphrased:
   clamped to 0; emits `FlightPlanPublished` then
   `FlightMilestoneReached{PlanPublished}` (with `Cause` set to the former's
   `EventId`) once per flight, in ascending `FlightId` order among flights
-  publishing the same tick.
+  publishing the same tick. `FlightPlanPublished.kind`/`rotation`/`hasRotation`
+  are copied from `FlightRecord.Kind`/`Rotation`/`HasRotation` (added to
+  `10-events.md` §10.6 by the Q-007 amendment) — this is how `sim.delay` learns
+  the rotation link without a query.
 - **Passenger demand** (§11.6): show-up curve is content (`pax_profile`), no
   RNG; largest-remainder splitting across buckets then across the four
   `(HasHoldBaggage, RequiresAssistance)` classes, ties by ascending index;

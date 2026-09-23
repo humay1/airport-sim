@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.airside` |
 | Assigned role | worker |
-| Depends on | T-008 |
+| Depends on | T-008, T-026 |
 | Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005) |
 | Blocked by | — |
 
@@ -102,8 +102,22 @@ interface IAirsideSystem : ISimSystem {
   IReadOnlyList<StandId> FreeStands()
   int32  RunwayQueueLength(RunwayId runway)
   IReadOnlyList<FlightId> TrackedFlights()
+  AirsideLayout Layout()                                    // the validated layout of §12.4, immutable
 }
 ```
+
+**`AtNode` and `OnEdge` together** (§12.9, amended by Q-008): while `OnEdge`
+is set, `AtNode` holds the node the aircraft **entered the edge from** (not
+cleared during traversal, as an earlier reading might assume), and
+`EdgeProgress` runs from 0 at `AtNode` to 1 at the edge's other endpoint. For
+a `Bidirectional` edge this is the only way to know direction of travel.
+While `OnEdge` is unset, `AtNode` is the node the aircraft is at (including
+holding at a node, §12.6), or unset if the aircraft is off-graph.
+
+`Layout()` returns the layout `IAirsideLayoutLoader` validated at load. It is
+load-time data, not runtime state, so it is **not hashed** (§12.12). It
+exists for `app.render` (T-020, `spec/15-interfaces-render.md` §15.4), which
+must not load the airside fixture a second time on its own.
 
 Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
 
@@ -111,6 +125,26 @@ Binding, copied from `spec/12-interfaces-airside.md`, not paraphrased:
   `Landed`, `OffRunway`, `OnStand`, `DoorsOpen`, `DoorsClosed`, `Pushback`,
   `TakeoffRoll`, `Airborne`. It does **not** emit `DeboardComplete`,
   `ReadyToBoard` or `BoardingComplete` — those stay `sim.turnaround`'s.
+- **`PlannedTick` per milestone** (§12.3, added by the Q-007 amendment —
+  binding, schedule-anchored and cumulative per `10-events.md` §10.4;
+  `RouteTicks(a,b)` is the precomputed unimpeded taxi time, holds excluded):
+
+  | Milestone | `FlightId` | `PlannedTick` |
+  |---|---|---|
+  | `InboundAirborne` | arrival | `STA − CRUISE_LEAD_TICKS` |
+  | `Landed` | arrival | `STA` |
+  | `OffRunway` | arrival | `STA + OccupancyTicks` |
+  | `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)` |
+  | `DoorsOpen` | arrival | planned `OnStand` + the fixed door delay |
+  | `OnStand` | departure | `STD − MinTurnaround` |
+  | `DoorsClosed` | departure | `STD` |
+  | `Pushback` | departure | `STD` |
+  | `TakeoffRoll` | departure | `STD + RouteTicks(stand, threshold)` |
+  | `Airborne` | departure | planned `TakeoffRoll` + `OccupancyTicks` |
+
+  `sim.delay` measures only `Landed`, arrival `OnStand`, and departure
+  `OnStand`/`Pushback`/`Airborne` (`spec/14-interfaces-delay.md` §14.4); every
+  row above is still binding, for the UI and for later checkpoints.
 - **Layout and routing** (§12.4): load-time validation (every node/edge
   reference resolves, graph connected, ids unique within the layout) is a
   hard failure naming the offending id. Threshold-to-stand routing is
@@ -242,6 +276,19 @@ taxiway/runway/stand graph is this module's own data, loaded via
 `spec/10-events.md` §10.4 was corrected to say so explicitly when this spec
 was written; do not follow an older mental model where "stand milestones"
 meant all five door/service transitions.
+
+Q-007 and Q-008 amendments (both same-cycle, before this file's own branch
+merges) add the `PlannedTick` table above and the `Layout()` query plus the
+`AtNode`-stays-set-during-`OnEdge` clarification. If this task is picked up
+from an older local checkout, re-pull this file before starting.
+
+`RunwayId`, `StandId`, `TaxiNodeId` and `TaxiEdgeId` (used above and in
+`AircraftTrack`/`RunwayDef`/`TaxiNodeDef`/`TaxiEdgeDef`/`StandDef`) are now
+authored in `src/sim/core/**` by T-026, not here — they are event-payload
+types by `03-module-map.md`'s rule that events are defined in `sim.core`,
+and this task may write only `src/sim/airside/**`. Reference them from
+`sim.core`; do not redeclare them locally. T-026 must merge before this task
+is released.
 
 Q-006 is now answered (`spec/13-interfaces-turnaround.md`); the handshake this
 task implements — `DeboardComplete` triggers the stand handoff to the
