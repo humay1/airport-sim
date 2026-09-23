@@ -1055,3 +1055,41 @@ Raised by:   D6
 Impact:      additive. No agent may write the balance file. A content task
              writes its schema.
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23 (D6); reversible
+
+## 2026-09-23 — running scope total (as of the D1–D9 block)
+Reason:      `agents/architect.md` requires added scope to be tracked here
+             and the running total surfaced to the owner. No total had been
+             kept yet, so this entry starts one. The baseline is the build
+             order and task list as first queued (T-001 to T-025). The count
+             covers what amendments have added on top of that baseline, and
+             excludes pure narrowing.
+Raised by:   architect
+Impact:      Scope added by amendment, running total **7**, of which 4 are
+             owner-approved this cycle:
+             1. `sim.airside` owns and loads its own taxiway/stand graph
+                (`12` §12.4). Interim: it folds into `sim.world` later.
+             2. A presentation-owned render layout file (`15` §15.4).
+                Interim: it shrinks once `sim.world` has geometry.
+             3. Missed passengers recorded on the delay flight record
+                (`14` §14.9).
+             4. **D4**: 2x and 4x game speeds (`15` §15.8).
+             5. **D5**: a Phase 1 `app.ui`, with pause/speed controls and the
+                lane click (`17`). Implies a UI scene-layer task and a UI
+                backend task.
+             6. **D6**: the boarding hold (`12` §12.8). It brings one
+                behaviour, one event pair, one delay family, one `sim.flow`
+                query and the first `data/balance/` file. Implies an
+                airside task, a flow task and a balance-schema task.
+             7. **D7**: the `app.host` module (`16`), with the composition
+                root, frame loop, Unity project shell, checkpoint dump and a
+                harness subcommand. Implies a headless-host task and a
+                Unity-shell task.
+             Proposed, not added: the `determinism_cross_runtime` nightly gate
+             (`16` §16.9, D1). If adopted it adds a CI job that needs a Unity
+             licence. Pending: Q-010 item (5), a second `sim.flow` query.
+             Also not counted: the soak-fixture authoring task (D3), which is
+             a new task but not new scope.
+             New since the baseline: 1 module (`app.host`), 2 interface files
+             (`16`, `17`), 1 event pair, 1 query, and roughly 8 tasks for the
+             Planner to queue.
+Signed off:  not required (reporting)
