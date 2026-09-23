@@ -28,9 +28,9 @@ side**:
   (§15.5). It also owns the promotion controller (§15.7) and the tick pacer
   (§15.8). It is built and tested by `dotnet test` like the sim.
 - **The backend** (`app.render.unity`) — a thin engine adapter that draws the
-  draw list, turns input into a camera, and runs the frame order of §15.8. It
-  contains no decisions. Its contract is §15.10; its implementation is **not**
-  part of T-020 (§15.13).
+  draw list and turns input into a camera. The frame order is run by
+  `app.host` (`16-interfaces-host.md` §16.6). It contains no decisions. Its
+  contract is §15.10, and its implementation is **not** part of T-020.
 
 At Phase 1, `app.render` owns:
 
