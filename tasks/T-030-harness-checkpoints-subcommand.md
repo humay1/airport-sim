@@ -5,11 +5,18 @@
 | Status | QUEUED |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-004, T-006 |
+| Depends on | T-004, T-006, T-009 |
 | Spec source | `spec/16-interfaces-host.md` §16.8 "The harness side" (D7) |
 | Blocked by | — |
 
 ## Why this task exists
+
+**Dependency correction (systematic type-dependency recheck):** this task's
+own text says it "composes a fixture the same way T-009's harness already
+does" — that reuses T-009's harness composition of `sim.world`,
+`sim.schedule` and `sim.flow` through the harness's own `ISimHostBuilder`
+wiring, not just T-004's/T-006's surfaces. `Depends on` is amended to
+`T-004, T-006, T-009`.
 
 `app.host`'s D7 equivalence test
 (`test_host_composition_matches_harness_checkpoints`, T-031) compares the
@@ -21,8 +28,10 @@ is also one of the reusable, buildable pieces of the proposed
 ## Writable paths
 
 ```
-tools/SimHarness/**, tests/sim/core/**
+tools/SimHarness/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively; the path guard already blocks a worker grant there. Dropped.
 
 ## Readable specs
 

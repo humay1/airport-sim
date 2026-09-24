@@ -5,15 +5,17 @@
 | Status | QUEUED |
 | Module | `sim.flow` |
 | Assigned role | worker |
-| Depends on | T-007, T-005 |
+| Depends on | T-005, T-007, T-026 |
 | Spec source | `spec/09-interfaces-flow.md` §9.4, §9.7a, §9.7b, §9.8, §9.9 (§9.7a answers D6, §9.7b answers Q-010 item 5) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/sim/flow/**, tests/sim/flow/**
+src/sim/flow/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively; the path guard already blocks a worker grant there. Dropped.
 
 Same directory as T-007/T-010/T-011; do not release concurrently with any of
 them.

@@ -12,8 +12,13 @@
 ## Writable paths
 
 ```
-src/sim/core/**, tests/sim/core/**
+src/sim/core/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively
+(`07-conventions.md` "Solution layout and build"); the path guard already
+blocks a worker from writing there, so a worker grant there is a no-op. This
+task's earlier grant of `tests/sim/core/**` is dropped.
 
 ## Readable specs
 

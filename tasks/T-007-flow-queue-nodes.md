@@ -5,15 +5,28 @@
 | Status | QUEUED |
 | Module | `sim.flow` |
 | Assigned role | worker |
-| Depends on | T-003, T-012 |
+| Depends on | T-003, T-012, T-026 |
 | Spec source | `spec/09-interfaces-flow.md` §9.1–§9.6, §9.10, §9.11 (answers, jointly with `18-interfaces-world.md`, Q-012) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/sim/flow/**, tests/sim/flow/**
+src/sim/flow/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory
+exclusively; the path guard already blocks a worker grant there. The
+earlier grant of `tests/sim/flow/**` is dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/flow/AirportSim.Sim.Flow.csproj` and
+`tests/sim/flow/AirportSim.Sim.Flow.Tests.csproj` (byte for byte per `07`
+L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-008, T-012,
+T-020, T-021, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 Anything else is read-only. `sim.flow` depends on `sim.core` and `sim.world`
 (`spec/03-module-map.md`). **`sim.world` now exists as a published interface**

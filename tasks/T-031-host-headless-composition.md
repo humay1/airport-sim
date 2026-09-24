@@ -5,15 +5,28 @@
 | Status | QUEUED |
 | Module | `app.host` (headless side only) |
 | Assigned role | worker |
-| Depends on | T-008, T-012, T-020, T-021, T-022, T-024, T-026, T-027, T-029, T-030 |
+| Depends on | T-008, T-012, T-020, T-021, T-022, T-023, T-024, T-026, T-027, T-029, T-030 |
 | Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8 (new module, D7) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/app/host/**, tests/app/host/**
+src/app/host/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory
+exclusively; the path guard already blocks a worker grant there. The
+earlier grant of `tests/app/host/**` is dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/app/host/AirportSim.App.Host.csproj` and
+`tests/app/host/AirportSim.App.Host.Tests.csproj` (byte for byte per `07`
+L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-020, T-021, T-022, T-024, T-029) — concurrent `.sln` edits
+conflict (`07` L8).
 
 The Unity project shell (`unity/AirportSim/**`) is a separate task (T-034),
 released after this one, the render/UI Unity backends (T-032, T-033), and
@@ -207,5 +220,9 @@ This task depends on every Phase 1 module's factory existing
 (`08` §8.11a, Q-009) — T-008, T-012, T-021, T-022, T-024, T-026 — plus the
 render and UI scene layers (T-020, T-029) whose `RenderFactory`/`UiFactory`
 the presentation composer calls, plus T-027 (content loader) and T-030
-(the harness side of the equivalence test). Do not release this task
-before all of them merge.
+(the harness side of the equivalence test). **Also T-023, named explicitly
+now (systematic recheck):** `IFlowSystem.TryGetLaneState`/
+`TryGetOutstanding` are called through the same `RenderSources`/lane-sink
+wiring T-020/T-029 already require, so this was already transitively
+required through those two; it is now listed directly rather than relying
+on that transitivity. Do not release this task before all of them merge.

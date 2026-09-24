@@ -5,9 +5,14 @@
 | Status | QUEUED |
 | Module | `sim.core` |
 | Assigned role | worker |
-| Depends on | T-001 |
+| Depends on | T-001, T-003 |
 | Spec source | `spec/03-module-map.md` ("Events are immutable value types, defined in `sim.core`"); `spec/10-events.md` §10.6 (the catalogue, including D6's new pair); `spec/12-interfaces-airside.md` §12.9; `spec/13-interfaces-turnaround.md` §13.3–§13.4; `spec/14-interfaces-delay.md` §14.3 (including D6's `PassengerHold`); `spec/06-delay-attribution.md` (`DelayCategory`); `spec/18-interfaces-world.md` §18.2 (`NodeId`/`EdgeId`, answers part of Q-012); `spec/08-interfaces-core.md` §8.11 (content definition types, answers part of Q-011) |
 | Blocked by | — |
+
+**Dependency correction (systematic type-dependency recheck):**
+`PaxProfileDefinition.WalkSpeedMps` and several `QueueProfileDefinition`
+fields are `Fx` (`08` §8.11) — this task cannot compile without `Fx`
+(T-003). `Depends on` is amended to `T-001, T-003`.
 
 ## Why this task exists
 
@@ -48,7 +53,8 @@ is sized as its own task, T-027.
 ## Writable paths
 
 ```
-src/sim/core/**, tests/sim/core/**
+src/sim/core/**
+tests/sim/core/**
 ```
 
 Same shared write surface as T-001–T-006 (`tasks/queue.md`'s Phase 0 release

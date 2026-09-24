@@ -21,8 +21,13 @@ T-026's scope.
 ## Writable paths
 
 ```
-src/sim/core/**, tests/sim/core/**, tests/fixtures/content/**
+src/sim/core/**
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/sim/core/**` and
+`tests/fixtures/content/**` are dropped.
 
 Same shared write surface as T-001–T-006/T-026 (`tasks/queue.md`'s Phase 0
 release order note) — do not release concurrently with another open

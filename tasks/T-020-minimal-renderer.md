@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `app.render` (scene layer only) |
 | Assigned role | worker |
-| Depends on | T-009, T-010, T-021, T-023 |
+| Depends on | T-009, T-010, T-021, T-023, T-026 |
 | Spec source | `spec/00-overview.md` build order; `spec/15-interfaces-render.md` (all §15.13 HUMAN DECISIONS now made: D1, D4, D5, D7; lane pips answer Q-010 item 5) |
 | Blocked by | — |
 
@@ -20,8 +20,22 @@ T-032, once this task and `app.host`'s headless side (T-031) exist.
 ## Writable paths
 
 ```
-src/app/render/Scene/**, tests/app/render/**, tests/fixtures/render/**
+src/app/render/Scene/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/app/render/**` and
+`tests/fixtures/render/**` are dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/app/render/Scene/AirportSim.App.Render.csproj` and
+`tests/app/render/AirportSim.App.Render.Tests.csproj` (byte for byte per
+`07` L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-021, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `src/app/render/Unity/**` is explicitly out of scope for this task — it is
 T-032. The scene layer holds **no engine reference**, asserted by
