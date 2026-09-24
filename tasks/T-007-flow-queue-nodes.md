@@ -45,9 +45,13 @@ calls)
 
 ## Interface to implement
 
-```
-struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow
+`CohortId` is now a **`sim.core` type** (Q-018, `10-events.md` §10.9:
+"relocated to `sim.core`... `CohortId` (`09`, still allocated by
+`sim.flow`)"), authored by T-026 — reference it from `sim.core`, do not
+redeclare it locally. This module still allocates its values via
+`IIdAllocator`; only its compiled home moved.
 
+```
 enum NodeKind { Source, Corridor, Hall, Queue, Gate, Sink }
 enum FlowDirection { Departing, Arriving, Transferring }
 
@@ -183,7 +187,9 @@ in the update path; cohort storage pooled and index-stable.
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved
@@ -199,7 +205,11 @@ build any part of `sim.world` itself — it calls `IWorldSystem` downward.
 `NodeId` and `EdgeId` are now **`sim.core` types** (`09` §9.2, `18` §18.2:
 "because events carry them"), authored in `src/sim/core/**` by T-026
 (extended for this purpose), not declared locally here. Reference them from
-`sim.core`. `CohortId` stays `sim.flow`'s own type, unaffected.
+`sim.core`. **Correction (Q-018): `CohortId` is also now a `sim.core` type**,
+relocated there alongside the event structs (`10` §10.9) — the earlier note
+here that it "stays `sim.flow`'s own type, unaffected" is stale and
+withdrawn. `sim.flow` still allocates its values via `IIdAllocator`; only
+where it is compiled changed.
 
 `09-interfaces-flow.md` §9.6 flags deterministic least-cost routing as
 **LOW CONFIDENCE** (may cause visible passenger-choice oddities). Build to

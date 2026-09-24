@@ -55,20 +55,19 @@ amended to `T-001, T-003, T-026`.
 
 ## Interface to implement
 
+**Correction (Q-018):** `AirlineId`, `MovementKind` and the
+`FlightPlanPublished` event struct are now **`sim.core` types**, authored
+by T-026 (`10-events.md` §10.9), not declared or sketched locally here —
+the earlier inline comment-block sketch of `FlightPlanPublished`'s fields
+is stale and withdrawn; reference the real struct from `sim.core` instead.
+`kind`, `rotation` and `hasRotation` are still copied verbatim from
+`FlightRecord.Kind`/`Rotation`/`HasRotation` when this task publishes the
+event — `sim.delay` reads the rotation link from the event, never by
+querying `IScheduleSystem` (`spec/14-interfaces-delay.md` §14.12).
+`schedArr`/`schedDep` use `TICK_UNSCHEDULED` for the side with no linked
+counterpart.
+
 ```
-struct AirlineId { uint32 Value }
-
-enum MovementKind { Arrival, Departure }
-
-// FlightPlanPublished (emitted event; 10-events.md §10.6, amended by Q-007) —
-// fields: FlightId, MovementKind kind, FlightId rotation, bool hasRotation,
-// AirlineId, ContentId aircraftType, Tick schedArr, Tick schedDep,
-// SimMinutes minTurnaround. `kind`, `rotation` and `hasRotation` are copied
-// verbatim from FlightRecord.Kind/Rotation/HasRotation — sim.delay reads the
-// rotation link from this event, never by querying IScheduleSystem
-// (spec/14-interfaces-delay.md §14.12). `schedArr`/`schedDep` use
-// TICK_UNSCHEDULED for the side with no linked counterpart.
-
 readonly struct FlightRecord {
   FlightId     Id
   AirlineId    Airline
@@ -171,7 +170,9 @@ injection path, at the day boundary.
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved

@@ -14,6 +14,31 @@ phase (Phase 0: `T-001`–`T-019`; Phase 1: `T-020` onward).
 through Q-012 are all answered, and D1–D9 resolved every HUMAN DECISION
 Q-007/Q-008 left open. No row below is `BLOCKED` on a spec gap.
 
+**Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
+`architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
+Q-016 (what counts as "green" before T-006 merges) is now a **HUMAN
+DECISION, owner, 2026-09-24**, not pending: until T-006 merges, green =
+`ci/run-checks.sh`'s `path-guard` and `build-and-test` (`--fast`) jobs,
+building and testing through `AirportSim.sln`; the full script becomes
+mandatory the instant T-006 merges. Reflected in the Done-when lines of
+every task released before T-006 (T-001, T-002, T-003, T-004, T-005, T-007,
+T-008, T-012, T-026, T-027). Q-017 ships `StateHasher`/`CoreHash`/
+`Checkpoint.CoreHash` with T-001 (T-004 now only proves the golden vectors
+and per-system discipline, authoring no production interface of its own).
+Q-018 puts every `10-events.md` §10.9 event struct, plus `FlightMilestone`/
+`AirlineId`/`MovementKind`/`CohortId`/`DelayNode`/`DelayNodeKind`, in
+`sim.core` via T-026, which also now owns `ContentIndexFactory`
+(coordinator decision) and must merge before T-007, T-008, T-012, T-021,
+T-022, T-024 and T-027 (T-008 newly added to that list). Q-019 pins the RNG
+exact reference and golden vectors for T-002. Q-020 pins command-queue
+semantics for T-005, including `ISimHost.CommandLogSince`. Q-021 means
+every worker task's writable paths drop their `tests/**` grants (the path
+guard already blocks them; granting one was always a no-op) — applied
+across every task file, T-001–T-035. Q-022 confirms `ComposedSim.World`
+matches T-031's own interface block, already correct there. Full detail is
+in each affected task file's own "Scope amendment"/"Correction" notes; this
+paragraph is the index, not the source.
+
 ## Phase 0 — feasibility spike (the kill gate)
 
 | ID | Task | Module | Depends | Status |

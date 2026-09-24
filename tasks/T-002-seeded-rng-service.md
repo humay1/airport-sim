@@ -124,11 +124,15 @@ Consumed: none
 tests/sim/core/**
 ```
 
-Written by the Test Author. Expect: reproducibility (same seed + stream name
-→ identical sequence), independence (drawing from stream A does not shift
-stream B's sequence), `NextInt` unbiasedness over a large sample, and a
-determinism test comparing same-process vs cross-process draws. **Do not
-edit them.**
+Written by the Test Author. Expect: the golden-vector tests above (three
+`NextUInt64` sequences, the `NextInt`×4 check and the `NextFx01`×2 check,
+all byte-exact), reproducibility (same seed + stream name → identical
+sequence), independence (drawing from stream A does not shift stream B's
+sequence), `NextInt` unbiasedness over a large sample, `RngStreamName`
+format-rule tests (rejects a name not matching
+`sim\.[a-z]+\.[a-z0-9_]+`), and a determinism test comparing same-process
+vs cross-process draws (`determinism_cross_process`, exercised fully once
+T-006 lands). **Do not edit them.**
 
 ## Performance budget
 
@@ -140,7 +144,9 @@ allocation in `NextUInt64`/`NextInt`/`NextFx01`/`Chance` hot paths
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved

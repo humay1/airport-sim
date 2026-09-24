@@ -127,7 +127,9 @@ allocate pathologically (a directory of ~250 files at 1.0 scope,
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved
 - [ ] Verifier gates green

@@ -32,6 +32,12 @@ The Unity project shell (`unity/AirportSim/**`) is a separate task (T-034),
 released after this one, the render/UI Unity backends (T-032, T-033), and
 after content exists for a real player build.
 
+**Confirmed (Q-022):** `ComposedSim.World : IWorldSystem?` below now matches
+`16-interfaces-host.md` §16.4 exactly — the spec previously omitted it
+(the composer already had to construct `sim.world`, but nothing threaded
+that through to `16`), and this task file already carried the field. No
+change to this task's own interface was needed; the spec caught up to it.
+
 ## Readable specs
 
 `CLAUDE.md`, `spec/00-overview.md`, `spec/01-architecture.md`,
