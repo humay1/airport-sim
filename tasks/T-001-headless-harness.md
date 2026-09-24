@@ -9,6 +9,11 @@
 | Spec source | `spec/01-architecture.md` "Platform decisions" (D1), "Layer separation", "Command pattern"; `spec/08-interfaces-core.md` §8.2, §8.5, §8.11a; `spec/07-conventions.md` "Runtime portability" |
 | Blocked by | — |
 
+**Status note:** released for this cycle; the Test Author is authoring
+`tests/sim/core/**` for this task now. Status stays `QUEUED` until those
+tests land, then moves to `TESTS_AUTHORED` and the worker may start. Do not
+begin implementation before that move.
+
 ## Writable paths
 
 ```

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | content (not `src/sim/**`, not `src/app/**`) |
 | Assigned role | worker |
 | Depends on | — |

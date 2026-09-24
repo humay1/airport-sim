@@ -18,9 +18,9 @@ Q-007/Q-008 left open. No row below is `BLOCKED` on a spec gap.
 
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
-| T-001 | Headless harness: fixed timestep, no rendering | sim.core | — | QUEUED |
+| T-001 | Headless harness: fixed timestep, no rendering | sim.core | — | QUEUED (tests being authored) |
 | T-002 | Seeded RNG service with per-system named streams | sim.core | T-001 | QUEUED |
-| T-003 | Fixed-point math type `Fx` | sim.core | — | QUEUED |
+| T-003 | Fixed-point math type `Fx` | sim.core | — | QUEUED (tests being authored) |
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | QUEUED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | QUEUED |
 | T-006 | Determinism gates in CI (same/cross process) | tools.simharness | T-004 | QUEUED |
@@ -120,7 +120,7 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
 | T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001 | QUEUED |
 | T-027 | `sim.core`: strict content loader | sim.core | T-001, T-003, T-026 | QUEUED |
-| T-028 | Content: Phase 0/1 schemas, size-category and aircraft data | content | — | QUEUED |
+| T-028 | Content: Phase 0/1 schemas, size-category and aircraft data | content | — | IN_PROGRESS |
 | T-029 | `app.ui` scene layer: pacing, lane click, production lane sink | app.ui | T-020, T-023, T-005 | QUEUED |
 | T-030 | `tools.simharness`: `checkpoints` subcommand | tools.simharness | T-004, T-006 | QUEUED |
 | T-031 | `app.host`: headless composition root, frame loop, checkpoint run | app.host | T-008, T-012, T-020, T-021, T-022, T-024, T-026, T-027, T-029, T-030 | QUEUED |
