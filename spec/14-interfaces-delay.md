@@ -78,7 +78,9 @@ of attributed delay ticks. It performs no inference and no reconstruction
 
 All types below appear in event payloads or are returned by queries; the ones
 carried by `DelayEvent` (`DelayEventId`, `DelaySource`, `DelayExplanation`,
-`DelayCategory`) are declared in `sim.core` with the other event types.
+`DelayCategory`, and `DelayNode` and `DelayNodeKind`, since `DelayEvent`
+carries a `DelayNode`, `10` §10.9, Q-018) are declared in `sim.core` with the
+other event types.
 
 ```
 struct DelayEventId { uint64 Value }         // sim.delay-allocated, §14.7; 0 = none

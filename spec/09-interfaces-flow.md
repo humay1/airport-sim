@@ -44,7 +44,7 @@ get promotion; it does not get an exception here.
 
 ```
 struct NodeId    { uint32 Value }        // sim.core type (events carry it); the graph is sim.world's, 18 §18.2
-struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow
+struct CohortId  { uint64 Value }        // from IIdAllocator, owner sim.flow; compiled in sim.core (10 §10.9, Q-018)
 struct EdgeId    { uint32 Value }        // sim.core type; a sim.world walk edge
 
 enum NodeKind {

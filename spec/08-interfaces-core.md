@@ -249,6 +249,14 @@ Counters are per-owner and part of saved state, so that adding an allocation in
 one system cannot shift another system's ids — the same reasoning as per-system
 RNG streams.
 
+**Allocation rule (Q-017).** Each owner's counter starts at 0. `Next(owner)`
+increments it and returns `EntityId((owner.Value << 48) | counter)`, so the
+first id is counter 1 and ids never collide across owners. `EntityId(0)` is
+never allocated. A counter above 2^48 − 1 throws `SimInvariantException`. An
+owner of 0, 8 or above 14 throws `ArgumentException`. Consumers never decode
+the bit pattern, following the rule above. `Next` is callable during
+construction and during phases 1–3.
+
 ---
 
 ## 8.5 Systems and the tick loop
@@ -471,6 +479,50 @@ enum CommandRejection { None, TooLate, UnknownKind, MalformedPayload, NotPermitt
 is used by the determinism harness to prove the queue participates in the
 hash.
 
+### Queue semantics (Q-020)
+
+- **Surface.** `ICommandQueue` is the host's internal seam and is declared
+  `internal`, an exception to `07` L5. Tests, the harness and `sim.save`
+  reach it only through `ISimHost`:
+
+```
+interface ISimHost {                                   // additions to §8.5
+  IReadOnlyList<Command> CommandLogSince(Tick tick)    // = ICommandQueue.LogSince
+}
+```
+
+- **`Command` in C#.** `Payload` is `byte[]`. The constructor takes
+  `(Tick, Issuer, Kind, Payload)`, throws `ArgumentNullException` for a
+  `null` payload (use an empty array), and sets `Sequence = 0`. A caller
+  cannot supply a `Sequence`. Admission **copies** the payload, so a caller
+  mutating its array afterwards changes nothing.
+- **Admission order** (`TrySubmit`): `TooLate`, then `NotPermitted` if
+  `Issuer != PLAYER_LOCAL`, then `UnknownKind`, then the kind's check, which
+  is the handler's `Validate` or, for `NoOp`, "payload length is 0, else
+  `MalformedPayload`". `Validate` runs **exactly once** for a submit that
+  reaches it, and never at application. On success, `reason = None`.
+- `TrySubmit` during `Step` (from a handler or a system) throws
+  `InvalidOperationException`. Commands come from outside the tick.
+- **`Sequence`** is one counter for the whole session. The first admitted
+  command gets 1, each admission adds 1, and a rejected submit consumes
+  nothing. 0 means "not admitted".
+- **`LogSince(t)`** returns every admitted command with `cmd.Tick >= t`,
+  applied or still pending, in the total order `(Tick, Issuer, Sequence)`.
+  It allocates, with fresh payload copies, since it is off the hot path.
+  Core keeps every admitted command until `sim.save` specifies trimming.
+- **Handler registration.** Each kind's owner is the Owner column of the
+  payload table, mapped to its registry position (`SetServersOpen` → 4,
+  `ReassignStand` → 3). `Register(owner, handler)` throws `ArgumentException`
+  for an owner that does not match `handler.Kind`, for a handler of `NoOp`,
+  or for a second handler of a kind. `ArgumentNullException` is thrown for
+  `null`, and `InvalidOperationException` after `Build`. If an owner is not
+  registered as a system by `Build`, `Build` throws
+  `InvalidOperationException`.
+- **Impossible at `Apply`.** The **handler** logs the no-op with its own
+  module's `LogKey` (appended by amendment) at `LogLevel.Info`, and returns.
+  Core does not catch. An exception out of `Apply` escapes the tick and is
+  wrapped (§8.5a).
+
 ### Issuer, kinds and payloads (Q-010)
 
 ```
@@ -553,6 +605,10 @@ interface IRandomStream {
 }
 ```
 
+```
+RandomServiceFactory.Create(uint64 masterSeed) -> IRandomService   // Q-019; Build uses it too
+```
+
 Pinned algorithms. These are part of the save format in effect, so changing one is
 a migration, not a refactor:
 
@@ -574,6 +630,61 @@ exactly one system; sharing one across systems reintroduces exactly the coupling
 rule 3 exists to prevent.
 
 Stream state is saved and is part of the owning system's hash.
+
+### Exact reference (Q-019)
+
+Binding bit for bit. The golden vectors below are the test oracle.
+
+- **Stream seed.** `seed = MasterSeed XOR FNV1a64(utf8(name.Value))`. This is
+  plain FNV-1a-64 (§8.9 constants) over the name's UTF-8 bytes, with **no**
+  length prefix.
+- **SplitMix64**, the standard one:
+  `x += 0x9E3779B97F4A7C15; z = x; z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EB; return z ^ (z >> 31)`, all mod
+  2^64. Seeded with `seed`, its first four outputs are `s[0]`, `s[1]`,
+  `s[2]`, `s[3]`, in that order. While all four are 0, `s[0]` is replaced by
+  the next output.
+- **xoshiro256\*\* 1.0**, the standard one:
+  `r = rotl(s[1] * 5, 7) * 9; t = s[1] << 17; s[2] ^= s[0]; s[3] ^= s[1];
+  s[1] ^= s[2]; s[0] ^= s[3]; s[2] ^= t; s[3] = rotl(s[3], 45); return r`.
+  `NextUInt64` is one step. Check: state `{1, 2, 3, 4}` yields 11520, 0,
+  1509978240, 1215971899390074240.
+- **`NextInt(min, max)`**: `min >= max` throws `ArgumentOutOfRangeException`.
+  Otherwise let `range = (uint32)(max − min)`. Take
+  `x = (uint32)(NextUInt64() >> 32)`, `m = (uint64)x * range`,
+  `l = (uint32)m`. If `l < range`, set `t = (uint32)(0 − range) % range`,
+  and while `l < t` draw a new `x` and recompute `m` and `l`. Return
+  `min + (int32)(m >> 32)`. This is Lemire's method on the **top 32 bits**
+  of each draw.
+- **`NextFx01()`** = `Fx.FromRaw((int64)(NextUInt64() >> 32))`.
+- **`Chance(p)`** = `NextFx01() < p`. It is **always exactly one draw**. A
+  `p <= 0` gives false and `p >= 1` gives true, and neither is an error.
+- **`Shuffle(items)`**: for `i` from `n − 1` down to 1, `j = NextInt(0, i + 1)`,
+  then swap `items[i]` and `items[j]`. `n <= 1` draws nothing.
+- **Stream hash.** `ComputeStateHash()` is a fresh `StateHasher` (§8.9) fed
+  `s[0]`, `s[1]`, `s[2]`, `s[3]` as `uint64`. The owning system feeds that
+  value into its own hash.
+- **`Stream(name)`** returns the **same live stream** every time it is called
+  with that name in a session. It is created at the first call, and later
+  calls neither allocate nor reset it.
+- **Names.** The `RngStreamName` constructor throws `ArgumentException`
+  unless `Value` matches `sim\.[a-z]+\.[a-z0-9_]+`, where the middle segment
+  is the owning module. Uniqueness across modules follows from the prefix,
+  and within a module it is that module's own test. This replaces "CI
+  asserts uniqueness", for which no mechanism existed.
+- **Save seam.** None yet. Exporting and importing stream state belongs to
+  `sim.save`, which is unspecified. No task invents one.
+
+Golden vectors, the first four `NextUInt64` outputs in hex:
+
+| MasterSeed | Name | FNV1a64(name) | Outputs |
+|---|---|---|---|
+| 0 | `sim.flow.showup` | `80AA6E48500EF830` | `4D8ADDC1EA523EA8`, `881053D9C83E81EC`, `9F943EEE723DAD43`, `41FB063846C7BC01` |
+| 12345 | `sim.schedule.jitter` | `09F750F58CE1F6D5` | `38C30AB4838B2ECE`, `20E490881273F31A`, `160AF506335E076A`, `3A5487F2EF5EDE58` |
+| 2^64 − 1 | `sim.airside.taxi` | `C6381A17FBE07F29` | `BAF003FC5983A4B7`, `54E24678B7DA92B8`, `C6C76D95A0A72034`, `F635BA852278C41C` |
+
+For the first row, a fresh stream's `NextInt(0, 10)` × 4 is 3, 5, 6, 2. On
+another fresh stream, `NextFx01()` × 2 has `Raw` 1300946369, 2282771417.
 
 ---
 
@@ -601,18 +712,65 @@ interface IStateHasher {
 - Derived or cached values are **not** fed. If a cache can disagree with its
   source that is a bug, and hashing it converts a clean test failure into a
   cross-machine hash mismatch.
-- World hash: FNV-1a-64 over the tick followed by each system's
-  `ComputeStateHash()` in registry order (§8.5).
+- World hash: FNV-1a-64 over the tick, the core section and each system's
+  `ComputeStateHash()` in registry order (§8.5). The exact layout is below
+  (Q-017).
 
 ```
 readonly struct Checkpoint {
   Tick     Tick
   uint64   WorldHash
+  uint64   CoreHash                         // Q-017
   uint64[] SystemHashes                     // registry order, §8.5
 }
 
 interface ICheckpointSink { void Record(in Checkpoint cp) }
 ```
+
+### Encoding, the concrete hasher and the core section (Q-017)
+
+- **FNV-1a-64**: `h = 0xCBF29CE484222325`, then for each byte
+  `h = (h XOR byte) * 0x100000001B3` mod 2^64.
+- **`StateHasher`** is the one implementation, a `public struct StateHasher :
+  IStateHasher`. `new StateHasher()` and `default(StateHasher)` are both a
+  fresh hasher, whose `Result` is the offset basis. Systems use the struct
+  directly. Through the interface it would box. `Result` may be read at any
+  time without changing the state. The struct is mutable, an exception to
+  `07` L10.
+- **Encoding.** `Feed(uint64)` and `Feed(int64)` write 8 bytes,
+  little-endian (two's complement for `int64`). `Feed(in Fx)` is
+  `Feed(Raw)`. `Feed(bool)` writes 1 byte, 0 or 1.
+  `Feed(ReadOnlySpan<byte>)` writes the length as a `uint64` first, then the
+  bytes, so splitting a span differently changes the hash. Every narrower
+  integer, enum and id value is widened to 64 bits (sign-extended when
+  signed) and fed as 8 bytes. A string (`ContentId`, `RngStreamName`) is fed
+  as the span of its UTF-8 bytes.
+- **Golden vectors.** Fresh: `CBF29CE484222325`. `Feed(0UL)`:
+  `A8C7F832281A39C5`. `Feed(1UL); Feed(-1L); Feed(true)`: `9185A69DA7E88AC7`.
+  `Feed([1, 2, 3])`: `01EF76D429B11552`.
+- **The core section.** `sim.core` is not a system, but it holds state that
+  changes outcomes. `CoreHash` is a fresh `StateHasher` fed, in this order:
+  1. the next command `Sequence` to assign;
+  2. the number of **pending** commands (admitted and not yet applied),
+     then each pending command in `(Tick, Issuer, Sequence)` order, as
+     `Tick`, `Issuer.Value`, `Kind`, `Sequence` and then `Payload` (a span);
+  3. the number of owners whose id counter is non-zero, then, for each in
+     ascending `SystemId`, the owner's `Value` and its counter.
+
+  Applied commands are not fed: they live on in the systems' state and in
+  the sequence counter. That counter is what makes a `NoOp` visible in the
+  hash. RNG streams are not in the core section. Each is in its owner's
+  hash (§8.8).
+- **World hash** = a fresh `StateHasher` fed the ticks-executed count, then
+  `CoreHash`, then each registered system's `ComputeStateHash()` in registry
+  order, all as `uint64`. `Checkpoint.CoreHash` carries the core section so
+  that a divergence in it is named as quickly as a system's.
+- `SystemHashes[i]` belongs to the i-th registered system. There is no
+  separate id array, because the harness knows what it registered.
+- **Ownership.** T-001 ships `StateHasher` and the world hash with the core
+  section as it exists at T-001 (no pending commands, sequence 1, and no
+  counters unless `IIdAllocator` is implemented). T-004 proves the
+  golden vectors and the per-system hashing discipline.
 
 **Tick fed, cadence and contents (Q-014).** The tick fed into the world hash
 is the number of ticks executed at that moment (`ISimHost.CurrentTick`), as a

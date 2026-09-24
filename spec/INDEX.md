@@ -144,7 +144,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   **tick numbering (first `Step` runs tick 0, 24 checkpoints/day),
   `SystemId` legality, `SimEventHandler<T>` with the envelope beside the
   payload, `SimInvariantException` wrapping, log shapes (Q-014)**; **`Fx`
-  C# shape, overflow/rounding/parse/display semantics (§8.3, Q-015)**.
+  C# shape, overflow/rounding/parse/display semantics (§8.3, Q-015)**;
+  **`StateHasher`, the pinned encoding and the `CoreHash` section (§8.9,
+  Q-017)**; **the RNG pinned bit for bit, with golden vectors (§8.8, Q-019)**;
+  **command queue semantics and `CommandLogSince` (§8.7, Q-020)**.
 - LC: none left.
 - Read if: T-001–T-006, T-026; §8.5 and §8.9 for the harness and `app.host`.
 
@@ -276,8 +279,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: **Q-016 (PENDING HUMAN: what "green" means before T-006)**.
-  Q-002 to Q-015 are answered; Q-001 was deleted (D9).
+- Open now: none. Q-002 to Q-022 are answered (Q-016 by the owner: `--fast`
+  green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
 - Read if: before starting any task, check that your task is not blocked

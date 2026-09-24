@@ -1383,3 +1383,123 @@ Reason:      The full `ci/run-checks.sh` needs harness subcommands that
 Raised by:   coordinator
 Impact:      none until decided
 Signed off:  **PENDING HUMAN**
+
+## 2026-09-24 — spec/open-questions.md Q-016 — HUMAN DECISION: interim "green" before T-006
+Reason:      The owner adopted the proposal. Until T-006 merges, green =
+             `path-guard` + `build-and-test` (`--fast`, with build and tests
+             through `AirportSim.sln`). After T-006 merges, the full
+             `ci/run-checks.sh` is mandatory.
+Raised by:   Q-016
+Impact:      T-001 to T-005, T-026 and T-027 can reach "done". There is no
+             spec file change beyond the answer.
+Signed off:  HUMAN DECISION — owner, 2026-09-24
+
+## 2026-09-24 — spec/08 §8.4, §8.9 — Q-017: core section in the world hash, `StateHasher`, encoding, id allocation
+Reason:      The world hash could not see core state, so a `NoOp` was
+             invisible to it. Span encoding was ambiguous, and nobody could
+             construct a hasher. Answer: a `CoreHash` section (next
+             sequence, pending commands, id counters), fed between the tick
+             and the systems and carried on `Checkpoint.CoreHash`. `public
+             struct StateHasher`, where `default` is fresh. It ships in
+             T-001. The encoding is pinned, with length-prefixed spans, and
+             there are golden vectors. `EntityId = (owner << 48) | counter`,
+             with counters starting at 1.
+Raised by:   Q-017
+Impact:      `Checkpoint` gains `CoreHash`, a shape change that
+             T-001 declares, with no code yet. `ContentId` and every string
+             is now hashed with a length prefix: the content hash (§8.11)
+             follows the §8.9 encoding. Stale tasks: T-001 (it ships
+             `StateHasher` and `IIdAllocator` if the Planner assigns it
+             there), T-004 (it proves the vectors, and does not author the
+             hasher). No scope added.
+Signed off:  not required
+LOW CONFIDENCE: `EntityId` puts the owner in the top 16 bits. It is
+             collision-free and cheap, but it gives the bit pattern a
+             meaning that consumers are told to ignore.
+
+## 2026-09-24 — spec/10 §10.9 (new); 09, 11 §11.3, 14 §14.3 annotations; 07 L10 — Q-018: event structs declared, `sim.core` owns them
+Reason:      No task declared the event structs, and T-008 could not emit
+             core-owned events. This is option (a): `sim.core` owns every
+             event struct, matching `03`. The Phase 0 and Phase 1 structs
+             are pinned field for field. `AirlineId`, `MovementKind`,
+             `CohortId`, `FlightMilestone`, `DelayNode` and `DelayNodeKind`
+             are relocated to `sim.core`. `DelayEvent { DelayNode Node }`.
+             `X?` maps to `Nullable<X>`, and `event` maps to a
+             `readonly struct : ISimEvent`.
+Raised by:   Q-018
+Impact:      T-026 grows: every §10.9 struct plus the relocated types. It
+             must merge before T-007, T-008, T-021, T-022 and T-024. T-007's
+             "`CohortId` stays `sim.flow`'s own type" is stale.
+             `FlightPlanRevised`, `FlightCancelled` and the Phase 2 events
+             stay undeclared. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: `DelayEvent` wraps `DelayNode` whole rather than copying
+             06's lower-case field list. It is one source of truth, but the
+             payload's field names are `14`'s, not `06`'s.
+
+## 2026-09-24 — spec/08 §8.8 "Exact reference" — Q-019: RNG pinned bit for bit, with golden vectors
+Reason:      T-002's oracle would otherwise be one worker's reading. The
+             answer pins everything and adds `RandomServiceFactory.Create`:
+             - the name hash is FNV over UTF-8 with no prefix;
+             - standard SplitMix64 fills `s[0..3]` in order, and an all-zero
+               state is replaced at `s[0]`;
+             - xoshiro256** 1.0;
+             - `NextInt` is Lemire on the top 32 bits;
+             - `Chance` is always one draw;
+             - `Shuffle` runs descending;
+             - the stream hash is `s[0..3]`;
+             - `Stream` returns the same live stream;
+             - the name grammar `sim.<module>.<purpose>` replaces "CI
+               asserts uniqueness".
+             The Architect computed three golden vectors from these
+             algorithms. The SplitMix64 and xoshiro cores match their
+             published reference outputs.
+Raised by:   Q-019
+Impact:      additive. T-002 cites §8.8 "Exact reference". No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/08 §8.7 "Queue semantics" — Q-020: command queue semantics
+Reason:      T-005 had no answer on log access, sequence numbering,
+             payload type, admission order, owner enforcement, logging an
+             impossible `Apply`, or what `LogSince` includes. Answer:
+             - `ICommandQueue` is internal, and `ISimHost.CommandLogSince`
+               is added.
+             - The payload is a `byte[]`, copied on admission. A `null`
+               payload throws.
+             - Admission runs TooLate → NotPermitted (issuer) → UnknownKind
+               → Validate. `Validate` runs exactly once, and `NoOp` requires
+               an empty payload.
+             - `Sequence` is global from 1.
+             - `LogSince` is inclusive and includes pending commands.
+             - The owner comes from the payload table.
+             - The handler logs an impossible `Apply`.
+             - `TrySubmit` during `Step` throws.
+Raised by:   Q-020
+Impact:      `ISimHost` gains `CommandLogSince` (additive; only core
+             implements `ISimHost`). Q-010's admission order gains the
+             issuer check. T-005 is stale in these details. No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/07 "Solution layout and build"; 11 §11.10 — Q-021: the Test Author writes all of `tests/**`
+Reason:      A fixture had two possible authors.
+Raised by:   Q-021
+Impact:      Worker grants under `tests/**` (for example T-008's
+             `tests/fixtures/schedule/**`) are moot. The Planner may drop
+             them. No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/16 §16.4; 07 L2; 03 (`sim.turnaround`, `app.host` rows) — Q-022: `ComposedSim.World`, itemised project references
+Reason:      `ComposedSim` omitted `World`. `03`'s umbrella dependency for
+             `app.host` cannot drive L2. L2's "references = the `03` cell"
+             was also wrong in two cases: `03` lists dependencies a Phase 1
+             project does not use (for example `staff`), and it missed one
+             it does use (`sim.turnaround` → `schedule`, per `13`'s factory).
+             Answer: add `IWorldSystem? World`. L2 now derives references
+             from the published interface file and gives a binding Phase 0/1
+             table. `03` is amended in the two rows.
+Raised by:   Q-022
+Impact:      T-031's `World` field becomes spec-backed. L2 replaces its
+             Q-013 wording, with no code yet. The `03` change widens
+             `sim.turnaround`'s allowed dependencies by one module, and
+             that module was already a factory parameter. No scope added.
+Signed off:  not required
