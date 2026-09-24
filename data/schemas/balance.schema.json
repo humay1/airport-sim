@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "balance.schema.json",
+  "title": "Balance file",
+  "description": "See spec/04-data-schemas.md 'Balance values are human-owned' and spec/12-interfaces-airside.md §12.4 (AirsideRules, D6). Human-owner-authored content; this task writes only the schema, never data/balance/*.json.",
+  "type": "object",
+  "required": ["schema_version", "boarding_hold_max_minutes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "boarding_hold_max_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "description": "uint32; 0 disables the boarding hold (12 §12.4 AirsideRules.BoardingHoldMaxMinutes)."
+    }
+  }
+}
