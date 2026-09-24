@@ -76,13 +76,29 @@ identical additions cleanly, T-001 and T-003 can both add it.
 Every other `netstandard2.1` project in L1 is this file with the two names
 changed. It also gets one `ItemGroup` after the `PropertyGroup`, separated by
 a blank line, with one `<ProjectReference Include="<relative path>" />` per
-module it depends on. Paths use forward slashes and are listed in
-`03-module-map.md` table order. A `sim.*` project references exactly the modules in its
-`03-module-map.md` "Depends on" cell, except `sim.delay`, which references
-`sim.core` only (it learns everything through events, and events are defined
-in `sim.core`). An `app.*` project references the `sim.*`/`app.*`
-projects it consumes. A dependency whose project does not exist yet blocks
-the task and is filed as an open question. Nothing else is added: no package
+module it references directly. Paths use forward slashes and are listed in
+the order of the table below (Q-022). A project references exactly the
+modules whose types appear in its published interface file: its interfaces,
+its factory parameters, and the types they carry. That is always a subset of
+its `03-module-map.md` "Depends on" cell. Anything further away comes
+transitively. For Phase 0/1 the list is binding:
+
+| Project | Direct `ProjectReference`s, in this order |
+|---|---|
+| `AirportSim.Sim.Core` | none |
+| `AirportSim.Sim.World` | Core |
+| `AirportSim.Sim.Flow` | Core, World |
+| `AirportSim.Sim.Schedule` | Core, Flow |
+| `AirportSim.Sim.Airside` | Core, Schedule, Flow |
+| `AirportSim.Sim.Turnaround` | Core, Schedule |
+| `AirportSim.Sim.Delay` | Core (it learns everything through events, which are defined in `sim.core`) |
+| `AirportSim.App.Render` | Core, Airside, Flow (`15` §15.9 `RenderSources`) |
+| `AirportSim.App.Ui` | Core, Flow, App.Render (`17` §17.7) |
+| `AirportSim.App.Host` | Core, World, Schedule, Airside, Flow, Turnaround, Delay, App.Render, App.Ui |
+
+A module not in the table gets its row by amendment before its first task.
+A dependency whose project does not exist yet blocks the task, and the task
+files an open question. Nothing else is added: no package
 references (rule 7 of "Runtime portability"), no `InternalsVisibleTo`, no
 other properties. A spec amendment is the only way the file changes.
 
@@ -172,6 +188,11 @@ merges first, because `ISimClock.MinutesBetween` returns `SimMinutes = Fx`.
 | `AirportSim.sln` (repo root) | the first task to merge a production project, which is T-003. It runs `dotnet new sln --name AirportSim` and adds `src/sim/core` and `tests/sim/core` | T-001 adds `tools/SimHarness`. After that, the first task that creates a module's production project adds that project and its test project. The Planner lists `AirportSim.sln` in that task's writable paths and never releases two such tasks concurrently, because concurrent `.sln` edits conflict |
 | `tools/SimHarness/AirportSim.Tools.SimHarness.csproj` | T-001. It is the L3 file with `<OutputType>Exe</OutputType>` inserted as the first property. It drops `IsPackable`, `IsTestProject`, `NuGetAudit` and the package `ItemGroup`, uses the L1 names, and has one `ProjectReference` to `../../src/sim/core/AirportSim.Sim.Core.csproj` | later `tools/SimHarness/**` tasks add `ProjectReference`s only |
 
+**Everything under `tests/**`, fixtures included, is written by the Test
+Author (Q-021).** A worker task's `tests/**` writable path grants nothing:
+the path guard blocks workers from `tests/`. A fixture a spec calls "binding
+on the Test Author", such as `11` §11.10, is the Test Author's file.
+
 **L9. Tests merge with their implementation.** One test project per module
 (L1), shared by every task of that module. A test file that references a type
 not yet on `main` would break the build for everyone. So each test branch
@@ -198,6 +219,8 @@ no other choices about public shape.
   assigned value. Structs with a single `Value` member (ids, `PlayerId`) and
   `EventId` implement `IEquatable<T>`, `==` and `!=`. `EventId` also
   implements `IComparable<EventId>` over `(Tick, Sequence)`.
+- `X?` of a struct type is `System.Nullable<X>` (Q-018). An `event X { ... }`
+  block is a `public readonly struct X : ISimEvent` under the struct rule.
 - An `interface` is a `public interface`. `{ get }` is a get-only property.
 - `Name.Method(...) -> R` on a factory is a public static method of
   `public static class Name`. On a type (`Fx.Add`), it is a public static

@@ -60,9 +60,9 @@ counterpart, and consumers must test for it rather than doing arithmetic on it.
 ## 11.3 Types
 
 ```
-struct AirlineId { uint32 Value }               // from the fixture's airline code, §11.4
+struct AirlineId { uint32 Value }               // from the fixture's airline code, §11.4; compiled in sim.core (10 §10.9, Q-018)
 
-enum MovementKind { Arrival, Departure }
+enum MovementKind { Arrival, Departure }        // compiled in sim.core (10 §10.9, Q-018)
 
 readonly struct FlightRecord {
   FlightId     Id
@@ -352,7 +352,8 @@ load failure (§11.4).
 
 ## 11.10 The Phase 0 fixture (T-008)
 
-`tests/fixtures/schedule/phase0-200.csv`, binding on the Test Author:
+`tests/fixtures/schedule/phase0-200.csv`, binding on the Test Author, who
+writes it (Q-021):
 
 - exactly 200 movement rows, forming 100 rotations (100 `A` + 100 `D`), all with
   `day=0` and `repeat_daily=1`, so that T-009's 100-day run has load on every day;
