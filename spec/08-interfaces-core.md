@@ -5,9 +5,10 @@ Implements the `sim.core` row of `03-module-map.md`. Nothing here may contradict
 files win and the contradiction is a spec bug — file it in `open-questions.md`.
 
 **Notation.** Signatures are written in the language-neutral IDL below. This is a
-*specification*, not code: the worker writes the C# that realises it and chooses
-access modifiers, namespaces and file layout inside `src/sim/core`. Names given
-here are binding. Anything not listed here is internal to the module and may not
+*specification*, not code: the worker writes the C# that realises it. Access
+modifiers, namespaces, file names and the IDL-to-C# mapping are fixed by
+`07-conventions.md`, "Solution layout and build" (Q-013). Names given here are
+binding. Anything not listed here is internal to the module and may not
 be referenced from another module (`03-module-map.md`, "Communication rules").
 
 Reading order for a `sim.core` worker: `01`, `02`, `07`, this file, then `10`.
@@ -32,6 +33,11 @@ designers should tune belongs in `data/`, not here.
 | `MAX_EVENTS_PER_TICK` | 4096 | this file, §8.6 |
 | `MAX_ATTRIBUTION_DEPTH` | 6 | `06-delay-attribution.md` |
 | `FX_FRACTIONAL_BITS` | 32 | this file, §8.3 |
+
+In C# these are `public const` members of `public static class SimConstants`
+(`07` L10), with the names above. `TICKS_PER_SIM_MINUTE`, `TICKS_PER_SIM_HOUR`,
+`TICKS_PER_SIM_DAY`, `HASH_CHECKPOINT_TICKS` and `COMMAND_MIN_LEAD_TICKS` are
+`ulong`, because they are tick arithmetic. The rest are `int` (Q-014).
 
 `AGENT_ZOOM_THRESHOLD` is a presentation constant and does **not** live in
 `sim.core`; it is defined in `15-interfaces-render.md` §15.2. The sim is told which nodes are promoted; it never asks about cameras.
@@ -62,6 +68,33 @@ interface ISimClock {
 
 `ISimClock` is a pure function of the tick counter. It holds no mutable state and
 contributes nothing to the state hash.
+
+### Tick numbering and clock arithmetic (Q-014)
+
+- `Step(n)` executes ticks `CurrentTick`, `CurrentTick + 1`, …,
+  `CurrentTick + n − 1`, in that order, and leaves `CurrentTick` larger by
+  `n`. `CurrentTick` is therefore the number of ticks executed so far, which
+  is also the number of the next tick to run. It is 0 after `Build`. The
+  first `Step(1)` executes tick 0, with `ctx.Tick == 0`. `Step(0)` does
+  nothing.
+- During tick `t`, `ctx.Tick == ctx.Clock.CurrentTick == t`. Sim-day `d` is
+  ticks `d · TICKS_PER_SIM_DAY` to `(d + 1) · TICKS_PER_SIM_DAY − 1`.
+  `Step(TICKS_PER_SIM_DAY)` from a fresh host executes exactly day 0.
+- **Chunking is invisible.** `Step(a)` followed by `Step(b)` is
+  indistinguishable from `Step(a + b)` in every hash, checkpoint, event and
+  log line.
+- `DayIndex = CurrentTick / TICKS_PER_SIM_DAY` and
+  `SecondOfDay = (CurrentTick % TICKS_PER_SIM_DAY) · SIM_SECONDS_PER_TICK`.
+  A `DayIndex` above `uint32` range throws `OverflowException`.
+- `MinutesBetween(a, b)` is `b − a` in sim-minutes, **signed**. It is
+  negative when `b < a`, and order is never a reason to throw. It equals
+  `Fx.FromRatio((int64)b − (int64)a, TICKS_PER_SIM_MINUTE)`, floored like
+  every narrowing (§8.3). A tick above `int64` range throws
+  `OverflowException`.
+- `TickOfDayTime(d, s) = d · TICKS_PER_SIM_DAY + s / SIM_SECONDS_PER_TICK`,
+  in integer division. A second that is not a multiple of
+  `SIM_SECONDS_PER_TICK` floors to the tick that contains it.
+  `s >= 86400` throws `ArgumentOutOfRangeException`.
 
 > **HUMAN DECISION — owner (delegated), 2026-09-23 (Q-002, D2):
 > `SIM_SECONDS_PER_TICK = 6` is confirmed.** It gives (a) delay arithmetic
@@ -110,6 +143,7 @@ struct Fx { int64 Raw }             // value = Raw / 2^32
 
 ```
 Fx.FromInt(int64 v)
+Fx.FromRaw(int64 raw)                                // exact; saved state, hashing, tests (Q-015)
 Fx.FromRatio(int64 numerator, int64 denominator)     // exact, then truncated
 Fx.Parse(string decimal)                             // content loading only
 Fx.Zero, Fx.One, Fx.MinValue, Fx.MaxValue
@@ -120,6 +154,66 @@ Fx.Frac -> Fx
 Fx.Sqrt -> Fx                                        // integer Newton, exact-stable
 Fx.ToDisplayString(int decimals)                     // presentation and logs only
 ```
+
+### C# shape and edge cases (Q-015)
+
+- `public readonly struct Fx : IEquatable<Fx>, IComparable<Fx>` with
+  `long Raw { get; }`. `Zero`, `One`, `MinValue` (`Raw = int64.MinValue`) and
+  `MaxValue` (`Raw = int64.MaxValue`) are `public static readonly Fx` fields.
+  `Fx` has **no public constructor**, an exception to `07` L10. `FromRaw` is
+  the only way in from a raw value, and `default(Fx)` is `Zero`.
+- Every operation in the list is a public **static** method taking its
+  operands (`Fx.Add(a, b)`, `Fx.Clamp(x, lo, hi)`, `Fx.Floor(x)`), except
+  `ToDisplayString(int decimals)`, which is an instance method.
+- **Operators are required**, and each is exactly its static method: binary
+  `+ - * /`, unary `-`, and `== != < <= > >=` comparing `Raw`. `Equals(Fx)`,
+  `Equals(object)`, `GetHashCode()` and `CompareTo(Fx)` agree with `Raw`.
+  `07` "Runtime portability" rule 2 still forbids using the hash code for
+  anything. `ToString()` returns `ToDisplayString(10)`, for diagnostics only.
+  There are **no** implicit or explicit conversion operators.
+- **Semantics.** Below, `x` means the exact rational `Raw / 2^32`. Every
+  result is floored toward −∞ to a multiple of 2^−32, and "out of range"
+  means the floored result is outside `[MinValue, MaxValue]`. `Fx` never
+  wraps and never saturates.
+
+| Operation | Result | Throws |
+|---|---|---|
+| `FromInt(v)` | `v` | `OverflowException` unless −2^31 ≤ `v` ≤ 2^31 − 1 |
+| `FromRaw(r)` | `Raw = r` | never |
+| `FromRatio(n, d)` | `n / d` | `DivideByZeroException` if `d = 0`; `OverflowException` if out of range |
+| `Add`, `Sub` | exact | `OverflowException` if out of range |
+| `Mul` | `a · b` | `OverflowException` if out of range |
+| `Div` | `a / b` | `DivideByZeroException` if `b = 0`; `OverflowException` if out of range |
+| `Neg`, `Abs` | exact | `OverflowException` for `MinValue` |
+| `Min`, `Max` | as named | never |
+| `Clamp(x, lo, hi)` | `Max(lo, Min(x, hi))` | `ArgumentException` if `lo > hi` |
+| `Floor` | ⌊x⌋ as `int64` | never |
+| `Ceil` | ⌈x⌉ as `int64` | never |
+| `RoundHalfUp` | ⌊x + ½⌋ as `int64`. Half goes toward +∞: −0.5 → 0, −1.5 → −1, 2.5 → 3 | never, `MaxValue` included |
+| `Frac` | `x − Floor(x)`, in `[0, 1)` | never |
+| `Sqrt` | `Raw = ⌊√(x.Raw · 2^32)⌋` exactly, the integer square root of the 96-bit product. This is what "exact-stable" means | `ArgumentOutOfRangeException` if `x < 0` |
+
+- **`Parse` grammar.** The whole string, ASCII only, must match
+  `-?(0|[1-9][0-9]*)(\.[0-9]{1,10})?`. There is no `+`, no whitespace, no
+  leading or trailing dot, no exponent, no digit separator and no leading
+  zero, and at most 10 fraction digits. `-0` and `-0.0` parse to `Zero`. The
+  decimal value is taken exactly and then floored, so `"-0.1"` is
+  `⌊−0.1 · 2^32⌋`, which is not the negation of `Parse("0.1")`. `null`
+  throws `ArgumentNullException`. Any other mismatch throws
+  `FormatException`, and an out-of-range value throws `OverflowException`.
+- **`ToDisplayString(d)`**, with `d` from 0 to 10 (otherwise
+  `ArgumentOutOfRangeException`). The value is floored to a multiple of
+  10^−d (it is a `To*` conversion) and written in invariant ASCII: an
+  optional `-`, then the integer digits with no leading zero (`0` when the
+  integer part is zero), then, when `d > 0`, a `.` and exactly `d` digits. A
+  result equal to zero has no sign. For example, `-0.25` gives `"-0.3"` at
+  `d = 1`, and `0.25` gives `"0.2"`.
+- **Test oracle.** Bit-exactness is proven by **golden vectors**: fixed
+  inputs with their expected `Raw` outputs, committed as literals in the test
+  and derived from the `Int128`/`BigInteger` oracle. A golden vector pins the
+  result across processes, machines and time, so no child-process test
+  exists for `Fx`. Cross-process determinism of the whole sim is
+  `determinism_cross_process` (`ci/run-checks.sh`).
 
 Deliberately **absent** at Phase 0: trigonometry, exponentials, logarithms,
 `Lerp`, vector types. Nothing in the Phase 0 build order needs them and each is a
@@ -138,6 +232,11 @@ struct EntityId { uint64 Value }                      // opaque
 struct FlightId { uint64 Value }
 struct EventId  { uint64 Tick; uint32 Sequence }      // total order, §8.6
 ```
+
+`SystemId.Value` is the registry position of §8.5, from 1 to 14. Position 8
+is reserved. Value 0 is `SYSTEM_CORE = SystemId(0)`, the id `sim.core` uses
+as an event `Source` and a log `system` for its own work. Neither 0 nor 8
+can be registered or subscribe (Q-014).
 
 Ids are values, never references, and carry no meaning in their bit pattern. Never
 branch on a reference or a default hash code (`02-determinism.md` rule 7).
@@ -207,6 +306,13 @@ never reordered.
 land on the same tick. `sim.core` and `sim.save` are not systems: core owns the
 loop, save observes it.
 
+**Registration rules (Q-014).** `Register` accepts a system whose `Id.Value` is
+in 1–14, is not 8, and is strictly greater than every earlier registration.
+Otherwise it throws `ArgumentException`, and a `null` system throws
+`ArgumentNullException`. After `Build`, it throws `InvalidOperationException`.
+`Name` is a diagnostic label and is not checked. Tests may register probe
+systems at any legal position whose module is not in that build.
+
 ### The host interface
 
 The only entry point the presentation layer has for advancing the sim.
@@ -223,6 +329,31 @@ interface ISimHost {
 `Step` is synchronous and takes no time argument. A host that wants to run faster
 calls it more often. There is no `Update(deltaTime)` and there never will be.
 
+## 8.5a Broken invariants (Q-014)
+
+```
+class SimInvariantException : Exception {     // sealed
+  Tick   Tick
+  uint64 WorldHash                            // valid only if HasWorldHash
+  bool   HasWorldHash
+}
+```
+
+- A module that detects a broken invariant during a tick throws
+  `new SimInvariantException(string message, Tick tick)`, which leaves
+  `HasWorldHash` false. This is the only public constructor.
+- **The host wraps.** Any exception that escapes phases 1–4 of tick `t` leaves
+  `Step` as a new `SimInvariantException` with `Tick = t`, with
+  `InnerException` set to the escaping exception, and with `WorldHash` computed
+  at that moment (§8.9) and `HasWorldHash` true. If computing the hash throws
+  too, `HasWorldHash` is false. It wraps exactly once, even when the escaping
+  exception is itself a `SimInvariantException`. `sim.core`'s own limits
+  (§8.6) are thrown and wrapped the same way.
+- After that, the host is unusable. `Step`, `TrySubmit` and
+  `WorldStateHash` throw `InvalidOperationException`.
+- Exceptions from calls made outside a tick (construction, `Register`,
+  `Subscribe`, argument checks) are not wrapped.
+
 ---
 
 ## 8.6 Event bus
@@ -232,17 +363,41 @@ catalogue is `10-events.md`; this section defines only the transport.
 
 ```
 interface IEventPublisher {
-  EventId Publish<T>(in T evt) where T : struct, ISimEvent
+  EventId Publish<T>(in T evt, in EventRef cause) where T : struct, ISimEvent
 }
 
 interface IEventBus : IEventPublisher {
-  void Subscribe<T>(SystemId subscriber, EventHandler<T> handler)
+  void Subscribe<T>(SystemId subscriber, SimEventHandler<T> handler) where T : struct, ISimEvent
 }
 
+delegate void SimEventHandler<T>(in EventEnvelope envelope, in T evt, in TickContext ctx)
+  where T : struct, ISimEvent
+
 interface ISimEvent {
-  // marker; every event carries the envelope fields of 10-events.md §10.2
+  // marker; the struct holds payload fields only, 10-events.md §10.2
 }
 ```
+
+**Envelope and publication (Q-014).** An event struct holds only its payload
+fields (`10-events.md` §10.6). The bus carries the envelope (`10` §10.2)
+beside the struct and hands it to every handler. `Publish` copies the
+payload and fills the envelope:
+
+- `Id = (current tick, next Sequence)` and `Tick = current tick`.
+- `Source` is the system whose code is running. In phase 1 that is the owner
+  the command handler was registered with. In phase 2 it is the system whose
+  `Tick` is running, and in phase 3 the subscriber whose handler is running.
+  `sim.core`'s own events use `SYSTEM_CORE`.
+- `Cause` is the argument. A root event passes `EventRef.None`, a
+  `public static readonly` value with `HasValue` false.
+
+`Publish` outside phases 1–3 of a tick throws `InvalidOperationException`.
+`Subscribe` takes one handler per `(subscriber, T)`. A second one, a
+subscriber of 0, 8 or above 14, or a `null` handler throws
+`ArgumentException` (`ArgumentNullException` for `null`). A subscriber that is
+not registered by the time of `Build` makes `Build` throw
+`InvalidOperationException`. The name `EventHandler` is not used, because it
+collides with `System.EventHandler<T>`.
 
 Ordering rules, all four determinism-critical:
 
@@ -255,10 +410,15 @@ Ordering rules, all four determinism-critical:
    and drained in the same tick — this is what lets `sim.delay` answer a cause
    event with a `DelayEvent` on the same tick. A queue still not empty after
    `MAX_EVENT_CASCADE_PASSES` passes is a broken invariant: throw.
+   **Passes (Q-014):** pass 1 dispatches, in `Sequence` order, every event
+   published in phases 1 and 2. The events published during pass `k` form
+   pass `k + 1`. If any event is published during pass
+   `MAX_EVENT_CASCADE_PASSES`, core throws `SimInvariantException` (§8.5a).
 4. For one event, handlers run in **registry order of the subscribing system**
    (§8.5) — never subscription order, never dictionary order.
 
-`MAX_EVENTS_PER_TICK` is an invariant, not a rate limiter: exceeding it throws. It
+`MAX_EVENTS_PER_TICK` is an invariant, not a rate limiter: exceeding it throws
+(the publish that would be number 4097 in the tick throws `SimInvariantException`). It
 exists to catch a module that starts emitting per-entity-per-tick chatter, which
 would silently consume the whole core budget. See the emission discipline in
 `10-events.md` §10.3.
@@ -404,6 +564,10 @@ a migration, not a refactor:
   stream and equal bounds consume equal draws.
 - `NextFx01`: top 32 bits of one draw, uniform over multiples of 2^-32.
 
+```
+readonly struct RngStreamName { string Value }   // ordinal equality; Q-014
+```
+
 Stream names are `"<module>.<purpose>"`, declared as constants by the owning
 module and unique across the build (CI asserts uniqueness). A stream is owned by
 exactly one system; sharing one across systems reintroduces exactly the coupling
@@ -450,6 +614,16 @@ readonly struct Checkpoint {
 interface ICheckpointSink { void Record(in Checkpoint cp) }
 ```
 
+**Tick fed, cadence and contents (Q-014).** The tick fed into the world hash
+is the number of ticks executed at that moment (`ISimHost.CurrentTick`), as a
+`uint64`. In phase 4 of tick `t`, if `t % HASH_CHECKPOINT_TICKS == 0`, the
+host calls `Record` once with `Tick = t`. `WorldHash` is the world hash with
+`t + 1` fed, so it equals `WorldStateHash()` read as soon as the `Step` that
+ran tick `t` returns. `SystemHashes` has one entry per **registered** system,
+in registry order, and the host allocates a fresh array for each checkpoint,
+which the sink may keep. A sim-day therefore records 24 checkpoints, at
+`t = 0, 600, …, 13 800`. There is no checkpoint at `Build`.
+
 The per-system array is the point: on a gate failure, the first disagreeing
 checkpoint plus the first disagreeing system index names the culprit in seconds.
 `02-determinism.md` asks for this early — it ships with T-004, not later.
@@ -463,6 +637,19 @@ interface ISimLog {
   void Write(Tick tick, LogLevel level, SystemId system, LogKey key, in LogArgs args)
 }
 ```
+
+```
+enum LogLevel : byte   { Debug = 0, Info = 1, Warning = 2, Error = 3 }
+enum LogKey   : uint16 { None = 0 }             // appended by amendment; never renumbered
+readonly struct LogArgs { int32 Count; int64 A0; int64 A1; int64 A2; int64 A3 }
+```
+
+(Q-014) `LogArgs` has public constructors taking 1, 2, 3 or 4 `int64` values,
+which set `Count` to the number passed, and `default(LogArgs)` has
+`Count = 0`. This is an exception to `07` L10's single constructor. An `Fx`
+is passed as its `Raw`. An id is passed as its `Value`, reinterpreted as
+`int64` with `unchecked`. The key's amendment defines what each slot means.
+A new `LogKey` is appended with the module that writes it.
 
 - Every line carries the tick (`07-conventions.md`).
 - `LogKey` is an enum; `LogArgs` holds integers, `Fx` and ids only. No string
@@ -614,6 +801,12 @@ ContentIndexFactory.Create(IReadOnlyList<IContentDefinition> definitions) -> ICo
   must exist first), then `Register` in registry order. `Register` out of
   order, twice for one `SystemId`, or after `Build` throws. So does
   `Subscribe` after `Build`.
+- **No nulls (Q-014).** Every reference member of `SimHostConfig` is
+  non-null, and `CreateBuilder` throws `ArgumentNullException` otherwise.
+  `sim.core` publishes no null or empty implementation of `IContentIndex`,
+  `ICheckpointSink` or `ISimLog`. Tests implement these public interfaces
+  themselves, or use `ContentIndexFactory.Create` with an empty list.
+  `TickContext.Content` and `TickContext.Log` are the config's instances.
 - `Build` creates the RNG service from `MasterSeed` (§8.8), wires the
   checkpoint and log sinks, and returns the host at tick 0. A builder cannot
   be reused after `Build`.

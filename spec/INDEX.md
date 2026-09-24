@@ -117,8 +117,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   Runtime portability rules (D1): no hash-order dependence, no `GetHashCode`
   in behaviour, total sort comparers, ordinal and invariant strings, no
   reflection order, no memory punning, netstandard2.1/C# 9 with no NuGet
-  polyfills**.
-- LC: none.
+  polyfills**; **solution layout (Q-013): fixed project paths and names,
+  byte-for-byte `.csproj` files, xUnit with no property library, public iff
+  spec-named, test names are method names, who creates each project and the
+  sln, tests merge with their implementation, IDL-to-C# mapping**; exact
+  exception types.
+- LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
 
 ### `08-interfaces-core.md` — `sim.core`
@@ -136,7 +140,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
   in dependency order, register in registry order**; **content definition
-  types and a strict, package-free JSON `IContentLoader` (§8.11, Q-011)**.
+  types and a strict, package-free JSON `IContentLoader` (§8.11, Q-011)**;
+  **tick numbering (first `Step` runs tick 0, 24 checkpoints/day),
+  `SystemId` legality, `SimEventHandler<T>` with the envelope beside the
+  payload, `SimInvariantException` wrapping, log shapes (Q-014)**; **`Fx`
+  C# shape, overflow/rounding/parse/display semantics (§8.3, Q-015)**.
 - LC: none left.
 - Read if: T-001–T-006, T-026; §8.5 and §8.9 for the harness and `app.host`.
 
@@ -268,7 +276,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-012 are answered; Q-001 was deleted (D9).
+- Open now: **Q-016 (PENDING HUMAN: what "green" means before T-006)**.
+  Q-002 to Q-015 are answered; Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
 - Read if: before starting any task, check that your task is not blocked

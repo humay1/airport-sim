@@ -441,3 +441,161 @@ Answer:      (1)–(4), the Architect's, in `08` §8.7:
              that quick clicks do not collapse (`17` §17.5).
 Status:      ANSWERED (spec/08-interfaces-core.md#issuer-kinds-and-payloads-q-010,
              spec/09-interfaces-flow.md#97b-lane-state-q-010--low-confidence)
+
+### Q-013 — No solution layout, test framework or project ownership
+Raised by:   coordinator / Phase 0 release (T-001, T-003, Test Author)
+Blocking:    T-001, T-003, and every test branch
+Question:    `08` Notation left namespaces, access modifiers and file layout
+             to the worker, and `07` "Testing" named no framework. Nothing
+             fixed the project paths or names (csproj, AssemblyName,
+             RootNamespace), the test and property-testing packages and their
+             versions, whether tests see internals, who creates each project
+             file and the solution given the writable paths, or how
+             `test_<subject>_<condition>_<expectation>` maps to C#.
+Why it matters: The Test Author and the workers cannot agree on a type name,
+             a namespace or a project reference. T-001 and T-003 both write
+             `src/sim/core/**` concurrently, and would each invent a
+             `.csproj`.
+Answer:      `07-conventions.md` "Solution layout and build", rules L1 to L11.
+             One project per module at a fixed path, named
+             `AirportSim.Sim.<M>` (tests `AirportSim.Sim.<M>.Tests`, harness
+             `AirportSim.Tools.SimHarness`). The sim and test `.csproj` files
+             are given byte for byte. xUnit 2.9.3, xunit.runner.visualstudio
+             2.8.2 and Microsoft.NET.Test.Sdk 17.12.0, with no property-testing
+             library; property tests are seeded SplitMix64 loops. Public
+             surface only, with no `InternalsVisibleTo`, and `public` if and
+             only if the spec names it. Test names are the C# method names
+             verbatim. There is an ownership table for every project file and
+             for `AirportSim.sln`. Tests merge with their implementation. The
+             IDL-to-C# mapping and budget-test timing are fixed too.
+             Verified: the L2/L3 files build with `-warnaserror` and pass
+             `dotnet test` on SDK 8.0.425.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-014 — The `sim.core` loop, host and bus contract is ambiguous at T-001's edges
+Raised by:   Test Author, worker-1, worker-2 (via coordinator) / T-001
+Blocking:    T-001
+Question:    (A1) Does the first `Step(1)` run tick 0 or tick 1, and is there
+             a checkpoint at tick 0? (A2) What are the legal `SystemId`
+             values, and may tests register probe systems? (A3) T-001's
+             signatures need types owned by other tasks, and nobody owns the
+             `ISimLog` family. (A4) The `EventHandler<T>` signature is
+             missing, as is how the envelope travels and how `Publish`
+             assigns the id, and no task owns full dispatch. (A5) What do
+             `MinutesBetween` with `b < a` and `TickOfDayTime` do with
+             non-multiple or out-of-range seconds? (A6) May the world hash be
+             a stub? (A7) May config members be null? (A8) Is replay a valid
+             save/load stand-in? Plus which exception types are thrown (A9,
+             shared with Q-015).
+Why it matters: Each one is a coin flip that the Test Author and the worker
+             would call differently.
+Answer:      `08-interfaces-core.md`:
+             (A1) §8.2 "Tick numbering": `Step(n)` executes ticks
+             `CurrentTick … CurrentTick+n−1`. The first `Step(1)` runs tick 0.
+             Chunking is invisible. §8.9: a checkpoint in phase 4 of every
+             tick `t % 600 == 0`, so a day has 24 checkpoints, and there is
+             none at `Build`. The world hash feeds the ticks-executed count,
+             so a checkpoint's hash equals `WorldStateHash()` right after its
+             `Step`.
+             (A2) §8.4/§8.5: `Value` is the registry position, 1 to 14 except 8.
+             0 is `SYSTEM_CORE`. Probes may use any legal position whose
+             module is absent. `Name` is not checked.
+             (A4) §8.6: `delegate void SimEventHandler<T>(in EventEnvelope,
+             in T, in TickContext)`, renamed so it does not collide with
+             `System.EventHandler<T>`. Event structs hold payload only, and
+             the bus carries and fills the envelope. `Publish` gains an
+             `in EventRef cause` argument. Passes, the 4097th publish, one
+             handler per (subscriber, type), and `Build` checks subscribers.
+             (A5) §8.2: `MinutesBetween` is signed, and `TickOfDayTime`
+             floors and throws at ≥ 86400.
+             (A7) §8.11a: no nulls, and no null objects published. Tests
+             write their own doubles.
+             (A9) `07` "Error handling" and the new §8.5a
+             `SimInvariantException`: the host wraps any exception that
+             escapes a tick, with the tick and world hash.
+             (A3, A6, A8), which are task-level and go to the Planner:
+             - **T-003 before T-001** (coordinator decision), because
+               `SimMinutes = Fx`. T-003 creates `AirportSim.sln` (`07` L8).
+             - T-001 declares these **shape only**, and its tests do not
+               exercise their behaviour: `Command`, `PlayerId`
+               (+`PLAYER_LOCAL`), `CommandKind { NoOp = 0 }`, `CommandRejection`
+               (all five), `ICommandHandler`, `ICommandHandlerRegistry` (T-005
+               adds the other kinds, admission, order and `LogSince`; T-001's
+               `TrySubmit` returns false with `UnknownKind`);
+               `IRandomService`, `IRandomStream`, `RngStreamName`, with a
+               placeholder whose `MasterSeed` is the config's and whose `Stream`
+               throws `InvalidOperationException` (T-002 replaces it);
+               `IContentIndex`, `IContentDefinition`, `ContentId`,
+               `ContentKind` (T-026 adds the definition structs; `ContentIndexFactory`
+               needs an owner); `IIdAllocator`, `EntityId` (the allocator
+               behaviour has **no owning task**).
+             - T-001 implements **in full**: `SimConstants`, `ISimClock`,
+               `SystemId`/`SYSTEM_CORE`, the builder and factory, the phase
+               loop, `SimInvariantException`, `ISimLog`/`LogLevel`/`LogKey`/`LogArgs`
+               (the shape is all there is), `Checkpoint`/`ICheckpointSink`
+               with the real phase-4 cadence of §8.9, and the world hash per
+               §8.9 as written, which is **not a stub** (A6).
+             - T-001's tests may rely on the checkpoint cadence, `Tick`
+               values, the length, order and values of `SystemHashes`, a
+               checkpoint equalling `WorldStateHash()`, and the hash being
+               deterministic and changing with the tick and with any system
+               hash. They may **not** rely on the exact `WorldHash` value,
+               which T-004 pins with `IStateHasher`.
+             - **Dispatch (§8.6) has no owning task.** Recommended: T-001
+               implements it in full, since it is phase 3 of the loop T-001
+               owns, and its tests then cover §8.6. Planner's call.
+             - (A8) Yes. Two hosts built from equal configs and equal
+               systems, stepped the same total with different chunkings,
+               have equal hashes and checkpoint sequences. Save/load proper is
+               `sim.save`.
+Status:      ANSWERED (spec/08-interfaces-core.md#tick-numbering-and-clock-arithmetic-q-014)
+             — task-level items above need the Planner
+
+### Q-015 — `Fx` edge semantics and C# shape
+Raised by:   Test Author, worker-2 (via coordinator) / T-003
+Blocking:    T-003
+Question:    (A9) Which exceptions? (A10) `FromRaw`, the `Raw` accessor,
+             static or instance, operators? (A11) Overflow on `Add`/`Sub`/
+             `Neg`/`Abs`/`FromInt`, and `Clamp` with `lo > hi`? (A12) The
+             `Parse` grammar and `ToDisplayString` rounding? (A13) Negative
+             `Sqrt`, and what "exact-stable" means? (A14) The direction of
+             `RoundHalfUp`? (A16) Where the cross-process bit-exactness
+             test's child process lives?
+Why it matters: A test suite and an implementation can disagree on every one,
+             and each is visible in content parsing or a golden hash.
+Answer:      `08-interfaces-core.md` §8.3 "C# shape and edge cases": `FromRaw`
+             is added; `Raw` is a get-only property; operations are static
+             and `ToDisplayString` is an instance method; operators are
+             required, with no conversions; `Fx` throws and never wraps or
+             saturates (the table gives every operation);
+             `OverflowException`/`DivideByZeroException`/`FormatException`/
+             `ArgumentException`/`ArgumentOutOfRangeException` as tabled;
+             `RoundHalfUp` rounds toward +∞; `Sqrt` is the exact floor
+             integer root and throws for negatives; the `Parse` grammar is
+             `-?(0|[1-9][0-9]*)(\.[0-9]{1,10})?`, exact then floored;
+             `ToDisplayString` floors, with 0 to 10 decimals. (A16) There is
+             no child process. Bit-exactness is golden vectors committed in
+             the test. T-003's task text ("two independent process runs")
+             is stale.
+Status:      ANSWERED (spec/08-interfaces-core.md#c-shape-and-edge-cases-q-015)
+
+### Q-016 — No task before T-006 can pass the full `ci/run-checks.sh`
+Raised by:   coordinator / Phase 0 release
+Blocking:    the "done" definition of T-001 to T-005, T-026 and T-027
+Question:    `ci/run-checks.sh` without `--fast` runs
+             `dotnet run --project tools/SimHarness -- determinism|saveload|
+             promotion|budget`, and those subcommands are T-006's. `CLAUDE.md`
+             "Definition of done" requires the determinism gate to pass. What
+             is "green" for the tasks that land before T-006?
+Why it matters: Either no Phase 0 task can ever be done, or each agent makes
+             up its own exception to the gate.
+Proposed:    Until T-006 merges, a task is green when the CI jobs `path-guard`
+             and `build-and-test` pass. `build-and-test` runs
+             `ci/run-checks.sh --fast`, which builds and tests through
+             `AirportSim.sln` (`07` L9). The `determinism` job is expected to
+             fail, is not required for those merges, and becomes required
+             the moment T-006 merges. T-006 itself must pass the full script.
+Answer:      —  This changes the gate that `CLAUDE.md` "Definition of done"
+             names, and `ci/` and the gates belong to the human owner. The
+             Architect does not decide it.
+Status:      OPEN — PENDING HUMAN

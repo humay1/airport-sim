@@ -31,6 +31,8 @@ claimed by a module that knew the reason at the time.
 ## 10.2 Envelope
 
 Every event carries these fields. They are not repeated in the tables below.
+The bus carries the envelope beside the payload struct and passes it to each
+handler. It is not a field of the struct (`08` §8.6, Q-014).
 
 ```
 readonly struct EventEnvelope {

@@ -1282,3 +1282,104 @@ Signed off:  not required for the interface; the values are **PENDING
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
              D5; reversible. Approved by the coordinator under the owner's
              delegation.
+
+## 2026-09-24 — spec/07-conventions.md "Solution layout and build" (new, L1–L11), "Naming", "Testing", "Error handling"; 08 Notation — Q-013: solution layout, test framework, project ownership
+Reason:      Nothing fixed the project paths or names, the test framework, the
+             visibility of internals, who creates each project file, or how a
+             test name maps to C#. T-001 and T-003 write `src/sim/core/**`
+             concurrently, and the Test Author may write only `tests/**`.
+             Answer: one project per module at a fixed path (L1). Byte-for-byte
+             sim and test `.csproj` files, so that identical additions merge
+             cleanly (L2, L3). xUnit v2 with pinned packages and no
+             property-testing library (L4). Public surface only, and `public`
+             if and only if the spec names it (L5). Namespaces and file names
+             (L6). Test names are C# method names verbatim (L7). An ownership
+             table, including `AirportSim.sln` (L8). Tests merge with their
+             implementation (L9). The IDL-to-C# mapping (L10). Budget tests
+             time with integer `Stopwatch` ticks (L11). There are no
+             repo-root build files.
+Raised by:   Q-013 (coordinator)
+Impact:      additive; no `src/` or `tests/` code exists. Stale task text:
+             T-001 (it no longer creates the sln; it adds `tools/SimHarness`),
+             and T-003 (it needs `AirportSim.sln (create)` in its writable
+             paths). The Planner must add `AirportSim.sln` to the writable
+             paths of the first task in each new module, and must serialise
+             those tasks. The 08 Notation sentence that gave workers the
+             choice of namespaces and access modifiers is withdrawn.
+             No scope added (running total unchanged at 8).
+Signed off:  not required, but see LOW CONFIDENCE
+LOW CONFIDENCE: (1) **No property-testing library.** `07` prefers property
+             tests for flow, baggage and delay. Seeded loops lose shrinking,
+             but FsCheck's default random seeding conflicts with
+             "tests never use unseeded RNG". Adding one later is additive.
+             (2) **`NuGetAudit=false` in test projects.** Under
+             `-warnaserror`, a newly published advisory for a test package
+             would otherwise break every build overnight, with no commit
+             to blame. The trade-off is that nobody sees the advisory. The
+             owner may prefer an audit job that does not block. (3) The
+             package versions were pinned by the Architect. They were
+             verified to restore, build with `-warnaserror` and run on SDK
+             8.0.425 (Windows), but not on the CI image. (4) There is no
+             `global.json`, so CI's `8.0.x` floats. `net8.0` leaves support
+             in Nov 2026.
+
+## 2026-09-24 — spec/08-interfaces-core.md §8.1, §8.2, §8.4, §8.5, §8.5a (new), §8.6, §8.8, §8.9, §8.10, §8.11a; 10 §10.2 — Q-014: tick numbering, registry ids, bus signature, invariants, logging shapes
+Reason:      T-001's recon found coin flips at every edge. Answer:
+             `Step(n)` executes ticks `CurrentTick …`, and the first tick is
+             0. Chunking is invisible. There are 24 checkpoints a day and
+             none at `Build`. The world hash feeds the ticks-executed count.
+             `MinutesBetween` is signed and `TickOfDayTime` floors.
+             `SystemId` 1–14 except 8, with `SYSTEM_CORE = 0`, and legal
+             probe registration. `SimEventHandler<T>(in EventEnvelope, in T,
+             in TickContext)`: the envelope travels beside the payload, the
+             bus fills it, and `Publish` takes `in EventRef cause`. Cascade
+             passes and limits are defined. `SimInvariantException` exists,
+             and the host wraps any exception that escapes a tick. The
+             shapes of `LogLevel`, `LogKey` and `LogArgs` are defined. The
+             `RngStreamName` shape is defined. Config members are never
+             null. The constants live in `SimConstants`.
+Raised by:   Q-014 (Test Author, worker-1, worker-2)
+Impact:      additive to the interface, except for two **signature
+             changes**. `IEventPublisher.Publish` gains a `cause` argument.
+             `EventHandler<T>` is renamed `SimEventHandler<T>` and gains
+             envelope and context parameters. No code exists, so nothing
+             merged breaks. Stale tasks: T-001 (the shape-only and full
+             split in Q-014; dispatch recommended into T-001), T-004 (its
+             phase-4 recording moves to T-001, and it keeps `IStateHasher`
+             and pinning the exact hash), T-005 (`CommandKind` beyond `NoOp`).
+             **No task owns `IIdAllocator` behaviour or
+             `ContentIndexFactory`.** The Planner must assign both. No scope
+             added.
+Signed off:  not required
+LOW CONFIDENCE: the world hash feeding "ticks executed" (`t + 1` at the
+             checkpoint of tick `t`) is chosen so that a checkpoint equals an
+             on-demand hash. It is cheap to change now, and costly after
+             T-013 lands goldens.
+
+## 2026-09-24 — spec/08-interfaces-core.md §8.3 "C# shape and edge cases" (new) — Q-015: `Fx` edge semantics
+Reason:      T-003's tests and implementation could disagree on overflow,
+             rounding direction, the parse grammar, display rounding, the
+             negative square root, and the C# surface. Answer: add
+             `FromRaw`. Static operations with required operators and no
+             conversions. Throw, never wrap or saturate, with exact exception
+             types. `RoundHalfUp` goes toward +∞. `Sqrt` is the exact floor
+             integer root. A strict `Parse` grammar with at most 10 fraction
+             digits, exact then floored. `ToDisplayString` floors, with 0 to
+             10 decimals. Bit-exactness is proven by golden vectors, not by
+             a child process.
+Raised by:   Q-015 (Test Author, worker-2)
+Impact:      additive (`FromRaw` is new). T-003's task text ("two
+             independent process runs") is stale. `04-data-schemas.md`
+             decimal strings must match the `Parse` grammar, and
+             `ci/validate-content.py` may need the same pattern (that is
+             human-owned `ci/`). No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/open-questions.md — Q-016 filed, PENDING HUMAN: interim "green" before T-006
+Reason:      The full `ci/run-checks.sh` needs harness subcommands that
+             T-006 delivers, so no earlier task can meet "Determinism gate
+             passes". The Architect proposes a rule but does not adopt it:
+             it changes a gate, and `ci/` belongs to the owner.
+Raised by:   coordinator
+Impact:      none until decided
+Signed off:  **PENDING HUMAN**
