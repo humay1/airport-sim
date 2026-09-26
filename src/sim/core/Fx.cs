@@ -2,7 +2,7 @@
 //
 // Implements spec/08-interfaces-core.md §8.3 (Q31.32 fixed point, including
 // "C# shape and edge cases (Q-015)") subject to spec/02-determinism.md rule 4
-// (no float/double in sim state, ever) and the hand-rolled-128-bit mandate of
+// (no IEEE-754 types in sim state, ever) and the hand-rolled-128-bit mandate of
 // §8.3: the 64x64->128 multiply, the 128-by-64 division and the bit-length
 // count used by Sqrt's initial estimate are written here in plain integer
 // code over uint64 halves. No Int128/UInt128, no Math.BigMul, no
@@ -341,7 +341,7 @@ namespace AirportSim.Sim.Core
         /// The integer square root of the 96-bit product: Raw =
         /// floor(sqrt(x.Raw * 2^32)) exactly, via integer Newton's method over
         /// the hand-rolled 128-bit primitives (no numerically-approximate
-        /// float Newton iteration). spec/08-interfaces-core.md §8.3. Throws
+        /// IEEE-754 Newton iteration). spec/08-interfaces-core.md §8.3. Throws
         /// <see cref="ArgumentOutOfRangeException"/> if x &lt; 0.
         /// </summary>
         public static Fx Sqrt(Fx x)
@@ -395,7 +395,7 @@ namespace AirportSim.Sim.Core
         /// digits with no leading zero ("0" when the integer part is zero),
         /// then, when decimals &gt; 0, a '.' and exactly decimals digits.
         /// Presentation and logs only — never read back by sim code, and
-        /// never uses float/double internally. spec/08-interfaces-core.md
+        /// never uses IEEE-754 types internally. spec/08-interfaces-core.md
         /// §8.3. Throws <see cref="ArgumentOutOfRangeException"/> unless
         /// 0 &lt;= decimals &lt;= 10.
         /// </summary>
