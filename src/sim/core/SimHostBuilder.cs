@@ -70,6 +70,25 @@ namespace AirportSim.Sim.Core
             {
                 throw new InvalidOperationException("Build is callable once");
             }
+            foreach (ushort subscriberId in _eventBus.SubscriberIds)
+            {
+                bool registered = false;
+                for (int i = 0; i < _systems.Count; i++)
+                {
+                    if (_systems[i].Id.Value == subscriberId)
+                    {
+                        registered = true;
+                        break;
+                    }
+                }
+                if (!registered)
+                {
+                    throw new InvalidOperationException(
+                        "Build: a subscriber (system id " + subscriberId.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                        ") has no registered system");
+                }
+            }
+
             _built = true;
             _eventBus.MarkBuilt();
 

@@ -12,6 +12,7 @@ namespace AirportSim.Sim.Core
     {
         private readonly Dictionary<Type, IChannel> _channels = new Dictionary<Type, IChannel>();
         private readonly List<(Type EventType, int Index)> _order = new List<(Type, int)>();
+        private readonly SortedSet<ushort> _subscriberIds = new SortedSet<ushort>();
 
         private ulong _tick;
         private uint _nextSequence;
@@ -91,7 +92,12 @@ namespace AirportSim.Sim.Core
             }
 
             GetOrCreateChannel<T>().Subscribe(subscriber, handler);
+            _subscriberIds.Add(subscriber.Value);
         }
+
+        /// <summary>Every distinct subscriber id registered so far, ascending. Used by
+        /// <see cref="SimHostBuilder.Build"/> to check every subscriber is a registered system.</summary>
+        internal IReadOnlyCollection<ushort> SubscriberIds => _subscriberIds;
 
         /// <summary>Drains the tick's event queue, in cascading passes. Spec: §8.6 rules 1-4.</summary>
         internal void Dispatch(in TickContext ctx)
