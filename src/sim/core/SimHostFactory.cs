@@ -26,12 +26,12 @@ namespace AirportSim.Sim.Core
 
             var eventBus = new EventBus();
             var idAllocator = new IdAllocator();
-            var commands = new CommandHandlerRegistryPlaceholder();
+            var commands = new CommandHandlerRegistry();
             IRandomService rng = RandomServiceFactory.Create(config.MasterSeed);
 
             var services = new SystemServices(eventBus, idAllocator, config.Content, commands);
 
-            return new SimHostBuilder(services, eventBus, rng, config.Content, config.Log, config.Checkpoints, idAllocator);
+            return new SimHostBuilder(services, eventBus, rng, config.Content, config.Log, config.Checkpoints, idAllocator, commands);
         }
     }
 }
