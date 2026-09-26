@@ -736,3 +736,32 @@ Answer:      (W1) `16` §16.4 gains `IWorldSystem? World`, which matches T-031.
              `TurnaroundFactory` takes `IScheduleSystem` (`13`), which `03`
              did not allow.
 Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-023 — Small RNG and constant gaps left by Q-019/Q-020
+Raised by:   coordinator / T-002, T-005 (G1–G5)
+Blocking:    T-002
+Question:    (G1) Must the `RngStreamName` pattern match the whole string,
+             and which exceptions cover `null` and a malformed name? (G2) The
+             xoshiro `{1, 2, 3, 4}` check and the all-zero replacement cannot
+             be reached through the public API: are they tested, or is there
+             a seam? (G3) Is there a per-call time budget for draws? (G4)
+             Where does `PLAYER_LOCAL` live? (G5) Are T-002's cross-process
+             test and "CI uniqueness check" superseded?
+Why it matters: Each one is a test the Test Author and the worker could
+             write differently.
+Answer:      `08` §8.8 "Exact reference" and §8.7 "Issuer, kinds and
+             payloads".
+             - (G1) The whole string, as `\A…\z`. `null` throws
+               `ArgumentNullException`, a malformed name throws
+               `ArgumentException`, and `Stream(default)` throws
+               `ArgumentException`.
+             - (G2) The golden vectors are the sole required proof. There is
+               no seam. The zero state is unreachable, because SplitMix64
+               never emits four zeros in a row. Both are untested by design.
+             - (G3) There is no per-call budget. Draws allocate nothing and
+               are charged to the calling system's budget.
+             - (G4) `SimConstants.PLAYER_LOCAL`, a `static readonly
+               PlayerId`. `SYSTEM_CORE` follows the same rule.
+             - (G5) Yes. There is no child process (as in Q-015 A16) and no
+               CI uniqueness check (Q-019). T-002's text is stale.
+Status:      ANSWERED (spec/08-interfaces-core.md#exact-reference-q-019)

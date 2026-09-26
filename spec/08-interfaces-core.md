@@ -527,6 +527,16 @@ interface ISimHost {                                   // additions to §8.5
 
 ```
 struct PlayerId { uint16 Value }           // PLAYER_LOCAL = 0, the only player at Phase 1
+```
+
+`PLAYER_LOCAL` is `public static readonly PlayerId PLAYER_LOCAL = new
+PlayerId(0)` in `SimConstants`, and `SYSTEM_CORE` is likewise
+`public static readonly SystemId SYSTEM_CORE` in `SimConstants`. A struct
+cannot be `const` (`07` L10), and L10 keeps IDL names, so they are not
+aliased as `PlayerId.Local` or `SystemId.Core`. Neither type gains a static
+member (Q-023).
+
+```
 
 enum CommandKind : uint16 {                // values are saved in command logs: never renumbered
   NoOp           = 0,
@@ -624,8 +634,8 @@ a migration, not a refactor:
 readonly struct RngStreamName { string Value }   // ordinal equality; Q-014
 ```
 
-Stream names are `"<module>.<purpose>"`, declared as constants by the owning
-module and unique across the build (CI asserts uniqueness). A stream is owned by
+Stream names are `"sim.<module>.<purpose>"`, declared as constants by the owning
+module and unique across the build by construction ("Names" below). A stream is owned by
 exactly one system; sharing one across systems reintroduces exactly the coupling
 rule 3 exists to prevent.
 
@@ -648,7 +658,8 @@ Binding bit for bit. The golden vectors below are the test oracle.
   `r = rotl(s[1] * 5, 7) * 9; t = s[1] << 17; s[2] ^= s[0]; s[3] ^= s[1];
   s[1] ^= s[2]; s[0] ^= s[3]; s[2] ^= t; s[3] = rotl(s[3], 45); return r`.
   `NextUInt64` is one step. Check: state `{1, 2, 3, 4}` yields 11520, 0,
-  1509978240, 1215971899390074240.
+  1509978240, 1215971899390074240. This check is an aid for the implementer,
+  not a test obligation (Q-023).
 - **`NextInt(min, max)`**: `min >= max` throws `ArgumentOutOfRangeException`.
   Otherwise let `range = (uint32)(max − min)`. Take
   `x = (uint32)(NextUInt64() >> 32)`, `m = (uint64)x * range`,
@@ -667,11 +678,33 @@ Binding bit for bit. The golden vectors below are the test oracle.
 - **`Stream(name)`** returns the **same live stream** every time it is called
   with that name in a session. It is created at the first call, and later
   calls neither allocate nor reset it.
-- **Names.** The `RngStreamName` constructor throws `ArgumentException`
-  unless `Value` matches `sim\.[a-z]+\.[a-z0-9_]+`, where the middle segment
-  is the owning module. Uniqueness across modules follows from the prefix,
-  and within a module it is that module's own test. This replaces "CI
-  asserts uniqueness", for which no mechanism existed.
+- **Names.** The `RngStreamName` constructor throws `ArgumentNullException`
+  for a `null` value, and `ArgumentException` unless the **whole** value
+  matches `sim\.[a-z]+\.[a-z0-9_]+`, where the middle segment is the owning
+  module. "Whole" means anchored at both ends with nothing after the last
+  character, as `\A…\z`, so a trailing newline is malformed (Q-023).
+  `Stream(default(RngStreamName))` throws `ArgumentException`. Uniqueness across
+  modules follows from the prefix, and within a module it is that module's
+  own test. This replaces "CI asserts uniqueness", for which no mechanism
+  existed. There is no build-wide uniqueness check.
+- **What is tested (Q-023).** The golden vectors and the `NextInt`/`NextFx01`
+  checks below are the **sole required proof** of seeding and generation,
+  and they are reached only through `RandomServiceFactory.Create` and
+  `Stream`. There is no test seam that sets a raw state, and no task adds
+  one. The `{1, 2, 3, 4}` check cannot be reached through the public API. The
+  all-zero replacement cannot be reached at all: SplitMix64's output
+  function is a bijection of its counter, and the counter never repeats
+  within 2^64 steps, so four consecutive outputs are never all 0. The
+  replacement stays in the reference so that the pinned algorithm is the
+  standard one. Neither is tested, by design. Bit-exactness across processes
+  and machines is proven by the committed vectors, not by a child process
+  (as for `Fx`, Q-015 A16).
+- **Cost (Q-023).** There is no per-call time budget. After the first
+  `Stream(name)` call for a name, `Stream` and every `IRandomStream` member
+  allocate nothing, `Shuffle` included. The time a draw takes is charged to
+  the budget of the system that makes it (`03`, "Performance"), since draws
+  happen inside that system's `Tick`. It is not charged to `sim.core`'s
+  0.25 ms.
 - **Save seam.** None yet. Exporting and importing stream state belongs to
   `sim.save`, which is unspecified. No task invents one.
 
