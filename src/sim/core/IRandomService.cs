@@ -5,7 +5,10 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public interface IRandomService
     {
+        /// <summary>The live, named draw stream, derived from <see cref="MasterSeed"/>.</summary>
         IRandomStream Stream(RngStreamName name);
+
+        /// <summary>The seed the whole service was constructed from.</summary>
         ulong MasterSeed { get; }
     }
 }

@@ -9,7 +9,10 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public interface IContentIndex
     {
+        /// <summary>Looks up a definition by id, typed as T; false if absent or of a different kind.</summary>
         bool TryGet<T>(ContentId id, out T definition) where T : IContentDefinition;
+
+        /// <summary>Every content id of the given kind, in ordinal id order.</summary>
         IReadOnlyList<ContentId> AllOf(ContentKind kind);
     }
 }

@@ -5,6 +5,7 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public interface ISimLog
     {
+        /// <summary>Writes one deterministic log line, tagged with the tick and emitting system.</summary>
         void Write(ulong tick, LogLevel level, SystemId system, LogKey key, in LogArgs args);
     }
 }

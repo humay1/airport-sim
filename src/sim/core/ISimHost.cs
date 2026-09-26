@@ -8,6 +8,7 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public interface ISimHost
     {
+        /// <summary>The tick that will execute next.</summary>
         ulong CurrentTick { get; }
 
         /// <summary>Advances exactly this many ticks, synchronously. No time argument, ever.</summary>
@@ -16,6 +17,7 @@ namespace AirportSim.Sim.Core
         /// <summary>On demand, outside checkpoints.</summary>
         ulong WorldStateHash();
 
+        /// <summary>Attempts to submit a command; false with the rejection reason if inadmissible.</summary>
         bool TrySubmit(in Command cmd, out CommandRejection reason);
 
         /// <summary>Every admitted command with <c>cmd.Tick &gt;= tick</c>, applied or still

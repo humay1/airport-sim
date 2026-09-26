@@ -18,8 +18,10 @@ namespace AirportSim.Sim.Core
         // _state == (true hash) XOR OffsetBasis, so _state == 0 means true hash == OffsetBasis.
         private ulong _state;
 
+        /// <inheritdoc/>
         public ulong Result => _state ^ OffsetBasis;
 
+        /// <inheritdoc/>
         public void Feed(ulong v)
         {
             for (int i = 0; i < 8; i++)
@@ -29,12 +31,16 @@ namespace AirportSim.Sim.Core
             }
         }
 
+        /// <inheritdoc/>
         public void Feed(long v) => Feed(unchecked((ulong)v));
 
+        /// <inheritdoc/>
         public void Feed(in Fx v) => Feed(v.Raw);
 
+        /// <inheritdoc/>
         public void Feed(bool v) => FeedByte(v ? (byte)1 : (byte)0);
 
+        /// <inheritdoc/>
         public void Feed(ReadOnlySpan<byte> v)
         {
             Feed((ulong)v.Length);

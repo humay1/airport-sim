@@ -5,6 +5,7 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public enum LogKey : ushort
     {
+        /// <summary>No key. Not written by real log lines.</summary>
         None = 0
     }
 }

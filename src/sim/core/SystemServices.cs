@@ -6,6 +6,7 @@ namespace AirportSim.Sim.Core
         /// <summary>Subscribe during construction only.</summary>
         public IEventBus Events { get; }
 
+        /// <summary>Entity id allocation.</summary>
         public IIdAllocator Ids { get; }
 
         /// <summary>Read-only; load-time validation.</summary>
@@ -14,6 +15,7 @@ namespace AirportSim.Sim.Core
         /// <summary>Register during construction only.</summary>
         public ICommandHandlerRegistry Commands { get; }
 
+        /// <summary>Constructs the services bundle from its four members.</summary>
         public SystemServices(IEventBus events, IIdAllocator ids, IContentIndex content, ICommandHandlerRegistry commands)
         {
             Events = events;

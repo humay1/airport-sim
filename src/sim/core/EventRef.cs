@@ -9,9 +9,13 @@ namespace AirportSim.Sim.Core
         /// <summary>The root-event value: no cause.</summary>
         public static readonly EventRef None = new EventRef(default, false);
 
+        /// <summary>The causing event's id. Meaningful only when <see cref="HasValue"/> is true.</summary>
         public EventId Id { get; }
+
+        /// <summary>True if this reference names a causing event; false for <see cref="None"/>.</summary>
         public bool HasValue { get; }
 
+        /// <summary>Constructs the reference from its id and presence flag.</summary>
         public EventRef(EventId id, bool hasValue)
         {
             Id = id;

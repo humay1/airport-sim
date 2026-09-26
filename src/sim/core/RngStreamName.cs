@@ -7,8 +7,10 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public readonly struct RngStreamName
     {
+        /// <summary>The stream's dotted name.</summary>
         public string Value { get; }
 
+        /// <summary>Constructs the name from its dotted string.</summary>
         public RngStreamName(string value)
         {
             Value = value;

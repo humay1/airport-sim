@@ -6,11 +6,19 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public readonly struct EventEnvelope
     {
+        /// <summary>The event's total-order id.</summary>
         public EventId Id { get; }
+
+        /// <summary>The tick the event was published on.</summary>
         public ulong Tick { get; }
+
+        /// <summary>The system that published the event.</summary>
         public SystemId Source { get; }
+
+        /// <summary>The event that caused this one, or <see cref="EventRef.None"/> for a root event.</summary>
         public EventRef Cause { get; }
 
+        /// <summary>Constructs the envelope from its four fields.</summary>
         public EventEnvelope(EventId id, ulong tick, SystemId source, EventRef cause)
         {
             Id = id;

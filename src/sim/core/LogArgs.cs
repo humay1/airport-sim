@@ -7,12 +7,22 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public readonly struct LogArgs
     {
+        /// <summary>How many of A0..A3 are meaningful.</summary>
         public int Count { get; }
+
+        /// <summary>The first argument, meaningful when Count &gt;= 1.</summary>
         public long A0 { get; }
+
+        /// <summary>The second argument, meaningful when Count &gt;= 2.</summary>
         public long A1 { get; }
+
+        /// <summary>The third argument, meaningful when Count &gt;= 3.</summary>
         public long A2 { get; }
+
+        /// <summary>The fourth argument, meaningful when Count &gt;= 4.</summary>
         public long A3 { get; }
 
+        /// <summary>Constructs a one-argument LogArgs.</summary>
         public LogArgs(long a0)
         {
             Count = 1;
@@ -22,6 +32,7 @@ namespace AirportSim.Sim.Core
             A3 = 0;
         }
 
+        /// <summary>Constructs a two-argument LogArgs.</summary>
         public LogArgs(long a0, long a1)
         {
             Count = 2;
@@ -31,6 +42,7 @@ namespace AirportSim.Sim.Core
             A3 = 0;
         }
 
+        /// <summary>Constructs a three-argument LogArgs.</summary>
         public LogArgs(long a0, long a1, long a2)
         {
             Count = 3;
@@ -40,6 +52,7 @@ namespace AirportSim.Sim.Core
             A3 = 0;
         }
 
+        /// <summary>Constructs a four-argument LogArgs.</summary>
         public LogArgs(long a0, long a1, long a2, long a3)
         {
             Count = 4;

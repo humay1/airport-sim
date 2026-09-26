@@ -6,6 +6,7 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public interface IIdAllocator
     {
+        /// <summary>Allocates the next entity id owned by the given system.</summary>
         EntityId Next(SystemId owner);
     }
 }

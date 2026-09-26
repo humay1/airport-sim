@@ -5,6 +5,10 @@ namespace AirportSim.Sim.Core
     /// <summary>Spec: 08-interfaces-core.md §8.11a.</summary>
     public static class SimHostFactory
     {
+        /// <summary>
+        /// Creates a fresh builder from a validated config. Throws
+        /// <see cref="ArgumentNullException"/> if any reference member of config is null.
+        /// </summary>
         public static ISimHostBuilder CreateBuilder(in SimHostConfig config)
         {
             if (config.Content is null)

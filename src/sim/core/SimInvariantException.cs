@@ -8,11 +8,13 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public sealed class SimInvariantException : Exception
     {
+        /// <summary>The tick during which the invariant broke.</summary>
         public ulong Tick { get; }
 
         /// <summary>Valid only if <see cref="HasWorldHash"/>.</summary>
         public ulong WorldHash { get; }
 
+        /// <summary>True if <see cref="WorldHash"/> was captured (host-wrapped exceptions only).</summary>
         public bool HasWorldHash { get; }
 
         /// <summary>The only public constructor. A module detecting a broken invariant during

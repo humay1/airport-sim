@@ -7,6 +7,7 @@ namespace AirportSim.Sim.Core
     /// </summary>
     public enum CommandKind : ushort
     {
+        /// <summary>Applies no state change. Always admitted.</summary>
         NoOp = 0
     }
 }
