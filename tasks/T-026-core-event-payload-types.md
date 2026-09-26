@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001, T-003 |

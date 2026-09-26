@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | TESTS_AUTHORED |
+| Status | MERGED |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001 |
