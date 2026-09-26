@@ -260,24 +260,84 @@ namespace AirportSim.Tools.SimHarness.Tests
         }
 
         [Fact]
-        public void test_harness_gates_save_load_divergent_composer_fails()
+        public void test_harness_gates_save_load_runs_u_then_a_then_b()
         {
-            // Every composition differs from every other, so however the three runs
-            // are ordered, the gate must fail with a well-formed report.
-            var composer = new CountingComposer((b, call) => b.Register(new Probe(5, salt: (ulong)call)));
+            // Q-029: U runs to the end first, then A stops at saveAt, then B runs to the end.
+            var probes = new System.Collections.Generic.List<Probe>();
+            var composer = new CountingComposer((b, call) =>
+            {
+                var p = new Probe(5);
+                probes.Add(p);
+                b.Register(p);
+            });
             GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1000, 500);
-            Assert.False(r.Passed);
-            Assert.Matches("^FAIL determinism_save_load tick=[0-9]+ at=(count|core|system:[0-9]+|world|final|reload)$", r.Report);
+            Assert.True(r.Passed, r.Report);
+            Assert.Equal(new ulong[] { 1000, 500, 1000 }, probes.ConvertAll(p => p.TicksSeen).ToArray());
         }
 
         [Fact]
-        public void test_harness_gates_save_load_drift_before_save_point_fails()
+        public void test_harness_gates_save_load_every_run_different_fails_at_reload()
         {
-            // A drift in every run after the first shows up however U, A and B are ordered.
+            // All three compositions differ. The reload check (B against A at saveAt)
+            // comes first, so it is what the gate reports.
+            var composer = new CountingComposer((b, call) => b.Register(new Probe(5, salt: (ulong)call)));
+            GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1000, 500);
+            Assert.False(r.Passed);
+            Assert.Equal("FAIL determinism_save_load tick=500 at=reload", r.Report);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void test_harness_gates_save_load_divergence_before_save_point_fails_at_reload(int divergentCall)
+        {
+            // Call 2 is A and call 3 is B (Q-029). Either one drifting before saveAt makes
+            // B's hash at saveAt differ from A's, and B is not stepped past saveAt.
+            var probes = new System.Collections.Generic.List<Probe>();
+            var composer = new CountingComposer((b, call) =>
+            {
+                var p = new Probe(5, drifts: call == divergentCall, driftFromTick: 100);
+                probes.Add(p);
+                b.Register(p);
+            });
+            GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1000, 500);
+            Assert.False(r.Passed);
+            Assert.Equal("FAIL determinism_save_load tick=500 at=reload", r.Report);
+            Assert.Equal(3, probes.Count);
+            Assert.Equal(500UL, probes[2].TicksSeen);
+        }
+
+        [Fact]
+        public void test_harness_gates_save_load_reload_divergence_wins_over_later_u_divergence()
+        {
+            // B differs from A before saveAt and from U everywhere: reload is reported.
+            var composer = new CountingComposer((b, call) => b.Register(new Probe(5, drifts: call == 3, driftFromTick: 0)));
+            GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1300, 700);
+            Assert.Equal("FAIL determinism_save_load tick=700 at=reload", r.Report);
+        }
+
+        [Fact]
+        public void test_harness_gates_save_load_divergence_from_u_before_save_point_fails_at_checkpoint()
+        {
+            // A and B drift alike from tick 100, so the reload check passes; B then differs
+            // from U at the first checkpoint after the drift.
             var composer = new CountingComposer((b, call) => b.Register(new Probe(5, drifts: call >= 2, driftFromTick: 100)));
             GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1000, 500);
             Assert.False(r.Passed);
-            Assert.StartsWith("FAIL determinism_save_load tick=", r.Report);
+            Assert.Equal("FAIL determinism_save_load tick=600 at=system:0", r.Report);
+        }
+
+        [Theory]
+        [InlineData(550UL, "FAIL determinism_save_load tick=600 at=system:0")]
+        [InlineData(700UL, "FAIL determinism_save_load tick=1000 at=final")]
+        public void test_harness_gates_save_load_divergence_after_save_point_fails_against_u(ulong driftFrom, string report)
+        {
+            // B alone drifts after saveAt: the reload check passes and the B-versus-U
+            // comparison locates the difference (checkpoints at 0 and 600).
+            var composer = new CountingComposer((b, call) => b.Register(new Probe(5, drifts: call == 3, driftFromTick: driftFrom)));
+            GateResult r = HarnessGates.SaveLoad(Content, composer.Compose, 12345UL, 1000, 500);
+            Assert.False(r.Passed);
+            Assert.Equal(report, r.Report);
         }
 
         // ------------------------------------------------------------ arguments and exceptions
