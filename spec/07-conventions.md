@@ -269,7 +269,12 @@ permits. The authoritative budget measurement is still
 - Sim code does not throw for gameplay conditions. Invalid states are data.
 - Sim code throws on programmer error (broken invariant) — loudly, with the tick
   number and the state hash.
-- Content loading fails hard with the file path and schema violation.
+- Content loading fails hard with the file path and schema violation. **A
+  load failure throws `FormatException`** (Q-030), whose message starts with
+  the source name or path and names the field and the offending id. This
+  covers every loader whose spec does not name another type: `08` §8.11's
+  `IContentLoader`, the schedule, airside, turnaround, render-layout and
+  walk-graph loaders.
 - **Exception types (Q-014, Q-015)** are fixed, and tests assert the exact
   type. A broken invariant during a tick (the cascade limit,
   `MAX_EVENTS_PER_TICK`, a `Blocked` interval left open) throws
