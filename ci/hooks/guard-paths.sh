@@ -6,6 +6,11 @@
 # with shell access can write a file with `sed -i` or a redirect, and a tool-level
 # denial of Write does nothing about that.
 #
+# The role comes from the branch of the worktree being written to (Edit/Write) or
+# the worktree the command runs in (Bash) — not from the main checkout. Agents work
+# in sibling worktrees, one branch each; reading the main checkout's branch made
+# every agent look like role 'main'.
+#
 # Exit 2 blocks the call and returns the stderr message to the agent.
 set -uo pipefail
 
@@ -34,10 +39,27 @@ else
   exit 2
 fi
 
-TOOL=$(jget '.tool_name')
-REPO=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-BRANCH=$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-ROLE=${BRANCH%%/*}
+# Normalise a path to forward slashes with a /x/ drive prefix, so Windows paths
+# (C:\a\b, C:/a/b) and Git-Bash paths (/c/a/b) compare equal. Without this, a
+# Windows absolute path never matched a protected prefix and the guard failed open.
+norm() {
+  local p="${1//\\//}"
+  case "$p" in
+    [A-Za-z]:/*) local d="${p:0:1}"; p="/$(printf '%s' "$d" | tr 'A-Z' 'a-z')${p:2}" ;;
+  esac
+  printf '%s' "$p"
+}
+
+# Resolve the git worktree containing a directory: sets TOP (normalised) and ROLE.
+# Outside any git worktree, TOP is empty and nothing is protected.
+resolve_role() {
+  local dir="$1" top branch
+  while [ -n "$dir" ] && [ ! -d "$dir" ]; do dir=$(dirname "$dir"); done
+  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || { TOP=""; ROLE="(none)"; return; }
+  branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+  TOP=$(norm "$top")
+  ROLE=${branch%%/*}
+}
 
 deny() {
   echo "BLOCKED by ci/hooks/guard-paths.sh: $1" >&2
@@ -46,34 +68,44 @@ deny() {
 }
 
 # Paths this role may never write. Adjust only in this file.
-case "$ROLE" in
-  architect)   PROTECTED="tests/ data/balance/ ci/ .claude/ .github/" ;;
-  test-author) PROTECTED="spec/ src/ data/balance/ ci/ .claude/ .github/" ;;
-  *)           PROTECTED="spec/ tests/ data/balance/ ci/ .claude/ .github/" ;;
-esac
+protected_for() {
+  case "$1" in
+    architect)   echo "tests/ data/balance/ ci/ .claude/ .github/" ;;
+    test-author) echo "spec/ src/ data/balance/ ci/ .claude/ .github/" ;;
+    *)           echo "spec/ tests/ data/balance/ ci/ .claude/ .github/" ;;
+  esac
+}
 # spec/open-questions.md is the one spec file every role may append to.
 EXEMPT="spec/open-questions.md"
 
-check_path() {
-  local f="$1"
-  [ -z "$f" ] && return 0
-  # normalise to a repo-relative path
-  case "$f" in /*) f="${f#$REPO/}" ;; ./*) f="${f#./}" ;; esac
-  [ "$f" = "$EXEMPT" ] && return 0
-  for p in $PROTECTED; do
-    case "$f" in "$p"*) deny "$f is protected" ;; esac
-  done
-}
+TOOL=$(jget '.tool_name')
 
 case "$TOOL" in
   Edit|Write|NotebookEdit)
-    check_path "$(jget '.tool_input.file_path')"
+    F=$(norm "$(jget '.tool_input.file_path')")
+    [ -z "$F" ] && exit 0
+    case "$F" in /*) ;; *) F="$(norm "$(pwd)")/$F" ;; esac
+    resolve_role "$(dirname "$F")"
+    [ -z "$TOP" ] && exit 0
+    REL="${F#$TOP/}"
+    [ "$REL" = "$EXEMPT" ] && exit 0
+    for p in $(protected_for "$ROLE"); do
+      case "$REL" in "$p"*) deny "$REL is protected" ;; esac
+    done
     ;;
   Bash)
     CMD=$(jget '.tool_input.command')
-    # Block obvious write vectors aimed at protected trees.
-    for p in $PROTECTED; do
-      if echo "$CMD" | grep -qE "(>|>>|sed -i|tee|cp |mv |rm |truncate|dd of=)[^|;&]*${p//\//\\/}"; then
+    CWD=$(jget '.cwd'); [ -z "$CWD" ] && CWD=$(pwd)
+    resolve_role "$(norm "$CWD")"
+    for p in $(protected_for "$ROLE"); do
+      pre=${p//./\\.}                        # literal dots: '.claude/' must not match 'x/claude/'
+      tgt="(\\./|[^[:space:]'\"]*/)?${pre}"  # relative, ./-relative or absolute path into p
+      # Redirects, tee, truncate, dd: the write target follows the operator directly,
+      # so a read like `git show x > /tmp/y spec/z` no longer trips the guard.
+      direct="(>>?|\\btee( -a)?|\\btruncate( -s [^[:space:]]+)?|\\bdd of=)[[:space:]]*['\"]?${tgt}"
+      # sed -i, cp, mv, rm: any later argument on the same command segment.
+      loose="(\\bsed -i|\\bcp |\\bmv |\\brm )[^|;&]*(^|[[:space:]'\"=])${tgt}"
+      if echo "$CMD" | grep -qE "$direct|$loose"; then
         deny "shell command writes into $p"
       fi
     done
