@@ -1503,3 +1503,31 @@ Impact:      T-031's `World` field becomes spec-backed. L2 replaces its
              `sim.turnaround`'s allowed dependencies by one module, and
              that module was already a factory parameter. No scope added.
 Signed off:  not required
+
+## 2026-09-26 — spec/08 §8.8 "Exact reference", §8.7 "Issuer, kinds and payloads" — Q-023: RNG name validation, test scope, cost; home of `PLAYER_LOCAL`
+Reason:      Five small gaps after Q-019/Q-020. Answer:
+             - The name pattern matches the whole string (`\A…\z`). `null`
+               throws `ArgumentNullException`, malformed throws
+               `ArgumentException`, and so does `Stream(default)`.
+             - The golden vectors are the only required proof. There is no
+               raw-state test seam. The `{1, 2, 3, 4}` check is an aid for the
+               implementer. The zero-state replacement cannot be reached,
+               since SplitMix64's mixer is a bijection of a counter that does
+               not repeat.
+             - There is no per-call time budget. Draws allocate nothing after
+               the first `Stream` call and are charged to the calling system.
+             - `PLAYER_LOCAL` and `SYSTEM_CORE` are `static readonly` members
+               of `SimConstants` under their IDL names (L10), not
+               `PlayerId.Local`.
+             - T-002's cross-process test and "CI uniqueness check" are
+               superseded. The stale "(CI asserts uniqueness)" sentence in
+               §8.8 is corrected.
+Raised by:   Q-023
+Impact:      Constraining only, and no code has merged. T-002's task text
+             is stale where it names a child process or a CI uniqueness
+             check. No new public surface. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: charging draw time to the calling system rather than to
+             `sim.core` relies on `03`'s per-module budgets being measured
+             per system `Tick`. If the harness attributes the RNG
+             differently, the answer needs revisiting.
