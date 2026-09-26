@@ -907,6 +907,49 @@ Answer:      `18` §18.2 "File format":
              - (c) `ArgumentException` (§18.3).
 Status:      ANSWERED (spec/18-interfaces-world.md#file-format-q-030)
 
+### Q-031 — Walk-graph, schedule and content-loader details
+Raised by:   Test Authors (via coordinator) / T-012, T-008, T-027
+Blocking:    tests of T-012, T-008, T-027
+Question:    T-012: (W1) the tie-break does not terminate on zero-length
+             cycles; (W2) is `CanReach(n, n)` true?; (W3) which id is
+             "offending" for a duplicate pair or a self-loop?; (W4) how do
+             tests locate `tests/fixtures`? T-008: (S1) the fixture text
+             contradicts itself on rotations; (S2) when does "highest day
+             materialised" advance, and do lists take a count prefix?; (S3)
+             what does a `CreateSystem` failure message start with?; (S4) is
+             the budget a mean or a worst tick?; (S5) is
+             `PendingInjectionCount` 0 before publication? T-027: (C1) which
+             file does a cross-file duplicate name?; (C2) which id does an
+             unresolved size category name?; (C3) nested directories and a
+             `null` source?
+Why it matters: Each one is a test assertion.
+Answer:      `18` §18.3 and §18.2:
+             - (W1) Simple paths only.
+             - (W2) True, as the empty path. `CanReachVia` and `PathVia` are
+               defined through it.
+             - (W3) The edge id, and for a duplicate pair the larger one.
+             `07` L4:
+             - (W4) Walk up from `AppContext.BaseDirectory` to the directory
+               holding `AirportSim.sln`.
+             `11`:
+             - (S1) 200 rows = 99 rotations + lone A + lone D.
+             - (S2) Day 0 is materialised at construction, and day `D+1` at
+               the first tick of day `D`. Lists 3 and 4 are count-prefixed.
+             - (S3) The message starts with `sim.schedule: ` and carries
+               `flight_ref`, the column and the id.
+             - (S4) `03`'s mean ≤ 0.10 ms and p99 ≤ 0.20 ms over one
+               sim-day. A mean over two days is not enough.
+             - (S5) Confirmed, and it is 0 for an unknown id too.
+             `08` §8.11:
+             - (C1) The later file in ordinal order.
+             - (C2) The aircraft file's path, with the unresolved category
+               id.
+             - (C3) A nested `*.json` is a load failure, and a `null` source
+               throws `ArgumentNullException`.
+             `04`: a note that `Fx.Parse` flooring makes tiny positive values
+             0.
+Status:      ANSWERED (spec/18-interfaces-world.md#183-routes)
+
 ### Q-032 — `sim.flow`: graph file format and exact tick semantics
 Raised by:   T-007 Test Author (via coordinator) / T-007 (critical path)
 Blocking:    T-007, and T-008 behind it
