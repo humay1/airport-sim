@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -18,6 +18,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{84CA9F34-C5F8-46B3-A66A-64D8F277601E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirportSim.Tools.SimHarness", "tools\SimHarness\AirportSim.Tools.SimHarness.csproj", "{79BFED84-20ED-43BE-8A26-AA072191C86E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{445A75D3-2178-4913-93FA-CCDC6B8CD95A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirportSim.Tools.SimHarness.Tests", "tests\tools\simharness\AirportSim.Tools.SimHarness.Tests.csproj", "{654E458E-2F09-4059-B5D4-3ED019D1CF18}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -40,6 +44,10 @@ Global
 		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{654E458E-2F09-4059-B5D4-3ED019D1CF18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{654E458E-2F09-4059-B5D4-3ED019D1CF18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{654E458E-2F09-4059-B5D4-3ED019D1CF18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{654E458E-2F09-4059-B5D4-3ED019D1CF18}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{199D7C45-0AC5-4F33-854C-38893111DD82} = {DBC5C0E0-415C-49A7-8C84-F039DEDA37B3}
@@ -47,5 +55,7 @@ Global
 		{7832F6F8-EA2B-4E04-BBAF-37A70929900D} = {24F65104-E821-402E-BFEE-114E701C9515}
 		{4C3EDFB0-07D2-4338-9525-4F877667350D} = {7832F6F8-EA2B-4E04-BBAF-37A70929900D}
 		{79BFED84-20ED-43BE-8A26-AA072191C86E} = {84CA9F34-C5F8-46B3-A66A-64D8F277601E}
+		{445A75D3-2178-4913-93FA-CCDC6B8CD95A} = {24F65104-E821-402E-BFEE-114E701C9515}
+		{654E458E-2F09-4059-B5D4-3ED019D1CF18} = {445A75D3-2178-4913-93FA-CCDC6B8CD95A}
 	EndGlobalSection
 EndGlobal
