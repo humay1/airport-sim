@@ -18,7 +18,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_system_hash_sorted_feed_is_independent_of_insertion_order()
         {
             const ulong seed = 0x5EED0004B0000001UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             for (int i = 0; i < 100; i++)
             {
                 int n = 1 + gen.Below(60);
@@ -68,7 +68,7 @@ namespace AirportSim.Sim.Core.Tests
             system.Set(30, -3);
             system.Set(10, 1);
             system.Set(20, long.MinValue);
-            ulong expected = new FnvOracle()
+            ulong expected = new HashFnv()
                 .U64(3)
                 .U64(10).I64(1)
                 .U64(20).I64(long.MinValue)
@@ -109,7 +109,7 @@ namespace AirportSim.Sim.Core.Tests
             var empty = new SortedFeedSystem(6);
             var zero = new SortedFeedSystem(6);
             zero.Set(0, 0);
-            Assert.Equal(FnvOracle.OfU64s(0UL), empty.ComputeStateHash());
+            Assert.Equal(HashFnv.OfU64s(0UL), empty.ComputeStateHash());
             Assert.NotEqual(empty.ComputeStateHash(), zero.ComputeStateHash());
         }
 
@@ -127,7 +127,7 @@ namespace AirportSim.Sim.Core.Tests
             winding.Set(7, 70);
 
             Assert.Equal(direct.CachedTotal, winding.CachedTotal);
-            Assert.Equal(new FnvOracle().U64(1).U64(7).I64(70).Result, winding.ComputeStateHash());
+            Assert.Equal(new HashFnv().U64(1).U64(7).I64(70).Result, winding.ComputeStateHash());
             Assert.Equal(direct.ComputeStateHash(), winding.ComputeStateHash());
         }
 

@@ -20,11 +20,11 @@ namespace AirportSim.Sim.Core.Tests
         /// An independent FNV-1a-64 over an explicit byte stream, with the §8.9
         /// encoding written out by hand. It is the oracle every hash is checked against.
         /// </summary>
-        internal sealed class FnvOracle
+        internal sealed class HashFnv
         {
             public ulong Result { get; private set; } = FnvOffset;
 
-            public FnvOracle Byte(byte b)
+            public HashFnv Byte(byte b)
             {
                 unchecked
                 {
@@ -34,7 +34,7 @@ namespace AirportSim.Sim.Core.Tests
             }
 
             /// <summary>8 bytes, little-endian.</summary>
-            public FnvOracle U64(ulong v)
+            public HashFnv U64(ulong v)
             {
                 for (int i = 0; i < 8; i++)
                 {
@@ -44,18 +44,18 @@ namespace AirportSim.Sim.Core.Tests
             }
 
             /// <summary>8 bytes, little-endian two's complement.</summary>
-            public FnvOracle I64(long v)
+            public HashFnv I64(long v)
             {
                 return U64(unchecked((ulong)v));
             }
 
-            public FnvOracle Bool(bool v)
+            public HashFnv Bool(bool v)
             {
                 return Byte(v ? (byte)1 : (byte)0);
             }
 
             /// <summary>The length as a uint64, then the bytes.</summary>
-            public FnvOracle Span(byte[] bytes)
+            public HashFnv Span(byte[] bytes)
             {
                 U64((ulong)bytes.Length);
                 foreach (byte b in bytes)
@@ -67,7 +67,7 @@ namespace AirportSim.Sim.Core.Tests
 
             public static ulong OfU64s(params ulong[] values)
             {
-                var o = new FnvOracle();
+                var o = new HashFnv();
                 foreach (ulong v in values)
                 {
                     o.U64(v);
@@ -77,11 +77,11 @@ namespace AirportSim.Sim.Core.Tests
         }
 
         /// <summary>SplitMix64 exactly as pinned in §8.8, the input generator for property loops (07 L4).</summary>
-        internal sealed class SplitMix64
+        internal sealed class HashGen
         {
             private ulong _x;
 
-            public SplitMix64(ulong seed)
+            public HashGen(ulong seed)
             {
                 _x = seed;
             }
@@ -114,12 +114,12 @@ namespace AirportSim.Sim.Core.Tests
         /// §8.9 core section with nothing submitted and no ids allocated: the next
         /// sequence (1), no pending commands (0), no non-zero id counters (0).
         /// </summary>
-        internal static readonly ulong IdleCoreHash = FnvOracle.OfU64s(1UL, 0UL, 0UL);
+        internal static readonly ulong IdleCoreHash = HashFnv.OfU64s(1UL, 0UL, 0UL);
 
         /// <summary>§8.9 world hash: ticks executed, the core section, then each system hash, all as uint64.</summary>
         internal static ulong WorldHashOracle(ulong ticksExecuted, ulong coreHash, ulong[] systemHashes)
         {
-            var o = new FnvOracle();
+            var o = new HashFnv();
             o.U64(ticksExecuted);
             o.U64(coreHash);
             foreach (ulong h in systemHashes)
@@ -238,7 +238,7 @@ namespace AirportSim.Sim.Core.Tests
 
             public ulong Hash()
             {
-                var o = new FnvOracle();
+                var o = new HashFnv();
                 o.U64((ulong)_balances.Count);
                 foreach (KeyValuePair<ulong, long> kv in _balances)
                 {

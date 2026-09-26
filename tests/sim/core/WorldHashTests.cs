@@ -39,11 +39,11 @@ namespace AirportSim.Sim.Core.Tests
         public void test_world_hash_without_systems_is_ticks_then_core_section()
         {
             ISimHost host = Host(0UL, new Recorder());
-            Assert.Equal(FnvOracle.OfU64s(0UL, IdleCoreHash), host.WorldStateHash());
+            Assert.Equal(HashFnv.OfU64s(0UL, IdleCoreHash), host.WorldStateHash());
             host.Step(1);
-            Assert.Equal(FnvOracle.OfU64s(1UL, IdleCoreHash), host.WorldStateHash());
+            Assert.Equal(HashFnv.OfU64s(1UL, IdleCoreHash), host.WorldStateHash());
             host.Step(599);
-            Assert.Equal(FnvOracle.OfU64s(600UL, IdleCoreHash), host.WorldStateHash());
+            Assert.Equal(HashFnv.OfU64s(600UL, IdleCoreHash), host.WorldStateHash());
         }
 
         [Fact]
@@ -141,7 +141,7 @@ namespace AirportSim.Sim.Core.Tests
             one.Step(TicksPerDay);
 
             const ulong seed = 0x5EED0004C0000001UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             var chunked = new Recorder();
             ISimHost two = Host(3UL, chunked, new SortedFeedSystem(6));
             ulong remaining = TicksPerDay;

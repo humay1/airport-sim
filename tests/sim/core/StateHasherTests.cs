@@ -23,10 +23,10 @@ namespace AirportSim.Sim.Core.Tests
         public void test_state_hasher_oracle_reproduces_spec_golden_vectors()
         {
             // The oracle must agree with the spec before it may judge anything else.
-            Assert.Equal(GoldenFresh, new FnvOracle().Result);
-            Assert.Equal(GoldenZero, new FnvOracle().U64(0UL).Result);
-            Assert.Equal(GoldenOneMinusOneTrue, new FnvOracle().U64(1UL).I64(-1L).Bool(true).Result);
-            Assert.Equal(GoldenSpan123, new FnvOracle().Span(new byte[] { 1, 2, 3 }).Result);
+            Assert.Equal(GoldenFresh, new HashFnv().Result);
+            Assert.Equal(GoldenZero, new HashFnv().U64(0UL).Result);
+            Assert.Equal(GoldenOneMinusOneTrue, new HashFnv().U64(1UL).I64(-1L).Bool(true).Result);
+            Assert.Equal(GoldenSpan123, new HashFnv().Span(new byte[] { 1, 2, 3 }).Result);
 
             var h = new StateHasher();
             Assert.Equal(GoldenFresh, h.Result);
@@ -81,14 +81,14 @@ namespace AirportSim.Sim.Core.Tests
         public void test_state_hasher_feed_uint64_is_eight_little_endian_bytes()
         {
             const ulong seed = 0x5EED0004A0000001UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             ulong[] edge = { 0UL, 1UL, 0xFFUL, 0x100UL, 0x0102030405060708UL, 0x8000000000000000UL, ulong.MaxValue };
             for (int i = 0; i < 1000 + edge.Length; i++)
             {
                 ulong v = i < edge.Length ? edge[i] : gen.Next();
                 var h = new StateHasher();
                 h.Feed(v);
-                ulong expected = new FnvOracle().U64(v).Result;
+                ulong expected = new HashFnv().U64(v).Result;
                 if (h.Result != expected) Assert.Fail(At(seed, i) + ": Feed(uint64 " + v + ") wrong");
             }
         }
@@ -97,14 +97,14 @@ namespace AirportSim.Sim.Core.Tests
         public void test_state_hasher_feed_int64_is_eight_byte_twos_complement()
         {
             const ulong seed = 0x5EED0004A0000002UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             long[] edge = { 0L, 1L, -1L, -2L, long.MinValue, long.MaxValue, -0x0102030405060708L };
             for (int i = 0; i < 1000 + edge.Length; i++)
             {
                 long v = i < edge.Length ? edge[i] : unchecked((long)gen.Next());
                 var h = new StateHasher();
                 h.Feed(v);
-                if (h.Result != new FnvOracle().I64(v).Result) Assert.Fail(At(seed, i) + ": Feed(int64 " + v + ") wrong");
+                if (h.Result != new HashFnv().I64(v).Result) Assert.Fail(At(seed, i) + ": Feed(int64 " + v + ") wrong");
 
                 // Same bit pattern, same bytes: the signed and unsigned overloads agree.
                 var u = new StateHasher();
@@ -118,11 +118,11 @@ namespace AirportSim.Sim.Core.Tests
         {
             var f = new StateHasher();
             f.Feed(false);
-            Assert.Equal(new FnvOracle().Byte(0).Result, f.Result);
+            Assert.Equal(new HashFnv().Byte(0).Result, f.Result);
 
             var t = new StateHasher();
             t.Feed(true);
-            Assert.Equal(new FnvOracle().Byte(1).Result, t.Result);
+            Assert.Equal(new HashFnv().Byte(1).Result, t.Result);
 
             // One byte, not eight: a bool is not widened like an integer.
             var wide = new StateHasher();
@@ -134,7 +134,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_state_hasher_feed_fx_equals_feed_of_raw()
         {
             const ulong seed = 0x5EED0004A0000003UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             Fx[] edge = { Fx.Zero, Fx.One, Fx.MinValue, Fx.MaxValue, Fx.FromRaw(-1L), Fx.FromInt(-3) };
             for (int i = 0; i < 500 + edge.Length; i++)
             {
@@ -144,7 +144,7 @@ namespace AirportSim.Sim.Core.Tests
                 var viaRaw = new StateHasher();
                 viaRaw.Feed(v.Raw);
                 if (viaFx.Result != viaRaw.Result) Assert.Fail(At(seed, i) + ": Feed(Fx) differs from Feed(Raw)");
-                if (viaFx.Result != new FnvOracle().I64(v.Raw).Result) Assert.Fail(At(seed, i) + ": Feed(Fx) wrong bytes");
+                if (viaFx.Result != new HashFnv().I64(v.Raw).Result) Assert.Fail(At(seed, i) + ": Feed(Fx) wrong bytes");
             }
         }
 
@@ -152,14 +152,14 @@ namespace AirportSim.Sim.Core.Tests
         public void test_state_hasher_feed_span_prefixes_uint64_length()
         {
             const ulong seed = 0x5EED0004A0000004UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             for (int i = 0; i < 300; i++)
             {
                 byte[] bytes = new byte[gen.Below(70)];
                 for (int k = 0; k < bytes.Length; k++) bytes[k] = (byte)gen.Next();
                 var h = new StateHasher();
                 h.Feed(new ReadOnlySpan<byte>(bytes));
-                if (h.Result != new FnvOracle().Span(bytes).Result) Assert.Fail(At(seed, i) + ": span of " + bytes.Length + " bytes wrong");
+                if (h.Result != new HashFnv().Span(bytes).Result) Assert.Fail(At(seed, i) + ": span of " + bytes.Length + " bytes wrong");
             }
         }
 
@@ -188,18 +188,18 @@ namespace AirportSim.Sim.Core.Tests
 
             Assert.NotEqual(whole.Result, split.Result);
             Assert.NotEqual(split.Result, otherSplit.Result);
-            Assert.Equal(new FnvOracle().Span(new byte[] { 1, 2 }).Span(new byte[] { 3 }).Result, split.Result);
+            Assert.Equal(new HashFnv().Span(new byte[] { 1, 2 }).Span(new byte[] { 3 }).Result, split.Result);
         }
 
         [Fact]
         public void test_state_hasher_mixed_feed_sequences_match_oracle()
         {
             const ulong seed = 0x5EED0004A0000005UL;
-            var gen = new SplitMix64(seed);
+            var gen = new HashGen(seed);
             for (int i = 0; i < 300; i++)
             {
                 var h = new StateHasher();
-                var o = new FnvOracle();
+                var o = new HashFnv();
                 int ops = gen.Below(40);
                 for (int op = 0; op < ops; op++)
                 {
@@ -274,8 +274,8 @@ namespace AirportSim.Sim.Core.Tests
             original.Feed(1UL);
             StateHasher copy = original;
             copy.Feed(2UL);
-            Assert.Equal(FnvOracle.OfU64s(1UL), original.Result);
-            Assert.Equal(FnvOracle.OfU64s(1UL, 2UL), copy.Result);
+            Assert.Equal(HashFnv.OfU64s(1UL), original.Result);
+            Assert.Equal(HashFnv.OfU64s(1UL, 2UL), copy.Result);
         }
 
         [Fact]
@@ -289,7 +289,7 @@ namespace AirportSim.Sim.Core.Tests
             Fx one = Fx.One;
             boxed.Feed(in one);
             boxed.Feed(new ReadOnlySpan<byte>(new byte[] { 9 }));
-            Assert.Equal(new FnvOracle().U64(1UL).I64(-1L).Bool(true).I64(Fx.One.Raw).Span(new byte[] { 9 }).Result, boxed.Result);
+            Assert.Equal(new HashFnv().U64(1UL).I64(-1L).Bool(true).I64(Fx.One.Raw).Span(new byte[] { 9 }).Result, boxed.Result);
         }
 
         // ------------------------------------------------------------ budget
@@ -332,7 +332,7 @@ namespace AirportSim.Sim.Core.Tests
 
         private static ulong FnvOracleOfRange(int n)
         {
-            var o = new FnvOracle();
+            var o = new HashFnv();
             for (ulong v = 0; v < (ulong)n; v++)
             {
                 o.U64(v);
