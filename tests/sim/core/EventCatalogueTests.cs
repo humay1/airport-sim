@@ -230,7 +230,7 @@ namespace AirportSim.Sim.Core.Tests
         {
             var node = new DelayNode(
                 new DelayEventId(9UL), DelayNodeKind.Allocation, new FlightId(5UL), new DelayEventId(1UL),
-                DelayCategory.stand_unavailable, 30UL, Fx.FromRaw(3L << 32), true, new FlightId(0UL),
+                DelayCategory.StandUnavailable, 30UL, Fx.FromRaw(3L << 32), true, new FlightId(0UL),
                 new EventRef(new EventId(100UL, 2U), true),
                 new DelayExplanation(DelaySource.StandUnavailable, 4UL, 5UL),
                 120UL);
@@ -240,7 +240,7 @@ namespace AirportSim.Sim.Core.Tests
             Assert.Equal(DelayNodeKind.Allocation, e.Node.Kind);
             Assert.Equal(new FlightId(5UL), e.Node.Subject);
             Assert.Equal(new DelayEventId(1UL), e.Node.Parent);
-            Assert.Equal(DelayCategory.stand_unavailable, e.Node.Category);
+            Assert.Equal(DelayCategory.StandUnavailable, e.Node.Category);
             Assert.Equal(30UL, e.Node.Ticks);
             Assert.Equal(3L << 32, e.Node.Minutes.Raw);
             Assert.True(e.Node.RootCause);
@@ -264,7 +264,7 @@ namespace AirportSim.Sim.Core.Tests
             // The bus copies the payload (08 §8.6); a catalogue struct must
             // travel through T-001's transport and arrive equal.
             var sent = new TurnaroundJobBlocked(
-                new FlightId(77UL), JobKind.Fuel, ResourceKind.Vehicle, new EntityId(0x0005_0000_0000_0003UL), DelayCategory.fuel);
+                new FlightId(77UL), JobKind.Fuel, ResourceKind.Vehicle, new EntityId(0x0005_0000_0000_0003UL), DelayCategory.Fuel);
             var received = new List<TurnaroundJobBlocked>();
             ISimHostBuilder b = Harness.Builder(new RecordingCheckpointSink());
             b.Services.Events.Subscribe<TurnaroundJobBlocked>(new SystemId(7), (in EventEnvelope env, in TurnaroundJobBlocked evt, in TickContext ctx) => received.Add(evt));
