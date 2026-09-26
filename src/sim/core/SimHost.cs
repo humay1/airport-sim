@@ -79,14 +79,6 @@ namespace AirportSim.Sim.Core
             return false;
         }
 
-        public System.Collections.Generic.IReadOnlyList<Command> CommandLogSince(ulong tick)
-        {
-            EnsureNotBroken();
-            // No command is ever admitted at T-001 (see TrySubmit above), so the log is
-            // always empty.
-            return Array.Empty<Command>();
-        }
-
         private void RunOneTick()
         {
             ulong t = _ticksExecuted;
