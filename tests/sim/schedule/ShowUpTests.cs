@@ -396,6 +396,8 @@ namespace AirportSim.Sim.Schedule.Tests
             var rig = new HostRig(Fixture.Bytes(), record: false);
             Assert.Equal(0, rig.Schedule.PendingInjectionCount(new FlightId(1)));
             rig.RunTo(1);
+            Assert.Equal(0, rig.Schedule.PendingInjectionCount(new FlightId(0)));
+            Assert.Equal(0, rig.Schedule.PendingInjectionCount(new FlightId(777)));
             var oracle = new ScheduleOracle(Fixture.Text(), 2);
             foreach (OracleFlight f in oracle.Flights)
             {

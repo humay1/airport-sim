@@ -97,31 +97,59 @@ namespace AirportSim.Sim.Schedule.Tests
 
         private static byte[]? _bytes;
 
-        /// <summary>tests/fixtures/schedule/phase0-200.csv, found by walking up from the test binaries.</summary>
+        /// <summary>
+        /// tests/fixtures/schedule/phase0-200.csv under the repository root, the
+        /// nearest ancestor of AppContext.BaseDirectory holding AirportSim.sln
+        /// (07 "Fixture location", Q-031). A missing root fails the test.
+        /// </summary>
         public static byte[] Bytes()
         {
             if (_bytes == null)
             {
                 string? dir = AppContext.BaseDirectory;
-                while (dir != null)
+                while (dir != null && !File.Exists(Path.Combine(dir, "AirportSim.sln")))
                 {
-                    string candidate = Path.Combine(dir, "tests", "fixtures", "schedule", "phase0-200.csv");
-                    if (File.Exists(candidate))
-                    {
-                        _bytes = File.ReadAllBytes(candidate);
-                        break;
-                    }
-
                     dir = Path.GetDirectoryName(dir);
                 }
 
-                if (_bytes == null)
-                {
-                    throw new InvalidOperationException("tests/fixtures/schedule/phase0-200.csv not found above " + AppContext.BaseDirectory);
-                }
+                Assert.True(dir != null, "no ancestor of " + AppContext.BaseDirectory + " contains AirportSim.sln");
+                _bytes = File.ReadAllBytes(Path.Combine(dir!, "tests", "fixtures", "schedule", "phase0-200.csv"));
             }
 
             return (byte[])_bytes.Clone();
+        }
+
+        /// <summary>
+        /// A max-tier load (03 "How a budget is measured": 800 daily movements)
+        /// built from the Phase 0 fixture: four copies of its rows with each
+        /// flight_ref and rotation_ref suffixed per copy. Fixture sizing only.
+        /// </summary>
+        public static byte[] MaxTier()
+        {
+            string[] lines = Text().Split('\n');
+            var sb = new StringBuilder();
+            sb.Append(lines[0]).Append('\n');
+            foreach (string suffix in new[] { "a", "b", "c", "d" })
+            {
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (lines[i].Length == 0)
+                    {
+                        continue;
+                    }
+
+                    string[] f = lines[i].Split(',');
+                    f[0] += suffix;
+                    if (f[7].Length > 0)
+                    {
+                        f[7] += suffix;
+                    }
+
+                    sb.Append(string.Join(",", f)).Append('\n');
+                }
+            }
+
+            return Csv.Utf8(sb.ToString());
         }
 
         public static string Text()

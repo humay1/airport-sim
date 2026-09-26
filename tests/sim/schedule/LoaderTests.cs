@@ -109,7 +109,9 @@ namespace AirportSim.Sim.Schedule.Tests
 
             Assert.Equal(100, arrivals);
             Assert.Equal(100, departures);
-            Assert.True(loneA >= 1 && loneD >= 1, "needs a lone A and a lone D");
+            // 99 rotations plus one lone A and one lone D (11 §11.10, Q-031).
+            Assert.Equal(1, loneA);
+            Assert.Equal(1, loneD);
             Assert.True(clamped > 0, "needs a show-up curve clamped to tick 0");
         }
 

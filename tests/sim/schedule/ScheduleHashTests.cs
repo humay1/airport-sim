@@ -46,11 +46,26 @@ namespace AirportSim.Sim.Schedule.Tests
         [Fact]
         public void test_schedule_hash_follows_declared_order()
         {
-            byte[] bytes = Fixture.Bytes();
-            var oracle = new ScheduleOracle(Fixture.Text(), 4);
+            ulong?[] samples = { null, 0UL, 1UL, 150UL, 299UL, 300UL, 850UL, 5000UL, 14399UL, 14400UL, 14401UL, 20000UL, 28799UL, 28800UL, 30000UL };
+            AssertHashMatchesOracle(Fixture.Bytes(), samples);
+        }
+
+        [Fact]
+        public void test_schedule_hash_highest_day_advances_on_days_without_rows()
+        {
+            // One single-day row on day 3: days 1 and 2 have no rows, yet the
+            // highest day still advances at each day's first tick (Q-031).
+            byte[] csv = Csv.Of(Csv.Row("X1", "D", "12:00", day: "3"), Csv.Row("X2", "D", "06:00"));
+            ulong d = SchedConst.TicksPerDay;
+            ulong?[] samples = { null, 0UL, d - 1UL, d, (2UL * d) - 1UL, 2UL * d, (2UL * d) + 7200UL, 3UL * d, (3UL * d) + 7200UL, 4UL * d };
+            AssertHashMatchesOracle(csv, samples);
+        }
+
+        private static void AssertHashMatchesOracle(byte[] bytes, ulong?[] samples)
+        {
+            var oracle = new ScheduleOracle(Encoding.UTF8.GetString(bytes), 6);
             ulong fixtureHash = Fnv.Raw64(bytes);
             var rig = new DirectRig(bytes);
-            ulong?[] samples = { null, 0UL, 1UL, 150UL, 299UL, 300UL, 850UL, 5000UL, 14399UL, 14400UL, 14401UL, 20000UL, 28799UL };
             foreach (ulong? last in samples)
             {
                 if (last != null)
@@ -59,32 +74,15 @@ namespace AirportSim.Sim.Schedule.Tests
                 }
 
                 ulong actual = rig.Schedule.ComputeStateHash();
-                ulong maxPublishedDay = 0;
-                foreach (OracleFlight f in oracle.PublishedAfter(last))
-                {
-                    maxPublishedDay = f.Day > maxPublishedDay ? f.Day : maxPublishedDay;
-                }
-
-                // Item 2's timing and whether lists carry a length prefix are not
-                // pinned by §11.9; every other byte of the stream is.
-                var candidates = new List<string>();
-                bool match = false;
-                for (ulong day = maxPublishedDay; day <= 3UL; day++)
-                {
-                    foreach (bool prefix in new[] { false, true })
-                    {
-                        ulong expected = oracle.ExpectedHash(fixtureHash, last, day, prefix);
-                        candidates.Add(expected.ToString("X16", CultureInfo.InvariantCulture));
-                        match |= expected == actual;
-                    }
-                }
-
-                Assert.True(match, string.Format(
+                ulong expected = oracle.ExpectedHash(fixtureHash, last);
+                Assert.True(expected == actual, string.Format(
                     CultureInfo.InvariantCulture,
-                    "after tick {0}: hash {1:X16} matches no §11.9 layout ({2})",
+                    "after tick {0}: hash {1:X16}, §11.9 layout gives {2:X16} (highest day {3}, {4} published)",
                     last?.ToString(CultureInfo.InvariantCulture) ?? "none",
                     actual,
-                    string.Join(",", candidates)));
+                    expected,
+                    ScheduleOracle.HighestDay(last),
+                    oracle.PublishedAfter(last).Count));
             }
         }
 
@@ -124,13 +122,15 @@ namespace AirportSim.Sim.Schedule.Tests
             {
                 rig.TickOnce();
                 ulong now = rig.Schedule.ComputeStateHash();
-                bool dayBoundary = t % SchedConst.TicksPerDay == 0UL;
-                if (busy.Contains(t) && now == previous && sb.Length < 2000)
+
+                // A day's first tick materialises the next day (Q-031), which changes item 2.
+                bool changes = busy.Contains(t) || t % SchedConst.TicksPerDay == 0UL;
+                if (changes && now == previous && sb.Length < 2000)
                 {
-                    sb.Append("tick ").Append(t).Append(" publishes or drains but the hash did not change\n");
+                    sb.Append("tick ").Append(t).Append(" publishes, drains or materialises but the hash did not change\n");
                 }
 
-                if (!busy.Contains(t) && !dayBoundary && now != previous && sb.Length < 2000)
+                if (!changes && now != previous && sb.Length < 2000)
                 {
                     sb.Append("tick ").Append(t).Append(" is idle but the hash changed\n");
                 }

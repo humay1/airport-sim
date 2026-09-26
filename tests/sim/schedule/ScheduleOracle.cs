@@ -331,21 +331,25 @@ namespace AirportSim.Sim.Schedule.Tests
         }
 
         /// <summary>
-        /// The §11.9 hash, in its declared order, after ticks 0..lastTick.
-        /// <paramref name="day"/> is item 2; <paramref name="countPrefix"/>
-        /// feeds each list's length before its items. Neither is pinned by
-        /// §11.9, so callers accept every variant.
+        /// Highest day materialised after ticks 0..lastTick (11 §11.9, Q-031):
+        /// 0 after CreateSystem; the first tick of day d materialises d + 1.
         /// </summary>
-        public ulong ExpectedHash(ulong fixtureHash, ulong? lastTick, ulong day, bool countPrefix)
+        public static ulong HighestDay(ulong? lastTick)
+        {
+            return lastTick == null ? 0UL : (lastTick.Value / SchedConst.TicksPerDay) + 1UL;
+        }
+
+        /// <summary>
+        /// The §11.9 hash after ticks 0..lastTick, exactly (Q-031): FixtureHash,
+        /// the highest day, then lists 3 and 4 each preceded by a uint64 count.
+        /// </summary>
+        public ulong ExpectedHash(ulong fixtureHash, ulong? lastTick)
         {
             var h = new FnvWords();
             h.U64(fixtureHash);
-            h.U64(day);
+            h.U64(HighestDay(lastTick));
             List<OracleFlight> published = PublishedAfter(lastTick);
-            if (countPrefix)
-            {
-                h.U64((ulong)published.Count);
-            }
+            h.U64((ulong)published.Count);
 
             foreach (OracleFlight f in published)
             {
@@ -366,10 +370,7 @@ namespace AirportSim.Sim.Schedule.Tests
                 }
             }
 
-            if (countPrefix)
-            {
-                h.U64((ulong)pending.Count);
-            }
+            h.U64((ulong)pending.Count);
 
             foreach (OracleInjection inj in pending)
             {

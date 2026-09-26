@@ -41,6 +41,25 @@ namespace AirportSim.Sim.Schedule.Tests
         }
 
         [Fact]
+        public void test_movements_between_sees_next_day_once_first_tick_materialises_it()
+        {
+            // CreateSystem materialises day 0; tick 0 materialises day 1 before publishing (11 §11.9, Q-031).
+            var rig = new HostRig(Fixture.Bytes(), record: false);
+            var oracle = new ScheduleOracle(Fixture.Text(), 3);
+            ulong d = SchedConst.TicksPerDay;
+            Assert.Empty(rig.Schedule.MovementsBetween(d, 2UL * d, MovementKind.Departure));
+            rig.RunTo(1);
+            Assert.Equal(Expected(oracle, d, 2UL * d, MovementKind.Departure), Describe.Ids(rig.Schedule.MovementsBetween(d, 2UL * d, MovementKind.Departure)));
+            Assert.Empty(rig.Schedule.MovementsBetween(2UL * d, 3UL * d, MovementKind.Arrival));
+            rig.RunTo(d);
+            Assert.Empty(rig.Schedule.MovementsBetween(2UL * d, 3UL * d, MovementKind.Arrival));
+            rig.RunTo(d + 1UL);
+            List<ulong> day2 = Describe.Ids(rig.Schedule.MovementsBetween(2UL * d, 3UL * d, MovementKind.Arrival));
+            Assert.Equal(100, day2.Count);
+            Assert.Equal(Expected(oracle, 2UL * d, 3UL * d, MovementKind.Arrival), day2);
+        }
+
+        [Fact]
         public void test_movements_between_orders_equal_ticks_by_flight_id()
         {
             var rig = new HostRig(Fixture.Bytes(), record: false);
