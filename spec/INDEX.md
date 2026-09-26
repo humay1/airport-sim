@@ -120,7 +120,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   polyfills**; **solution layout (Q-013): fixed project paths and names,
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
-  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; exact
+  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
+  (Q-030); exact
   exception types.
 - LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
@@ -265,7 +266,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   its load-time routes.
 - Key: `IWorldSystem` offers `CanReach`, `CanReachVia` and `PathVia` (shortest
   path, ties by edge sequence); no runtime state; the hash is the fixture
-  hash; registry 1. **Gate assignment is deferred to the owner**, and Phase 0/1
+  hash; registry 1; **the file is the `08` §8.11 JSON subset (`nodes`, `edges`),
+  and a load failure is `FormatException` (Q-030)**. **Gate assignment is deferred to the owner**, and Phase 0/1
   pools gates in one lounge (§18.5). Construction, grid and flow fields are
   deferred.
 - LC: none marked; the gate-pooling stopgap is flagged in `CHANGELOG.md`.
@@ -293,7 +295,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-028 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Q-002 to Q-030 are answered (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).

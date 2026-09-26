@@ -860,3 +860,25 @@ Answer:      `08` §8.11a: a `null` list throws `ArgumentNullException`. A
              `test_<subject in snake_case>_`, going to the longest matching
              subject.
 Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-030 — The walk-graph file format, load failures and unknown-id queries
+Raised by:   Test Author (via coordinator) / T-012
+Blocking:    part of T-012
+Question:    `18` §18.2 left the file format to the worker, yet the Test
+             Author writes the fixture and four tests feed `Load` raw bytes.
+             (a) What is the exact format? (b) Which exception does a load
+             failure throw, and what does its message carry? (c) Which
+             exception does a query for an unknown `NodeId`/`EdgeId` throw?
+Why it matters: A fixture cannot be written against a format that has not
+             been chosen, and tests assert exact exception types.
+Answer:      `18` §18.2 "File format":
+             - (a) The `08` §8.11 strict JSON subset:
+               `{"schema_version":1,"nodes":[{"id","length_metres"}],"edges":[{"id","from","to"}]}`.
+               Ids are ≥ 1, and the arrays may be in any order. The fixture
+               is `phase0-landside.json`, and `FixtureHash` is FNV over the
+               exact bytes.
+             - (b) `FormatException`, with a message that starts with
+               `sourceName: ` and carries `line <n>` or the field and id.
+               `07` "Error handling" makes this the rule for every loader.
+             - (c) `ArgumentException` (§18.3).
+Status:      ANSWERED (spec/18-interfaces-world.md#file-format-q-030)
