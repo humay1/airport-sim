@@ -906,3 +906,42 @@ Answer:      `18` §18.2 "File format":
                `07` "Error handling" makes this the rule for every loader.
              - (c) `ArgumentException` (§18.3).
 Status:      ANSWERED (spec/18-interfaces-world.md#file-format-q-030)
+
+### Q-032 — `sim.flow`: graph file format and exact tick semantics
+Raised by:   T-007 Test Author (via coordinator) / T-007 (critical path)
+Blocking:    T-007, and T-008 behind it
+Question:    (A) The `FlowGraph` file format was "the worker's choice", but
+             `Load` is the only constructor. (B) When does the credit cap
+             apply, and at what value? (C) Can a cohort move twice in a
+             tick? (D) What are the non-`Queue` capacities, and is "above"
+             `>`? (E) What are the epsilon, rounding and non-`Queue` value
+             of the predicted wait? (F) How is `traversalTicks` rounded, and
+             does it apply to non-corridors in the route cost? (G) What are
+             the threshold comparisons and timing? (H) What are the
+             `FlowBlocked` fields and the event order?
+Why it matters: T-007's tests cannot be written, and T-007 blocks T-008.
+Answer:      `09` §9.11 "File format" and the new §9.12:
+             - (A) The JSON subset with `nodes[id, kind]`. Queue nodes add
+               `server_count`, `servers_open` and `queue_profile`. Failures
+               are `FormatException` with `sourceName: ` and the node id.
+             - (B) The cap applies only when `moved < served`. The unused
+               whole passengers are discarded, and the credit is capped at
+               `serverTick` = rate × 6 / 60.
+             - (C) No cohort moves twice: only `EnteredNodeAt < t` is
+               eligible, and an arriving cohort gets `EnteredNodeAt = t`.
+             - (D) Only `Queue` has a capacity, and it is full at
+               `>= CapacityStanding`, measured at the start of the tick.
+             - (E) `EPSILON = 1/1000`, floored,
+               `capacityPerMinute = ServersOpen × rate`, and 0 for a
+               non-`Queue` node.
+             - (F) `Div` floors, then `Ceil`, with a minimum of 1. Every
+               node on the path counts in the route cost.
+             - (G) Exceed when `w > T`, clear when `w < T − h`, evaluated
+               after movement and merge in ascending `NodeId`. The flag is
+               hashed.
+             - (H) `BlockedBy` is the immediate full target, and `Held` is
+               the node the cohort is on (the corridor itself, past
+               `DueAt`). The event order is pinned.
+             LOW CONFIDENCE for the owner: `EPSILON`, the cap value,
+             unlimited `Hall` capacity and head-of-line blocking.
+Status:      ANSWERED (spec/09-interfaces-flow.md#912-exact-tick-semantics-q-032)
