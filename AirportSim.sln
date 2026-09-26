@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -14,6 +14,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sim", "sim", "{7832F6F8-EA2B-4E04-BBAF-37A70929900D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirportSim.Sim.Core.Tests", "tests\sim\core\AirportSim.Sim.Core.Tests.csproj", "{4C3EDFB0-07D2-4338-9525-4F877667350D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{84CA9F34-C5F8-46B3-A66A-64D8F277601E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirportSim.Tools.SimHarness", "tools\SimHarness\AirportSim.Tools.SimHarness.csproj", "{79BFED84-20ED-43BE-8A26-AA072191C86E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,11 +36,16 @@ Global
 		{4C3EDFB0-07D2-4338-9525-4F877667350D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4C3EDFB0-07D2-4338-9525-4F877667350D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4C3EDFB0-07D2-4338-9525-4F877667350D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79BFED84-20ED-43BE-8A26-AA072191C86E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{199D7C45-0AC5-4F33-854C-38893111DD82} = {DBC5C0E0-415C-49A7-8C84-F039DEDA37B3}
 		{EB970FBB-719C-4EF6-A472-04731C4B9837} = {199D7C45-0AC5-4F33-854C-38893111DD82}
 		{7832F6F8-EA2B-4E04-BBAF-37A70929900D} = {24F65104-E821-402E-BFEE-114E701C9515}
 		{4C3EDFB0-07D2-4338-9525-4F877667350D} = {7832F6F8-EA2B-4E04-BBAF-37A70929900D}
+		{79BFED84-20ED-43BE-8A26-AA072191C86E} = {84CA9F34-C5F8-46B3-A66A-64D8F277601E}
 	EndGlobalSection
 EndGlobal
