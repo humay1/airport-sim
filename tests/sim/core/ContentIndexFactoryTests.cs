@@ -3,143 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using AirportSim.Sim.Core;
 using Xunit;
+using static AirportSim.Sim.Core.Tests.ContentFixtures;
 
 namespace AirportSim.Sim.Core.Tests
 {
     /// <summary>
-    /// ContentIndexFactory and the content definition types, 08 §8.11 and
-    /// §8.11a (Q-011; T-026 owns the factory). Create sorts by ordinal id and
-    /// throws on a duplicate id across all kinds. AllOf returns the ids of one
-    /// kind in ordinal order. ContentKind is fixed by the definition type.
-    /// Content is immutable for the session. ContentId uses ordinal equality
-    /// and order.
+    /// ContentIndexFactory, 08 §8.11/§8.11a as amended by Q-028 (T-026 owns
+    /// the factory). Create copies and sorts by ordinal id. A null list throws
+    /// ArgumentNullException. A null element, a null id value or a duplicate
+    /// id throws ArgumentException. AllOf returns one kind's ids in ordinal
+    /// order. TryGet is a pure type-and-id match.
     /// </summary>
     public sealed class ContentIndexFactoryTests
     {
-        private static readonly ContentKind[] AllKinds =
-        {
-            ContentKind.SizeCategory, ContentKind.Aircraft, ContentKind.PaxProfile, ContentKind.QueueProfile,
-        };
-
-        private static ContentId Id(string s) => new ContentId(s);
-
-        private static SizeCategoryDefinition Size(string id, int ordinal) => new SizeCategoryDefinition(Id(id), ordinal);
-
-        private static AircraftDefinition Aircraft(string id, string size) => new AircraftDefinition(Id(id), Id(size));
-
-        private static PaxProfileDefinition Pax(string id) =>
-            new PaxProfileDefinition(Id(id), Fx.FromRaw(5L << 31), new[] { new ShowUpBucket(120U, 300U), new ShowUpBucket(60U, 700U) });
-
-        private static QueueProfileDefinition Queue(string id) =>
-            new QueueProfileDefinition(Id(id), Fx.FromRaw(3L << 32), 250, Fx.FromRaw(10L << 32), Fx.FromRaw(2L << 32), DelayCategory.security_queue);
-
-        private static List<string> Ids(IReadOnlyList<ContentId> ids) => ids.Select(i => i.Value).ToList();
-
-        private static List<string> OrdinalSorted(IEnumerable<string> ids)
-        {
-            var list = ids.ToList();
-            list.Sort(string.CompareOrdinal);
-            return list;
-        }
-
-        // ------------------------------------------------------------- ContentId
-
-        [Fact]
-        public void test_content_ids_compare_ordinally_not_by_default_hash()
-        {
-            Assert.True(Id(new string('a', 3)) == Id("aaa"), "equal text in distinct string instances must be equal");
-            Assert.True(Id("abc") != Id("ABC"), "ordinal equality is case-sensitive");
-            Assert.True(Id("é") != Id("é"), "ordinal equality does not normalise");
-            Assert.True(Id("i") != Id("I"));
-            Assert.True(Id("aaa").Equals(Id(new string('a', 3))));
-            Assert.Equal(Id("aaa").GetHashCode(), Id(new string('a', 3)).GetHashCode());
-            Assert.True(typeof(IEquatable<ContentId>).IsAssignableFrom(typeof(ContentId)));
-            Assert.Equal("aircraft.a320", Id("aircraft.a320").Value);
-        }
-
-        // ----------------------------------------------------------- definitions
-
-        [Fact]
-        public void test_content_definitions_match_spec_shapes_and_kinds()
-        {
-            var v = new List<string>();
-            foreach ((PayloadShapes.Shape shape, ContentKind kind) in PayloadShapes.Definitions)
-            {
-                Type t = shape.Type;
-                if (!t.IsPublic || !PayloadShapes.IsReadOnlyStruct(t))
-                {
-                    v.Add($"{t.Name}: not a public readonly struct (07 L10)");
-                }
-
-                if (!typeof(IContentDefinition).IsAssignableFrom(t))
-                {
-                    v.Add($"{t.Name}: does not implement IContentDefinition");
-                    continue;
-                }
-
-                var ctors = t.GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (ctors.Length != 1 || !ctors[0].GetParameters().Select(p => p.ParameterType).SequenceEqual(shape.Members.Select(m => m.Type)))
-                {
-                    v.Add($"{t.Name}: expected one public constructor ({string.Join(", ", shape.Members.Select(m => m.Type.Name))})");
-                    continue;
-                }
-
-                var args = new object?[shape.Members.Length];
-                for (int i = 0; i < args.Length; i++)
-                {
-                    args[i] = PayloadShapes.MakeValue(shape.Members[i].Type, i + 1);
-                }
-
-                var def = (IContentDefinition)ctors[0].Invoke(args);
-                if (def.Kind != kind)
-                {
-                    v.Add($"{t.Name}: Kind {def.Kind}, expected {kind}");
-                }
-
-                if (!Equals(args[0], def.Id))
-                {
-                    v.Add($"{t.Name}: Id does not return the first constructor argument");
-                }
-
-                for (int i = 0; i < args.Length; i++)
-                {
-                    var p = t.GetProperty(shape.Members[i].Name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                    if (p == null || p.PropertyType != shape.Members[i].Type || p.SetMethod != null)
-                    {
-                        v.Add($"{t.Name}.{shape.Members[i].Name}: expected get-only {shape.Members[i].Type.Name}");
-                    }
-                    else if (!PayloadShapes.SameValue(args[i], p.GetValue(def)))
-                    {
-                        v.Add($"{t.Name}.{shape.Members[i].Name}: does not return constructor argument {i}");
-                    }
-                }
-            }
-
-            Assert.True(v.Count == 0, "08 §8.11:\n" + string.Join("\n", v));
-        }
-
-        [Fact]
-        public void test_content_definitions_bind_by_name()
-        {
-            QueueProfileDefinition q = Queue("queue.security");
-            Assert.Equal(Id("queue.security"), q.Id);
-            Assert.Equal(3L << 32, q.ServiceRatePerServerPerMinute.Raw);
-            Assert.Equal(250, q.CapacityStanding);
-            Assert.Equal(10L << 32, q.ThresholdWaitMinutes.Raw);
-            Assert.Equal(2L << 32, q.HysteresisMinutes.Raw);
-            Assert.Equal(DelayCategory.security_queue, q.Category);
-
-            PaxProfileDefinition p = Pax("pax.leisure");
-            Assert.Equal(5L << 31, p.WalkSpeedMps.Raw);
-            Assert.Equal(new[] { 120U, 60U }, p.ShowUpCurve.Select(b => b.MinutesBeforeStd));
-            Assert.Equal(new[] { 300U, 700U }, p.ShowUpCurve.Select(b => b.SharePermille));
-
-            Assert.Equal(Id("size.c"), Aircraft("aircraft.a320", "size.c").SizeCategory);
-            Assert.Equal(3, Size("size.c", 3).Ordinal);
-        }
-
-        // ------------------------------------------------------------ the factory
-
         [Fact]
         public void test_content_index_factory_null_list_throws_argument_null()
         {
@@ -243,21 +119,6 @@ namespace AirportSim.Sim.Core.Tests
         }
 
         [Fact]
-        public void test_content_definition_ids_unique_across_all_kinds()
-        {
-            // 08 §8.11: ids are unique across all kinds; §8.11a: Create throws on a
-            // duplicate. 07 "Error handling": a bad argument is ArgumentException.
-            var crossKind = new List<IContentDefinition> { Size("shared", 1), Aircraft("shared", "shared") };
-            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(crossKind));
-
-            var sameKind = new List<IContentDefinition> { Queue("q"), Pax("p"), Queue("q") };
-            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(sameKind));
-
-            var farApart = new List<IContentDefinition> { Pax("dup"), Size("z", 0), Size("a", 0), Queue("dup") };
-            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(farApart));
-        }
-
-        [Fact]
         public void test_content_index_factory_ids_differing_only_by_case_are_distinct()
         {
             var defs = new List<IContentDefinition> { Size("gate", 1), Size("Gate", 2), Size("GATE", 3) };
@@ -337,6 +198,82 @@ namespace AirportSim.Sim.Core.Tests
             }
 
             Assert.Equal(new[] { "s.a", "s.b" }, Ids(index.AllOf(ContentKind.SizeCategory)));
+        }
+
+        [Fact]
+        public void test_content_index_factory_null_element_throws_argument_exception()
+        {
+            var defs = new List<IContentDefinition> { Size("s.a", 0), null!, Size("s.b", 1) };
+            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(defs));
+        }
+
+        [Fact]
+        public void test_content_index_factory_null_id_value_throws_argument_exception()
+        {
+            var viaDefault = new List<IContentDefinition> { Size("s.a", 0), new SizeCategoryDefinition(default, 1) };
+            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(viaDefault));
+
+            var viaNullString = new List<IContentDefinition> { new AircraftDefinition(new ContentId(null!), Id("s.a")), Size("s.a", 0) };
+            Assert.Throws<ArgumentException>(() => ContentIndexFactory.Create(viaNullString));
+        }
+
+        [Fact]
+        public void test_content_index_factory_try_get_type_mismatch_returns_false_and_default()
+        {
+            var defs = new List<IContentDefinition> { Size("size.c", 3), Queue("queue.security") };
+            IContentIndex index = ContentIndexFactory.Create(defs);
+
+            Assert.False(index.TryGet(Id("size.c"), out AircraftDefinition a));
+            Assert.Null(a.Id.Value);
+            Assert.Null(a.SizeCategory.Value);
+
+            Assert.False(index.TryGet(Id("queue.security"), out PaxProfileDefinition p));
+            Assert.Null(p.Id.Value);
+            Assert.Null(p.ShowUpCurve);
+            Assert.Equal(0L, p.WalkSpeedMps.Raw);
+
+            Assert.False(index.TryGet(Id("queue.security"), out SizeCategoryDefinition s));
+            Assert.Equal(0, s.Ordinal);
+
+            // A mismatch does not disturb the right-typed lookup.
+            Assert.True(index.TryGet(Id("size.c"), out SizeCategoryDefinition ok));
+            Assert.Equal(3, ok.Ordinal);
+        }
+
+        [Fact]
+        public void test_content_index_factory_try_get_interface_type_matches_any_definition()
+        {
+            var defs = new List<IContentDefinition>
+            {
+                Size("size.c", 3), Aircraft("aircraft.a320", "size.c"), Pax("pax.business"), Queue("queue.immigration"),
+            };
+            IContentIndex index = ContentIndexFactory.Create(defs);
+
+            Assert.True(index.TryGet(Id("size.c"), out IContentDefinition d1));
+            Assert.Equal(3, Assert.IsType<SizeCategoryDefinition>(d1).Ordinal);
+            Assert.Equal(ContentKind.SizeCategory, d1.Kind);
+
+            Assert.True(index.TryGet(Id("aircraft.a320"), out IContentDefinition d2));
+            Assert.Equal(Id("size.c"), Assert.IsType<AircraftDefinition>(d2).SizeCategory);
+
+            Assert.True(index.TryGet(Id("pax.business"), out IContentDefinition d3));
+            Assert.Equal(ContentKind.PaxProfile, d3.Kind);
+            Assert.IsType<PaxProfileDefinition>(d3);
+
+            Assert.True(index.TryGet(Id("queue.immigration"), out IContentDefinition d4));
+            Assert.Equal(Id("queue.immigration"), d4.Id);
+            Assert.IsType<QueueProfileDefinition>(d4);
+
+            Assert.False(index.TryGet(Id("missing"), out IContentDefinition none));
+            Assert.Null(none);
+        }
+
+        [Fact]
+        public void test_content_index_factory_try_get_null_id_value_throws_argument_exception()
+        {
+            IContentIndex index = ContentIndexFactory.Create(new List<IContentDefinition> { Size("s.a", 0) });
+            Assert.Throws<ArgumentException>(() => index.TryGet(default(ContentId), out SizeCategoryDefinition _));
+            Assert.Throws<ArgumentException>(() => index.TryGet(new ContentId(null!), out IContentDefinition _));
         }
     }
 }

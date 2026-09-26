@@ -144,13 +144,17 @@ namespace AirportSim.Sim.Core.Tests
             (typeof(ContentKind), new[] { "SizeCategory", "Aircraft", "PaxProfile", "QueueProfile" }),
         };
 
-        /// <summary>06-delay-attribution.md, verbatim IDL names (snake_case), in order.</summary>
+        /// <summary>
+        /// 06-delay-attribution.md's list in order, with 07 L10's PascalCase
+        /// mapping (Q-028): late_inbound becomes LateInbound.
+        /// </summary>
         public static string[] DelayCategoryNames => new[]
         {
-            "late_inbound", "runway_congestion", "taxi_congestion", "stand_unavailable",
-            "ground_handling", "fuel", "catering", "cleaning", "loading", "pushback",
-            "crew", "passenger_late", "security_queue", "immigration_queue", "baggage",
-            "weather", "deicing", "atc_flow", "incident", "policy_constraint", "propagated",
+            "LateInbound", "RunwayCongestion", "TaxiCongestion", "StandUnavailable", "GroundHandling",
+            "Fuel", "Catering", "Cleaning", "Loading", "Pushback",
+            "Crew", "PassengerLate", "SecurityQueue", "ImmigrationQueue", "Baggage",
+            "Weather", "Deicing", "AtcFlow", "Incident", "PolicyConstraint",
+            "Propagated",
         };
 
         /// <summary>10 §10.4, in order.</summary>
@@ -160,6 +164,48 @@ namespace AirportSim.Sim.Core.Tests
             "DeboardComplete", "ReadyToBoard", "BoardingComplete", "DoorsClosed", "Pushback",
             "TakeoffRoll", "Airborne",
         };
+
+        /// <summary>
+        /// 07 L10: an enum with no IDL underlying type is int, with members
+        /// numbered in declared order from 0.
+        /// </summary>
+        public static List<string> EnumViolations(Type t, string[] names)
+        {
+            var v = new List<string>();
+            if (!t.IsPublic || !t.IsEnum)
+            {
+                v.Add($"{t.Name}: not a public enum");
+                return v;
+            }
+
+            if (Enum.GetUnderlyingType(t) != typeof(int))
+            {
+                v.Add($"{t.Name}: underlying {Enum.GetUnderlyingType(t).Name}, expected Int32");
+            }
+
+            string[] actual = Enum.GetValues(t).Cast<object>()
+                .OrderBy(x => Convert.ToInt64(x, System.Globalization.CultureInfo.InvariantCulture))
+                .Select(x => Enum.GetName(t, x) ?? "?")
+                .ToArray();
+            if (!actual.SequenceEqual(names))
+            {
+                v.Add($"{t.Name}: [{string.Join(", ", actual)}], expected [{string.Join(", ", names)}]");
+            }
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (Enum.IsDefined(t, names[i]))
+                {
+                    long ordinal = Convert.ToInt64(Enum.Parse(t, names[i]), System.Globalization.CultureInfo.InvariantCulture);
+                    if (ordinal != i)
+                    {
+                        v.Add($"{t.Name}.{names[i]} = {ordinal}, expected {i}");
+                    }
+                }
+            }
+
+            return v;
+        }
 
         public static IEnumerable<Shape> AllStructShapes()
         {
