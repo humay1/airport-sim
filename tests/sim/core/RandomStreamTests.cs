@@ -73,7 +73,7 @@ namespace AirportSim.Sim.Core.Tests
             // The {1, 2, 3, 4} xoshiro check is not a test obligation (Q-023).
 
             const ulong seed = 0x5EED0002A0000001UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             for (int i = 0; i < 300; i++)
             {
                 ulong master = gen.Next();
@@ -228,7 +228,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_random_stream_next_int_results_within_bounds()
         {
             const ulong seed = 0x5EED0002A0000002UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             IRandomStream stream = FreshStream(0x0123456789ABCDEFUL, "sim.core.a");
             for (int i = 0; i < 20000; i++)
             {
@@ -247,7 +247,7 @@ namespace AirportSim.Sim.Core.Tests
         {
             // "equal bounds consume equal draws": the offset of the bounds never changes the draws taken.
             const ulong seed = 0x5EED0002A0000003UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             IRandomStream a = FreshStream(77UL, "sim.delay.x9");
             IRandomStream b = FreshStream(77UL, "sim.delay.x9");
             for (int i = 0; i < 5000; i++)
@@ -364,7 +364,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_random_stream_chance_equals_fx01_less_than_probability()
         {
             const ulong seed = 0x5EED0002A0000004UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             IRandomStream a = FreshStream(31UL, "sim.baggage.belt_0");
             IRandomStream b = FreshStream(31UL, "sim.baggage.belt_0");
             int trues = 0;
@@ -430,7 +430,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_random_stream_shuffle_produces_permutation()
         {
             const ulong seed = 0x5EED0002A0000005UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             IRandomStream stream = FreshStream(8UL, "sim.q.0");
             for (int i = 0; i < 500; i++)
             {

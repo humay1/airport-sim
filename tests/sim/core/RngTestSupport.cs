@@ -18,11 +18,11 @@ namespace AirportSim.Sim.Core.Tests
         /// SplitMix64 exactly as pinned in §8.8. Used both as the input generator
         /// for property loops (07 L4) and inside the reference stream seeding.
         /// </summary>
-        internal sealed class SplitMix64
+        internal sealed class RngGen
         {
             private ulong _x;
 
-            public SplitMix64(ulong seed)
+            public RngGen(ulong seed)
             {
                 _x = seed;
             }
@@ -97,7 +97,7 @@ namespace AirportSim.Sim.Core.Tests
             public ReferenceStream(ulong masterSeed, string name)
             {
                 ulong seed = masterSeed ^ Fnv1a64(Encoding.UTF8.GetBytes(name));
-                var sm = new SplitMix64(seed);
+                var sm = new RngGen(seed);
                 _s0 = sm.Next();
                 _s1 = sm.Next();
                 _s2 = sm.Next();
@@ -216,7 +216,7 @@ namespace AirportSim.Sim.Core.Tests
         // ------------------------------------------------------------ host doubles
         // 08 §8.11a: sim.core publishes no null objects, so tests write their own.
 
-        internal sealed class EmptyContentIndex : IContentIndex
+        internal sealed class RngEmptyContent : IContentIndex
         {
             public bool TryGet<T>(ContentId id, out T definition) where T : IContentDefinition
             {
@@ -230,7 +230,7 @@ namespace AirportSim.Sim.Core.Tests
             }
         }
 
-        internal sealed class NullLog : ISimLog
+        internal sealed class RngNullLog : ISimLog
         {
             public void Write(ulong tick, LogLevel level, SystemId system, LogKey key, in LogArgs args)
             {
@@ -309,7 +309,7 @@ namespace AirportSim.Sim.Core.Tests
 
         internal static ISimHost BuildHost(ulong masterSeed, CheckpointRecorder sink, params ISimSystem[] systems)
         {
-            var config = new SimHostConfig(masterSeed, new EmptyContentIndex(), sink, new NullLog());
+            var config = new SimHostConfig(masterSeed, new RngEmptyContent(), sink, new RngNullLog());
             ISimHostBuilder builder = SimHostFactory.CreateBuilder(in config);
             foreach (ISimSystem s in systems)
             {

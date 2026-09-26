@@ -97,7 +97,7 @@ namespace AirportSim.Sim.Core.Tests
             // Streams are fetched lazily in a random order and drawn in a random
             // interleaving; each must still follow its own fresh reference exactly.
             const ulong seed = 0x5EED0002B0000001UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             for (int i = 0; i < 100; i++)
             {
                 ulong master = gen.Next();
@@ -140,7 +140,7 @@ namespace AirportSim.Sim.Core.Tests
         public void test_random_service_same_seed_two_services_produce_identical_sequences()
         {
             const ulong seed = 0x5EED0002B0000002UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             for (int i = 0; i < 50; i++)
             {
                 ulong master = gen.Next();
@@ -178,7 +178,7 @@ namespace AirportSim.Sim.Core.Tests
             Assert.Equal(0xC6381A17FBE07F29UL, fnvB);
 
             const ulong seed = 0x5EED0002B0000003UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             for (int i = 0; i < 50; i++)
             {
                 ulong m1 = gen.Next();
@@ -315,7 +315,7 @@ namespace AirportSim.Sim.Core.Tests
             one.Step(TicksPerDay);
 
             const ulong seed = 0x5EED0002B0000004UL;
-            var gen = new SplitMix64(seed);
+            var gen = new RngGen(seed);
             var chunked = new CheckpointRecorder();
             ISimHost two = BuildHost(4242UL, chunked,
                 new RngProbe(5, "sim.turnaround.job_order", 1), new RngProbe(9, "sim.staff.shift", 4));
