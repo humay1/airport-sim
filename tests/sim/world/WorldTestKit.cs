@@ -607,6 +607,7 @@ namespace AirportSim.Sim.World.Tests
         public const uint SecurityB = 6;     // Queue
         public const uint AirsideCorridor = 7;
         public const uint Gate = 8;          // the one pooled Gate, 18 §18.5
+        public const uint Departed = 9;      // Sink: 09 §9.11 needs a Gate -> Sink edge
 
         public const uint KerbToHall = 1;
         public const uint RailToHall = 2;
@@ -616,6 +617,7 @@ namespace AirportSim.Sim.World.Tests
         public const uint SecurityAToAirside = 6;
         public const uint SecurityBToAirside = 7;
         public const uint AirsideToGate = 8;
+        public const uint GateToDeparted = 9;
 
         public const ulong FixtureHash = 0x5EED0000_00000012UL;
 
@@ -630,6 +632,7 @@ namespace AirportSim.Sim.World.Tests
                 .Node(SecurityB, 10)
                 .Node(AirsideCorridor, 80)
                 .Node(Gate, 20)
+                .Node(Departed, 0)
                 .Edge(KerbToHall, Kerb, CheckInHall)
                 .Edge(RailToHall, RailBox, CheckInHall)
                 .Edge(HallToCorridor, CheckInHall, LandsideCorridor)
@@ -638,6 +641,7 @@ namespace AirportSim.Sim.World.Tests
                 .Edge(SecurityAToAirside, SecurityA, AirsideCorridor)
                 .Edge(SecurityBToAirside, SecurityB, AirsideCorridor)
                 .Edge(AirsideToGate, AirsideCorridor, Gate)
+                .Edge(GateToDeparted, Gate, Departed)
                 .Build(FixtureHash);
         }
     }
