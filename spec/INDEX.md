@@ -163,9 +163,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   is a budget requirement (§9.3); **routing over `sim.world`'s walk graph:
   pooled `Gate` destinations, lowest traversal plus queue wait along
   `PathVia` (§9.6, Q-012)**; factory plus `IFlowGraphLoader`, where
-  `FlowGraph` is node behaviour only (§9.11).
+  `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
+  **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
-  blame rule (§9.7a); the `LaneState` shape (§9.7b).
+  blame rule (§9.7a); the `LaneState` shape (§9.7b); Q-032's `EPSILON`, credit cap, unlimited
+  `Hall` and head-of-line blocking (§9.12).
 - Read if: T-007, T-010, T-011, T-023; §9.7, §9.7a and §9.7b for callers.
 
 ### `10-events.md` — event catalogue
@@ -295,7 +297,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-031 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Q-002 to Q-032 are answered (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).

@@ -1694,3 +1694,42 @@ Impact:      No module other than `sim.core` is merged, so nothing breaks
              - T-012's route search must restrict to simple paths.
              No scope added.
 Signed off:  not required
+
+## 2026-09-27 — spec/09 §9.4, §9.5, §9.10, §9.11 "File format", §9.12 (new) — Q-032: flow graph format and exact tick semantics
+Reason:      T-007 (critical path) could not be tested. There was no
+             pinned `FlowGraph` format, and §9.4 to §9.6 left the credit
+             cap, same-tick movement, capacities, the wait formula,
+             traversal rounding, the threshold comparisons and the
+             blocking-event fields open. Answer:
+             - §9.11 pins the JSON format and its failures, as Q-030 did for
+               the walk graph.
+             - §9.12 pins the order within `Tick`: snapshot, movement with
+               one node per tick, merge, thresholds.
+             - It pins the queue arithmetic, ordered so that 2.5 pax/min is
+               exact, with the cap only on a shortfall.
+             - It pins the predicted wait with `EPSILON = 1/1000`,
+               `traversalTicks` and the route cost.
+             - It pins the thresholds, with strict inequalities that never
+               flap.
+             - It pins the blocking episodes, where `BlockedBy` is the
+               immediate target, and the event order.
+             - Node state gains a hashed threshold flag.
+             - Cohorts in an open episode do not merge.
+Raised by:   Q-032
+Impact:      Nothing of `sim.flow` is merged. §9.10's hash gains the
+             threshold flag, which is additive before any golden.
+             `PassengerCohort.ServiceCredit` is pinned to zero, since the
+             credit is per node. The Planner can release T-007 on §9.11 and
+             §9.12. The fixture is
+             `tests/fixtures/flow/phase0-landside.flow.json`. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: the choices below are player-visible and are for the
+             owner's review. None of them is a content balance value.
+             - `EPSILON = 1/1000`: a closed lane with 10 passengers shows a
+               10 000-minute wait.
+             - The post-idle burst cap of one `serverTick`.
+             - Unlimited `Hall` capacity at Phase 0/1.
+             - Head-of-line blocking in a `Queue`.
+             - Blocked cohorts not merging. This may raise the live-cohort
+               count during long spillback, and the §9.10 budget test's
+               cohort ceiling will show whether it does.
