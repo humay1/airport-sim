@@ -86,9 +86,17 @@ else
     && ok "same-process determinism" || fail "determinism_same_process"
 
   step "determinism: cross process"
-  dotnet run --project tools/SimHarness -c Release -- determinism --days 10 --seed 12345 --hash-only > /tmp/run-a.hash
-  dotnet run --project tools/SimHarness -c Release -- determinism --days 10 --seed 12345 --hash-only > /tmp/run-b.hash
-  diff -q /tmp/run-a.hash /tmp/run-b.hash \
+  # Fail closed: each run must exit 0 AND print exactly one 16-hex-digit hash
+  # (spec/19 §19.3). Two crashed runs leave two empty files, which diff equal.
+  xp_ok=1
+  for run in a b; do
+    if ! dotnet run --project tools/SimHarness -c Release -- determinism --days 10 --seed 12345 --hash-only > "/tmp/run-$run.hash"; then
+      echo "  run $run exited non-zero"; xp_ok=0
+    elif ! grep -qxE '[0-9a-f]{16}' "/tmp/run-$run.hash" || [ "$(wc -l < "/tmp/run-$run.hash")" -ne 1 ]; then
+      echo "  run $run did not print exactly one 16-hex-digit hash"; xp_ok=0
+    fi
+  done
+  [ "$xp_ok" -eq 1 ] && diff -q /tmp/run-a.hash /tmp/run-b.hash \
     && ok "cross-process determinism" || fail "determinism_cross_process"
 
   step "determinism: save/load"
