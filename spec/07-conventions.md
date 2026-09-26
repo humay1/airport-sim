@@ -161,6 +161,13 @@ project disables xUnit test parallelisation with the assembly-level attribute
 a file the Test Author writes. Tests that share a process must not distort
 each other's timing budgets.
 
+**Fixture location (Q-031).** A test finds `tests/fixtures/**` by walking up
+from `AppContext.BaseDirectory` to the nearest ancestor directory that
+contains `AirportSim.sln`, which is the repository root, and then joining
+the fixture's repository-relative path. Fixtures are not copied to the build
+output, and no `.csproj` changes for them (L3). A test that cannot find the
+root fails, and is never skipped.
+
 **L5. Public surface only. No `InternalsVisibleTo`.** Tests, the harness and other
 modules compile only against the public surface. A type or member is `public` if
 and only if a spec interface section names it. Everything else is
@@ -274,7 +281,9 @@ permits. The authoritative budget measurement is still
   the source name or path and names the field and the offending id. This
   covers every loader whose spec does not name another type: `08` §8.11's
   `IContentLoader`, the schedule, airside, turnaround, render-layout and
-  walk-graph loaders.
+  walk-graph loaders. Where no source name is in scope (a factory resolving
+  content), the message starts with the module name instead, for example
+  `sim.schedule: ` (Q-031).
 - **Exception types (Q-014, Q-015)** are fixed, and tests assert the exact
   type. A broken invariant during a tick (the cascade limit,
   `MAX_EVENTS_PER_TICK`, a `Blocked` interval left open) throws
