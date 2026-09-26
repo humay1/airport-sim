@@ -1542,3 +1542,59 @@ Reason:      §8.5a did not say whether the hash taken when tick `t` fails
 Raised by:   Q-024
 Impact:      Constraining only. No merged code. No scope added.
 Signed off:  not required
+
+## 2026-09-26 — spec/19 (new); 07 L1, L3, L8; INDEX — Q-025–Q-027: harness test project, CLI contract, interim save/load gate
+Reason:      T-006 could not be tested or implemented without inventing
+             things. H1: the harness had no test project, and L3 forbade the
+             test location the task named. H2: nothing pinned the exit codes
+             or stdout that `ci/run-checks.sh` depends on, and there was no
+             way to prove that a gate can fail. H3: the task asked for an RNG
+             snapshot through a seam that `08` §8.8 says does not exist.
+             Answer:
+             - `07` L1/L3 add `tests/tools/simharness`, which references the
+               harness and runs in process. T-006 adds it to the sln (L8).
+             - `19` §19.1 makes `HarnessCli`, `HarnessGates`, `SimComposer`
+               and `GateResult` the harness's only public types, and the
+               injected composer is the divergence seam.
+             - §19.2 fixes a NoOp command script and the order in which two
+               runs are compared.
+             - §19.3 fixes the five CLI forms, the seed 12345 where the
+               script passes none, the exit codes 0/1/2/3 and a one-line
+               stdout.
+             - §19.4 applies the `03` statistic to the whole-sim 6 ms.
+             - §19.2/§19.5: `saveload` is replay from seed and log, and
+               `promotion` compares for real but passes vacuously until
+               T-010.
+Raised by:   Q-025, Q-026, Q-027
+Impact:      T-006 is stale in four places:
+             - tests go in `tests/tools/simharness/**`, not
+               `tests/sim/core/**`;
+             - `AirportSim.sln` must be added to its writable paths;
+             - "snapshots ... RNG stream state" is replaced by §19.2;
+             - "no-op pass-through" for `promotion` is replaced by a real
+               comparison that passes vacuously.
+             T-001's merged harness returns 2 for any subcommand, and T-006
+             replaces that. The no-argument behaviour is untouched, so no
+             merged test breaks. New public surface is in the harness only.
+             Scope: none added. `sim.save` is still unspecified.
+Signed off:  HUMAN DECISION PENDING for §19.5. The Architect recommends
+             adopting the replay form as the interim meaning of `02`'s
+             `determinism_save_load`. `02` and `ci/` are not edited.
+LOW CONFIDENCE: §19.4. Until a max-tier fixture is composed into the harness,
+             `budget --tier max` times core alone, so it proves almost
+             nothing. The seed 12345 for `saveload`, `promotion` and
+             `budget` mirrors the script's `determinism` seed and is not
+             an owner value.
+
+## 2026-09-26 — spec/19 §19.5; INDEX — Q-027: owner approves replay as the interim `determinism_save_load`
+Reason:      HUMAN DECISION — owner, 2026-09-26: §19.5 is approved. Until
+             `sim.save` exists, `determinism_save_load` is satisfied by the
+             replay check of §19.2. The real snapshot round-trip replaces it
+             when `sim.save` is specified. The Architect recorded the
+             decision and did not make it.
+Raised by:   Q-027
+Impact:      Q-027 is fully answered, and T-006 implements §19.2 as
+             specified. Whichever task specifies `sim.save` must amend
+             `SaveLoad` and §19.5 to reload from a real snapshot. `02` and
+             `ci/` are unchanged. No scope added.
+Signed off:  owner, 2026-09-26
