@@ -21,8 +21,13 @@ T-026's scope.
 ## Writable paths
 
 ```
-src/sim/core/**, tests/sim/core/**, tests/fixtures/content/**
+src/sim/core/**
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/sim/core/**` and
+`tests/fixtures/content/**` are dropped.
 
 Same shared write surface as T-001–T-006/T-026 (`tasks/queue.md`'s Phase 0
 release order note) — do not release concurrently with another open
@@ -122,7 +127,9 @@ allocate pathologically (a directory of ~250 files at 1.0 scope,
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved
 - [ ] Verifier gates green

@@ -5,15 +5,35 @@
 | Status | QUEUED |
 | Module | `sim.airside` |
 | Assigned role | worker |
-| Depends on | T-008, T-026 |
+| Depends on | T-003, T-005, T-008, T-026 |
 | Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005; §12.8's boarding hold answers part of Q-007 §14.9, HD D6) |
 | Blocked by | — |
+
+**Dependency correction (systematic type-dependency recheck):**
+`AircraftTrack.EdgeProgress` is `Fx` (T-003), and the `ReassignStand`
+command handler this task registers is built against the `ICommandHandler`
+contract T-005 publishes — this task cannot compile without either.
+`Depends on` is amended to `T-003, T-005, T-008, T-026`.
 
 ## Writable paths
 
 ```
-src/sim/airside/**, tests/sim/airside/**, tests/fixtures/airside/**
+src/sim/airside/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/sim/airside/**` and
+`tests/fixtures/airside/**` are dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/airside/AirportSim.Sim.Airside.csproj` and
+`tests/sim/airside/AirportSim.Sim.Airside.Tests.csproj` (byte for byte per
+`07` L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-020, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `sim.airside` depends on `core`, `world`, `schedule` and `flow`
 (`spec/03-module-map.md`, the last added by D6), but this task must build

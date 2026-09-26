@@ -12,8 +12,13 @@
 ## Writable paths
 
 ```
-tools/SimHarness/**, tests/sim/core/**
+tools/SimHarness/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively
+(`07-conventions.md` "Solution layout and build"); the path guard already
+blocks a worker from writing there, so a worker grant there is a no-op. This
+task's earlier grant of `tests/sim/core/**` is dropped.
 
 Registers `sim.world` (T-012), `sim.schedule` (T-008) and `sim.flow` (T-007)
 into the harness built by T-001/T-006 and runs the Phase 0 fixture from
