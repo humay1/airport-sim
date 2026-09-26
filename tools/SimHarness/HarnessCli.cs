@@ -94,7 +94,7 @@ namespace AirportSim.Tools.SimHarness
             ulong seed = ParseUnsignedDecimal(RequireValue(values, "--seed"), "--seed");
             bool hashOnly = present.Contains("--hash-only");
 
-            var content = new EmptyContentIndex();
+            var content = CliContent();
             if (hashOnly)
             {
                 string hash = HarnessGates.FinalHash(content, NoSystems, seed, ticks);
@@ -130,7 +130,7 @@ namespace AirportSim.Tools.SimHarness
             }
             uint saveAt = (uint)rawSaveAt;
 
-            var content = new EmptyContentIndex();
+            var content = CliContent();
             GateResult r = HarnessGates.SaveLoad(content, NoSystems, FixedSeed, ticks, saveAt);
             stdout.Write(r.Report + "\n");
             return r.Passed ? 0 : 1;
@@ -146,7 +146,7 @@ namespace AirportSim.Tools.SimHarness
 
             uint ticks = ParseDaysAsTicks(RequireValue(values, "--days"));
 
-            var content = new EmptyContentIndex();
+            var content = CliContent();
             GateResult r = HarnessGates.Promotion(content, NoSystems, FixedSeed, ticks);
             stdout.Write(r.Report + "\n");
             return r.Passed ? 0 : 1;
@@ -166,7 +166,7 @@ namespace AirportSim.Tools.SimHarness
                 throw new UsageException("--tier must be 'max'");
             }
 
-            var content = new EmptyContentIndex();
+            var content = CliContent();
             var checkpoints = new NullCheckpointSink();
             ISimHost host = HarnessRunner.BuildOne(content, NoSystems, FixedSeed, checkpoints);
 
@@ -206,7 +206,7 @@ namespace AirportSim.Tools.SimHarness
         {
             var log = new NullSimLog();
             var checkpoints = new NullCheckpointSink();
-            var content = new EmptyContentIndex();
+            var content = CliContent();
 
             var config = new SimHostConfig(masterSeed: 1, content: content, checkpoints: checkpoints, log: log);
             ISimHostBuilder builder = SimHostFactory.CreateBuilder(in config);
@@ -221,6 +221,12 @@ namespace AirportSim.Tools.SimHarness
 
         private static void NoSystems(ISimHostBuilder builder)
         {
+        }
+
+        /// <summary>§19.2: the CLI composition's content is <c>ContentIndexFactory.Create</c> of an empty list.</summary>
+        private static IContentIndex CliContent()
+        {
+            return ContentIndexFactory.Create(Array.Empty<IContentDefinition>());
         }
 
         // -------------------------------------------------------------- argument parsing

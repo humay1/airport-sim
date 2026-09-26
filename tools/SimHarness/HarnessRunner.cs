@@ -64,6 +64,17 @@ namespace AirportSim.Tools.SimHarness
             Checkpoint[] ca = a.Checkpoints;
             Checkpoint[] cb = b.Checkpoints;
             int shared = Math.Min(ca.Length, cb.Length);
+
+            // §19.2: the checkpoint counts differing is checked before any per-checkpoint
+            // comparison, not after.
+            if (ca.Length != cb.Length)
+            {
+                Checkpoint firstOnlyInOne = ca.Length > cb.Length ? ca[shared] : cb[shared];
+                tick = firstOnlyInOne.Tick;
+                where = "count";
+                return false;
+            }
+
             for (int i = 0; i < shared; i++)
             {
                 Checkpoint x = ca[i];
@@ -99,14 +110,6 @@ namespace AirportSim.Tools.SimHarness
                     where = "world";
                     return false;
                 }
-            }
-
-            if (ca.Length != cb.Length)
-            {
-                Checkpoint firstOnlyInOne = ca.Length > cb.Length ? ca[shared] : cb[shared];
-                tick = firstOnlyInOne.Tick;
-                where = "count";
-                return false;
             }
 
             if (a.FinalHash != b.FinalHash)
