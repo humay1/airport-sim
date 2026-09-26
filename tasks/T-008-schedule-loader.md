@@ -5,21 +5,45 @@
 | Status | QUEUED |
 | Module | `sim.schedule` |
 | Assigned role | worker |
-| Depends on | T-001 |
+| Depends on | T-001, T-003, T-026 |
 | Spec source | `spec/00-overview.md` build order #2; `spec/11-interfaces-schedule.md` (answers Q-004) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/sim/schedule/**, tests/sim/schedule/**, tests/fixtures/schedule/**
+src/sim/schedule/**
+AirportSim.sln
 ```
+
+**Correction (Q-021), especially for the fixture grant:** `tests/**`
+(including `tests/fixtures/**`) is the Test Author's territory exclusively
+(`07-conventions.md` "Solution layout and build") — `tests/fixtures/schedule/phase0-200.csv`
+is the Test Author's to write, per `11-interfaces-schedule.md` §11.10's own
+framing ("binding on the Test Author"), not this task's, and the path guard
+already blocks a worker grant there regardless. The earlier grants of
+`tests/sim/schedule/**` and `tests/fixtures/schedule/**` are dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/schedule/AirportSim.Sim.Schedule.csproj` and
+`tests/sim/schedule/AirportSim.Sim.Schedule.Tests.csproj` (byte for byte
+per `07` L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-012,
+T-020, T-021, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `sim.schedule` depends on `core` and `flow` (`spec/03-module-map.md`, corrected
 by the Q-004 answer) but this task must build and pass **without** `sim.flow`
 registered — §11.6 "Running without `sim.flow`" is binding: the module's state
 hash must be identical with and without the injector wired in. Do not add a
 hard dependency on T-007 merging first.
+
+**Dependency correction (systematic type-dependency recheck):**
+`FlightRecord.MinTurnaround` is `SimMinutes`, which is `Fx` (`08` §8.2), and
+`FlightRecord.EntryNode` is `NodeId` while `FlightRecord.AircraftType`/
+`PaxProfile` are `ContentId` — both `sim.core` types T-026 authors. This
+task cannot compile without either `T-003` or `T-026`. `Depends on` is
+amended to `T-001, T-003, T-026`.
 
 ## Readable specs
 
@@ -31,20 +55,19 @@ hard dependency on T-007 merging first.
 
 ## Interface to implement
 
+**Correction (Q-018):** `AirlineId`, `MovementKind` and the
+`FlightPlanPublished` event struct are now **`sim.core` types**, authored
+by T-026 (`10-events.md` §10.9), not declared or sketched locally here —
+the earlier inline comment-block sketch of `FlightPlanPublished`'s fields
+is stale and withdrawn; reference the real struct from `sim.core` instead.
+`kind`, `rotation` and `hasRotation` are still copied verbatim from
+`FlightRecord.Kind`/`Rotation`/`HasRotation` when this task publishes the
+event — `sim.delay` reads the rotation link from the event, never by
+querying `IScheduleSystem` (`spec/14-interfaces-delay.md` §14.12).
+`schedArr`/`schedDep` use `TICK_UNSCHEDULED` for the side with no linked
+counterpart.
+
 ```
-struct AirlineId { uint32 Value }
-
-enum MovementKind { Arrival, Departure }
-
-// FlightPlanPublished (emitted event; 10-events.md §10.6, amended by Q-007) —
-// fields: FlightId, MovementKind kind, FlightId rotation, bool hasRotation,
-// AirlineId, ContentId aircraftType, Tick schedArr, Tick schedDep,
-// SimMinutes minTurnaround. `kind`, `rotation` and `hasRotation` are copied
-// verbatim from FlightRecord.Kind/Rotation/HasRotation — sim.delay reads the
-// rotation link from this event, never by querying IScheduleSystem
-// (spec/14-interfaces-delay.md §14.12). `schedArr`/`schedDep` use
-// TICK_UNSCHEDULED for the side with no linked counterpart.
-
 readonly struct FlightRecord {
   FlightId     Id
   AirlineId    Airline
@@ -147,7 +170,9 @@ injection path, at the day boundary.
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved

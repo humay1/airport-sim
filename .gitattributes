@@ -1,0 +1,4 @@
+# The spec requires LF for project files and hashed content (07 L2); keep
+# the working tree LF on every OS so byte-exact files and hashes agree.
+* text=auto eol=lf
+*.sln text eol=crlf

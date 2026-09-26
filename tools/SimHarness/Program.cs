@@ -14,6 +14,15 @@ namespace AirportSim.Tools.SimHarness
     {
         private static int Main(string[] args)
         {
+            if (args.Length > 0)
+            {
+                // Fail closed: an unimplemented subcommand must not report success.
+                // ci/run-checks.sh's determinism/saveload/promotion/budget gates are
+                // T-006's; until that lands, running one here must not silently pass.
+                Console.Error.WriteLine("tools.simharness: subcommand '" + args[0] + "' not implemented (T-006)");
+                return 2;
+            }
+
             var log = new NullSimLog();
             var checkpoints = new NullCheckpointSink();
             var content = new EmptyContentIndex();

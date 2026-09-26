@@ -765,3 +765,17 @@ Answer:      `08` §8.8 "Exact reference" and §8.7 "Issuer, kinds and
              - (G5) Yes. There is no child process (as in Q-015 A16) and no
                CI uniqueness check (Q-019). T-002's text is stale.
 Status:      ANSWERED (spec/08-interfaces-core.md#exact-reference-q-019)
+
+### Q-024 — Which tick count feeds the `WorldHash` of a wrapped exception?
+Raised by:   test-author-t001 (via coordinator) / T-001
+Blocking:    T-001 tests
+Question:    §8.5a computes `WorldHash` "at that moment" when an exception
+             escapes tick `t`. Is the count fed `t` (the tick did not
+             complete) or `t + 1`? Also: is the `IIdAllocator` 2^48 overflow
+             tested?
+Why it matters: The two readings give different hashes for the same failure.
+Answer:      `08` §8.5a: `t`, the number of ticks completed. `CurrentTick`
+             stays `t`, and the partial state is hashed as it stands, with
+             no rollback. `08` §8.4: the 2^48 overflow cannot be reached
+             through any public API, so it is untested by design.
+Status:      ANSWERED (spec/08-interfaces-core.md#85a-broken-invariants-q-014)

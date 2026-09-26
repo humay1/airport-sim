@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "queue_profiles.schema.json",
+  "title": "Queue profile definition",
+  "description": "See spec/04-data-schemas.md 'Phase 0/1 content fields' and spec/08-interfaces-core.md §8.11 (QueueProfileDefinition). ServiceRatePerServerPerMinute: spec/09-interfaces-flow.md §9.4. CapacityStanding: §9.5. ThresholdWaitMinutes/HysteresisMinutes: spec/10-events.md §10.6, §10.3 rule 4. These values are balance content, human-authored (04-data-schemas.md 'Who writes the Phase 1 files'); this schema does not author them.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "service_rate_per_server_per_minute",
+    "capacity_standing",
+    "threshold_wait_minutes",
+    "hysteresis_minutes",
+    "delay_category"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Stable identifier. Never derived from array position."
+    },
+    "service_rate_per_server_per_minute": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?$",
+      "description": "Fixed-point decimal string, must be >= 0 (loader-enforced, 08 §8.11)."
+    },
+    "capacity_standing": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must be > 0 (loader-enforced, 08 §8.11)."
+    },
+    "threshold_wait_minutes": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?$",
+      "description": "Fixed-point decimal string."
+    },
+    "hysteresis_minutes": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?$",
+      "description": "Fixed-point decimal string; must satisfy 0 <= h < threshold_wait_minutes (loader-enforced, 08 §8.11)."
+    },
+    "delay_category": {
+      "enum": ["security_queue", "immigration_queue"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aircraft.schema.json",
+  "title": "Aircraft type definition",
+  "description": "See spec/04-data-schemas.md 'Phase 0/1 content fields' and spec/08-interfaces-core.md §8.11 (AircraftDefinition). Referenced by schedule fixtures' aircraft_type column (spec/11-interfaces-schedule.md) by ContentId.",
+  "type": "object",
+  "required": ["schema_version", "id", "size_category"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Stable identifier. Never derived from array position."
+    },
+    "size_category": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "ContentId of a size_categories/*.json entry; must resolve at load (08 §8.11 loader validation)."
+    }
+  }
+}

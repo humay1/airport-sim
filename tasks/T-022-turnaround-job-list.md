@@ -5,15 +5,29 @@
 | Status | QUEUED |
 | Module | `sim.turnaround` |
 | Assigned role | worker |
-| Depends on | T-021, T-026 |
+| Depends on | T-008, T-021, T-026 |
 | Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/sim/turnaround/**, tests/sim/turnaround/**, tests/fixtures/turnaround/**
+src/sim/turnaround/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/sim/turnaround/**` and
+`tests/fixtures/turnaround/**` are dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/turnaround/AirportSim.Sim.Turnaround.csproj` and
+`tests/sim/turnaround/AirportSim.Sim.Turnaround.Tests.csproj` (byte for byte
+per `07` L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-020, T-021, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `sim.turnaround` depends on `core`, `airside` and `staff`
 (`spec/03-module-map.md`), but this task must build and pass **without**

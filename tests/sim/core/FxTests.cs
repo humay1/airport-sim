@@ -488,6 +488,28 @@ namespace AirportSim.Sim.Core.Tests
             Assert.Throws<OverflowException>(() => Fx.Parse("-2147483648.0000000001"));
             Assert.Throws<OverflowException>(() => Fx.Parse("99999999999999999999999999999999"));
             Assert.Throws<OverflowException>(() => Fx.Parse("-99999999999999999999999999999999.5"));
+            Assert.Throws<OverflowException>(() => Fx.Parse("99999999999"));
+            Assert.Throws<OverflowException>(() => Fx.Parse("-99999999999.1234567890"));
+        }
+
+        [Theory]
+        [InlineData("99999999999x")]
+        [InlineData("99999999999.")]
+        [InlineData("-99999999999.12345678901")]
+        [InlineData("099999999999")]
+        [InlineData("-099999999999")]
+        [InlineData("+99999999999")]
+        [InlineData("99999999999 ")]
+        [InlineData(" -99999999999")]
+        [InlineData("99999999999e0")]
+        [InlineData("99999999999.5.5")]
+        [InlineData("99999999999999999999999999999999,5")]
+        public void test_fx_parse_malformed_input_with_out_of_range_magnitude_throws_format_exception(string text)
+        {
+            // 08 §8.3 Q-015 A12: OverflowException is only for a string that
+            // matches the grammar. A mismatch is FormatException even when its
+            // integer part alone would overflow, so grammar is checked first.
+            Assert.Throws<FormatException>(() => Fx.Parse(text));
         }
 
         [Fact]

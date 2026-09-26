@@ -5,15 +5,28 @@
 | Status | QUEUED |
 | Module | `app.ui` (scene layer only) |
 | Assigned role | worker |
-| Depends on | T-020, T-023, T-005 |
+| Depends on | T-005, T-020, T-023, T-026 |
 | Spec source | `spec/00-overview.md`; `spec/17-interfaces-ui.md` (new file, D5; command plumbing answered by Q-010) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/app/ui/Scene/**, tests/app/ui/**
+src/app/ui/Scene/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory
+exclusively; the path guard already blocks a worker grant there. The
+earlier grant of `tests/app/ui/**` is dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/app/ui/Scene/AirportSim.App.Ui.csproj` and
+`tests/app/ui/AirportSim.App.Ui.Tests.csproj` (byte for byte per `07`
+L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-020, T-021, T-022, T-024, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `src/app/ui/Unity/**` (the backend) is out of scope for this task — it is
 T-033, once `app.host`'s Unity project exists.

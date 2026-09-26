@@ -1531,3 +1531,14 @@ LOW CONFIDENCE: charging draw time to the calling system rather than to
              `sim.core` relies on `03`'s per-module budgets being measured
              per system `Tick`. If the harness attributes the RNG
              differently, the answer needs revisiting.
+
+## 2026-09-26 — spec/08 §8.5a, §8.4 — Q-024: tick fed into a wrapped exception's `WorldHash`; id overflow untested
+Reason:      §8.5a did not say whether the hash taken when tick `t` fails
+             feeds `t` or `t + 1`. The answer is `t`, the ticks completed,
+             which matches "ticks executed" in §8.9 and leaves `CurrentTick`
+             at `t`. The partial state is hashed as it stands. The
+             `IIdAllocator` 2^48 overflow has no public reach and is noted
+             as untested by design.
+Raised by:   Q-024
+Impact:      Constraining only. No merged code. No scope added.
+Signed off:  not required

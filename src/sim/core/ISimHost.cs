@@ -1,10 +1,9 @@
-using System.Collections.Generic;
-
 namespace AirportSim.Sim.Core
 {
     /// <summary>
     /// The only entry point the presentation layer has for advancing the sim.
-    /// Spec: 08-interfaces-core.md §8.5, §8.7 (Q-020).
+    /// Spec: 08-interfaces-core.md §8.5. <c>CommandLogSince</c> (§8.7, Q-020) is not
+    /// declared here: it is T-005's addition to this interface.
     /// </summary>
     public interface ISimHost
     {
@@ -19,9 +18,5 @@ namespace AirportSim.Sim.Core
 
         /// <summary>Attempts to submit a command; false with the rejection reason if inadmissible.</summary>
         bool TrySubmit(in Command cmd, out CommandRejection reason);
-
-        /// <summary>Every admitted command with <c>cmd.Tick &gt;= tick</c>, applied or still
-        /// pending, in the total order (Tick, Issuer, Sequence).</summary>
-        IReadOnlyList<Command> CommandLogSince(ulong tick);
     }
 }

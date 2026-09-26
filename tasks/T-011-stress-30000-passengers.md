@@ -12,15 +12,23 @@
 ## Writable paths
 
 ```
-tests/sim/flow/** (performance fixtures and tests only — no production code
-change expected; if the budget is not met, the fix belongs to whichever of
-T-007/T-010's code paths is the bottleneck, filed back as a defect on that
-task, not new production code under this task's own scope)
+src/sim/flow/**
 ```
 
-If a real code change turns out to be required to meet budget, it is still
-`src/sim/flow/**`, but this task's primary deliverable is the stress fixture
-and the measurement, per the kill-gate framing in `00-overview.md`.
+**Correction (Q-021, supersedes the earlier "URGENT path-guard" fix on this
+file):** the stress fixture and its budget test are `tests/sim/flow/**`,
+which is the Test Author's territory exclusively
+(`07-conventions.md` "Solution layout and build") — the path guard already
+blocks a worker from writing there, so this task's earlier grant of
+`tests/sim/flow/**` (its *only* grant) is dropped rather than corrected in
+place. **This task's writable path is now `src/sim/flow/**` only, and this
+task expects to write nothing there in the ordinary case:** the fixture and
+measurement are the Test Author's deliverable per `00-overview.md`'s
+kill-gate framing; a worker is released against this task only if the
+Test Author's budget test fails and a real fix in `src/sim/flow/**`
+(T-007/T-010's code) is needed to meet it. Do not add a new fixture or test
+file under `tests/**` yourself, no matter how tempting — file back to the
+Test Author instead.
 
 ## Readable specs
 

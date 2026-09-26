@@ -97,6 +97,37 @@ echo "path guard: comparing against $BASE"
 
 STATUS=0
 
+# --- test pairing (spec/07-conventions.md L9)
+# A task's tests reach main in the same merge as its implementation, so a worker
+# branch legitimately carries the Test Author's tests/ files. They are accepted
+# ONLY if each one is byte-identical to the same path on the task's own
+# test-author/<task-id>-* branch. A worker edit to any test still fails, and a
+# test file with no matching test-author branch still fails.
+if [ "$ROLE" = "worker" ] && [ -n "$TASK" ] && echo "$CHANGED" | grep -q '^tests/'; then
+  git fetch --no-tags -q origin '+refs/heads/test-author/*:refs/remotes/origin/test-author/*' 2>/dev/null || true
+  TEST_BRANCH=$(git for-each-ref --format='%(refname)' \
+                  "refs/heads/test-author/${TASK}-*" "refs/remotes/origin/test-author/${TASK}-*" | head -1)
+  if [ -n "$TEST_BRANCH" ]; then
+    VOUCHED=""
+    while read -r file; do
+      case "$file" in tests/*) ;; *) continue ;; esac
+      if git diff --quiet "$TEST_BRANCH" HEAD -- "$file"; then
+        VOUCHED="$VOUCHED$file"$'\n'
+      else
+        echo "BLOCKED: $file differs from ${TEST_BRANCH#refs/} — workers never edit tests"
+        STATUS=1
+      fi
+    done <<< "$CHANGED"
+    [ -n "$VOUCHED" ] && echo "path guard: $(printf '%s' "$VOUCHED" | grep -c .) test file(s) match ${TEST_BRANCH#refs/}"
+    # Vouched files are the Test Author's writes, not this branch's; drop them
+    # from the role and writable-path checks below.
+    CHANGED=$(echo "$CHANGED" | grep -vxF -f <(printf '%s' "$VOUCHED") || true)
+  else
+    echo "BLOCKED: branch carries tests/ changes but no test-author/${TASK}-* branch exists to pair them with"
+    STATUS=1
+  fi
+fi
+
 # --- universally protected paths for this role
 for p in $(protected_for_role "$ROLE"); do
   if echo "$CHANGED" | grep -q "^$p"; then
