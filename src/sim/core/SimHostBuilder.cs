@@ -14,6 +14,7 @@ namespace AirportSim.Sim.Core
         private readonly ISimLog _log;
         private readonly ICheckpointSink _checkpoints;
         private readonly IdAllocator _idAllocator;
+        private readonly CommandHandlerRegistry _registry;
         private readonly List<ISimSystem> _systems = new List<ISimSystem>();
 
         private ushort _lastRegistered;
@@ -26,7 +27,8 @@ namespace AirportSim.Sim.Core
             IContentIndex content,
             ISimLog log,
             ICheckpointSink checkpoints,
-            IdAllocator idAllocator)
+            IdAllocator idAllocator,
+            CommandHandlerRegistry registry)
         {
             Services = services;
             _eventBus = eventBus;
@@ -35,6 +37,7 @@ namespace AirportSim.Sim.Core
             _log = log;
             _checkpoints = checkpoints;
             _idAllocator = idAllocator;
+            _registry = registry;
         }
 
         public SystemServices Services { get; }
@@ -89,10 +92,25 @@ namespace AirportSim.Sim.Core
                 }
             }
 
+            _registry.EnsureOwnersRegistered(IsSystemRegistered);
+
             _built = true;
             _eventBus.MarkBuilt();
+            _registry.MarkBuilt();
 
-            return new SimHost(_systems.ToArray(), _eventBus, _rng, _content, _log, _checkpoints, _idAllocator);
+            return new SimHost(_systems.ToArray(), _eventBus, _rng, _content, _log, _checkpoints, _idAllocator, _registry);
+        }
+
+        private bool IsSystemRegistered(ushort id)
+        {
+            for (int i = 0; i < _systems.Count; i++)
+            {
+                if (_systems[i].Id.Value == id)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

@@ -58,13 +58,50 @@ interface IWalkGraphLoader {
 }
 ```
 
-The file format is the worker's choice, with the same posture as `12` §12.13.
-Load-time validation, each a hard failure naming the file and the id
-(`07-conventions.md`):
+### File format (Q-030)
 
-- node and edge ids are unique;
-- every edge's `From` and `To` is a declared node;
-- there are no self-loops and no duplicate `(From, To)` pairs.
+Binding. It replaces the earlier "the worker's choice". The file is the
+strict JSON subset of `08` §8.11 "The loader", with the same rules: UTF-8
+without a BOM, JSON whitespace (space, tab, LF, CR) between tokens, objects,
+arrays, strings and integers only, and no fraction, exponent, `null`, `true`
+or `false`. Duplicate, unknown and missing keys are load failures, and keys
+may come in any order. `sim.core`'s parser is internal (`07` L5), so
+`sim.world` hand-parses its own, with no package. It has exactly this
+shape:
+
+```
+{
+  "schema_version": 1,
+  "nodes": [ { "id": <uint32 ≥ 1>, "length_metres": <uint32> }, ... ],
+  "edges": [ { "id": <uint32 ≥ 1>, "from": <node id>, "to": <node id> }, ... ]
+}
+```
+
+- `schema_version` must be `1`. `nodes` must be non-empty. `edges` may be
+  empty.
+- An integer is `0` or `-?[1-9][0-9]*`, and one outside its field's range is
+  a load failure. Id 0 is not allowed.
+- The arrays may be in any order. `Load` returns `Nodes` and `Edges` in
+  ascending id order, so nothing downstream sees file order (§18.3).
+- `FixtureHash` is FNV-1a-64 (`08` §8.9 constants) over **exactly** the
+  bytes passed to `Load`, with no length prefix and no normalisation, so
+  whitespace and order changes change it.
+- The fixture of §18.6 is `tests/fixtures/world/phase0-landside.json`.
+
+Load-time validation, each a hard failure (`07-conventions.md`):
+
+- node ids are unique, and edge ids are unique;
+- every edge's `from` and `to` is a declared node;
+- there are no self-loops and no duplicate `(from, to)` pairs.
+
+**Failures (Q-030).** Every load failure, whether syntax, shape, range or
+validation, throws `FormatException` (`07` "Error handling"). The message
+starts with `sourceName` followed by `": "`. For a syntax or shape failure
+it contains the 1-based line number as `line <n>`. For a validation failure
+it contains the field name and the offending id, or ids, in decimal. A
+`null` `sourceName` throws `ArgumentNullException`. Tests assert the
+exception type, the `sourceName` prefix and the id, and nothing else in the
+message.
 
 Lengths are integer metres. That is enough resolution for walking a
 terminal, and it keeps the fixture free of floats (`04-data-schemas.md`).
@@ -96,7 +133,10 @@ interface IWorldSystem : ISimSystem {
   the lists are views into load-time tables.
 - The tables are load-time data. Their memory is O(nodes² + edges × nodes).
   The max tier (about 200 landside nodes) keeps that small.
-- A query naming an unknown id is a programmer error and throws.
+- A query naming an unknown id is a programmer error and throws
+  `ArgumentException` (Q-030). This covers `LengthMetres`, `OutEdges`,
+  `EdgeTo`, `CanReach`, `CanReachVia` and `PathVia`, whichever argument is
+  unknown.
 
 ---
 
@@ -141,7 +181,7 @@ This follows `08` §8.11a's factory rule. `sim.flow` is not constructed without
 
 ## 18.6 Fixture and tests
 
-`tests/fixtures/world/phase0-landside.*`, binding on the Test Author. It is
+`tests/fixtures/world/phase0-landside.json` (§18.2 format), binding on the Test Author. It is
 shared by T-007's, T-011's and T-023's flow fixtures and by the render layout
 (`15` §15.12):
 

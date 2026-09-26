@@ -16,6 +16,7 @@ namespace AirportSim.Sim.Core
         private readonly ICheckpointSink _checkpoints;
         private readonly IdAllocator _idAllocator;
         private readonly SimClock _clock;
+        private readonly CommandQueue _commandQueue;
 
         private ulong _ticksExecuted;
         private bool _broken;
@@ -28,7 +29,8 @@ namespace AirportSim.Sim.Core
             IContentIndex content,
             ISimLog log,
             ICheckpointSink checkpoints,
-            IdAllocator idAllocator)
+            IdAllocator idAllocator,
+            CommandHandlerRegistry commandRegistry)
         {
             _systems = systems;
             _eventBus = eventBus;
@@ -38,6 +40,7 @@ namespace AirportSim.Sim.Core
             _checkpoints = checkpoints;
             _idAllocator = idAllocator;
             _clock = new SimClock(this);
+            _commandQueue = new CommandQueue(commandRegistry, eventBus, _clock, rng, content, log);
         }
 
         public ulong CurrentTick => _ticksExecuted;
@@ -73,10 +76,13 @@ namespace AirportSim.Sim.Core
                 throw new InvalidOperationException("TrySubmit cannot be called during Step (08-interfaces-core.md §8.7, Q-020)");
             }
 
-            // T-001 ships the command family as shape only (Q-014): nothing is ever admitted.
-            // T-005 gives ICommandHandlerRegistry/ICommandQueue their real behaviour.
-            reason = CommandRejection.UnknownKind;
-            return false;
+            return _commandQueue.TrySubmit(in cmd, out reason);
+        }
+
+        public System.Collections.Generic.IReadOnlyList<Command> CommandLogSince(ulong tick)
+        {
+            EnsureNotBroken();
+            return _commandQueue.LogSince(tick);
         }
 
         private void RunOneTick()
@@ -86,8 +92,9 @@ namespace AirportSim.Sim.Core
             {
                 _eventBus.BeginTick(t);
 
-                // Phase 1: command application. Nothing is ever pending at T-001 (see TrySubmit).
+                // Phase 1: command application, in the total order of §8.7.
                 _eventBus.SetPhase(1);
+                _commandQueue.ApplyDue(t);
 
                 // Phase 2: system update, in registry order.
                 _eventBus.SetPhase(2);
@@ -114,6 +121,7 @@ namespace AirportSim.Sim.Core
 
                 // Every phase, including phase 4, succeeded: the tick is complete.
                 _ticksExecuted = ticksCompleted;
+                _commandQueue.SetCurrentTick(_ticksExecuted);
             }
             catch (Exception ex)
             {
@@ -157,13 +165,7 @@ namespace AirportSim.Sim.Core
         {
             var hasher = new StateHasher();
 
-            // Next command Sequence to assign; always 1, since nothing is ever admitted at
-            // T-001 (Q-020: Sequence is a global counter starting at 1).
-            hasher.Feed(1UL);
-
-            // Number of pending (admitted, not yet applied) commands; always 0 at T-001.
-            hasher.Feed(0UL);
-
+            _commandQueue.FeedCoreHash(ref hasher);
             _idAllocator.FeedCounters(ref hasher);
 
             return hasher.Result;

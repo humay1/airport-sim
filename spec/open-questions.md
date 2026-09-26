@@ -835,3 +835,74 @@ Answer:      `19` §19.2: replay form. The "save" at `saveAt` is the seed,
              check, and the real snapshot round-trip replaces it when
              `sim.save` is specified.
 Status:      ANSWERED — HUMAN (spec/19-interfaces-harness.md#195-saveload-before-simsave--human-decision-q-027)
+
+### Q-028 — Content index edge cases, enum member casing, test file naming
+Raised by:   Test Author (via coordinator) / T-026
+Blocking:    T-026 tests
+Question:    Which exception does `ContentIndexFactory.Create` throw for a
+             duplicate id, and for a `null` element? Does `TryGet<T>` return
+             false or throw for a definition of another type, and for
+             `T = IContentDefinition`? Do snake_case IDL enum members, such
+             as `06`'s `DelayCategory`, stay snake_case in C#? How is a
+             multi-word test subject named under L6?
+Why it matters: Each one is a test assertion or a public name, and enum
+             casing binds every module.
+Answer:      `08` §8.11a: a `null` list throws `ArgumentNullException`. A
+             `null` element, a `null` `Id.Value` or a duplicate id throws
+             `ArgumentException`, and the input is copied. `08` §8.11:
+             `TryGet<T>` is true if and only if the id exists and its
+             definition is a `T`, otherwise false with `default`. The type
+             never throws, `IContentDefinition` matches anything, and a
+             `null` id value throws `ArgumentException`. `07` L10: enum
+             members are PascalCase in C# (`late_inbound` → `LateInbound`),
+             and snake_case survives only in data. `07` L6: a subject may be
+             several words, and each test in `<Subject>Tests` starts with
+             `test_<subject in snake_case>_`, going to the longest matching
+             subject.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-029 — `SaveLoad` order, the script length in A, unreachable reports
+Raised by:   test-author-2 (via coordinator) / T-006
+Blocking:    T-006 tests
+Question:    In what order do U, A and B run, and is `reload` checked before
+             B is compared with U? Does A's script cover the gate's full
+             `ticks` or only `saveAt`? How are `at=world`, `at=count` and
+             CLI exit codes 1 and 3 tested, when the CLI composition is
+             empty? Does T-006 depend on T-005?
+Why it matters: A test can pin a report only if the order is fixed. If A's
+             script stopped at `saveAt`, B would lack U's later commands and
+             no deterministic sim could pass.
+Answer:      `19` §19.2:
+             - The order is U, then A, then B. `reload` is checked first,
+               after B's first `saveAt` ticks, and a mismatch fails at once
+               with `tick=saveAt at=reload`.
+             - The script always uses the gate's full `ticks`, in A too.
+             - `world` and `count` are unreachable by construction, and CLI
+               exit codes 1 and 3 are unreachable until a composition
+               exists. All are untested by design, with no seam added.
+             - T-006 depends on T-005 (the script needs `TrySubmit`, and
+               `SaveLoad` needs `CommandLogSince`). The Planner adds the
+               edge. T-005 is already merged (#26).
+Status:      ANSWERED (spec/19-interfaces-harness.md#192-what-each-gate-does-q-026-q-027)
+
+### Q-030 — The walk-graph file format, load failures and unknown-id queries
+Raised by:   Test Author (via coordinator) / T-012
+Blocking:    part of T-012
+Question:    `18` §18.2 left the file format to the worker, yet the Test
+             Author writes the fixture and four tests feed `Load` raw bytes.
+             (a) What is the exact format? (b) Which exception does a load
+             failure throw, and what does its message carry? (c) Which
+             exception does a query for an unknown `NodeId`/`EdgeId` throw?
+Why it matters: A fixture cannot be written against a format that has not
+             been chosen, and tests assert exact exception types.
+Answer:      `18` §18.2 "File format":
+             - (a) The `08` §8.11 strict JSON subset:
+               `{"schema_version":1,"nodes":[{"id","length_metres"}],"edges":[{"id","from","to"}]}`.
+               Ids are ≥ 1, and the arrays may be in any order. The fixture
+               is `phase0-landside.json`, and `FixtureHash` is FNV over the
+               exact bytes.
+             - (b) `FormatException`, with a message that starts with
+               `sourceName: ` and carries `line <n>` or the field and id.
+               `07` "Error handling" makes this the rule for every loader.
+             - (c) `ArgumentException` (§18.3).
+Status:      ANSWERED (spec/18-interfaces-world.md#file-format-q-030)

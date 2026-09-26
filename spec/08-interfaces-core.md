@@ -870,6 +870,11 @@ interface IContentIndex {
   machines, or determinism is void. Hot reload (`01-architecture.md`) is a
   development-build feature that restarts the session; it never mutates a running
   one.
+- `TryGet<T>(id, out d)` returns true, with `d` the definition, if and only
+  if a definition with that id exists and is a `T`. Otherwise it returns
+  false with `d = default`, and a definition of another type is not an
+  error. `T = IContentDefinition` is legal and matches any definition. An
+  `id` whose `Value` is `null` throws `ArgumentException` (Q-028).
 - `AllOf` returns ids sorted by ordinal comparison, so iteration over content is
   stable regardless of file system enumeration order — a real drift source between
   Windows and Linux agents.
@@ -1007,7 +1012,10 @@ ContentIndexFactory.Create(IReadOnlyList<IContentDefinition> definitions) -> ICo
   checkpoint and log sinks, and returns the host at tick 0. A builder cannot
   be reused after `Build`.
 - `ContentIndexFactory.Create` sorts definitions by ordinal id and throws on
-  a duplicate id. Parsing `data/` files into definitions is §8.11's
+  a duplicate id. A `null` list throws `ArgumentNullException`. A `null`
+  element, an element whose `Id.Value` is `null`, or a duplicate id throws
+  `ArgumentException`. The input list is copied, so later changes to it
+  change nothing (Q-028). Parsing `data/` files into definitions is §8.11's
   `IContentLoader` (Q-011).
 - **A module that is not registered is also not constructed.** Callers pass
   `null` for an optional downward interface. The module's own spec says what

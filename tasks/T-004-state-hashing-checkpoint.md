@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_PROGRESS |
+| Status | MERGED |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001, T-003 |

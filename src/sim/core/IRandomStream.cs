@@ -3,8 +3,8 @@ using System;
 namespace AirportSim.Sim.Core
 {
     /// <summary>
-    /// One named, per-system draw stream. Spec: 08-interfaces-core.md §8.8. Shape only at
-    /// T-001 (pinned xoshiro256** algorithm is T-002's).
+    /// One named, per-system draw stream: xoshiro256** 1.0, SplitMix64-seeded. Spec:
+    /// 08-interfaces-core.md §8.8 "Exact reference". Part of the save format.
     /// </summary>
     public interface IRandomStream
     {

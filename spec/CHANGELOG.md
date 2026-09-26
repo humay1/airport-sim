@@ -1598,3 +1598,73 @@ Impact:      Q-027 is fully answered, and T-006 implements §19.2 as
              `SaveLoad` and §19.5 to reload from a real snapshot. `02` and
              `ci/` are unchanged. No scope added.
 Signed off:  owner, 2026-09-26
+
+## 2026-09-26 — spec/08 §8.11, §8.11a; 07 L6, L10; INDEX — Q-028: content index edge cases, enum casing, test file naming
+Reason:      The T-026 Test Author found five unpinned points. Answer:
+             - `ContentIndexFactory.Create`: a `null` list throws
+               `ArgumentNullException`. A `null` element, a `null` id value
+               or a duplicate id throws `ArgumentException`. The input is
+               copied.
+             - `TryGet<T>` is a pure type-and-id match: false with `default`
+               on a type mismatch, never a throw. `IContentDefinition`
+               matches any definition.
+             - Enum members are PascalCase in C#, converted mechanically
+               from the IDL's snake_case (`DelayCategory`). Data keeps
+               snake_case.
+             - L6: multi-word subjects are allowed, with a prefix rule
+               (longest subject wins). This matches every merged test file.
+Raised by:   Q-028
+Impact:      Constraining. Nothing merged implements `ContentIndexFactory`,
+             `TryGet` or `DelayCategory`. All 21 merged
+             `tests/sim/core/*Tests.cs` files already satisfy the L6 rule
+             (checked). The enum casing binds every module, and snake_case
+             appears only in `06`'s `DelayCategory` list. No scope added.
+Signed off:  not required
+
+## 2026-09-26 — spec/19 §19.2 — Q-029: `SaveLoad` order, script length, unreachable reports
+Reason:      T-006's tests could not pin `at=reload` or the script's extent.
+             Answer:
+             - U, A and B run in that order, and `reload` is checked first
+               and fails at once.
+             - The NoOp script always spans the gate's `ticks`, in A too.
+               Without that, B would lack U's later commands and no correct
+               sim could pass.
+             - `at=world` and `at=count` are unreachable by construction.
+               CLI exit codes 1 and 3 are unreachable until the CLI
+               composition is non-empty. All are untested by design.
+             - T-006 depends on T-005.
+Raised by:   Q-029
+Impact:      Constraining only. The Test Author's assumption (full ticks)
+             holds. The Planner adds the T-005 → T-006 edge, already
+             satisfied by #26. No scope added.
+Signed off:  not required
+
+## 2026-09-26 — spec/18 §18.2, §18.3, §18.6; 07 "Error handling"; INDEX — Q-030: walk-graph file format, load failures, unknown ids
+Reason:      The Test Author owns the walk-graph fixture and four raw-byte
+             tests, but `18` left the format to the worker. Answer:
+             - (a) The `08` §8.11 strict JSON subset, with exactly the keys
+               `WalkGraph` needs (`schema_version`, `nodes[id,
+               length_metres]`, `edges[id, from, to]`). Ids are ≥ 1, the
+               arrays may be in any order, the output is sorted, and
+               `FixtureHash` is taken over the exact bytes.
+             - (b) Every load failure throws `FormatException`, whose
+               message starts with the source name and carries the line or
+               the field and id. It is extended to every loader through `07`
+               "Error handling", since no loader spec named a type.
+             - (c) An unknown id in any `IWorldSystem` query throws
+               `ArgumentException`.
+Raised by:   Q-030
+Impact:      T-012 is unblocked on these tests, and the fixture is
+             `tests/fixtures/world/phase0-landside.json`. No loader is
+             merged on `main`. **Any in-flight loader work that chose
+             another failure type must switch to `FormatException`.** This
+             covers T-008's schedule loader and `08` §8.11's
+             `IContentLoader`, if either has started, together with their
+             tests. `12` §12.13's "format is the worker's choice" posture is
+             unchanged for airside, but its failure type is now pinned. No
+             scope added.
+Signed off:  not required
+LOW CONFIDENCE: extending `FormatException` to every loader goes beyond
+             T-012's ask. It was chosen so that five loaders do not pick five
+             types. If a loader needs a structured failure (for example a
+             list of errors), that is a new type by amendment.

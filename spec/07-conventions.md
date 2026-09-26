@@ -173,6 +173,11 @@ that project's RootNamespace, with no sub-namespaces. Each is in its own file na
 any file layout inside the project directory. Test classes are `public sealed class <Subject>Tests`
 in the test project's RootNamespace, in a file named `<Subject>Tests.cs`.
 `<Subject>` is the PascalCase form of the test name's subject segment.
+A subject may span several underscore-separated words, and the Test Author
+chooses where it ends. Every test in `<Subject>Tests` is named
+`test_<s>_…`, where `<s>` is `<Subject>` in snake_case
+(`RandomStreamTests` holds `test_random_stream_…`). A test goes in the class
+with the longest subject that prefixes its name (Q-028).
 
 **L7. Test names.** A test named `test_<subject>_<condition>_<expectation>` in a task
 file or a spec is a C# method with exactly that name: lower-case ASCII
@@ -215,7 +220,13 @@ no other choices about public shape.
 - `int32 int64 uint16 uint32 uint64 bool string bytes` are `int long ushort
   uint ulong bool string byte[]`. An enum with an IDL underlying type uses it.
   Otherwise the enum is `int`, and its members are numbered in declared order
-  from 0.
+  from 0. **Enum members are PascalCase in C#** (Q-028). An IDL member written
+  in snake_case, such as `06`'s `DelayCategory`, becomes its segments with
+  each first letter upper-cased and the underscores removed (`late_inbound` →
+  `LateInbound`, `atc_flow` → `AtcFlow`). A member already in PascalCase is
+  unchanged. The snake_case spelling survives only where the spec puts it in
+  data, for example the JSON value `"security_queue"` (`04`). The loader maps
+  that value to the member.
 - A `struct` or `readonly struct` is a `public readonly struct`. Each member is
   a public get-only property with the IDL name. There is one public
   constructor taking the members in declared order. The only exception is a
@@ -258,7 +269,12 @@ permits. The authoritative budget measurement is still
 - Sim code does not throw for gameplay conditions. Invalid states are data.
 - Sim code throws on programmer error (broken invariant) — loudly, with the tick
   number and the state hash.
-- Content loading fails hard with the file path and schema violation.
+- Content loading fails hard with the file path and schema violation. **A
+  load failure throws `FormatException`** (Q-030), whose message starts with
+  the source name or path and names the field and the offending id. This
+  covers every loader whose spec does not name another type: `08` §8.11's
+  `IContentLoader`, the schedule, airside, turnaround, render-layout and
+  walk-graph loaders.
 - **Exception types (Q-014, Q-015)** are fixed, and tests assert the exact
   type. A broken invariant during a tick (the cascade limit,
   `MAX_EVENTS_PER_TICK`, a `Blocked` interval left open) throws
