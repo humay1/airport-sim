@@ -1638,3 +1638,33 @@ Impact:      Constraining only. The Test Author's assumption (full ticks)
              holds. The Planner adds the T-005 → T-006 edge, already
              satisfied by #26. No scope added.
 Signed off:  not required
+
+## 2026-09-26 — spec/18 §18.2, §18.3, §18.6; 07 "Error handling"; INDEX — Q-030: walk-graph file format, load failures, unknown ids
+Reason:      The Test Author owns the walk-graph fixture and four raw-byte
+             tests, but `18` left the format to the worker. Answer:
+             - (a) The `08` §8.11 strict JSON subset, with exactly the keys
+               `WalkGraph` needs (`schema_version`, `nodes[id,
+               length_metres]`, `edges[id, from, to]`). Ids are ≥ 1, the
+               arrays may be in any order, the output is sorted, and
+               `FixtureHash` is taken over the exact bytes.
+             - (b) Every load failure throws `FormatException`, whose
+               message starts with the source name and carries the line or
+               the field and id. It is extended to every loader through `07`
+               "Error handling", since no loader spec named a type.
+             - (c) An unknown id in any `IWorldSystem` query throws
+               `ArgumentException`.
+Raised by:   Q-030
+Impact:      T-012 is unblocked on these tests, and the fixture is
+             `tests/fixtures/world/phase0-landside.json`. No loader is
+             merged on `main`. **Any in-flight loader work that chose
+             another failure type must switch to `FormatException`.** This
+             covers T-008's schedule loader and `08` §8.11's
+             `IContentLoader`, if either has started, together with their
+             tests. `12` §12.13's "format is the worker's choice" posture is
+             unchanged for airside, but its failure type is now pinned. No
+             scope added.
+Signed off:  not required
+LOW CONFIDENCE: extending `FormatException` to every loader goes beyond
+             T-012's ask. It was chosen so that five loaders do not pick five
+             types. If a loader needs a structured failure (for example a
+             list of errors), that is a new type by amendment.
