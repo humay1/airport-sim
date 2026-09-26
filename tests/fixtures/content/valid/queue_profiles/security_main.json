@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "queue.security_main",
+  "service_rate_per_server_per_minute": "2.5",
+  "capacity_standing": 120,
+  "threshold_wait_minutes": "10",
+  "hysteresis_minutes": "2.5",
+  "delay_category": "security_queue"
+}

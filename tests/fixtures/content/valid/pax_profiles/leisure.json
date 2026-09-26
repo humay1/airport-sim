@@ -1,0 +1,1 @@
+{ "schema_version": 1, "id": "pax.leisure", "walk_speed_mps": "0.0000000003", "show_up_curve": [ { "minutes_before_std": 0, "share_permille": 1000 } ] }
