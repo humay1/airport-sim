@@ -600,7 +600,7 @@ namespace AirportSim.Sim.Core.Tests
             }
             a.Host.Step(TicksPerDay);
 
-            var gen = new SplitMix64(seed ^ 1UL);
+            var gen = new CommandGen(seed ^ 1UL);
             ulong remaining = TicksPerDay;
             while (remaining > 0)
             {
@@ -630,7 +630,7 @@ namespace AirportSim.Sim.Core.Tests
             // the final world hash agree. (Intermediate CoreHash may differ: the replay
             // holds future commands as pending earlier than the original did.)
             const ulong seed = 0x5EED0005A0000003UL;
-            var gen = new SplitMix64(seed);
+            var gen = new CommandGen(seed);
             var original = new Rig(11UL);
             ulong executed = 0;
             while (executed < TicksPerDay)
@@ -732,7 +732,7 @@ namespace AirportSim.Sim.Core.Tests
 
         private static List<Command> FixtureSchedule(ulong seed, int count)
         {
-            var gen = new SplitMix64(seed);
+            var gen = new CommandGen(seed);
             var list = new List<Command>();
             for (int i = 0; i < count; i++)
             {
@@ -744,7 +744,7 @@ namespace AirportSim.Sim.Core.Tests
             return list;
         }
 
-        private static Command RandomCommand(SplitMix64 gen, ulong tick)
+        private static Command RandomCommand(CommandGen gen, ulong tick)
         {
             switch (gen.Below(3))
             {
