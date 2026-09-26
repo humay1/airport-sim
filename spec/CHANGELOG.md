@@ -1598,3 +1598,25 @@ Impact:      Q-027 is fully answered, and T-006 implements §19.2 as
              `SaveLoad` and §19.5 to reload from a real snapshot. `02` and
              `ci/` are unchanged. No scope added.
 Signed off:  owner, 2026-09-26
+
+## 2026-09-26 — spec/08 §8.11, §8.11a; 07 L6, L10; INDEX — Q-028: content index edge cases, enum casing, test file naming
+Reason:      The T-026 Test Author found five unpinned points. Answer:
+             - `ContentIndexFactory.Create`: a `null` list throws
+               `ArgumentNullException`. A `null` element, a `null` id value
+               or a duplicate id throws `ArgumentException`. The input is
+               copied.
+             - `TryGet<T>` is a pure type-and-id match: false with `default`
+               on a type mismatch, never a throw. `IContentDefinition`
+               matches any definition.
+             - Enum members are PascalCase in C#, converted mechanically
+               from the IDL's snake_case (`DelayCategory`). Data keeps
+               snake_case.
+             - L6: multi-word subjects are allowed, with a prefix rule
+               (longest subject wins). This matches every merged test file.
+Raised by:   Q-028
+Impact:      Constraining. Nothing merged implements `ContentIndexFactory`,
+             `TryGet` or `DelayCategory`. All 21 merged
+             `tests/sim/core/*Tests.cs` files already satisfy the L6 rule
+             (checked). The enum casing binds every module, and snake_case
+             appears only in `06`'s `DelayCategory` list. No scope added.
+Signed off:  not required
