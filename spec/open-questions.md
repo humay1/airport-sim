@@ -829,5 +829,9 @@ Answer:      `19` §19.2: replay form. The "save" at `saveAt` is the seed,
              run resubmits the log and must match at `saveAt` and to the
              end. No RNG or system snapshot is taken. T-006's "snapshots RNG
              stream state" is stale. The gate's meaning in the locked `02`
-             is HUMAN DECISION PENDING (§19.5), and adoption is recommended.
-Status:      ANSWERED, HUMAN DECISION PENDING (spec/19-interfaces-harness.md#195-saveload-before-simsave--human-decision-pending-q-027)
+             was referred to the owner (§19.5).
+             HUMAN DECISION — owner, 2026-09-26: approved. Until `sim.save`
+             exists, `determinism_save_load` is satisfied by the replay
+             check, and the real snapshot round-trip replaces it when
+             `sim.save` is specified.
+Status:      ANSWERED — HUMAN (spec/19-interfaces-harness.md#195-saveload-before-simsave--human-decision-q-027)

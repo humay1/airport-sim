@@ -89,7 +89,7 @@ If every checkpoint agrees but the final hashes differ: `final`.
   with the snapshot at tick 0. RNG stream state is **not** exported. The
   harness snapshots nothing else, and it invents no seam. When `sim.save`
   specifies a snapshot, `SaveLoad` is amended to reload from it. See the
-  HUMAN DECISION in §19.5.
+  HUMAN DECISION (owner, 2026-09-26) in §19.5.
 - **`Promotion` before `sim.flow` promotion (T-010).** Without a promotable
   system, the second run differs from the first in nothing. The gate
   compares for real and passes vacuously. T-010 amends the second run to
@@ -180,22 +180,26 @@ harness does not re-assert them.
 > amends the CLI composition (§19.2) brings the load with it. The measurement
 > is on the CI agent, with no scaling factor applied.
 
-## 19.5 Save/load before `sim.save` — HUMAN DECISION PENDING (Q-027)
+## 19.5 Save/load before `sim.save` — HUMAN DECISION (Q-027)
 
 `02-determinism.md`'s `determinism_save_load` row says "save at 500, reload,
 continue". It does not say what a save contains, and `sim.save` is
 unspecified. The harness implements §19.2's replay form. `02` is **not**
 edited.
 
-- **Recommended: adopt the replay form as the gate's interim meaning.** It
+> **HUMAN DECISION — owner, 2026-09-26: approved.** Until `sim.save` exists,
+> `determinism_save_load` is satisfied by the replay check in §19.2. The real
+> snapshot round-trip replaces it when `sim.save` is specified. The
+> Architect recorded this and did not decide it.
+
+What the owner weighed:
+
+- **Adopted: the replay form as the gate's interim meaning.** It
   exercises `01`'s "the log is the save" end to end, and it catches a
   command log that fails to reproduce the session. It does **not** prove
   that mutable state, such as RNG stream state or system state, survives a
   snapshot, because no snapshot exists yet. When `sim.save` is specified,
   the gate is amended to reload from a real snapshot.
-- Alternative: defer `determinism_save_load` until `sim.save`. That
-  contradicts `02` "no temporarily disabled" and needs an edit to `02` and
-  to `ci/`, both human-only. It is not recommended.
-
-Until the owner rules, T-006 implements the replay form. If the owner
-rejects it, only `SaveLoad` and this section change.
+- Rejected: defer `determinism_save_load` until `sim.save`. That
+  contradicts `02` "no temporarily disabled" and would need an edit to `02`
+  and to `ci/`, both human-only.

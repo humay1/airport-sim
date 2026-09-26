@@ -1585,3 +1585,16 @@ LOW CONFIDENCE: §19.4. Until a max-tier fixture is composed into the harness,
              nothing. The seed 12345 for `saveload`, `promotion` and
              `budget` mirrors the script's `determinism` seed and is not
              an owner value.
+
+## 2026-09-26 — spec/19 §19.5; INDEX — Q-027: owner approves replay as the interim `determinism_save_load`
+Reason:      HUMAN DECISION — owner, 2026-09-26: §19.5 is approved. Until
+             `sim.save` exists, `determinism_save_load` is satisfied by the
+             replay check of §19.2. The real snapshot round-trip replaces it
+             when `sim.save` is specified. The Architect recorded the
+             decision and did not make it.
+Raised by:   Q-027
+Impact:      Q-027 is fully answered, and T-006 implements §19.2 as
+             specified. Whichever task specifies `sim.save` must amend
+             `SaveLoad` and §19.5 to reload from a real snapshot. `02` and
+             `ci/` are unchanged. No scope added.
+Signed off:  owner, 2026-09-26

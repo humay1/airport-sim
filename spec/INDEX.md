@@ -281,7 +281,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `promotion` passes vacuously until T-010; the CLI composition registers no
   systems until a task amends it.
 - LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
-  pending:** the interim meaning of `determinism_save_load` (§19.5).
+  (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
+  `sim.save` (§19.5).
 - Read if: T-006, T-009, T-030; the Test Author for the harness.
 
 ### `CHANGELOG.md`
@@ -295,7 +296,6 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Open now: none. Q-002 to Q-027 are answered (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
-  balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
-  and the interim meaning of `determinism_save_load` (`19` §19.5).
+  balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
 - Read if: before starting any task, check that your task is not blocked
   here.
