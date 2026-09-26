@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.world` |
 | Assigned role | worker |
-| Depends on | T-001, T-003 |
+| Depends on | T-001, T-003, T-026 |
 | Spec source | `spec/00-overview.md` build order; `spec/18-interfaces-world.md` (answers Q-012) |
 | Blocked by | — |
 
@@ -21,8 +21,22 @@ must land before T-007** — T-007's own routing code compiles against
 ## Writable paths
 
 ```
-src/sim/world/**, tests/sim/world/**, tests/fixtures/world/**
+src/sim/world/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/sim/world/**` and
+`tests/fixtures/world/**` are dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/world/AirportSim.Sim.World.csproj` and
+`tests/sim/world/AirportSim.Sim.World.Tests.csproj` (byte for byte per `07`
+L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-020, T-021, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `NodeId` and `EdgeId` are `sim.core` types (`18` §18.2: "because events carry
 them") — this task **references** them, it does not declare them. They are
@@ -136,7 +150,9 @@ landside nodes) this is small.
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved

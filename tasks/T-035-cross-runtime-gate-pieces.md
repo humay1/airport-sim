@@ -27,9 +27,20 @@ own.
 ## Writable paths
 
 ```
-tools/SimHarness/**, unity/AirportSim/**, tests/sim/core/** (a manual/local
-test harness script or task, not a CI-invoked test)
+tools/SimHarness/**
+unity/AirportSim/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively;
+the path guard already blocks a worker grant there. The earlier
+`tests/sim/core/**` grant is dropped — the manual comparison script this
+task delivers lives under `tools/SimHarness/**` (or a scratch location
+outside the repo's tracked test trees), not `tests/**`.
+
+**Correction (URGENT, `ci/check-paths.sh` reads each line of this block as
+one glob pattern):** the explanatory parenthetical that used to trail the
+last path on one line is moved here — the `tests/sim/core/**` entry above is
+for a manual/local test harness script or task, not a CI-invoked test.
 
 Do not add a step to `ci/` — that path is human-only (`ci/gates.md`) and,
 per §16.9, adopting the gate is an owner decision this task does not make.

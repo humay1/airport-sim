@@ -1,3 +1,7 @@
 .agent-log/
 .claude/worktrees/
 .env
+
+# dotnet build output
+bin/
+obj/

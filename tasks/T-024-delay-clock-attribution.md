@@ -12,8 +12,21 @@
 ## Writable paths
 
 ```
-src/sim/delay/**, tests/sim/delay/**
+src/sim/delay/**
+AirportSim.sln
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory
+exclusively; the path guard already blocks a worker grant there. The
+earlier grant of `tests/sim/delay/**` is dropped.
+
+**First task of a new module (`07` L8, Q-013):** this task creates
+`src/sim/delay/AirportSim.Sim.Delay.csproj` and
+`tests/sim/delay/AirportSim.Sim.Delay.Tests.csproj` (byte for byte per `07`
+L2/L3) and adds both to `AirportSim.sln`. Never release this task
+concurrently with any other "first task of a new module" (T-007, T-008,
+T-012, T-020, T-021, T-022, T-029, T-031) — concurrent `.sln` edits
+conflict (`07` L8).
 
 `tests/fixtures/delay/**` only if the Test Author finds a dedicated fixture
 necessary (`spec/14-interfaces-delay.md` §14.14 — the integrated-day test

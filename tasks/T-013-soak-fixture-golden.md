@@ -22,8 +22,13 @@ D2: golden hashes may now be authored).
 ## Writable paths
 
 ```
-tools/SimHarness/**, tests/fixtures/soak/**, tests/sim/core/**
+tools/SimHarness/**
 ```
+
+**Correction (Q-021):** `tests/**` (including `tests/fixtures/**`) is the
+Test Author's territory exclusively; the path guard already blocks a worker
+grant there. The earlier grants of `tests/fixtures/soak/**` and
+`tests/sim/core/**` are dropped.
 
 ## Readable specs
 

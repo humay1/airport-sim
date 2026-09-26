@@ -111,6 +111,11 @@ namespace AirportSim.Sim.Core
                 i++;
             }
 
+            // Grammar validation happens in full, over the entire string, before
+            // any numeric conversion: a malformed literal must throw
+            // FormatException even when its digits would also overflow (Q-015
+            // A12), so no OverflowException may be thrown until every
+            // character has been confirmed to match the grammar.
             int intStart = i;
             if (i < length && value[i] == '0')
             {
@@ -130,6 +135,36 @@ namespace AirportSim.Sim.Core
             }
 
             int intLen = i - intStart;
+
+            bool hasFraction = false;
+            int fracStart = 0;
+            int fracLen = 0;
+
+            if (i < length && value[i] == '.')
+            {
+                i++;
+                fracStart = i;
+                while (i < length && value[i] >= '0' && value[i] <= '9')
+                {
+                    i++;
+                }
+
+                fracLen = i - fracStart;
+                if (fracLen < 1 || fracLen > 10)
+                {
+                    throw new FormatException($"Fx.Parse: '{value}' does not match the required grammar.");
+                }
+
+                hasFraction = true;
+            }
+
+            if (i != length)
+            {
+                throw new FormatException($"Fx.Parse: '{value}' does not match the required grammar.");
+            }
+
+            // The whole string matches the grammar; only now may conversion
+            // fail with OverflowException.
             long intPart = 0;
             for (int k = 0; k < intLen; k++)
             {
@@ -141,37 +176,16 @@ namespace AirportSim.Sim.Core
                 }
             }
 
-            bool hasFraction = false;
             ulong fracNumerator = 0;
             ulong fracDenominator = 1;
-
-            if (i < length && value[i] == '.')
+            if (hasFraction)
             {
-                i++;
-                int fracStart = i;
-                while (i < length && value[i] >= '0' && value[i] <= '9')
-                {
-                    i++;
-                }
-
-                int fracLen = i - fracStart;
-                if (fracLen < 1 || fracLen > 10)
-                {
-                    throw new FormatException($"Fx.Parse: '{value}' does not match the required grammar.");
-                }
-
-                hasFraction = true;
                 for (int k = 0; k < fracLen; k++)
                 {
                     int d = value[fracStart + k] - '0';
                     fracNumerator = (fracNumerator * 10) + (uint)d;
                     fracDenominator *= 10;
                 }
-            }
-
-            if (i != length)
-            {
-                throw new FormatException($"Fx.Parse: '{value}' does not match the required grammar.");
             }
 
             ulong fracRawFloor = 0;

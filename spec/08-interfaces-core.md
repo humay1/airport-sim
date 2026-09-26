@@ -252,7 +252,9 @@ RNG streams.
 **Allocation rule (Q-017).** Each owner's counter starts at 0. `Next(owner)`
 increments it and returns `EntityId((owner.Value << 48) | counter)`, so the
 first id is counter 1 and ids never collide across owners. `EntityId(0)` is
-never allocated. A counter above 2^48 − 1 throws `SimInvariantException`. An
+never allocated. A counter above 2^48 − 1 throws `SimInvariantException`.
+That overflow is untested by design, since no public API can set a counter
+and 2^48 calls are infeasible in a test (Q-024). An
 owner of 0, 8 or above 14 throws `ArgumentException`. Consumers never decode
 the bit pattern, following the rule above. `Next` is callable during
 construction and during phases 1–3.
@@ -353,7 +355,10 @@ class SimInvariantException : Exception {     // sealed
 - **The host wraps.** Any exception that escapes phases 1–4 of tick `t` leaves
   `Step` as a new `SimInvariantException` with `Tick = t`, with
   `InnerException` set to the escaping exception, and with `WorldHash` computed
-  at that moment (§8.9) and `HasWorldHash` true. If computing the hash throws
+  at that moment (§8.9) and `HasWorldHash` true. The tick count fed into that
+  hash is `t`, the number of ticks **completed**, because tick `t` did not
+  complete. `CurrentTick` also stays `t`. The rest of the hash is the
+  partial state as it stands, with nothing rolled back (Q-024). If computing the hash throws
   too, `HasWorldHash` is false. It wraps exactly once, even when the escaping
   exception is itself a `SimInvariantException`. `sim.core`'s own limits
   (§8.6) are thrown and wrapped the same way.

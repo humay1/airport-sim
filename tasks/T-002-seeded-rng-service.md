@@ -2,18 +2,23 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001 |
-| Spec source | `spec/02-determinism.md` rules 2, 3; `spec/08-interfaces-core.md` §8.8 |
+| Spec source | `spec/02-determinism.md` rules 2, 3; `spec/08-interfaces-core.md` §8.8, "Exact reference" (Q-019) |
 | Blocked by | — |
 
 ## Writable paths
 
 ```
-src/sim/core/**, tests/sim/core/**
+src/sim/core/**
 ```
+
+**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively
+(`07-conventions.md` "Solution layout and build"); the path guard already
+blocks a worker from writing there, so a worker grant there is a no-op. This
+task's earlier grant of `tests/sim/core/**` is dropped.
 
 Anything else is read-only. Writing outside these paths is an automatic
 rejection.
@@ -39,10 +44,14 @@ interface IRandomStream {
   void   Shuffle<T>(Span<T> items)                          // Fisher-Yates, descending
   uint64 ComputeStateHash()
 }
+
+RandomServiceFactory.Create(uint64 masterSeed) -> IRandomService   // Q-019; SimHostFactory.Build uses it too
+
+readonly struct RngStreamName { string Value }   // ordinal equality
 ```
 
-Pinned algorithms (`08-interfaces-core.md` §8.8), binding, part of the save
-format:
+Pinned algorithms (`08-interfaces-core.md` §8.8 "Exact reference", Q-019),
+binding bit for bit, part of the save format — copied not paraphrased:
 
 - Generator: xoshiro256\*\*, 256-bit state.
 - Stream seeding: SplitMix64 seeded with `MasterSeed XOR FNV-1a-64(streamName)`,
@@ -50,15 +59,60 @@ format:
   SplitMix64 output.
 - `NextInt`: Lemire multiply-shift with rejection.
 - `NextFx01`: top 32 bits of one draw, uniform over multiples of 2^-32.
-- Stream names are `"<module>.<purpose>"`, declared as constants by the owning
-  module, unique across the build (this task adds the uniqueness assertion in
-  CI-reachable test form, since no other module exists yet to declare a name
-  besides `sim.core` itself).
+- **`RngStreamName` format rule (Q-019, binding):** the constructor throws
+  `ArgumentException` unless `Value` matches `sim\.[a-z]+\.[a-z0-9_]+`,
+  where the middle segment is the owning module. Uniqueness across modules
+  follows from the prefix, and within a module it is that module's own
+  test — this **replaces** the earlier "CI asserts uniqueness" framing
+  (superseded by Q-015 A16 / Q-019 / Q-023); do not add a cross-module CI
+  uniqueness check yourself.
+- **Exact reference (Q-019, this task's test oracle):**
+  - Stream seed: `seed = MasterSeed XOR FNV1a64(utf8(name.Value))`, plain
+    FNV-1a-64 (`08` §8.9 constants) over the name's UTF-8 bytes, **no**
+    length prefix.
+  - SplitMix64, the standard one:
+    `x += 0x9E3779B97F4A7C15; z = x; z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EB; return z ^ (z >> 31)`, mod
+    2^64. Seeded with `seed`, its first four outputs are `s[0..3]` in order.
+    While all four are 0, `s[0]` is replaced by the next output.
+  - xoshiro256** 1.0, the standard one:
+    `r = rotl(s[1] * 5, 7) * 9; t = s[1] << 17; s[2] ^= s[0]; s[3] ^= s[1];
+    s[1] ^= s[2]; s[0] ^= s[3]; s[2] ^= t; s[3] = rotl(s[3], 45); return r`.
+    `NextUInt64` is one step. Check: state `{1, 2, 3, 4}` yields 11520, 0,
+    1509978240, 1215971899390074240.
+  - `NextInt(min, max)`: `min >= max` throws `ArgumentOutOfRangeException`.
+    Else `range = (uint32)(max - min)`; `x = (uint32)(NextUInt64() >> 32)`,
+    `m = (uint64)x * range`, `l = (uint32)m`; if `l < range`, set
+    `t = (uint32)(0 - range) % range`, and while `l < t` draw a new `x` and
+    recompute `m`/`l`; return `min + (int32)(m >> 32)` — Lemire's method on
+    the **top 32 bits** of each draw.
+  - `NextFx01()` = `Fx.FromRaw((int64)(NextUInt64() >> 32))`.
+  - `Chance(p)` = `NextFx01() < p`, **always exactly one draw**; `p <= 0`
+    gives false, `p >= 1` gives true, neither is an error.
+  - `Shuffle(items)`: for `i` from `n-1` down to 1, `j = NextInt(0, i+1)`,
+    swap `items[i]`/`items[j]`. `n <= 1` draws nothing.
+  - `ComputeStateHash()` is a fresh `StateHasher` (T-001's, `08` §8.9) fed
+    `s[0..3]` as `uint64`. The owning system feeds that value into its own
+    hash.
+  - `Stream(name)` returns the **same live stream** every call with that
+    name in a session — created at the first call, never reset or
+    reallocated by later calls.
+  - **Golden vectors**, first four `NextUInt64` outputs in hex:
 
-`NextFx01` and `Chance` depend on `Fx` (T-003). If T-003 has not merged when
-this task starts, stub the `Fx`-typed members last and land the integer-typed
-members first, or coordinate sequencing with the Planner rather than guessing
-`Fx`'s shape.
+    | MasterSeed | Name | FNV1a64(name) | Outputs |
+    |---|---|---|---|
+    | 0 | `sim.flow.showup` | `80AA6E48500EF830` | `4D8ADDC1EA523EA8`, `881053D9C83E81EC`, `9F943EEE723DAD43`, `41FB063846C7BC01` |
+    | 12345 | `sim.schedule.jitter` | `09F750F58CE1F6D5` | `38C30AB4838B2ECE`, `20E490881273F31A`, `160AF506335E076A`, `3A5487F2EF5EDE58` |
+    | 2^64-1 | `sim.airside.taxi` | `C6381A17FBE07F29` | `BAF003FC5983A4B7`, `54E24678B7DA92B8`, `C6C76D95A0A72034`, `F635BA852278C41C` |
+
+    For the first row, a fresh stream's `NextInt(0, 10)` × 4 is 3, 5, 6, 2.
+    On another fresh stream, `NextFx01()` × 2 has `Raw` 1300946369,
+    2282771417.
+  - **No save seam yet.** Exporting/importing stream state belongs to
+    `sim.save`, unspecified. Do not invent one.
+
+`NextFx01` and `Chance` depend on `Fx` (T-003, which now merges before this
+task per the corrected release order — no stubbing needed).
 
 ## Events
 
@@ -71,11 +125,16 @@ Consumed: none
 tests/sim/core/**
 ```
 
-Written by the Test Author. Expect: reproducibility (same seed + stream name
-→ identical sequence), independence (drawing from stream A does not shift
-stream B's sequence), `NextInt` unbiasedness over a large sample, and a
-determinism test comparing same-process vs cross-process draws. **Do not
-edit them.**
+Written by the Test Author. Expect: the golden-vector tests above (three
+`NextUInt64` sequences, the `NextInt`×4 check and the `NextFx01`×2 check,
+all byte-exact), reproducibility (same seed + stream name → identical
+sequence), independence (drawing from stream A does not shift stream B's
+sequence), `NextInt` unbiasedness over a large sample, and `RngStreamName`
+format-rule tests (rejects a name not matching
+`sim\.[a-z]+\.[a-z0-9_]+`). **Do not edit them.** No cross-process
+determinism test belongs to this task (superseded by Q-015 A16 / Q-019 /
+Q-023 G5 — same-process golden vectors are this task's oracle; any
+cross-process gate is T-006's).
 
 ## Performance budget
 
@@ -87,7 +146,9 @@ allocation in `NextUInt64`/`NextInt`/`NextFx01`/`Chance` hot paths
 
 - [ ] Interface matches spec exactly
 - [ ] All assigned tests pass
-- [ ] `ci/run-checks.sh` green
+- [ ] **Green per Q-016 (HUMAN DECISION, owner, 2026-09-24): until T-006
+      merges, green = `ci/run-checks.sh`'s `path-guard` and `build-and-test`
+      (`--fast`) jobs. The full script becomes mandatory once T-006 merges.**
 - [ ] Budget met
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved

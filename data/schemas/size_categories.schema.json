@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "size_categories.schema.json",
+  "title": "Size category definition",
+  "description": "Aerodrome-reference-style aircraft size class. See spec/04-data-schemas.md 'Phase 0/1 content fields' and spec/08-interfaces-core.md §8.11 (SizeCategoryDefinition). Ordinal ordering is what stand compatibility (spec/12-interfaces-airside.md §12.7) compares against.",
+  "type": "object",
+  "required": ["schema_version", "id", "ordinal"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Stable identifier. Never derived from array position."
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unique across all size category files; ascending order is smallest to largest (08 §8.11 loader validation)."
+    }
+  }
+}
