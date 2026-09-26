@@ -1668,3 +1668,29 @@ LOW CONFIDENCE: extending `FormatException` to every loader goes beyond
              T-012's ask. It was chosen so that five loaders do not pick five
              types. If a loader needs a structured failure (for example a
              list of errors), that is a new type by amendment.
+
+## 2026-09-27 — spec/18 §18.2–§18.3; 11 §11.7, §11.9, §11.9a, §11.10; 08 §8.11; 07 L4, "Error handling"; 04 Conventions — Q-031: world, schedule and loader details
+Reason:      Test Authors of T-012, T-008 and T-027 hit twelve unpinned
+             points (see Q-031). Each is resolved by the narrowest rule:
+             - routes use simple paths only, and `CanReach(n, n)` is true;
+             - "offending id" is fixed per failure kind;
+             - fixtures are found through `AirportSim.sln`;
+             - the 200-row fixture is 99 rotations plus two lone flights;
+             - the day-materialisation schedule is fixed, and hashed lists
+               are count-prefixed;
+             - `sim.schedule: ` prefixes construction failures;
+             - the `03` statistic governs `sim.schedule`'s budget;
+             - `PendingInjectionCount` is 0 before publication;
+             - loader messages name the later file and the unresolved
+               category;
+             - nested kind directories fail.
+             `04` gains a note on `Fx.Parse` flooring for content authors.
+Raised by:   Q-031
+Impact:      No module other than `sim.core` is merged, so nothing breaks
+             on `main`. In-flight work must align:
+             - T-008 tests that assert the budget by mean only must add p99
+               ≤ 0.20 ms over one sim-day;
+             - T-008's hash must count-prefix lists 3 and 4;
+             - T-012's route search must restrict to simple paths.
+             No scope added.
+Signed off:  not required
