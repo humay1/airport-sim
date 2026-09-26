@@ -1620,3 +1620,21 @@ Impact:      Constraining. Nothing merged implements `ContentIndexFactory`,
              (checked). The enum casing binds every module, and snake_case
              appears only in `06`'s `DelayCategory` list. No scope added.
 Signed off:  not required
+
+## 2026-09-26 — spec/19 §19.2 — Q-029: `SaveLoad` order, script length, unreachable reports
+Reason:      T-006's tests could not pin `at=reload` or the script's extent.
+             Answer:
+             - U, A and B run in that order, and `reload` is checked first
+               and fails at once.
+             - The NoOp script always spans the gate's `ticks`, in A too.
+               Without that, B would lack U's later commands and no correct
+               sim could pass.
+             - `at=world` and `at=count` are unreachable by construction.
+               CLI exit codes 1 and 3 are unreachable until the CLI
+               composition is non-empty. All are untested by design.
+             - T-006 depends on T-005.
+Raised by:   Q-029
+Impact:      Constraining only. The Test Author's assumption (full ticks)
+             holds. The Planner adds the T-005 → T-006 edge, already
+             satisfied by #26. No scope added.
+Signed off:  not required
