@@ -779,3 +779,84 @@ Answer:      `08` §8.5a: `t`, the number of ticks completed. `CurrentTick`
              no rollback. `08` §8.4: the 2^48 overflow cannot be reached
              through any public API, so it is untested by design.
 Status:      ANSWERED (spec/08-interfaces-core.md#85a-broken-invariants-q-014)
+
+### Q-025 — `tools.simharness` has no test project
+Raised by:   test-author-2 (via coordinator) / T-006 (H1)
+Blocking:    T-006
+Question:    `07` L1 has no test-project row for `tools.simharness`. T-006
+             says its tests go in `tests/sim/core/**`, but L3 lets a test
+             project reference only its own module's production project.
+             Should there be a harness test project, or should the tests
+             spawn the harness process?
+Why it matters: Without a row, harness tests either break L3 or have no home.
+Answer:      `07` L1 gains `tests/tools/simharness/AirportSim.Tools.SimHarness.Tests.csproj`,
+             and L3 names its one reference, the harness project. Tests run
+             in process and never spawn a process. `07` L8: T-006 adds the
+             project to `AirportSim.sln`. T-006's `tests/sim/core/**` is
+             stale.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-026 — The harness CLI contract and a divergence seam are unspecified
+Raised by:   test-author-2 (via coordinator) / T-006 (H2)
+Blocking:    T-006
+Question:    What exit codes and stdout do `determinism`, `saveload`,
+             `promotion` and `budget` produce (`--hash-only` included), as
+             `ci/run-checks.sh` invokes them? How can a test prove that a
+             gate fails on nondeterminism without a CLI flag the script
+             does not use?
+Why it matters: The script diffs stdout and reads the exit code. A gate that
+             is never shown to fail may be one that always passes.
+Answer:      `19` (new). The public surface is `HarnessCli.Run`,
+             `HarnessGates` and `SimComposer`/`GateResult` (§19.1). Every
+             run submits a NoOp script, and runs are compared by
+             checkpoint, then by final hash (§19.2). The exact CLI forms,
+             exit codes and one-line stdout grammar are in §19.3:
+             0 pass, 1 gate failed, 2 usage, 3 harness error, and no "not
+             implemented" code. `budget` is covered in §19.4. The divergence
+             seam is an injected composer.
+Status:      ANSWERED (spec/19-interfaces-harness.md#191-public-surface-q-026)
+
+### Q-027 — What does `determinism_save_load` do before `sim.save`?
+Raised by:   test-author-2 (via coordinator) / T-006 (H3)
+Blocking:    T-006
+Question:    T-006 says `saveload` snapshots RNG stream state, but `08` §8.8
+             says no save seam exists. Should the gate use replay
+             equivalence or be deferred?
+Why it matters: The worker would otherwise invent a seam, or stub a gate
+             that `02` says can never be disabled.
+Answer:      `19` §19.2: replay form. The "save" at `saveAt` is the seed,
+             the content, the composition and `CommandLogSince(0)`. A fresh
+             run resubmits the log and must match at `saveAt` and to the
+             end. No RNG or system snapshot is taken. T-006's "snapshots RNG
+             stream state" is stale. The gate's meaning in the locked `02`
+             was referred to the owner (§19.5).
+             HUMAN DECISION — owner, 2026-09-26: approved. Until `sim.save`
+             exists, `determinism_save_load` is satisfied by the replay
+             check, and the real snapshot round-trip replaces it when
+             `sim.save` is specified.
+Status:      ANSWERED — HUMAN (spec/19-interfaces-harness.md#195-saveload-before-simsave--human-decision-q-027)
+
+### Q-028 — Content index edge cases, enum member casing, test file naming
+Raised by:   Test Author (via coordinator) / T-026
+Blocking:    T-026 tests
+Question:    Which exception does `ContentIndexFactory.Create` throw for a
+             duplicate id, and for a `null` element? Does `TryGet<T>` return
+             false or throw for a definition of another type, and for
+             `T = IContentDefinition`? Do snake_case IDL enum members, such
+             as `06`'s `DelayCategory`, stay snake_case in C#? How is a
+             multi-word test subject named under L6?
+Why it matters: Each one is a test assertion or a public name, and enum
+             casing binds every module.
+Answer:      `08` §8.11a: a `null` list throws `ArgumentNullException`. A
+             `null` element, a `null` `Id.Value` or a duplicate id throws
+             `ArgumentException`, and the input is copied. `08` §8.11:
+             `TryGet<T>` is true if and only if the id exists and its
+             definition is a `T`, otherwise false with `default`. The type
+             never throws, `IContentDefinition` matches anything, and a
+             `null` id value throws `ArgumentException`. `07` L10: enum
+             members are PascalCase in C# (`late_inbound` → `LateInbound`),
+             and snake_case survives only in data. `07` L6: a subject may be
+             several words, and each test in `<Subject>Tests` starts with
+             `test_<subject in snake_case>_`, going to the longest matching
+             subject.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)

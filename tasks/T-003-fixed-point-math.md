@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_REVIEW |
+| Status | MERGED |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | — |

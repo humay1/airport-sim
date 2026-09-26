@@ -25,7 +25,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 |---|---|
 | Anyone constructing a system (harness, host, integration tests) | `08` §8.11a, then the module's Construction section: `09` §9.11, `11` §11.9a, `12` §12.12a, `13` §13.10a, `14` §14.13a, `15` §15.9, `17` §17.7 |
 | `sim.core` (T-001–T-006, T-026) | `08` all; `10` §10.2, §10.3; `03` budgets. T-003: `08` §8.3. T-026: `10` §10.6 plus the type blocks of `12` §12.4, `13` §13.3, `14` §14.3 |
-| `tools.simharness` (T-006, T-009) | `02` Gates; `08` §8.5, §8.9; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
+| `tools.simharness` (T-006, T-009) | `19` all; `02` Gates; `08` §8.5, §8.5a, §8.7, §8.9, §8.11a; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
 | `sim.world` (fixed walk graph) | `18` all; `08` §8.9, §8.11a; `09` §9.6 (its consumer) |
 | `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `18` §18.2, §18.3, §18.5; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
 | `sim.schedule` (T-008) | `11` all; `08` §8.2, §8.4; `09` §9.7; `10` §10.4, §10.6 |
@@ -120,7 +120,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   polyfills**; **solution layout (Q-013): fixed project paths and names,
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
-  sln, tests merge with their implementation, IDL-to-C# mapping**; exact
+  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; exact
   exception types.
 - LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
@@ -271,6 +271,20 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - LC: none marked; the gate-pooling stopgap is flagged in `CHANGELOG.md`.
 - Read if: the `sim.world` task; `sim.flow` (§18.2, §18.3, §18.5).
 
+### `19-interfaces-harness.md` — `tools.simharness` CI gates (new, Q-025–Q-027)
+- Owns: the public surface of the harness (`HarnessCli`, `HarnessGates`,
+  `SimComposer`, `GateResult`), the NoOp command script, the run comparison,
+  exit codes 0/1/2/3, the one-line stdout, `budget --tier max`.
+- Key: harness tests run in process from `tests/tools/simharness` (`07`
+  L1/L3); the divergence seam is an injected composer, with no CLI flag;
+  `saveload` is replay from seed plus command log until `sim.save`;
+  `promotion` passes vacuously until T-010; the CLI composition registers no
+  systems until a task amends it.
+- LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
+  (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
+  `sim.save` (§19.5).
+- Read if: T-006, T-009, T-030; the Test Author for the harness.
+
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
   running scope total (8, after Q-010 (5)).
@@ -279,7 +293,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-022 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Q-002 to Q-028 are answered (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
