@@ -33,13 +33,34 @@ namespace AirportSim.Sim.Core
         public uint SecondOfDay =>
             (uint)((CurrentTick % SimConstants.TICKS_PER_SIM_DAY) * (ulong)SimConstants.SIM_SECONDS_PER_TICK);
 
+        // |long.MinValue|, as a literal, never computed by negating long.MinValue.
+        private const ulong SignBitMagnitude = 1UL << 63;
+
         public Fx MinutesBetween(ulong a, ulong b)
         {
-            checked
+            // Signed b - a (07-conventions.md "Error handling": explicit overflow
+            // checks, never a checked context, never a BCL operator's own exception).
+            long delta;
+            if (b >= a)
             {
-                long delta = (long)b - (long)a;
-                return Fx.FromRatio(delta, (long)SimConstants.TICKS_PER_SIM_MINUTE);
+                ulong mag = b - a;
+                if (mag > long.MaxValue)
+                {
+                    throw new OverflowException("SimClock.MinutesBetween: delta exceeds int64 range.");
+                }
+                delta = (long)mag;
             }
+            else
+            {
+                ulong mag = a - b;
+                if (mag > SignBitMagnitude)
+                {
+                    throw new OverflowException("SimClock.MinutesBetween: delta exceeds int64 range.");
+                }
+                delta = mag == SignBitMagnitude ? long.MinValue : -(long)mag;
+            }
+
+            return Fx.FromRatio(delta, (long)SimConstants.TICKS_PER_SIM_MINUTE);
         }
 
         public ulong TickOfDayTime(uint dayIndex, uint secondOfDay)
