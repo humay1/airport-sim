@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_REVIEW |
+| Status | MERGED |
 | Module | content (not `src/sim/**`, not `src/app/**`) |
 | Assigned role | worker |
 | Depends on | — |
