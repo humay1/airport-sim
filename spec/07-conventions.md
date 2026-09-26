@@ -43,6 +43,7 @@ letter upper-cased (`core` → `Core`, `turnaround` → `Turnaround`).
 | `app.host` headless host | `src/app/host/AirportSim.App.Host.csproj` | `AirportSim.App.Host` | `netstandard2.1`, C# 9 |
 | tests of `app.<m>` | `tests/app/<m>/AirportSim.App.<M>.Tests.csproj` | `AirportSim.App.<M>.Tests` | `net8.0`, C# 12 |
 | `tools.simharness` | `tools/SimHarness/AirportSim.Tools.SimHarness.csproj` | `AirportSim.Tools.SimHarness` | `net8.0`, C# 12, `Exe` |
+| tests of `tools.simharness` (Q-025) | `tests/tools/simharness/AirportSim.Tools.SimHarness.Tests.csproj` | `AirportSim.Tools.SimHarness.Tests` | `net8.0`, C# 12 |
 
 The engine backends (`src/app/render/Unity/`, `src/app/ui/Unity/`) and
 `unity/AirportSim/` are compiled by Unity (`15` §15.3, `16` §16.2). They have
@@ -111,7 +112,10 @@ is exactly the text below, with the same encoding rules as L2. Every other test
 project in L1 is this file with the two names and the one `ProjectReference`
 changed. A test project references **only** the production project of the
 module it tests. The other modules it sees come through that project's own
-references.
+references. For the harness's test project, that one reference is
+`../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
+tests call the harness in process, through its public surface (`19`
+§19.1). They never spawn a process (Q-025).
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -187,6 +191,7 @@ merges first, because `ISimClock.MinutesBetween` returns `SimMinutes = Fx`.
 | `tests/<layer>/<m>/…Tests.csproj` and the parallelisation file (L4) | the Test Author, per L3/L4, in every test branch that needs them (identical additions merge cleanly) | by spec amendment only |
 | `AirportSim.sln` (repo root) | the first task to merge a production project, which is T-003. It runs `dotnet new sln --name AirportSim` and adds `src/sim/core` and `tests/sim/core` | T-001 adds `tools/SimHarness`. After that, the first task that creates a module's production project adds that project and its test project. The Planner lists `AirportSim.sln` in that task's writable paths and never releases two such tasks concurrently, because concurrent `.sln` edits conflict |
 | `tools/SimHarness/AirportSim.Tools.SimHarness.csproj` | T-001. It is the L3 file with `<OutputType>Exe</OutputType>` inserted as the first property. It drops `IsPackable`, `IsTestProject`, `NuGetAudit` and the package `ItemGroup`, uses the L1 names, and has one `ProjectReference` to `../../src/sim/core/AirportSim.Sim.Core.csproj` | later `tools/SimHarness/**` tasks add `ProjectReference`s only |
+| `AirportSim.sln` entry for `tests/tools/simharness` (Q-025) | T-006, which adds the Test Author's project to the solution, as T-003 did for `tests/sim/core`. The Planner lists `AirportSim.sln` in T-006's writable paths | none |
 
 **Everything under `tests/**`, fixtures included, is written by the Test
 Author (Q-021).** A worker task's `tests/**` writable path grants nothing:
