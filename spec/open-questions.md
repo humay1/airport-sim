@@ -835,3 +835,28 @@ Answer:      `19` §19.2: replay form. The "save" at `saveAt` is the seed,
              check, and the real snapshot round-trip replaces it when
              `sim.save` is specified.
 Status:      ANSWERED — HUMAN (spec/19-interfaces-harness.md#195-saveload-before-simsave--human-decision-q-027)
+
+### Q-028 — Content index edge cases, enum member casing, test file naming
+Raised by:   Test Author (via coordinator) / T-026
+Blocking:    T-026 tests
+Question:    Which exception does `ContentIndexFactory.Create` throw for a
+             duplicate id, and for a `null` element? Does `TryGet<T>` return
+             false or throw for a definition of another type, and for
+             `T = IContentDefinition`? Do snake_case IDL enum members, such
+             as `06`'s `DelayCategory`, stay snake_case in C#? How is a
+             multi-word test subject named under L6?
+Why it matters: Each one is a test assertion or a public name, and enum
+             casing binds every module.
+Answer:      `08` §8.11a: a `null` list throws `ArgumentNullException`. A
+             `null` element, a `null` `Id.Value` or a duplicate id throws
+             `ArgumentException`, and the input is copied. `08` §8.11:
+             `TryGet<T>` is true if and only if the id exists and its
+             definition is a `T`, otherwise false with `default`. The type
+             never throws, `IContentDefinition` matches anything, and a
+             `null` id value throws `ArgumentException`. `07` L10: enum
+             members are PascalCase in C# (`late_inbound` → `LateInbound`),
+             and snake_case survives only in data. `07` L6: a subject may be
+             several words, and each test in `<Subject>Tests` starts with
+             `test_<subject in snake_case>_`, going to the longest matching
+             subject.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
