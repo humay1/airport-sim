@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `sim.world` |
 | Assigned role | worker |
 | Depends on | T-001, T-003, T-026 |
