@@ -134,8 +134,8 @@ namespace AirportSim.Sim.Core
             for (int k = 0; k < intLen; k++)
             {
                 int d = value[intStart + k] - '0';
-                intPart = (intPart * 10) + d; // Safe unchecked: intPart is bounded below int.MaxValue by the check on the next line at every step, far short of long's own range.
-                if (intPart > int.MaxValue)
+                intPart = (intPart * 10) + d; // Safe unchecked: intPart is bounded below (int.MaxValue + 1) by the check on the next line at every step, far short of long's own range.
+                if (intPart > (long)int.MaxValue + 1) // 2^31: the magnitude of int.MinValue, the most negative valid integer part; NarrowMagnitude below enforces the sign-aware bound exactly.
                 {
                     throw new OverflowException($"Fx.Parse: integer part out of range in '{value}'.");
                 }
@@ -510,7 +510,7 @@ namespace AirportSim.Sim.Core
         public bool Equals(Fx other) => Raw == other.Raw;
 
         /// <summary>Equality by Raw. spec/08-interfaces-core.md §8.3 (Q-015).</summary>
-        public override bool Equals(object obj) => obj is Fx other && Equals(other);
+        public override bool Equals(object? obj) => obj is Fx other && Equals(other);
 
         /// <summary>
         /// Hash of Raw. Never used for sim behaviour, ordering or hashing of
