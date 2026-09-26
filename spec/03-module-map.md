@@ -11,7 +11,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.schedule` | `src/sim/schedule` | core, flow | Flight schedule, slots, seasons, published timetable |
 | `sim.airside` | `src/sim/airside` | core, world, schedule, flow | Runways, taxiways, stands, aircraft movement, wind/active direction, boarding hold |
 | `sim.flow` | `src/sim/flow` | core, world | Passenger cohorts, queue nodes, promotion/demotion, corridors |
-| `sim.turnaround` | `src/sim/turnaround` | core, airside, staff | Handling jobs, ground vehicles, job scheduling |
+| `sim.turnaround` | `src/sim/turnaround` | core, schedule, airside, staff | Handling jobs, ground vehicles, job scheduling |
 | `sim.baggage` | `src/sim/baggage` | core, world, flow | Belt network, sorters, carousels, mishandled-bag model |
 | `sim.delay` | `src/sim/delay` | core, all above (read-only via events) | Delay attribution tree |
 | `sim.staff` | `src/sim/staff` | core | Roles, rosters, shifts, fatigue, training |
@@ -22,7 +22,7 @@ its own test directory. Everything else is read-only to it.
 | `sim.progression` | `src/sim/progression` | core, economy, reputation | Tiers, unlocks, ARFF categories |
 | `app.render` | `src/app/render` | sim (read-only) | Rendering, cameras, overlays |
 | `app.ui` | `src/app/ui` | sim (read-only), render | Screens, advisor, delay tree view |
-| `app.host` | `src/app/host`, `unity/AirportSim` | sim, render, ui | Composition root, frame loop, Unity project shell and player build |
+| `app.host` | `src/app/host`, `unity/AirportSim` | sim (every registered module; itemised in `07` L2), render, ui | Composition root, frame loop, Unity project shell and player build |
 | `content` | `data/` | — | Aircraft, airlines, objects, incidents, policies |
 
 ## Communication rules

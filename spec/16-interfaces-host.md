@@ -143,6 +143,7 @@ module's worker chose; the name says nothing about the format.
 ```
 readonly struct ComposedSim {
   ISimHost           Host
+  IWorldSystem?      World                    // Q-022; null: not registered
   IScheduleSystem?   Schedule                 // null: not registered
   IAirsideSystem?    Airside
   IFlowSystem?       Flow

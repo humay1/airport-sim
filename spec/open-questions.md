@@ -441,3 +441,341 @@ Answer:      (1)–(4), the Architect's, in `08` §8.7:
              that quick clicks do not collapse (`17` §17.5).
 Status:      ANSWERED (spec/08-interfaces-core.md#issuer-kinds-and-payloads-q-010,
              spec/09-interfaces-flow.md#97b-lane-state-q-010--low-confidence)
+
+### Q-013 — No solution layout, test framework or project ownership
+Raised by:   coordinator / Phase 0 release (T-001, T-003, Test Author)
+Blocking:    T-001, T-003, and every test branch
+Question:    `08` Notation left namespaces, access modifiers and file layout
+             to the worker, and `07` "Testing" named no framework. Nothing
+             fixed the project paths or names (csproj, AssemblyName,
+             RootNamespace), the test and property-testing packages and their
+             versions, whether tests see internals, who creates each project
+             file and the solution given the writable paths, or how
+             `test_<subject>_<condition>_<expectation>` maps to C#.
+Why it matters: The Test Author and the workers cannot agree on a type name,
+             a namespace or a project reference. T-001 and T-003 both write
+             `src/sim/core/**` concurrently, and would each invent a
+             `.csproj`.
+Answer:      `07-conventions.md` "Solution layout and build", rules L1 to L11.
+             One project per module at a fixed path, named
+             `AirportSim.Sim.<M>` (tests `AirportSim.Sim.<M>.Tests`, harness
+             `AirportSim.Tools.SimHarness`). The sim and test `.csproj` files
+             are given byte for byte. xUnit 2.9.3, xunit.runner.visualstudio
+             2.8.2 and Microsoft.NET.Test.Sdk 17.12.0, with no property-testing
+             library; property tests are seeded SplitMix64 loops. Public
+             surface only, with no `InternalsVisibleTo`, and `public` if and
+             only if the spec names it. Test names are the C# method names
+             verbatim. There is an ownership table for every project file and
+             for `AirportSim.sln`. Tests merge with their implementation. The
+             IDL-to-C# mapping and budget-test timing are fixed too.
+             Verified: the L2/L3 files build with `-warnaserror` and pass
+             `dotnet test` on SDK 8.0.425.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-014 — The `sim.core` loop, host and bus contract is ambiguous at T-001's edges
+Raised by:   Test Author, worker-1, worker-2 (via coordinator) / T-001
+Blocking:    T-001
+Question:    (A1) Does the first `Step(1)` run tick 0 or tick 1, and is there
+             a checkpoint at tick 0? (A2) What are the legal `SystemId`
+             values, and may tests register probe systems? (A3) T-001's
+             signatures need types owned by other tasks, and nobody owns the
+             `ISimLog` family. (A4) The `EventHandler<T>` signature is
+             missing, as is how the envelope travels and how `Publish`
+             assigns the id, and no task owns full dispatch. (A5) What do
+             `MinutesBetween` with `b < a` and `TickOfDayTime` do with
+             non-multiple or out-of-range seconds? (A6) May the world hash be
+             a stub? (A7) May config members be null? (A8) Is replay a valid
+             save/load stand-in? Plus which exception types are thrown (A9,
+             shared with Q-015).
+Why it matters: Each one is a coin flip that the Test Author and the worker
+             would call differently.
+Answer:      `08-interfaces-core.md`:
+             (A1) §8.2 "Tick numbering": `Step(n)` executes ticks
+             `CurrentTick … CurrentTick+n−1`. The first `Step(1)` runs tick 0.
+             Chunking is invisible. §8.9: a checkpoint in phase 4 of every
+             tick `t % 600 == 0`, so a day has 24 checkpoints, and there is
+             none at `Build`. The world hash feeds the ticks-executed count,
+             so a checkpoint's hash equals `WorldStateHash()` right after its
+             `Step`.
+             (A2) §8.4/§8.5: `Value` is the registry position, 1 to 14 except 8.
+             0 is `SYSTEM_CORE`. Probes may use any legal position whose
+             module is absent. `Name` is not checked.
+             (A4) §8.6: `delegate void SimEventHandler<T>(in EventEnvelope,
+             in T, in TickContext)`, renamed so it does not collide with
+             `System.EventHandler<T>`. Event structs hold payload only, and
+             the bus carries and fills the envelope. `Publish` gains an
+             `in EventRef cause` argument. Passes, the 4097th publish, one
+             handler per (subscriber, type), and `Build` checks subscribers.
+             (A5) §8.2: `MinutesBetween` is signed, and `TickOfDayTime`
+             floors and throws at ≥ 86400.
+             (A7) §8.11a: no nulls, and no null objects published. Tests
+             write their own doubles.
+             (A9) `07` "Error handling" and the new §8.5a
+             `SimInvariantException`: the host wraps any exception that
+             escapes a tick, with the tick and world hash.
+             (A3, A6, A8), which are task-level and go to the Planner:
+             - **T-003 before T-001** (coordinator decision), because
+               `SimMinutes = Fx`. T-003 creates `AirportSim.sln` (`07` L8).
+             - T-001 declares these **shape only**, and its tests do not
+               exercise their behaviour: `Command`, `PlayerId`
+               (+`PLAYER_LOCAL`), `CommandKind { NoOp = 0 }`, `CommandRejection`
+               (all five), `ICommandHandler`, `ICommandHandlerRegistry` (T-005
+               adds the other kinds, admission, order and `LogSince`; T-001's
+               `TrySubmit` returns false with `UnknownKind`);
+               `IRandomService`, `IRandomStream`, `RngStreamName`, with a
+               placeholder whose `MasterSeed` is the config's and whose `Stream`
+               throws `InvalidOperationException` (T-002 replaces it);
+               `IContentIndex`, `IContentDefinition`, `ContentId`,
+               `ContentKind` (T-026 adds the definition structs; `ContentIndexFactory`
+               needs an owner); `IIdAllocator`, `EntityId` (the allocator
+               behaviour has **no owning task**).
+             - T-001 implements **in full**: `SimConstants`, `ISimClock`,
+               `SystemId`/`SYSTEM_CORE`, the builder and factory, the phase
+               loop, `SimInvariantException`, `ISimLog`/`LogLevel`/`LogKey`/`LogArgs`
+               (the shape is all there is), `Checkpoint`/`ICheckpointSink`
+               with the real phase-4 cadence of §8.9, and the world hash per
+               §8.9 as written, which is **not a stub** (A6).
+             - T-001's tests may rely on the checkpoint cadence, `Tick`
+               values, the length, order and values of `SystemHashes`, a
+               checkpoint equalling `WorldStateHash()`, and the hash being
+               deterministic and changing with the tick and with any system
+               hash. They may **not** rely on the exact `WorldHash` value,
+               which T-004 pins with `IStateHasher`.
+             - **Dispatch (§8.6) has no owning task.** Recommended: T-001
+               implements it in full, since it is phase 3 of the loop T-001
+               owns, and its tests then cover §8.6. Planner's call.
+             - (A8) Yes. Two hosts built from equal configs and equal
+               systems, stepped the same total with different chunkings,
+               have equal hashes and checkpoint sequences. Save/load proper is
+               `sim.save`.
+Status:      ANSWERED (spec/08-interfaces-core.md#tick-numbering-and-clock-arithmetic-q-014)
+             — task-level items above need the Planner
+
+### Q-015 — `Fx` edge semantics and C# shape
+Raised by:   Test Author, worker-2 (via coordinator) / T-003
+Blocking:    T-003
+Question:    (A9) Which exceptions? (A10) `FromRaw`, the `Raw` accessor,
+             static or instance, operators? (A11) Overflow on `Add`/`Sub`/
+             `Neg`/`Abs`/`FromInt`, and `Clamp` with `lo > hi`? (A12) The
+             `Parse` grammar and `ToDisplayString` rounding? (A13) Negative
+             `Sqrt`, and what "exact-stable" means? (A14) The direction of
+             `RoundHalfUp`? (A16) Where the cross-process bit-exactness
+             test's child process lives?
+Why it matters: A test suite and an implementation can disagree on every one,
+             and each is visible in content parsing or a golden hash.
+Answer:      `08-interfaces-core.md` §8.3 "C# shape and edge cases": `FromRaw`
+             is added; `Raw` is a get-only property; operations are static
+             and `ToDisplayString` is an instance method; operators are
+             required, with no conversions; `Fx` throws and never wraps or
+             saturates (the table gives every operation);
+             `OverflowException`/`DivideByZeroException`/`FormatException`/
+             `ArgumentException`/`ArgumentOutOfRangeException` as tabled;
+             `RoundHalfUp` rounds toward +∞; `Sqrt` is the exact floor
+             integer root and throws for negatives; the `Parse` grammar is
+             `-?(0|[1-9][0-9]*)(\.[0-9]{1,10})?`, exact then floored;
+             `ToDisplayString` floors, with 0 to 10 decimals. (A16) There is
+             no child process. Bit-exactness is golden vectors committed in
+             the test. T-003's task text ("two independent process runs")
+             is stale.
+Status:      ANSWERED (spec/08-interfaces-core.md#c-shape-and-edge-cases-q-015)
+
+### Q-016 — No task before T-006 can pass the full `ci/run-checks.sh`
+Raised by:   coordinator / Phase 0 release
+Blocking:    the "done" definition of T-001 to T-005, T-026 and T-027
+Question:    `ci/run-checks.sh` without `--fast` runs
+             `dotnet run --project tools/SimHarness -- determinism|saveload|
+             promotion|budget`, and those subcommands are T-006's. `CLAUDE.md`
+             "Definition of done" requires the determinism gate to pass. What
+             is "green" for the tasks that land before T-006?
+Why it matters: Either no Phase 0 task can ever be done, or each agent makes
+             up its own exception to the gate.
+Proposed:    Until T-006 merges, a task is green when the CI jobs `path-guard`
+             and `build-and-test` pass. `build-and-test` runs
+             `ci/run-checks.sh --fast`, which builds and tests through
+             `AirportSim.sln` (`07` L9). The `determinism` job is expected to
+             fail, is not required for those merges, and becomes required
+             the moment T-006 merges. T-006 itself must pass the full script.
+Answer:      HUMAN DECISION — owner, 2026-09-24: adopted as proposed. Until
+             T-006 merges, green = `path-guard` + `build-and-test`
+             (`ci/run-checks.sh --fast`, with build and tests through
+             `AirportSim.sln`). From the moment T-006 merges, the full
+             `ci/run-checks.sh` is mandatory. The Architect recorded it and
+             did not decide it.
+Status:      ANSWERED — HUMAN (spec/open-questions.md#q-016)
+
+### Q-017 — The world hash omits `sim.core`'s own state; the hasher is unconstructible and its encoding is ambiguous
+Raised by:   worker (via coordinator) / T-004, T-005, T-001 (batch 2 H1–H7, C10; batch 3 E3)
+Blocking:    T-001, T-004, T-005
+Question:    The world hash is the tick plus the system hashes, but core is
+             not a system, so a `NoOp` or an id allocation could never change
+             it. How are `bool` and spans encoded, and is a span
+             length-prefixed? What are the constants? Is `IStateHasher` a
+             struct or a class, how is it constructed, and who ships it? Is
+             `SystemHashes` fixed-length? Who owns the array? Is there an
+             index API? Also: what are the `IIdAllocator` semantics?
+Why it matters: A `NoOp` could not prove the queue participates. Unprefixed
+             spans collide. Every system hash would depend on a type nobody
+             can construct.
+Answer:      `08` §8.9 "Encoding, the concrete hasher and the core section":
+             standard FNV-1a-64 constants, 8-byte little-endian integers,
+             1-byte bool, spans prefixed with a `uint64` length, and golden
+             vectors. `public struct StateHasher`, where `default` is fresh
+             and `Result` is readable at any time. It **ships in T-001**
+             (coordinator proposal accepted), and T-004 proves the vectors.
+             A `CoreHash` section covers the next sequence, the pending
+             commands and the id counters. It is fed after the tick and
+             before the systems, and it is carried on `Checkpoint.CoreHash`.
+             `SystemHashes` covers registered systems only, in a fresh array
+             each time, and has no index API (H4–H6, part in Q-014). `08`
+             §8.4: `EntityId = (owner << 48) | counter`, and counters start
+             at 1. H7: a same-tick-dispatch fixture comparing
+             "correct order ≠ swapped order" is an acceptable test of the
+             phase order. Its design is the Test Author's.
+Status:      ANSWERED (spec/08-interfaces-core.md#encoding-the-concrete-hasher-and-the-core-section-q-017)
+
+### Q-018 — No task declares the event structs, and their field types have no `sim.core` home
+Raised by:   worker-1, worker-3 (via coordinator) / T-026, T-008, T-007 (batch 3 E1, E2; batch 4 S1, S2)
+Blocking:    T-007, T-008, T-021, T-022, T-024
+Question:    `03` puts events in `sim.core`, but no task authors the structs
+             (`FlightPlanPublished`, `FlightMilestoneReached`, the flow
+             events, `DelayEvent` and so on). `AirlineId`, `MovementKind` and
+             `CohortId` are declared in module files, while core events carry
+             them.
+Why it matters: T-008 may write only `src/sim/schedule/**`, yet it emits
+             core-owned events. `sim.delay` may reference only `sim.core`.
+Answer:      Option (a). `10` §10.9 declares every Phase 0 and Phase 1 event
+             struct exactly, and `sim.core` owns them all. `AirlineId`,
+             `MovementKind`, `CohortId`, `FlightMilestone`, `DelayNode` and
+             `DelayNodeKind` are relocated to `sim.core` (compiled home only;
+             shapes unchanged). `DelayEvent { DelayNode Node }`.
+             `FlightPlanRevised`, `FlightCancelled` and the Phase 2 rows stay
+             undeclared until their untyped fields are pinned. E2 is Q-014's
+             `SimEventHandler<T>`. For the Planner: T-026 authors them, and
+             T-007's "`CohortId` stays `sim.flow`'s type" is stale.
+Status:      ANSWERED (spec/10-events.md#109-declared-event-structs-q-018)
+
+### Q-019 — The RNG reference is not pinned tightly enough to test
+Raised by:   worker (via coordinator) / T-002 (batch 2 R1–R9)
+Blocking:    T-002
+Question:    Several details were unpinned: the byte encoding of the name
+             hash, the SplitMix64 constants, the fill order, the zero-state
+             replacement, the Lemire variant, `min >= max`, `Chance`'s draw
+             count, the `Shuffle` loop, the stream hash layout, calling
+             `Stream` twice, a factory, name validation and uniqueness, and a
+             save seam. There were no golden vectors either.
+Why it matters: A test oracle that is someone's reading of the spec, rather
+             than the spec itself.
+Answer:      `08` §8.8 "Exact reference". It pins everything, adds
+             `RandomServiceFactory.Create`, and gives three golden vectors
+             plus `NextInt` and `NextFx01` checks, computed by the Architect
+             from the pinned algorithms. The xoshiro and SplitMix64 cores
+             were checked against their published reference outputs. Name
+             grammar `sim.<module>.<purpose>` makes uniqueness structural,
+             replacing the unimplementable "CI asserts". `Stream` returns
+             the same live stream. There is no save seam until `sim.save`.
+Status:      ANSWERED (spec/08-interfaces-core.md#exact-reference-q-019)
+
+### Q-020 — Command queue semantics are underspecified
+Raised by:   worker (via coordinator) / T-005 (batch 2 C1–C11)
+Blocking:    T-005
+Question:    How do tests reach `LogSince`? Is `ApplyDue` public? Is
+             `Sequence` global? What is its start value, and does a rejection
+             consume one? What is the payload type, and what about `null`?
+             What does `NoOp` do with a payload? How is the owner enforced,
+             what about a foreign issuer, who logs an impossible `Apply`,
+             and what does `LogSince` include? How often is `Validate`
+             called?
+Why it matters: Replay and save depend on every one of them.
+Answer:      `08` §8.7 "Queue semantics".
+             - `ICommandQueue` is internal, and
+               `ISimHost.CommandLogSince(Tick)` is added.
+             - The payload is a `byte[]`, copied on admission. A `null`
+               payload throws.
+             - Admission runs TooLate → NotPermitted (issuer) → UnknownKind
+               → Validate. `Validate` runs exactly once, and `NoOp` requires
+               an empty payload.
+             - `Sequence` is global and starts at 1. A rejection does not
+               consume one.
+             - `LogSince` is inclusive by `cmd.Tick`, includes pending
+               commands, and is ordered by (Tick, Issuer, Sequence).
+             - The owner is fixed by the payload table. Mismatches and
+               duplicates throw.
+             - The handler logs an impossible `Apply` at Info. Core does not
+               catch it.
+             - `TrySubmit` during `Step` throws.
+Status:      ANSWERED (spec/08-interfaces-core.md#queue-semantics-q-020)
+
+### Q-021 — Who writes `tests/fixtures/**`?
+Raised by:   worker-3 (via coordinator) / T-008 (batch 4 S3)
+Blocking:    no
+Question:    `11` §11.10 makes the fixture "binding on the Test Author", but
+             T-008's writable paths include `tests/fixtures/schedule/**`.
+Why it matters: Two authors for one fixture.
+Answer:      `07` "Solution layout and build": everything under `tests/**`,
+             fixtures included, is the Test Author's. The path guard
+             already blocks workers from writing there, so worker grants
+             under `tests/**` grant nothing. The Planner may drop them.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-022 — `ComposedSim` lacks `World`; `app.host`'s references are an umbrella
+Raised by:   worker-3 (via coordinator) / T-031 (batch 5 W1, W2)
+Blocking:    T-031
+Question:    `16` §16.4 `ComposedSim` has no `World` field, although the
+             composer constructs `sim.world` (Q-012 was never threaded
+             through `16`), and T-031's task file adds one. `03`'s `app.host`
+             row, "sim, render, ui", cannot drive `07` L2's per-module
+             `ProjectReference` rule.
+Why it matters: The task file and the spec disagree, and a project file
+             cannot be derived from the spec.
+Answer:      (W1) `16` §16.4 gains `IWorldSystem? World`, which matches T-031.
+             `RenderSources` is unchanged, since render reads no world
+             interface. (W2) `07` L2 now fixes the direct references from
+             each project's published interface file, with a binding
+             Phase 0/1 table. `03`'s `app.host` row points to that table.
+             `03`'s `sim.turnaround` row gains `schedule`, because
+             `TurnaroundFactory` takes `IScheduleSystem` (`13`), which `03`
+             did not allow.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-023 — Small RNG and constant gaps left by Q-019/Q-020
+Raised by:   coordinator / T-002, T-005 (G1–G5)
+Blocking:    T-002
+Question:    (G1) Must the `RngStreamName` pattern match the whole string,
+             and which exceptions cover `null` and a malformed name? (G2) The
+             xoshiro `{1, 2, 3, 4}` check and the all-zero replacement cannot
+             be reached through the public API: are they tested, or is there
+             a seam? (G3) Is there a per-call time budget for draws? (G4)
+             Where does `PLAYER_LOCAL` live? (G5) Are T-002's cross-process
+             test and "CI uniqueness check" superseded?
+Why it matters: Each one is a test the Test Author and the worker could
+             write differently.
+Answer:      `08` §8.8 "Exact reference" and §8.7 "Issuer, kinds and
+             payloads".
+             - (G1) The whole string, as `\A…\z`. `null` throws
+               `ArgumentNullException`, a malformed name throws
+               `ArgumentException`, and `Stream(default)` throws
+               `ArgumentException`.
+             - (G2) The golden vectors are the sole required proof. There is
+               no seam. The zero state is unreachable, because SplitMix64
+               never emits four zeros in a row. Both are untested by design.
+             - (G3) There is no per-call budget. Draws allocate nothing and
+               are charged to the calling system's budget.
+             - (G4) `SimConstants.PLAYER_LOCAL`, a `static readonly
+               PlayerId`. `SYSTEM_CORE` follows the same rule.
+             - (G5) Yes. There is no child process (as in Q-015 A16) and no
+               CI uniqueness check (Q-019). T-002's text is stale.
+Status:      ANSWERED (spec/08-interfaces-core.md#exact-reference-q-019)
+
+### Q-024 — Which tick count feeds the `WorldHash` of a wrapped exception?
+Raised by:   test-author-t001 (via coordinator) / T-001
+Blocking:    T-001 tests
+Question:    §8.5a computes `WorldHash` "at that moment" when an exception
+             escapes tick `t`. Is the count fed `t` (the tick did not
+             complete) or `t + 1`? Also: is the `IIdAllocator` 2^48 overflow
+             tested?
+Why it matters: The two readings give different hashes for the same failure.
+Answer:      `08` §8.5a: `t`, the number of ticks completed. `CurrentTick`
+             stays `t`, and the partial state is hashed as it stands, with
+             no rollback. `08` §8.4: the 2^48 overflow cannot be reached
+             through any public API, so it is untested by design.
+Status:      ANSWERED (spec/08-interfaces-core.md#85a-broken-invariants-q-014)

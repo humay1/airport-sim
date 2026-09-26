@@ -31,6 +31,8 @@ claimed by a module that knew the reason at the time.
 ## 10.2 Envelope
 
 Every event carries these fields. They are not repeated in the tables below.
+The bus carries the envelope beside the payload struct and passes it to each
+handler. It is not a field of the struct (`08` §8.6, Q-014).
 
 ```
 readonly struct EventEnvelope {
@@ -261,3 +263,67 @@ For the feasibility spike, only these must exist: `FlightPlanPublished`,
 `FlowBlocked`/`FlowUnblocked`. Everything else is defined here so that the shape
 is fixed before eight modules invent eight variations of it, not because Phase 0
 needs it.
+
+---
+
+## 10.9 Declared event structs (Q-018)
+
+**Ownership.** `sim.core` owns **every** event struct and every type an event
+field carries, following `03`. The emitting modules own the rules for
+emitting them, not the types. The struct shapes below are binding. They use
+PascalCase members, with the `07` L10 mapping. The id or enum types are
+declared by the file named in the comment, and they are compiled in
+`sim.core`.
+
+```
+// Phase 0
+event FlightPlanPublished {
+  FlightId     Flight
+  MovementKind Kind                 // 11 §11.3
+  FlightId     Rotation             // Flight itself if !HasRotation
+  bool         HasRotation
+  AirlineId    Airline              // 11 §11.3
+  ContentId    AircraftType
+  Tick         SchedArr
+  Tick         SchedDep
+  SimMinutes   MinTurnaround
+}
+event FlightMilestoneReached { FlightId Flight; FlightMilestone Milestone; Tick PlannedTick; Tick ActualTick }   // §10.4
+event QueueThresholdExceeded { NodeId Node; Fx WaitMinutes; int32 ServersOpen; int32 ServerCount }
+event QueueThresholdCleared  { NodeId Node; Fx WaitMinutes; int32 ServersOpen; int32 ServerCount }
+event FlowBlocked            { CohortId Cohort; NodeId Held; NodeId BlockedBy }   // CohortId: 09
+event FlowUnblocked          { CohortId Cohort; NodeId Held; NodeId BlockedBy }
+
+// Phase 1
+event AircraftHeldForRunway              { FlightId Flight; RunwayId Runway; int32 QueuePosition }   // 12
+event AircraftHeldForRunwayReleased      { FlightId Flight; RunwayId Runway; int32 QueuePosition }
+event AircraftHeldOnTaxiway              { FlightId Flight; TaxiEdgeId Edge; FlightId? Blocking }
+event AircraftHeldOnTaxiwayReleased      { FlightId Flight; TaxiEdgeId Edge; FlightId? Blocking }
+event StandUnavailable                   { FlightId Flight; StandId? Stand; FlightId? Occupying }
+event StandAssigned                      { FlightId Flight; StandId? Stand; FlightId? Occupying }
+event DepartureHeldForPassengers         { FlightId Flight; int32 Outstanding; NodeId? HeldAt }
+event DepartureHeldForPassengersReleased { FlightId Flight; int32 Outstanding; NodeId? HeldAt }   // HeldAt null
+event PassengersArrivedAtGate            { FlightId Flight; int32 Count }
+event PassengersMissedFlight             { FlightId Flight; int32 Count; NodeId LastBlockedAt }
+event TurnaroundJobStarted               { FlightId Flight; JobKind Job; Tick PlannedStart }        // 13
+event TurnaroundJobCompleted             { FlightId Flight; JobKind Job; Tick PlannedStart }
+event TurnaroundJobBlocked               { FlightId Flight; JobKind Job; ResourceKind WaitingOn; EntityId? Resource; DelayCategory Category }
+event TurnaroundJobUnblocked             { FlightId Flight; JobKind Job; ResourceKind WaitingOn; EntityId? Resource; DelayCategory Category }
+event DelayEvent                         { DelayNode Node }                                          // 06, 14 §14.3
+```
+
+- A paired closing event carries the same fields as its opening event,
+  with the values at closing time.
+- `DelayEvent` carries `14` §14.3's `DelayNode`, which is 06's `DelayEvent`
+  contract field for field. `DelayNode` and `DelayNodeKind` are therefore
+  compiled in `sim.core` too.
+- **Relocated to `sim.core`** (compiled home only; the shape stays in the
+  file cited): `FlightMilestone` (§10.4), `AirlineId` and `MovementKind`
+  (`11` §11.3), `CohortId` (`09`, still allocated by `sim.flow`),
+  `DelayNode` and `DelayNodeKind` (`14` §14.3). These join T-026's list.
+- **Not declared yet:** `FlightPlanRevised` and `FlightCancelled` (`11`
+  says schedule disruption needs its own amendment), and every Phase 2 row.
+  Their "reason key", "subject id" and "affected ids" have no type. Each
+  is pinned by amendment before a task emits it.
+- `EventEnvelope` and `EventRef` are T-001's, because the bus needs them.
+  Everything else in this section is for the `sim.core` types task (T-026).

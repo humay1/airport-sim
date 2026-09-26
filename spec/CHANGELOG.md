@@ -1282,3 +1282,263 @@ Signed off:  not required for the interface; the values are **PENDING
 Signed off:  HUMAN DECISION — owner (delegated), 2026-09-23, consequence of
              D5; reversible. Approved by the coordinator under the owner's
              delegation.
+
+## 2026-09-24 — spec/07-conventions.md "Solution layout and build" (new, L1–L11), "Naming", "Testing", "Error handling"; 08 Notation — Q-013: solution layout, test framework, project ownership
+Reason:      Nothing fixed the project paths or names, the test framework, the
+             visibility of internals, who creates each project file, or how a
+             test name maps to C#. T-001 and T-003 write `src/sim/core/**`
+             concurrently, and the Test Author may write only `tests/**`.
+             Answer: one project per module at a fixed path (L1). Byte-for-byte
+             sim and test `.csproj` files, so that identical additions merge
+             cleanly (L2, L3). xUnit v2 with pinned packages and no
+             property-testing library (L4). Public surface only, and `public`
+             if and only if the spec names it (L5). Namespaces and file names
+             (L6). Test names are C# method names verbatim (L7). An ownership
+             table, including `AirportSim.sln` (L8). Tests merge with their
+             implementation (L9). The IDL-to-C# mapping (L10). Budget tests
+             time with integer `Stopwatch` ticks (L11). There are no
+             repo-root build files.
+Raised by:   Q-013 (coordinator)
+Impact:      additive; no `src/` or `tests/` code exists. Stale task text:
+             T-001 (it no longer creates the sln; it adds `tools/SimHarness`),
+             and T-003 (it needs `AirportSim.sln (create)` in its writable
+             paths). The Planner must add `AirportSim.sln` to the writable
+             paths of the first task in each new module, and must serialise
+             those tasks. The 08 Notation sentence that gave workers the
+             choice of namespaces and access modifiers is withdrawn.
+             No scope added (running total unchanged at 8).
+Signed off:  not required, but see LOW CONFIDENCE
+LOW CONFIDENCE: (1) **No property-testing library.** `07` prefers property
+             tests for flow, baggage and delay. Seeded loops lose shrinking,
+             but FsCheck's default random seeding conflicts with
+             "tests never use unseeded RNG". Adding one later is additive.
+             (2) **`NuGetAudit=false` in test projects.** Under
+             `-warnaserror`, a newly published advisory for a test package
+             would otherwise break every build overnight, with no commit
+             to blame. The trade-off is that nobody sees the advisory. The
+             owner may prefer an audit job that does not block. (3) The
+             package versions were pinned by the Architect. They were
+             verified to restore, build with `-warnaserror` and run on SDK
+             8.0.425 (Windows), but not on the CI image. (4) There is no
+             `global.json`, so CI's `8.0.x` floats. `net8.0` leaves support
+             in Nov 2026.
+
+## 2026-09-24 — spec/08-interfaces-core.md §8.1, §8.2, §8.4, §8.5, §8.5a (new), §8.6, §8.8, §8.9, §8.10, §8.11a; 10 §10.2 — Q-014: tick numbering, registry ids, bus signature, invariants, logging shapes
+Reason:      T-001's recon found coin flips at every edge. Answer:
+             `Step(n)` executes ticks `CurrentTick …`, and the first tick is
+             0. Chunking is invisible. There are 24 checkpoints a day and
+             none at `Build`. The world hash feeds the ticks-executed count.
+             `MinutesBetween` is signed and `TickOfDayTime` floors.
+             `SystemId` 1–14 except 8, with `SYSTEM_CORE = 0`, and legal
+             probe registration. `SimEventHandler<T>(in EventEnvelope, in T,
+             in TickContext)`: the envelope travels beside the payload, the
+             bus fills it, and `Publish` takes `in EventRef cause`. Cascade
+             passes and limits are defined. `SimInvariantException` exists,
+             and the host wraps any exception that escapes a tick. The
+             shapes of `LogLevel`, `LogKey` and `LogArgs` are defined. The
+             `RngStreamName` shape is defined. Config members are never
+             null. The constants live in `SimConstants`.
+Raised by:   Q-014 (Test Author, worker-1, worker-2)
+Impact:      additive to the interface, except for two **signature
+             changes**. `IEventPublisher.Publish` gains a `cause` argument.
+             `EventHandler<T>` is renamed `SimEventHandler<T>` and gains
+             envelope and context parameters. No code exists, so nothing
+             merged breaks. Stale tasks: T-001 (the shape-only and full
+             split in Q-014; dispatch recommended into T-001), T-004 (its
+             phase-4 recording moves to T-001, and it keeps `IStateHasher`
+             and pinning the exact hash), T-005 (`CommandKind` beyond `NoOp`).
+             **No task owns `IIdAllocator` behaviour or
+             `ContentIndexFactory`.** The Planner must assign both. No scope
+             added.
+Signed off:  not required
+LOW CONFIDENCE: the world hash feeding "ticks executed" (`t + 1` at the
+             checkpoint of tick `t`) is chosen so that a checkpoint equals an
+             on-demand hash. It is cheap to change now, and costly after
+             T-013 lands goldens.
+
+## 2026-09-24 — spec/08-interfaces-core.md §8.3 "C# shape and edge cases" (new) — Q-015: `Fx` edge semantics
+Reason:      T-003's tests and implementation could disagree on overflow,
+             rounding direction, the parse grammar, display rounding, the
+             negative square root, and the C# surface. Answer: add
+             `FromRaw`. Static operations with required operators and no
+             conversions. Throw, never wrap or saturate, with exact exception
+             types. `RoundHalfUp` goes toward +∞. `Sqrt` is the exact floor
+             integer root. A strict `Parse` grammar with at most 10 fraction
+             digits, exact then floored. `ToDisplayString` floors, with 0 to
+             10 decimals. Bit-exactness is proven by golden vectors, not by
+             a child process.
+Raised by:   Q-015 (Test Author, worker-2)
+Impact:      additive (`FromRaw` is new). T-003's task text ("two
+             independent process runs") is stale. `04-data-schemas.md`
+             decimal strings must match the `Parse` grammar, and
+             `ci/validate-content.py` may need the same pattern (that is
+             human-owned `ci/`). No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/open-questions.md — Q-016 filed, PENDING HUMAN: interim "green" before T-006
+Reason:      The full `ci/run-checks.sh` needs harness subcommands that
+             T-006 delivers, so no earlier task can meet "Determinism gate
+             passes". The Architect proposes a rule but does not adopt it:
+             it changes a gate, and `ci/` belongs to the owner.
+Raised by:   coordinator
+Impact:      none until decided
+Signed off:  **PENDING HUMAN**
+
+## 2026-09-24 — spec/open-questions.md Q-016 — HUMAN DECISION: interim "green" before T-006
+Reason:      The owner adopted the proposal. Until T-006 merges, green =
+             `path-guard` + `build-and-test` (`--fast`, with build and tests
+             through `AirportSim.sln`). After T-006 merges, the full
+             `ci/run-checks.sh` is mandatory.
+Raised by:   Q-016
+Impact:      T-001 to T-005, T-026 and T-027 can reach "done". There is no
+             spec file change beyond the answer.
+Signed off:  HUMAN DECISION — owner, 2026-09-24
+
+## 2026-09-24 — spec/08 §8.4, §8.9 — Q-017: core section in the world hash, `StateHasher`, encoding, id allocation
+Reason:      The world hash could not see core state, so a `NoOp` was
+             invisible to it. Span encoding was ambiguous, and nobody could
+             construct a hasher. Answer: a `CoreHash` section (next
+             sequence, pending commands, id counters), fed between the tick
+             and the systems and carried on `Checkpoint.CoreHash`. `public
+             struct StateHasher`, where `default` is fresh. It ships in
+             T-001. The encoding is pinned, with length-prefixed spans, and
+             there are golden vectors. `EntityId = (owner << 48) | counter`,
+             with counters starting at 1.
+Raised by:   Q-017
+Impact:      `Checkpoint` gains `CoreHash`, a shape change that
+             T-001 declares, with no code yet. `ContentId` and every string
+             is now hashed with a length prefix: the content hash (§8.11)
+             follows the §8.9 encoding. Stale tasks: T-001 (it ships
+             `StateHasher` and `IIdAllocator` if the Planner assigns it
+             there), T-004 (it proves the vectors, and does not author the
+             hasher). No scope added.
+Signed off:  not required
+LOW CONFIDENCE: `EntityId` puts the owner in the top 16 bits. It is
+             collision-free and cheap, but it gives the bit pattern a
+             meaning that consumers are told to ignore.
+
+## 2026-09-24 — spec/10 §10.9 (new); 09, 11 §11.3, 14 §14.3 annotations; 07 L10 — Q-018: event structs declared, `sim.core` owns them
+Reason:      No task declared the event structs, and T-008 could not emit
+             core-owned events. This is option (a): `sim.core` owns every
+             event struct, matching `03`. The Phase 0 and Phase 1 structs
+             are pinned field for field. `AirlineId`, `MovementKind`,
+             `CohortId`, `FlightMilestone`, `DelayNode` and `DelayNodeKind`
+             are relocated to `sim.core`. `DelayEvent { DelayNode Node }`.
+             `X?` maps to `Nullable<X>`, and `event` maps to a
+             `readonly struct : ISimEvent`.
+Raised by:   Q-018
+Impact:      T-026 grows: every §10.9 struct plus the relocated types. It
+             must merge before T-007, T-008, T-021, T-022 and T-024. T-007's
+             "`CohortId` stays `sim.flow`'s own type" is stale.
+             `FlightPlanRevised`, `FlightCancelled` and the Phase 2 events
+             stay undeclared. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: `DelayEvent` wraps `DelayNode` whole rather than copying
+             06's lower-case field list. It is one source of truth, but the
+             payload's field names are `14`'s, not `06`'s.
+
+## 2026-09-24 — spec/08 §8.8 "Exact reference" — Q-019: RNG pinned bit for bit, with golden vectors
+Reason:      T-002's oracle would otherwise be one worker's reading. The
+             answer pins everything and adds `RandomServiceFactory.Create`:
+             - the name hash is FNV over UTF-8 with no prefix;
+             - standard SplitMix64 fills `s[0..3]` in order, and an all-zero
+               state is replaced at `s[0]`;
+             - xoshiro256** 1.0;
+             - `NextInt` is Lemire on the top 32 bits;
+             - `Chance` is always one draw;
+             - `Shuffle` runs descending;
+             - the stream hash is `s[0..3]`;
+             - `Stream` returns the same live stream;
+             - the name grammar `sim.<module>.<purpose>` replaces "CI
+               asserts uniqueness".
+             The Architect computed three golden vectors from these
+             algorithms. The SplitMix64 and xoshiro cores match their
+             published reference outputs.
+Raised by:   Q-019
+Impact:      additive. T-002 cites §8.8 "Exact reference". No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/08 §8.7 "Queue semantics" — Q-020: command queue semantics
+Reason:      T-005 had no answer on log access, sequence numbering,
+             payload type, admission order, owner enforcement, logging an
+             impossible `Apply`, or what `LogSince` includes. Answer:
+             - `ICommandQueue` is internal, and `ISimHost.CommandLogSince`
+               is added.
+             - The payload is a `byte[]`, copied on admission. A `null`
+               payload throws.
+             - Admission runs TooLate → NotPermitted (issuer) → UnknownKind
+               → Validate. `Validate` runs exactly once, and `NoOp` requires
+               an empty payload.
+             - `Sequence` is global from 1.
+             - `LogSince` is inclusive and includes pending commands.
+             - The owner comes from the payload table.
+             - The handler logs an impossible `Apply`.
+             - `TrySubmit` during `Step` throws.
+Raised by:   Q-020
+Impact:      `ISimHost` gains `CommandLogSince` (additive; only core
+             implements `ISimHost`). Q-010's admission order gains the
+             issuer check. T-005 is stale in these details. No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/07 "Solution layout and build"; 11 §11.10 — Q-021: the Test Author writes all of `tests/**`
+Reason:      A fixture had two possible authors.
+Raised by:   Q-021
+Impact:      Worker grants under `tests/**` (for example T-008's
+             `tests/fixtures/schedule/**`) are moot. The Planner may drop
+             them. No scope added.
+Signed off:  not required
+
+## 2026-09-24 — spec/16 §16.4; 07 L2; 03 (`sim.turnaround`, `app.host` rows) — Q-022: `ComposedSim.World`, itemised project references
+Reason:      `ComposedSim` omitted `World`. `03`'s umbrella dependency for
+             `app.host` cannot drive L2. L2's "references = the `03` cell"
+             was also wrong in two cases: `03` lists dependencies a Phase 1
+             project does not use (for example `staff`), and it missed one
+             it does use (`sim.turnaround` → `schedule`, per `13`'s factory).
+             Answer: add `IWorldSystem? World`. L2 now derives references
+             from the published interface file and gives a binding Phase 0/1
+             table. `03` is amended in the two rows.
+Raised by:   Q-022
+Impact:      T-031's `World` field becomes spec-backed. L2 replaces its
+             Q-013 wording, with no code yet. The `03` change widens
+             `sim.turnaround`'s allowed dependencies by one module, and
+             that module was already a factory parameter. No scope added.
+Signed off:  not required
+
+## 2026-09-26 — spec/08 §8.8 "Exact reference", §8.7 "Issuer, kinds and payloads" — Q-023: RNG name validation, test scope, cost; home of `PLAYER_LOCAL`
+Reason:      Five small gaps after Q-019/Q-020. Answer:
+             - The name pattern matches the whole string (`\A…\z`). `null`
+               throws `ArgumentNullException`, malformed throws
+               `ArgumentException`, and so does `Stream(default)`.
+             - The golden vectors are the only required proof. There is no
+               raw-state test seam. The `{1, 2, 3, 4}` check is an aid for the
+               implementer. The zero-state replacement cannot be reached,
+               since SplitMix64's mixer is a bijection of a counter that does
+               not repeat.
+             - There is no per-call time budget. Draws allocate nothing after
+               the first `Stream` call and are charged to the calling system.
+             - `PLAYER_LOCAL` and `SYSTEM_CORE` are `static readonly` members
+               of `SimConstants` under their IDL names (L10), not
+               `PlayerId.Local`.
+             - T-002's cross-process test and "CI uniqueness check" are
+               superseded. The stale "(CI asserts uniqueness)" sentence in
+               §8.8 is corrected.
+Raised by:   Q-023
+Impact:      Constraining only, and no code has merged. T-002's task text
+             is stale where it names a child process or a CI uniqueness
+             check. No new public surface. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: charging draw time to the calling system rather than to
+             `sim.core` relies on `03`'s per-module budgets being measured
+             per system `Tick`. If the harness attributes the RNG
+             differently, the answer needs revisiting.
+
+## 2026-09-26 — spec/08 §8.5a, §8.4 — Q-024: tick fed into a wrapped exception's `WorldHash`; id overflow untested
+Reason:      §8.5a did not say whether the hash taken when tick `t` fails
+             feeds `t` or `t + 1`. The answer is `t`, the ticks completed,
+             which matches "ticks executed" in §8.9 and leaves `CurrentTick`
+             at `t`. The partial state is hashed as it stands. The
+             `IIdAllocator` 2^48 overflow has no public reach and is noted
+             as untested by design.
+Raised by:   Q-024
+Impact:      Constraining only. No merged code. No scope added.
+Signed off:  not required
