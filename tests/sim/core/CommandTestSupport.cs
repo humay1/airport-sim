@@ -89,11 +89,11 @@ namespace AirportSim.Sim.Core.Tests
         // ------------------------------------------------------------ hash oracles
 
         /// <summary>Independent FNV-1a-64 with the §8.9 encoding written out by hand.</summary>
-        internal sealed class FnvOracle
+        internal sealed class CommandFnv
         {
             public ulong Result { get; private set; } = 0xCBF29CE484222325UL;
 
-            public FnvOracle U64(ulong v)
+            public CommandFnv U64(ulong v)
             {
                 unchecked
                 {
@@ -105,7 +105,7 @@ namespace AirportSim.Sim.Core.Tests
                 return this;
             }
 
-            public FnvOracle Span(byte[] bytes)
+            public CommandFnv Span(byte[] bytes)
             {
                 U64((ulong)bytes.Length);
                 unchecked
@@ -127,7 +127,7 @@ namespace AirportSim.Sim.Core.Tests
         /// </summary>
         internal static ulong CoreHashOracle(uint nextSequence, params (Command Cmd, uint Sequence)[] pending)
         {
-            var o = new FnvOracle();
+            var o = new CommandFnv();
             o.U64(nextSequence);
             o.U64((ulong)pending.Length);
             foreach ((Command cmd, uint seq) in pending)
@@ -144,7 +144,7 @@ namespace AirportSim.Sim.Core.Tests
 
         internal static ulong WorldHashOracle(ulong ticksExecuted, ulong coreHash, params ulong[] systemHashes)
         {
-            var o = new FnvOracle();
+            var o = new CommandFnv();
             o.U64(ticksExecuted);
             o.U64(coreHash);
             foreach (ulong h in systemHashes)
@@ -155,11 +155,11 @@ namespace AirportSim.Sim.Core.Tests
         }
 
         /// <summary>SplitMix64 exactly as pinned in §8.8, the input generator for property loops (07 L4).</summary>
-        internal sealed class SplitMix64
+        internal sealed class CommandGen
         {
             private ulong _x;
 
-            public SplitMix64(ulong seed)
+            public CommandGen(ulong seed)
             {
                 _x = seed;
             }
