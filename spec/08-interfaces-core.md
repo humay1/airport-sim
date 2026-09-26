@@ -936,7 +936,10 @@ ContentLoaderFactory.Create() -> IContentLoader
 - **Directories to kinds:** `size_categories/`, `aircraft/`, `pax_profiles/`
   and `queue_profiles/`, one definition per `*.json` file. Every other
   directory (`schemas/`, `policies/`, `balance/`, ...) is ignored by this
-  loader at Phase 0/1.
+  loader at Phase 0/1. Only files directly inside a kind directory are
+  definitions. A `*.json` file in a subdirectory of a kind directory (for
+  example `aircraft/x/a.json`) is a load failure, not silently ignored. A
+  `null` source throws `ArgumentNullException` (Q-031).
 - **Order:** files are read in ordinal path order, whatever `Files()`
   returns, so the result never depends on file-system enumeration.
 - **Format:** a strict JSON subset, hand-parsed inside `sim.core`. There is
@@ -952,7 +955,12 @@ ContentLoaderFactory.Create() -> IContentLoader
   ordinals unique; `ShowUpCurve` per `11` §11.6; `WalkSpeedMps > 0`;
   `ServiceRatePerServerPerMinute >= 0`; `CapacityStanding > 0`;
   `0 <= HysteresisMinutes < ThresholdWaitMinutes`; `Category` is
-  `security_queue` or `immigration_queue`.
+  `security_queue` or `immigration_queue`. For an id duplicated across
+  files, the message starts with the path of the file that is later in
+  ordinal order, and it may also name the earlier one. For an unresolved
+  `SizeCategory`, the message starts with the aircraft file's path and
+  contains the field `size_category` and the **unresolved category id**
+  (Q-031).
 - The output goes to `ContentIndexFactory.Create` (§8.11a). Tests may skip the
   loader and build definitions directly.
 

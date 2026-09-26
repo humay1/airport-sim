@@ -98,7 +98,11 @@ Load-time validation, each a hard failure (`07-conventions.md`):
 validation, throws `FormatException` (`07` "Error handling"). The message
 starts with `sourceName` followed by `": "`. For a syntax or shape failure
 it contains the 1-based line number as `line <n>`. For a validation failure
-it contains the field name and the offending id, or ids, in decimal. A
+it contains the field name and the offending id, or ids, in decimal. The
+offending id is fixed as follows (Q-031). A duplicate node or edge id: that
+id. An unknown endpoint: the edge id and the unknown node id. A self-loop:
+the edge id. A duplicate `(from, to)` pair: the **larger** of the two edge
+ids, and the message may also name the smaller one. A
 `null` `sourceName` throws `ArgumentNullException`. Tests assert the
 exception type, the `sourceName` prefix and the id, and nothing else in the
 message.
@@ -114,6 +118,17 @@ Computed at load for every ordered pair of nodes. Cost is the sum of
 `LengthMetres` of the nodes entered after the start, including the
 destination. Ties are broken by the lexicographically smallest sequence of
 `EdgeId`s. There is no RNG and no dependence on edge-list or file order.
+
+**Precisely (Q-031).** Only **simple** paths are candidates, meaning no
+node appears twice. The candidate set is therefore finite even with
+zero-length cycles, and because costs are non-negative, restricting to
+simple paths never loses a shortest route. `EdgeId` sequences compare
+element by element by `Value`, and a proper prefix is smaller. The route
+from `n` to `n` is the empty path, so `CanReach(n, n)` is true.
+`CanReachVia(e, d)` is `CanReach(EdgeTo(e), d)`. `PathVia(e, d)` is
+`EdgeTo(e)` followed by the nodes of the route from `EdgeTo(e)` to `d`, so
+`PathVia(e, EdgeTo(e))` is `[EdgeTo(e)]`. Only that tail is required to be
+simple.
 
 ```
 interface IWorldSystem : ISimSystem {
