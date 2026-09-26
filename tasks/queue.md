@@ -62,13 +62,13 @@ T-026 also in progress.
 | T-003 | Fixed-point math type `Fx` | sim.core | — | MERGED |
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | MERGED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
-| T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | IN_PROGRESS |
+| T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | IN_REVIEW (#31, fixing a REJECT) |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026 | QUEUED |
-| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026 | QUEUED |
+| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (blocked on T-007 merging) |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
-| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | QUEUED |
+| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | IN_PROGRESS |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
@@ -115,17 +115,23 @@ direct `Depends` edge. Order:
    may run **concurrently** with any still-open `sim.core` task once its
    own dependencies are met.
 9. **T-006** — after T-004 merges.
-10. **T-008** — after T-001, T-003 **and T-026** all merge (`Depends on`
-    amended, above: `FlightRecord.MinTurnaround` is `SimMinutes`/`Fx`, and
-    `FlightRecord.EntryNode`/`AircraftType`/`PaxProfile` are `NodeId`/
-    `ContentId`, both T-026 types). **Correction:** the earlier text here
-    said T-008 "may run concurrently with any open `sim.core`/`sim.flow`/
-    `sim.world` task" after T-001 alone — that is withdrawn; T-008 cannot be
-    released, let alone run concurrently with anything, until T-026 has also
-    merged. Once all three of T-001/T-003/T-026 are merged, `src/sim/schedule/**`
-    is its own directory, so T-008 may then run concurrently with any other
-    open `sim.core`/`sim.flow`/`sim.world` task. Builds and tests standalone,
-    without `sim.flow` registered, per `11-interfaces-schedule.md` §11.6.
+10. **T-008** — after T-001, T-003, T-026 **and now T-007** all merge
+    (`Depends on` amended, above: `FlightRecord.MinTurnaround` is
+    `SimMinutes`/`Fx`, and `FlightRecord.EntryNode`/`AircraftType`/
+    `PaxProfile` are `NodeId`/`ContentId`, both T-026 types). **Correction
+    (Test Author, found compiling T-008):** the earlier text here said T-008
+    "builds and tests standalone, without `sim.flow` registered" and could
+    release right after T-026 — that conflated `11-interfaces-schedule.md`
+    §11.6's **runtime** claim (this module's state hash is identical with or
+    without the injector wired in) with a **compile-time** one. It cannot:
+    `AirportSim.Sim.Schedule.csproj` references `AirportSim.Sim.Flow` (`07`
+    L2) and this task's own factory takes an `IFlowSystem`, so `sim.schedule`
+    cannot compile until `src/sim/flow/**` exists. **T-008 now depends on
+    T-007 as well and cannot release before it merges**, on top of
+    T-001/T-003/T-026. Once all four are merged, `src/sim/schedule/**` is its
+    own directory, so T-008 may then run concurrently with any other open
+    `sim.core`/`sim.world` task (not concurrently with a still-open T-007,
+    which it now depends on directly).
     **Not yet an edit, pending the Architect:** T-008's writable path
     `tests/fixtures/schedule/**` may need to be dropped from this task if the
     Architect confirms the Test Author, not the worker, authors
@@ -180,8 +186,8 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` | sim.flow | T-005, T-007, T-026 | QUEUED |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023, T-026 | QUEUED |
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
-| T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | IN_PROGRESS (tests authored at b01eb4a) |
-| T-027 | `sim.core`: strict content loader | sim.core | T-001, T-003, T-026 | QUEUED |
+| T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | MERGED |
+| T-027 | `sim.core`: strict content loader | sim.core | T-001, T-003, T-026 | IN_PROGRESS |
 | T-028 | Content: Phase 0/1 schemas, size-category and aircraft data | content | — | MERGED |
 | T-029 | `app.ui` scene layer: pacing, lane click, production lane sink | app.ui | T-005, T-020, T-023, T-026 | QUEUED |
 | T-030 | `tools.simharness`: `checkpoints` subcommand | tools.simharness | T-004, T-006, T-009 | QUEUED |
