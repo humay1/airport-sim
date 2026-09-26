@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`, which already exists) |
 | Assigned role | worker |
-| Depends on | T-004 |
+| Depends on | T-004, T-005 |
 | Spec source | `spec/19-interfaces-harness.md` §19.1–§19.5 (Q-025, Q-026, Q-027); `spec/02-determinism.md` "Gates" table; `ci/gates.md`; `ci/run-checks.sh` |
 | Blocked by | — |
 
@@ -16,6 +16,11 @@ predated §19 and is replaced in full below. Q-025/Q-026 pin the
 Q-027 is a **HUMAN DECISION (owner-approved): the interim save/load replay**
 — `SaveLoad` reconstructs a run from `CommandLogSince(0)` plus the run's
 inputs, not from a real snapshot, since `sim.save` does not exist yet.
+
+**Dependency correction:** `Depends on` now also names **T-005** — §19.2's
+command script submits real `NoOp` commands and `SaveLoad` replays
+`CommandLogSince(0)`, both of which need T-005's real command-queue
+admission/log behaviour, not just T-001's `NoOp`-rejecting shape.
 
 ## Writable paths
 

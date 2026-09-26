@@ -47,9 +47,11 @@ worker branch on that basis alone). Merge order for this cycle: architect
 → planner → `owner/ci-path-guard-test-pairing` → T-028 → T-003 → T-001 →
 T-002/T-004 → T-005. **Update (Integrator, trunk green):** architect spec,
 owner CI change, planner's task edits and T-028 are merged (`main`, all
-checks passing). T-003, T-001, T-004 and T-002 (#21) are now all MERGED.
-Next in order: T-005, then T-006 (rewritten per Q-025–Q-027,
-`spec/19-interfaces-harness.md`).
+checks passing). T-003, T-001, T-004, T-002 (#21) and T-005 (#26) are now
+all MERGED — **the Phase 0 `sim.core` chain T-001 through T-005 is fully
+merged.** Next: T-006 (rewritten per Q-025–Q-027,
+`spec/19-interfaces-harness.md`, now also depending on T-005), in progress;
+T-026 also in progress.
 
 ## Phase 0 — feasibility spike (the kill gate)
 
@@ -59,8 +61,8 @@ Next in order: T-005, then T-006 (rewritten per Q-025–Q-027,
 | T-002 | Seeded RNG service with per-system named streams | sim.core | T-001 | MERGED |
 | T-003 | Fixed-point math type `Fx` | sim.core | — | MERGED |
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | MERGED |
-| T-005 | Command queue applied at tick boundaries | sim.core | T-001 | TESTS_AUTHORED |
-| T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004 | QUEUED |
+| T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
+| T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | IN_PROGRESS |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026 | QUEUED |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026 | QUEUED |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
@@ -178,7 +180,7 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` | sim.flow | T-005, T-007, T-026 | QUEUED |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023, T-026 | QUEUED |
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
-| T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | QUEUED |
+| T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | IN_PROGRESS (tests authored at b01eb4a) |
 | T-027 | `sim.core`: strict content loader | sim.core | T-001, T-003, T-026 | QUEUED |
 | T-028 | Content: Phase 0/1 schemas, size-category and aircraft data | content | — | MERGED |
 | T-029 | `app.ui` scene layer: pacing, lane click, production lane sink | app.ui | T-005, T-020, T-023, T-026 | QUEUED |

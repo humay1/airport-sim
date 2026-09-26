@@ -861,6 +861,30 @@ Answer:      `08` §8.11a: a `null` list throws `ArgumentNullException`. A
              subject.
 Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
 
+### Q-029 — `SaveLoad` order, the script length in A, unreachable reports
+Raised by:   test-author-2 (via coordinator) / T-006
+Blocking:    T-006 tests
+Question:    In what order do U, A and B run, and is `reload` checked before
+             B is compared with U? Does A's script cover the gate's full
+             `ticks` or only `saveAt`? How are `at=world`, `at=count` and
+             CLI exit codes 1 and 3 tested, when the CLI composition is
+             empty? Does T-006 depend on T-005?
+Why it matters: A test can pin a report only if the order is fixed. If A's
+             script stopped at `saveAt`, B would lack U's later commands and
+             no deterministic sim could pass.
+Answer:      `19` §19.2:
+             - The order is U, then A, then B. `reload` is checked first,
+               after B's first `saveAt` ticks, and a mismatch fails at once
+               with `tick=saveAt at=reload`.
+             - The script always uses the gate's full `ticks`, in A too.
+             - `world` and `count` are unreachable by construction, and CLI
+               exit codes 1 and 3 are unreachable until a composition
+               exists. All are untested by design, with no seam added.
+             - T-006 depends on T-005 (the script needs `TrySubmit`, and
+               `SaveLoad` needs `CommandLogSince`). The Planner adds the
+               edge. T-005 is already merged (#26).
+Status:      ANSWERED (spec/19-interfaces-harness.md#192-what-each-gate-does-q-026-q-027)
+
 ### Q-030 — The walk-graph file format, load failures and unknown-id queries
 Raised by:   Test Author (via coordinator) / T-012
 Blocking:    part of T-012
