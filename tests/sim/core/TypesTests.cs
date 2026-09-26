@@ -133,30 +133,29 @@ namespace AirportSim.Sim.Core.Tests
             Assert.Same(systems, cp.SystemHashes);
         }
 
+        [Theory]
+        [InlineData("SYSTEM_CORE", typeof(SystemId))]
+        [InlineData("PLAYER_LOCAL", typeof(PlayerId))]
+        public void test_types_id_constant_is_static_readonly_field_of_sim_constants(string name, Type type)
+        {
+            // Q-023: public static readonly members of SimConstants, exact names.
+            FieldInfo? f = typeof(SimConstants).GetField(name, BindingFlags.Public | BindingFlags.Static);
+            Assert.True(f != null, $"SimConstants.{name} is missing (08 §8.7, Q-023)");
+            Assert.True(f!.IsInitOnly, $"SimConstants.{name} must be static readonly (Q-023)");
+            Assert.Equal(type, f.FieldType);
+        }
+
         [Fact]
         public void test_types_system_core_is_system_id_zero()
         {
-            // 08 §8.4 names SYSTEM_CORE = SystemId(0) and 07 L10 keeps the IDL
-            // name, but neither pins the declaring type, so any public type of
-            // the assembly is accepted.
-            var found = new List<object?>();
-            foreach (Type t in typeof(SimConstants).Assembly.GetExportedTypes())
-            {
-                FieldInfo? f = t.GetField("SYSTEM_CORE", BindingFlags.Public | BindingFlags.Static);
-                if (f != null && f.FieldType == typeof(SystemId))
-                {
-                    found.Add(f.GetValue(null));
-                }
+            Assert.Equal(new SystemId(0), SimConstants.SYSTEM_CORE);
+            Assert.Equal((ushort)0, SimConstants.SYSTEM_CORE.Value);
+        }
 
-                PropertyInfo? p = t.GetProperty("SYSTEM_CORE", BindingFlags.Public | BindingFlags.Static);
-                if (p != null && p.PropertyType == typeof(SystemId))
-                {
-                    found.Add(p.GetValue(null));
-                }
-            }
-
-            object? value = Assert.Single(found);
-            Assert.Equal(new SystemId(0), Assert.IsType<SystemId>(value));
+        [Fact]
+        public void test_types_player_local_is_player_id_zero()
+        {
+            Assert.Equal((ushort)0, SimConstants.PLAYER_LOCAL.Value);
         }
 
         [Fact]
