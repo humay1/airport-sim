@@ -378,19 +378,20 @@ namespace AirportSim.Sim.World.Tests
         }
 
         /// <summary>
-        /// A random graph of 2..maxNodes nodes, every LengthMetres in [1, maxLength],
-        /// and randomly numbered ids so id order is unrelated to insertion order.
-        /// Lengths are at least 1 so every cycle has positive cost and the §18.3
-        /// optimum is a simple path; small maxLength makes cost ties frequent.
+        /// A random graph of 2..maxNodes nodes, every LengthMetres in [minLength,
+        /// maxLength], and randomly numbered ids so id order is unrelated to
+        /// insertion order. A minLength of 0 produces zero-length cycles, which
+        /// 18 §18.3 (Q-031) handles by admitting only simple paths; small
+        /// maxLength makes cost ties frequent.
         /// </summary>
-        public static WalkGraph RandomGraph(SplitMix64 rng, int maxNodes, int maxLength, int edgePercent)
+        public static WalkGraph RandomGraph(SplitMix64 rng, int maxNodes, int maxLength, int edgePercent, int minLength = 1)
         {
             int n = rng.Range(2, maxNodes);
             uint[] nodeIds = DistinctIds(rng, n, 60);
             var b = new GraphBuilder();
             for (int i = 0; i < n; i++)
             {
-                b.Node(nodeIds[i], (uint)rng.Range(1, maxLength));
+                b.Node(nodeIds[i], (uint)rng.Range(minLength, maxLength));
             }
 
             var pairs = new List<(uint From, uint To)>();
@@ -433,8 +434,9 @@ namespace AirportSim.Sim.World.Tests
     }
 
     /// <summary>
-    /// An independent reference for 18 §18.3 on small graphs whose lengths are
-    /// all positive: exhaustive search over simple paths. Cost is the sum of
+    /// An independent reference for 18 §18.3 (with Q-031) on small graphs:
+    /// exhaustive search over simple paths, the only candidates §18.3 admits.
+    /// The tail from EdgeTo(firstEdge) is simple; it may pass the edge's From. Cost is the sum of
     /// LengthMetres of nodes entered after the start, including the destination;
     /// ties go to the lexicographically smallest EdgeId sequence.
     /// </summary>
@@ -467,6 +469,12 @@ namespace AirportSim.Sim.World.Tests
 
         public bool Reaches(uint from, uint destination)
         {
+            if (from == destination)
+            {
+                // 18 §18.3 (Q-031): the route from n to n is the empty path.
+                return true;
+            }
+
             var seen = new HashSet<uint> { from };
             var stack = new Stack<uint>();
             stack.Push(from);
@@ -569,21 +577,21 @@ namespace AirportSim.Sim.World.Tests
 
         public static byte[] ReadFixture()
         {
-            // The test csproj is fixed byte for byte (07 L3) and cannot copy
-            // fixtures to the output, so walk up from the output to the repo.
+            // 07 "Fixture location" (Q-031): walk up to the directory holding
+            // AirportSim.sln, the repository root, then join the fixture's
+            // repository-relative path. Not finding the root fails the test.
             string? dir = AppContext.BaseDirectory;
-            while (dir != null)
+            while (dir != null && !System.IO.File.Exists(System.IO.Path.Combine(dir, "AirportSim.sln")))
             {
-                string candidate = System.IO.Path.Combine(dir, "tests", "fixtures", "world", "phase0-landside.json");
-                if (System.IO.File.Exists(candidate))
-                {
-                    return System.IO.File.ReadAllBytes(candidate);
-                }
-
                 dir = System.IO.Path.GetDirectoryName(dir.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
             }
 
-            throw new InvalidOperationException("fixture not found above " + AppContext.BaseDirectory);
+            if (dir == null)
+            {
+                throw new InvalidOperationException("AirportSim.sln not found above " + AppContext.BaseDirectory);
+            }
+
+            return System.IO.File.ReadAllBytes(System.IO.Path.Combine(dir, "tests", "fixtures", "world", "phase0-landside.json"));
         }
 
         public static WalkGraph Load()

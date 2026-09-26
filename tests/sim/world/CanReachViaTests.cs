@@ -25,6 +25,24 @@ namespace AirportSim.Sim.World.Tests
         }
 
         [Fact]
+        public void test_can_reach_via_is_can_reach_from_edge_target()
+        {
+            // Q-031: CanReachVia(e, d) is CanReach(EdgeTo(e), d). So it is true
+            // for d = EdgeTo(e), and true for the edge's own From only when a
+            // way back exists.
+            WalkGraph g = new GraphBuilder()
+                .Node(1, 2).Node(2, 2).Node(3, 2)
+                .Edge(1, 1, 2).Edge(2, 2, 3).Edge(3, 3, 2)
+                .Build();
+            IWorldSystem world = WorldKit.Create(g);
+            Assert.True(world.CanReachVia(new EdgeId(1), new NodeId(2)));
+            Assert.False(world.CanReachVia(new EdgeId(1), new NodeId(1)));
+            Assert.True(world.CanReachVia(new EdgeId(2), new NodeId(2)));
+            Assert.Equal(new uint[] { 3, 2 }, WorldKit.Ids(world.PathVia(new EdgeId(2), new NodeId(2))));
+            Assert.Equal(new uint[] { 3 }, WorldKit.Ids(world.PathVia(new EdgeId(2), new NodeId(3))));
+        }
+
+        [Fact]
         public void test_can_reach_via_fixture_both_security_queues_are_alternatives()
         {
             // 18 §18.6: two security queues are alternative routes, so 09 §9.6's

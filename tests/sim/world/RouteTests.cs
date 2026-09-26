@@ -51,6 +51,34 @@ namespace AirportSim.Sim.World.Tests
         }
 
         [Fact]
+        public void test_route_zero_length_cycle_is_never_repeated()
+        {
+            // A(0) <-> B(0) is a zero-cost cycle. A route may not repeat a node
+            // (Q-031), so from A the candidates are [e9] direct and [e2, e10]
+            // via B. Both cost LengthMetres(D); [e2, e10] is lexicographically
+            // smaller. [e2, e3, e9] (A, B, A, D) would be smaller still, but
+            // repeats A and is not a candidate.
+            WalkGraph g = new GraphBuilder()
+                .Node(1, 4).Node(2, 0).Node(3, 0).Node(4, 6)
+                .Edge(1, 1, 2)
+                .Edge(2, 2, 3).Edge(3, 3, 2)
+                .Edge(9, 2, 4).Edge(10, 3, 4)
+                .Build();
+            IWorldSystem world = WorldKit.Create(g);
+            Assert.Equal(new uint[] { 2, 3, 4 }, WorldKit.Ids(world.PathVia(new EdgeId(1), new NodeId(4))));
+
+            // Without the B -> D edge only the direct route is simple.
+            WalkGraph noShortcut = new GraphBuilder()
+                .Node(1, 4).Node(2, 0).Node(3, 0).Node(4, 6)
+                .Edge(1, 1, 2)
+                .Edge(2, 2, 3).Edge(3, 3, 2)
+                .Edge(9, 2, 4)
+                .Build();
+            IWorldSystem w2 = WorldKit.Create(noShortcut);
+            Assert.Equal(new uint[] { 2, 4 }, WorldKit.Ids(w2.PathVia(new EdgeId(1), new NodeId(4))));
+        }
+
+        [Fact]
         public void test_route_cost_is_node_length_not_hop_count()
         {
             // Two zero-length nodes (Z1, Z2) cost nothing to cross; one 1 m node
@@ -70,11 +98,23 @@ namespace AirportSim.Sim.World.Tests
         public void test_route_property_matches_exhaustive_oracle()
         {
             // 07 L4 property test: SplitMix64 inputs, seed literal in the test.
-            const ulong seed = 0x12F0_0012UL;
+            CheckAgainstOracle(0x12F0_0012UL, 1);
+        }
+
+        [Fact]
+        public void test_route_property_with_zero_length_cycles_matches_simple_path_oracle()
+        {
+            // Q-031: only simple paths are candidates, so zero-length nodes and
+            // zero-cost cycles are well defined and must match the oracle.
+            CheckAgainstOracle(0x0C1C_1E00UL, 0);
+        }
+
+        private static void CheckAgainstOracle(ulong seed, int minLength)
+        {
             var rng = new SplitMix64(seed);
             for (int iteration = 0; iteration < 300; iteration++)
             {
-                WalkGraph g = WorldKit.RandomGraph(rng, 7, 3, 35);
+                WalkGraph g = WorldKit.RandomGraph(rng, 7, 3, 35, minLength);
                 IWorldSystem world = WorldKit.Create(g);
                 var oracle = new RouteOracle(g);
                 string where = "seed 0x" + seed.ToString("X") + ", iteration " + iteration + ", graph " + WorldKit.Content(g);
@@ -122,11 +162,17 @@ namespace AirportSim.Sim.World.Tests
                             anyVia |= via;
                         }
 
+                        bool reach = world.CanReach(from, dest);
+                        Assert.True(reach == oracle.Reaches(from.Value, dest.Value), where + ", CanReach(" + from.Value + ", " + dest.Value + ")");
                         if (from != dest)
                         {
-                            bool reach = world.CanReach(from, dest);
-                            Assert.True(reach == oracle.Reaches(from.Value, dest.Value), where + ", CanReach(" + from.Value + ", " + dest.Value + ")");
                             Assert.True(reach == anyVia, where + ", CanReach agrees with CanReachVia over OutEdges");
+                        }
+
+                        for (int k = 0; k < outs.Count; k++)
+                        {
+                            // Q-031: CanReachVia(e, d) is CanReach(EdgeTo(e), d).
+                            Assert.True(world.CanReachVia(outs[k], dest) == world.CanReach(world.EdgeTo(outs[k]), dest), where + ", CanReachVia(e" + outs[k].Value + ", " + dest.Value + ")");
                         }
                     }
                 }

@@ -92,25 +92,26 @@ namespace AirportSim.Sim.World.Tests
         [Fact]
         public void test_walk_graph_rejects_unknown_edge_endpoint()
         {
-            RejectsNaming(Doc(TwoNodes, "{\"id\": 7, \"from\": 4109, \"to\": 4102}"), "4109");
-            RejectsNaming(Doc(TwoNodes, "{\"id\": 7, \"from\": 4101, \"to\": 4108}"), "4108");
+            // Q-031: the message names the edge id and the unknown node id.
+            FormatException from = Rejects(Doc(TwoNodes, "{\"id\": 4171, \"from\": 4109, \"to\": 4102}"));
+            Assert.Contains("4171", from.Message, StringComparison.Ordinal);
+            Assert.Contains("4109", from.Message, StringComparison.Ordinal);
+            FormatException to = Rejects(Doc(TwoNodes, "{\"id\": 4172, \"from\": 4101, \"to\": 4108}"));
+            Assert.Contains("4172", to.Message, StringComparison.Ordinal);
+            Assert.Contains("4108", to.Message, StringComparison.Ordinal);
         }
 
         [Fact]
         public void test_walk_graph_rejects_duplicate_edge()
         {
-            // Same (from, to) under two different edge ids. 18 §18.2 lets the
-            // message name "the offending id, or ids": the repeated edge's id
-            // or the pair's node ids are both that, so either is accepted.
-            FormatException ex = Rejects(
-                Doc(TwoNodes, "{\"id\": 4177, \"from\": 4101, \"to\": 4102}, {\"id\": 4178, \"from\": 4101, \"to\": 4102}"));
-            Assert.True(NamesEdgeOrNodes(ex.Message, "4178", "4101", "4102"), ex.Message);
-        }
-
-        private static bool NamesEdgeOrNodes(string message, string edgeId, string from, string to)
-        {
-            return message.Contains(edgeId, StringComparison.Ordinal)
-                || (message.Contains(from, StringComparison.Ordinal) && message.Contains(to, StringComparison.Ordinal));
+            // Same (from, to) under two edge ids. Q-031: the message names the
+            // larger edge id, whichever order the file lists them in.
+            RejectsNaming(
+                Doc(TwoNodes, "{\"id\": 4177, \"from\": 4101, \"to\": 4102}, {\"id\": 4178, \"from\": 4101, \"to\": 4102}"),
+                "4178");
+            RejectsNaming(
+                Doc(TwoNodes, "{\"id\": 4188, \"from\": 4101, \"to\": 4102}, {\"id\": 4187, \"from\": 4101, \"to\": 4102}"),
+                "4188");
         }
 
         [Fact]
@@ -130,9 +131,8 @@ namespace AirportSim.Sim.World.Tests
         [Fact]
         public void test_walk_graph_rejects_self_loop()
         {
-            // As for duplicates, the edge id or the looped node id is accepted.
-            FormatException ex = Rejects(Doc(TwoNodes, "{\"id\": 4170, \"from\": 4102, \"to\": 4102}"));
-            Assert.True(NamesEdgeOrNodes(ex.Message, "4170", "4102", "4102"), ex.Message);
+            // Q-031: the message names the edge id.
+            RejectsNaming(Doc(TwoNodes, "{\"id\": 4170, \"from\": 4102, \"to\": 4102}"), "4170");
         }
 
         [Fact]

@@ -27,6 +27,21 @@ namespace AirportSim.Sim.World.Tests
         }
 
         [Fact]
+        public void test_can_reach_node_reaches_itself()
+        {
+            // 18 §18.3 (Q-031): the route from n to n is the empty path, even for
+            // a node with no edges at all.
+            WalkGraph g = new GraphBuilder()
+                .Node(1, 3).Node(2, 0).Node(3, 5)
+                .Edge(1, 1, 2)
+                .Build();
+            IWorldSystem world = WorldKit.Create(g);
+            Assert.True(world.CanReach(new NodeId(1), new NodeId(1)));
+            Assert.True(world.CanReach(new NodeId(2), new NodeId(2)));
+            Assert.True(world.CanReach(new NodeId(3), new NodeId(3)));
+        }
+
+        [Fact]
         public void test_can_reach_fixture_sources_reach_the_gate_and_not_back()
         {
             IWorldSystem world = WorldKit.Create(Phase0Landside.Load());
