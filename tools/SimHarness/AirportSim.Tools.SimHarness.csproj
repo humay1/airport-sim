@@ -9,7 +9,6 @@
     <AssemblyName>AirportSim.Tools.SimHarness</AssemblyName>
     <RootNamespace>AirportSim.Tools.SimHarness</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
 
   <ItemGroup>
