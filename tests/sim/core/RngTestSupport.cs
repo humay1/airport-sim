@@ -108,14 +108,6 @@ namespace AirportSim.Sim.Core.Tests
                 }
             }
 
-            public ReferenceStream(ulong s0, ulong s1, ulong s2, ulong s3)
-            {
-                _s0 = s0;
-                _s1 = s1;
-                _s2 = s2;
-                _s3 = s3;
-            }
-
             private static ulong Rotl(ulong x, int k)
             {
                 return (x << k) | (x >> (64 - k));

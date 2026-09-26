@@ -69,11 +69,8 @@ namespace AirportSim.Sim.Core.Tests
         [Fact]
         public void test_random_stream_reference_model_agrees_across_seeds_and_operations()
         {
-            // The xoshiro core check printed in §8.8, then a mixed-operation
-            // sweep over random seeds and names, bit for bit.
-            var check = new ReferenceStream(1UL, 2UL, 3UL, 4UL);
-            Assert.Equal(new ulong[] { 11520UL, 0UL, 1509978240UL, 1215971899390074240UL },
-                new[] { check.NextUInt64(), check.NextUInt64(), check.NextUInt64(), check.NextUInt64() });
+            // A mixed-operation sweep over random seeds and names, bit for bit.
+            // The {1, 2, 3, 4} xoshiro check is not a test obligation (Q-023).
 
             const ulong seed = 0x5EED0002A0000001UL;
             var gen = new SplitMix64(seed);
@@ -521,12 +518,14 @@ namespace AirportSim.Sim.Core.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
-        public void test_random_stream_hot_path_draws_allocate_zero_bytes()
+        public void test_random_stream_every_member_after_creation_allocates_zero_bytes()
         {
-            // 07 "Performance" and T-002's budget: no allocation in NextUInt64,
-            // NextInt, NextFx01 or Chance.
+            // §8.8 "Cost" (Q-023): after the first Stream call, every IRandomStream
+            // member allocates nothing, Shuffle included. There is no time budget.
             IRandomStream stream = FreshStream(1UL, "sim.flow.showup");
             Fx half = Fx.FromRaw(1L << 31);
+            int[] deck = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            string[] names = { "a", "b", "c", "d", "e" };
             ulong sink = 0;
             for (int i = 0; i < 1000; i++)
             {
@@ -535,6 +534,10 @@ namespace AirportSim.Sim.Core.Tests
                 sink ^= (ulong)stream.NextInt(int.MinValue, 1);
                 sink ^= (ulong)stream.NextFx01().Raw;
                 sink ^= stream.Chance(half) ? 1UL : 0UL;
+                stream.Shuffle<int>(deck);
+                stream.Shuffle<string>(names);
+                sink ^= (ulong)deck[0];
+                sink ^= stream.ComputeStateHash();
             }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -545,6 +548,10 @@ namespace AirportSim.Sim.Core.Tests
                 sink ^= (ulong)stream.NextInt(int.MinValue, 1);
                 sink ^= (ulong)stream.NextFx01().Raw;
                 sink ^= stream.Chance(half) ? 1UL : 0UL;
+                stream.Shuffle<int>(deck);
+                stream.Shuffle<string>(names);
+                sink ^= (ulong)deck[0];
+                sink ^= stream.ComputeStateHash();
             }
             long after = GC.GetAllocatedBytesForCurrentThread();
 
