@@ -109,14 +109,19 @@ namespace AirportSim.Sim.Core
                 // Phase 3: event dispatch.
                 _eventBus.Dispatch(in ctx);
 
-                // The tick is complete: ticks-executed now counts this one.
-                _ticksExecuted = t + 1;
-
-                // Phase 4: checkpoint, if due.
+                // Phase 4: checkpoint, if due. Computed against ticksCompleted (t + 1,
+                // "as if" the tick had already committed, per the checkpoint-equals-
+                // WorldStateHash-after-Step rule), but _ticksExecuted itself is not
+                // bumped yet: if the sink throws, tick t did not complete (Q-024), so
+                // CurrentTick and the wrapped WorldHash below must still read t.
+                ulong ticksCompleted = t + 1;
                 if (t % SimConstants.HASH_CHECKPOINT_TICKS == 0)
                 {
-                    RecordCheckpoint(t);
+                    RecordCheckpoint(t, ticksCompleted);
                 }
+
+                // Every phase, including phase 4, succeeded: the tick is complete.
+                _ticksExecuted = ticksCompleted;
             }
             catch (Exception ex)
             {
@@ -124,7 +129,7 @@ namespace AirportSim.Sim.Core
             }
         }
 
-        private void RecordCheckpoint(ulong t)
+        private void RecordCheckpoint(ulong t, ulong ticksCompleted)
         {
             ulong coreHash = ComputeCoreHash();
             var systemHashes = new ulong[_systems.Length];
@@ -134,7 +139,7 @@ namespace AirportSim.Sim.Core
             }
 
             var hasher = new StateHasher();
-            hasher.Feed(_ticksExecuted);
+            hasher.Feed(ticksCompleted);
             hasher.Feed(coreHash);
             for (int i = 0; i < systemHashes.Length; i++)
             {
