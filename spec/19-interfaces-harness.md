@@ -65,6 +65,9 @@ HarnessGates.FinalHash(IContentIndex content, SimComposer compose, uint64 seed, 
 
 **The command script.** Every run submits, before its first `Step`, one
 `NoOp` command for each tick `t` with `1 ≤ t < ticks` and `t % 100 == 0`.
+Here `ticks` is always the **gate's** `ticks` argument, for every run of
+the gate, including a run that steps fewer ticks (A in `SaveLoad`). So A's
+log also holds its commands that are still pending after `saveAt` (Q-029).
 Each has `Issuer = PLAYER_LOCAL`, an empty payload, and is submitted in
 ascending `t`. This makes the queue part of every gated hash (`08` §8.7).
 A rejected submit throws `InvalidOperationException`.
@@ -80,7 +83,7 @@ If every checkpoint agrees but the final hashes differ: `final`.
 | Gate method | Runs | Passes if |
 |---|---|---|
 | `SameProcess` | two runs of `ticks`, in one process | the two runs compare equal |
-| `SaveLoad` | **U**: one run of `ticks`. **A**: a run of `saveAt` ticks, then its "save", which is `CommandLogSince(0)` plus the run's inputs (`content`, `compose`, `seed`). **B**: a fresh run from those inputs, in which every logged command is resubmitted in log order in place of the script. B steps `saveAt`, then `ticks − saveAt` | B's `WorldStateHash()` at `saveAt` equals A's (otherwise `reload`), and B compares equal to U |
+| `SaveLoad` | In this order (Q-029). **U**: one run of `ticks`, run to the end. **A**: a run of `saveAt` ticks, then its "save", which is `CommandLogSince(0)` plus the run's inputs (`content`, `compose`, `seed`). **B**: a fresh run from those inputs, in which every logged command is resubmitted in log order in place of the script. B steps `saveAt`, then `ticks − saveAt` | First, after B's first `saveAt` ticks, B's `WorldStateHash()` equals A's. Otherwise the gate fails at once with `tick=saveAt at=reload`, and B is not stepped further. Then B compares equal to U |
 | `Promotion` | two runs of `ticks`. The second is the "camera parked" run | the two runs compare equal |
 
 - **`SaveLoad` before `sim.save` (Q-027).** No save seam exists (`08` §8.8).
@@ -102,6 +105,15 @@ If every checkpoint agrees but the final hashes differ: `final`.
   amends this line with that module's composition (T-009 is expected to be
   first). At T-006, the gates therefore prove the loop, the queue and the
   core section only.
+- **Untested by design (Q-029).** `at=world` and `at=count` cannot be
+  reached. Runs of one gate step the same ticks at the same checkpoint
+  cadence, so their counts match. A world hash is a function of the tick,
+  `CoreHash` and `SystemHashes`, so it cannot differ while those agree. Both
+  stay in the grammar as defensive reports. With the empty CLI composition,
+  exit codes 1 and 3 cannot be reached through `HarnessCli.Run` either. The
+  divergence seam (§19.1) proves failure through `HarnessGates` instead, and
+  no CLI seam is added. The task that first amends the CLI composition makes
+  them reachable, and its tests cover them.
 
 ## 19.3 The command line (Q-026)
 
