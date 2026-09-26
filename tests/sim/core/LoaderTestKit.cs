@@ -19,6 +19,7 @@ namespace AirportSim.Sim.Core.Tests
     internal static class LoaderTestKit
     {
         private const string FixtureDir = "tests/fixtures/content";
+        private const string SolutionFile = "AirportSim.sln";
 
         /// <summary>An IContentSource over in-memory files, returning Files() in the order given.</summary>
         internal sealed class MemorySource : IContentSource
@@ -81,20 +82,23 @@ namespace AirportSim.Sim.Core.Tests
             return new UTF8Encoding(false).GetBytes(text);
         }
 
-        /// <summary>Walks up from the test binaries to the repository's fixture directory.</summary>
+        /// <summary>
+        /// 07 "Fixture location" (Q-031): walk up from AppContext.BaseDirectory to the
+        /// nearest directory holding AirportSim.sln, then join the fixture's
+        /// repository-relative path. Not finding the root fails the test.
+        /// </summary>
         internal static string FixtureRoot()
         {
             string? dir = AppContext.BaseDirectory;
-            while (dir != null)
+            while (dir != null && !File.Exists(Path.Combine(dir, SolutionFile)))
             {
-                string candidate = Path.Combine(dir, FixtureDir.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(Path.Combine(candidate, "valid.files")))
-                {
-                    return candidate;
-                }
                 dir = Path.GetDirectoryName(dir);
             }
-            throw new InvalidOperationException("fixture directory " + FixtureDir + " not found above " + AppContext.BaseDirectory);
+            if (dir == null)
+            {
+                throw new InvalidOperationException(SolutionFile + " not found above " + AppContext.BaseDirectory);
+            }
+            return Path.Combine(dir, FixtureDir.Replace('/', Path.DirectorySeparatorChar));
         }
 
         /// <summary>

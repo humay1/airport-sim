@@ -65,6 +65,9 @@ build to CSV for anything.
   never change behaviour or break a save.
 - All numbers that feed the simulation are integers or fixed-point decimal strings.
   No floats in content that reaches sim state. See `02-determinism.md`.
+  `Fx.Parse` floors to multiples of 2^-32 (`08` §8.3), so a positive value
+  below about 0.00000000023 parses as 0 and fails any "> 0" rule. For
+  example, `walk_speed_mps: "0.0000000001"` is invalid (Q-031).
 - All player-visible text is a localisation key, never a literal.
 - Every file declares `"schema_version"`. Migrations are mandatory, not optional.
 - Modders use this exact pipeline. If it is awkward for a designer, it is wrong.

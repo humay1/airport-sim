@@ -120,6 +120,25 @@ namespace AirportSim.Sim.Core.Tests
             AssertSameDefinitions(ExpectedValid(), Load(source));
         }
 
+        [Theory]
+        [InlineData("aircraft/x/a.json")]
+        [InlineData("size_categories/old/small.json")]
+        [InlineData("pax_profiles/a/b/c.json")]
+        [InlineData("queue_profiles/drafts/q.json")]
+        public void test_loader_rejects_json_file_in_subdirectory_of_kind_directory(string path)
+        {
+            // Q-031 C3: only files directly inside a kind directory are definitions. A
+            // nested *.json is a load failure, not silently ignored.
+            MemorySource source = Valid().With(path, "{ \"schema_version\": 1, \"id\": \"nested.x\", \"ordinal\": 99 }");
+            AssertLoadFails(source, path);
+        }
+
+        [Fact]
+        public void test_loader_null_source_throws_argument_null_exception()
+        {
+            Assert.Throws<ArgumentNullException>(() => ContentLoaderFactory.Create().Load(null!));
+        }
+
         [Fact]
         public void test_loader_empty_source_returns_empty_list()
         {
@@ -442,30 +461,28 @@ namespace AirportSim.Sim.Core.Tests
             Assert.Equal("SIZE.SMALL", z.SizeCategory.Value);
 
             MemorySource miscased = Valid().With("aircraft/z.json", "{ \"schema_version\": 1, \"id\": \"aircraft.z\", \"size_category\": \"Size.Small\" }");
-            AssertLoadFails(miscased, "aircraft/z.json", "aircraft.z", "Size.Small");
+            FormatException ex = AssertLoadFails(miscased, "aircraft/z.json", "Size.Small");
+            Assert.Contains("size_category", ex.Message, StringComparison.Ordinal);
         }
 
         // ------------------------------------------------------------ cross-file validation
 
         [Theory]
-        [InlineData("aircraft/dup.json", "{ \"schema_version\": 1, \"id\": \"size.small\", \"size_category\": \"size.medium\" }", "size.small")]
-        [InlineData("queue_profiles/dup.json", "{ \"schema_version\": 1, \"id\": \"pax.business\", \"service_rate_per_server_per_minute\": \"1\", \"capacity_standing\": 1, \"threshold_wait_minutes\": \"2\", \"hysteresis_minutes\": \"1\", \"delay_category\": \"security_queue\" }", "pax.business")]
-        [InlineData("pax_profiles/dup.json", "{ \"schema_version\": 1, \"id\": \"aircraft.a2\", \"walk_speed_mps\": \"1\", \"show_up_curve\": [ { \"minutes_before_std\": 30, \"share_permille\": 1000 } ] }", "aircraft.a2")]
-        [InlineData("size_categories/dup.json", "{ \"schema_version\": 1, \"id\": \"queue.security_main\", \"ordinal\": 77 }", "queue.security_main")]
-        public void test_loader_rejects_duplicate_id_across_kinds(string path, string text, string id)
+        [InlineData("aircraft/dup.json", "{ \"schema_version\": 1, \"id\": \"size.small\", \"size_category\": \"size.medium\" }", "size.small", "size_categories/small.json")]
+        [InlineData("queue_profiles/dup.json", "{ \"schema_version\": 1, \"id\": \"pax.business\", \"service_rate_per_server_per_minute\": \"1\", \"capacity_standing\": 1, \"threshold_wait_minutes\": \"2\", \"hysteresis_minutes\": \"1\", \"delay_category\": \"security_queue\" }", "pax.business", "queue_profiles/dup.json")]
+        [InlineData("pax_profiles/dup.json", "{ \"schema_version\": 1, \"id\": \"aircraft.a2\", \"walk_speed_mps\": \"1\", \"show_up_curve\": [ { \"minutes_before_std\": 30, \"share_permille\": 1000 } ] }", "aircraft.a2", "pax_profiles/dup.json")]
+        [InlineData("size_categories/dup.json", "{ \"schema_version\": 1, \"id\": \"queue.security_main\", \"ordinal\": 77 }", "queue.security_main", "size_categories/dup.json")]
+        public void test_loader_rejects_duplicate_id_across_kinds(string path, string text, string id, string laterPath)
         {
-            string[] originals =
-            {
-                "size_categories/small.json", "aircraft/a2.json", "pax_profiles/business.json", "queue_profiles/security_main.json",
-            };
-            AssertLoadFails(Valid().With(path, text), originals.Concat(new[] { path }).ToArray(), id);
+            // Q-031 C1: the message starts with the path of the file later in ordinal order.
+            AssertLoadFails(Valid().With(path, text), laterPath, id);
         }
 
         [Fact]
         public void test_loader_rejects_duplicate_id_within_kind()
         {
             MemorySource source = Valid().With("size_categories/small2.json", "{ \"schema_version\": 1, \"id\": \"size.small\", \"ordinal\": 9 }");
-            AssertLoadFails(source, new[] { Small, "size_categories/small2.json" }, "size.small");
+            AssertLoadFails(source, "size_categories/small2.json", "size.small");
         }
 
         [Theory]
@@ -478,8 +495,9 @@ namespace AirportSim.Sim.Core.Tests
         {
             // "size_category: id of a size category" (04): an id of another kind does not resolve.
             string text = "{ \"schema_version\": 1, \"id\": \"aircraft.a320\", \"size_category\": \"" + sizeCategory + "\" }";
-            string[] ids = sizeCategory.Length > 0 ? new[] { "aircraft.a320", sizeCategory } : new[] { "aircraft.a320" };
-            AssertLoadFails(Valid().With(A320, text), A320, ids);
+            // Q-031 C2: the aircraft file's path, the field size_category, the unresolved id.
+            FormatException ex = AssertLoadFails(Valid().With(A320, text), A320, sizeCategory);
+            Assert.Contains("size_category", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]

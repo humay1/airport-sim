@@ -292,7 +292,9 @@ interface IScheduleSystem : ISimSystem {
   it; `sim.delay` does not — it is event-only by rule 2 and gets the link from
   `FlightPlanPublished`'s `rotation`/`hasRotation` fields (§11.5).
 - `PendingInjectionCount` exists for tests and the UI. It is derived from hashed
-  state, not separate state.
+  state, not separate state. It is 0 for a flight not yet published, because
+  injections are computed at publication, and 0 for an unknown id. Publication
+  happens inside `Tick`, through `ctx.Events` (Q-031).
 - There is no mutating entry point. Nothing may write to `sim.schedule`.
 
 Registry position is **2** (`08-interfaces-core.md` §8.5), before `sim.airside`
@@ -318,6 +320,17 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 4. Pending injections in ascending `(FlightId, bucketIndex, classIndex)`: due
    tick, count, class index.
 
+Lists 3 and 4 are each preceded by their element count as a `uint64`
+(Q-031). **Materialisation (Q-031).** To materialise day `d` is to create
+the occurrences of every row with `day == d`, and of every row with
+`repeat_daily = 1` and `day < d`. `CreateSystem` materialises day 0, so the
+highest day is 0. At the start of `Tick` for a tick `t` with
+`t % TICKS_PER_SIM_DAY == 0`, before any publication on that tick, day
+`t / TICKS_PER_SIM_DAY + 1` is materialised, and it becomes the highest.
+Because `PLAN_PUBLISH_LEAD_TICKS` is one day, every occurrence therefore
+exists before its `PublishTick`. The highest day advances even when a day
+has no rows.
+
 Not hashed, because derived: the `MovementsBetween` index, any per-airline or
 per-day lookup, `PendingInjectionCount`.
 
@@ -328,7 +341,10 @@ question, because introducing a stream here shifts nothing else (streams are
 per-system, `08-interfaces-core.md` §8.8) but does make the schedule stop being a
 pure function of the fixture, which several Phase 0 tests rely on.
 
-Budget: **0.10 ms/tick at max tier** (`03-module-map.md`). Per-tick work is
+Budget: **0.10 ms/tick at max tier** (`03-module-map.md`). It is measured
+with `03`'s statistic, "How a budget is measured": mean ≤ 0.10 ms **and**
+p99 ≤ 0.20 ms over the ticks of one full sim-day. A mean alone, or a mean
+over several days, does not satisfy it (Q-031). Per-tick work is
 O(flights published this tick + injections due this tick) and nothing else. A
 scan over the whole flight table inside `Tick` is a review rejection: both
 publication and injection are due-ordered queues, built once at load and at day
@@ -348,15 +364,18 @@ ScheduleFactory.CreateSystem(in SystemServices services, in ScheduleTable table,
 
 `flow` is null when `sim.flow` is not registered (§11.6). `aircraft_type` and
 `pax_profile` resolve through `services.Content` at construction; a miss is a
-load failure (§11.4).
+load failure (§11.4). It throws `FormatException` whose message starts with
+`sim.schedule: ` and contains the row's `flight_ref`, the column name and
+the unresolved id (`07` "Error handling", Q-031).
 
 ## 11.10 The Phase 0 fixture (T-008)
 
 `tests/fixtures/schedule/phase0-200.csv`, binding on the Test Author, who
 writes it (Q-021):
 
-- exactly 200 movement rows, forming 100 rotations (100 `A` + 100 `D`), all with
-  `day=0` and `repeat_daily=1`, so that T-009's 100-day run has load on every day;
+- exactly 200 movement rows (100 `A` + 100 `D`), all with `day=0` and
+  `repeat_daily=1`, so that T-009's 100-day run has load on every day. They
+  form 99 rotations plus the lone `A` and lone `D` below (Q-031);
 - every `D` row carries `pax > 0`, a resolvable `pax_profile` and an `entry_node`;
 - at least one rotation scheduled early enough that its show-up curve clamps to
   tick 0, so the clamp in §11.6 is covered;
