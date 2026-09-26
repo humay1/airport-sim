@@ -2,17 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-003 |
 | Spec source | `spec/01-architecture.md` "Platform decisions" (D1), "Layer separation", "Command pattern"; `spec/08-interfaces-core.md` §8.1, §8.2, §8.4, §8.5, §8.5a, §8.6, §8.9 (as amended, Q-017), §8.11a (answers Q-014); `spec/10-events.md` §10.2, §10.9 (`EventEnvelope`/`EventRef`); `spec/07-conventions.md` "Runtime portability", "Solution layout and build" (Q-013) |
 | Blocked by | — |
 
-**Status note:** released for this cycle; the Test Author is authoring
-`tests/sim/core/**` for this task now. Status stays `QUEUED` until those
-tests land, then moves to `TESTS_AUTHORED` and the worker may start. Do not
-begin implementation before that move.
+**Status note:** tests have landed (`tests/sim/core/**`); the worker is in
+progress.
 
 **Dependency correction (systematic type-dependency recheck):**
 `ISimClock.MinutesBetween` returns `SimMinutes`, which is `Fx`
@@ -84,7 +82,7 @@ copied not paraphrased):
 
 ```
 public static class SimConstants {                  // §8.1, values fixed there
-  ulong TICK_MS = 100
+  int   TICK_MS = 100
   int   SIM_SECONDS_PER_TICK = 6
   ulong TICKS_PER_SIM_MINUTE = 10
   ulong TICKS_PER_SIM_HOUR = 600
@@ -134,7 +132,6 @@ interface ISimHost {
   void   Step(uint32 ticks)
   uint64 WorldStateHash()
   bool   TrySubmit(in Command cmd, out CommandRejection reason)
-  IReadOnlyList<Command> CommandLogSince(Tick tick)   // = ICommandQueue.LogSince, Q-020
 }
 
 class SimInvariantException : Exception {     // sealed, §8.5a
@@ -278,9 +275,10 @@ Q-017, Q-018, binding):**
   phase-4 cadence and world-hash computation of §8.9 — not a stub (A6).**
 - **Shape only, T-005/T-002/T-026/T-027 give behaviour later:** `Command`,
   `PlayerId`, `CommandKind` (only `NoOp = 0` here), `CommandRejection`,
-  `ICommandHandler`, `ICommandHandlerRegistry` (T-005 adds the other kinds,
-  admission, ordering; this task's own `TrySubmit` returns `false` with
-  `UnknownKind` for every kind besides `NoOp`); `IRandomService`/
+  `ICommandHandler`, `ICommandHandlerRegistry` (T-005 adds `CommandLogSince`
+  to `ISimHost`, real admission, ordering and every kind's behaviour,
+  `NoOp` included; this task's own `TrySubmit` returns `false` with
+  `UnknownKind` for every kind, with no exception for `NoOp`); `IRandomService`/
   `IRandomStream`/`RngStreamName`, with a placeholder whose `MasterSeed` is
   the config's and whose `Stream` throws `InvalidOperationException` (T-002
   replaces it); `IContentIndex`/`IContentDefinition`/`ContentId`/
@@ -341,8 +339,9 @@ full):**
 not to be reordered: (1) command application, (2) system update in registry
 order, (3) event dispatch (full §8.6 semantics, this task's own), (4)
 checkpoint if due (§8.9, this task's own, real cadence and hash). Phase 0
-has no registered systems yet beyond a `NoOp`-accepting stub; this task
-proves the loop shape, not any system's content.
+has no registered systems and no accepted command kind — this task's own
+`TrySubmit` rejects everything with `UnknownKind` (above); it proves the
+loop shape, not any command's admission or any system's content.
 
 **Tick numbering (Q-014 A1/A5):** `Step(n)` executes ticks `CurrentTick …
 CurrentTick+n−1`; the first `Step(1)` runs tick 0; `Step(0)` does nothing;
@@ -375,7 +374,8 @@ reads wall-clock time (`DateTime.Now` grep gate); checkpoint-cadence tests
 (24 checkpoints per sim-day, none at `Build`, a checkpoint's `WorldHash`
 equal to `WorldStateHash()` read immediately after the `Step` that produced
 it, `SystemHashes` length/order matching the registered set,
-`Checkpoint.CoreHash` present and changing with a `NoOp` submission);
+`Checkpoint.CoreHash` present, deterministic and computed at this task's own
+(command-free) scope — the `NoOp`-submission hash-change test is T-005's);
 `StateHasher` golden-vector tests (the four vectors above, byte-exact);
 `IIdAllocator` tests (counters start at 0, first id has counter 1, no
 cross-owner collision, invalid owner throws `ArgumentException`, overflow

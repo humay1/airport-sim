@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001 |
@@ -63,8 +63,9 @@ binding bit for bit, part of the save format — copied not paraphrased:
   `ArgumentException` unless `Value` matches `sim\.[a-z]+\.[a-z0-9_]+`,
   where the middle segment is the owning module. Uniqueness across modules
   follows from the prefix, and within a module it is that module's own
-  test — this **replaces** the earlier "CI asserts uniqueness" framing, for
-  which no mechanism existed; do not add a cross-module CI check yourself.
+  test — this **replaces** the earlier "CI asserts uniqueness" framing
+  (superseded by Q-015 A16 / Q-019 / Q-023); do not add a cross-module CI
+  uniqueness check yourself.
 - **Exact reference (Q-019, this task's test oracle):**
   - Stream seed: `seed = MasterSeed XOR FNV1a64(utf8(name.Value))`, plain
     FNV-1a-64 (`08` §8.9 constants) over the name's UTF-8 bytes, **no**
@@ -128,11 +129,12 @@ Written by the Test Author. Expect: the golden-vector tests above (three
 `NextUInt64` sequences, the `NextInt`×4 check and the `NextFx01`×2 check,
 all byte-exact), reproducibility (same seed + stream name → identical
 sequence), independence (drawing from stream A does not shift stream B's
-sequence), `NextInt` unbiasedness over a large sample, `RngStreamName`
+sequence), `NextInt` unbiasedness over a large sample, and `RngStreamName`
 format-rule tests (rejects a name not matching
-`sim\.[a-z]+\.[a-z0-9_]+`), and a determinism test comparing same-process
-vs cross-process draws (`determinism_cross_process`, exercised fully once
-T-006 lands). **Do not edit them.**
+`sim\.[a-z]+\.[a-z0-9_]+`). **Do not edit them.** No cross-process
+determinism test belongs to this task (superseded by Q-015 A16 / Q-019 /
+Q-023 G5 — same-process golden vectors are this task's oracle; any
+cross-process gate is T-006's).
 
 ## Performance budget
 

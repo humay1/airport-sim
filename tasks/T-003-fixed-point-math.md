@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_REVIEW |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | — |

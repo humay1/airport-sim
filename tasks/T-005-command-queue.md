@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | TESTS_AUTHORED |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001 |
@@ -48,8 +48,15 @@ enum CommandRejection { None, TooLate, UnknownKind, MalformedPayload, NotPermitt
 **Surface (Q-020):** `ICommandQueue` is the host's internal seam and is
 declared `internal`, an exception to `07` L5. Tests, the harness and
 `sim.save` reach it only through `ISimHost.CommandLogSince(Tick)` (= this
-queue's `LogSince`), which T-001 already declares on `ISimHost` — this task
-implements the queue behind it, it does not redeclare `ISimHost` itself.
+queue's `LogSince`). This task adds `CommandLogSince` to `ISimHost` itself
+(T-001 does not declare it — that method and its behaviour are this task's
+own, per the corrected split below) and implements the queue behind it.
+
+```
+interface ISimHost {                              // amendment: this task's addition
+  IReadOnlyList<Command> CommandLogSince(Tick tick)   // = ICommandQueue.LogSince, Q-020
+}
+```
 
 This task now also authors the command plumbing Q-010 answers, since it
 extends the `Command`/`ICommandQueue` shape this task already owns and no
@@ -203,3 +210,17 @@ shape this extends. `SetServersOpen`'s and `ReassignStand`'s own handlers
 are not built here — only the contract they register against. Do not build
 a handler for either kind speculatively; that would pre-empt T-021's and
 T-023's own work and their spec sections (`12` §12.10, `09` §9.8).
+
+**Corrected split with T-001 (Q-014 A3 / Q-017):** T-001's own `TrySubmit`
+rejects every command kind with `UnknownKind`, `NoOp` included, and does not
+touch `CoreHash` via a submission — its own tests do not exercise a
+`NoOp`-driven hash change. This task owns that behaviour in full: real
+`NoOp` admission and application, `ISimHost.CommandLogSince` (above), and
+the test proving a `NoOp` submission changes `ComputeStateHash()`/`CoreHash`
+(already listed under "Tests to pass" below) via the pending-command count
+and the sequence counter T-001's `CoreHash` section feeds on.
+
+**Assumed load, pending an owner decision:** the Test Author's fixtures
+assume a budget of one submitted command per tick; this is not pinned by
+the spec and is called out here as an assumption, not a requirement, until
+the human owner confirms or amends it.
