@@ -36,10 +36,55 @@ namespace AirportSim.Sim.Flow.Tests
             PassengerCohort f2 = onQueue.Find(c => c.Key.Flight.Value == 2);
             Assert.Equal(12, f1.Count);
             Assert.Equal(earliest, f1.EnteredNodeAt);
+
+            // Q-033: off a Corridor, the merged DueAt is the merged EnteredNodeAt.
+            Assert.Equal(f1.EnteredNodeAt, f1.DueAt);
             Assert.Equal(firstId, f1.Id);
             Assert.True(f1.Id.Value < f2.Id.Value);
             Assert.Equal(2, f2.Count);
             Assert.True(a.Value <= firstId.Value);
+        }
+
+        [Fact]
+        public void test_cohort_corridor_merges_only_equal_due_at()
+        {
+            // Q-033: on a Corridor, equal keys merge only if DueAt is equal too,
+            // so a merge never moves a release tick. 60 m at 1 m/s is 10 ticks.
+            var g = new TestGraph()
+                .Node(1, "source").Node(2, "corridor", 60).Node(3, "gate").Node(4, "sink")
+                .Edge(1, 2).Edge(2, 3).Edge(3, 4);
+            var rig = Rig.Create(g, Graphs.Content());
+
+            // Two parts entered in the same tick share DueAt and merge.
+            rig.InjectNow(1, 2, 1);
+            rig.InjectNow(1, 3, 1);
+            rig.Step(3);
+            List<PassengerCohort> together = rig.CohortsOn(2);
+            Assert.Single(together);
+            Assert.Equal(5, together[0].Count);
+
+            // One tick later, a third part: same key, DueAt one tick later. It
+            // stays a separate cohort and is released on its own tick.
+            rig.InjectNow(1, 4, 1);
+            rig.Step(2);
+            List<PassengerCohort> apart = rig.CohortsOn(2);
+            Assert.Equal(2, apart.Count);
+            Assert.Equal(apart[0].Key, apart[1].Key);
+            Assert.NotEqual(apart[0].DueAt, apart[1].DueAt);
+            ulong firstDue = System.Math.Min(apart[0].DueAt, apart[1].DueAt);
+            ulong secondDue = System.Math.Max(apart[0].DueAt, apart[1].DueAt);
+
+            rig.Step(20);
+            FlowEvents ev = rig.Events!;
+            Assert.Equal(2, ev.Arrived.Count);
+            Assert.Equal(firstDue, ev.Arrived[0].Tick);
+            Assert.Equal(5, ev.Arrived[0].E.Count);
+            Assert.Equal(secondDue, ev.Arrived[1].Tick);
+            Assert.Equal(4, ev.Arrived[1].E.Count);
+
+            // At the gate (not a Corridor) the two merge.
+            Assert.Single(rig.CohortsOn(3));
+            Assert.Equal(9, rig.Pop(3));
         }
 
         [Fact]

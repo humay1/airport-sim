@@ -57,38 +57,86 @@ namespace AirportSim.Sim.Flow.Tests
         [Fact]
         public void test_flow_system_inject_rejects_unknown_node_non_source_and_non_positive_count()
         {
-            // 09 §9.7: a programmer error, never clamped or dropped. 07 "Error
-            // handling": a bad argument is an ArgumentException (subclasses too;
-            // §9.7 names no narrower type).
+            // 09 §9.7 exact rules (Q-033): unknown or non-Source node is
+            // ArgumentException; count <= 0 is ArgumentOutOfRangeException.
+            // Never clamped or dropped.
             var rig = Line();
             CohortKey key = FlowKit.Key(1);
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(99)));
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(2)));
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(3)));
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(4)));
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, 0, new NodeId(1)));
-            Assert.ThrowsAny<ArgumentException>(() => rig.Flow.Inject(key, -3, new NodeId(1)));
+            Assert.Throws<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(99)));
+            Assert.Throws<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(2)));
+            Assert.Throws<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(3)));
+            Assert.Throws<ArgumentException>(() => rig.Flow.Inject(key, 5, new NodeId(4)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => rig.Flow.Inject(key, 0, new NodeId(1)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => rig.Flow.Inject(key, -3, new NodeId(1)));
             Assert.Equal(0, FlowKit.TotalPopulation(rig.Flow, rig.World));
         }
 
         [Fact]
-        public void test_flow_system_absorb_rejects_non_sink()
+        public void test_flow_system_inject_entered_node_at_is_ticks_completed()
         {
+            // Q-033: EnteredNodeAt is N, the number of flow Ticks completed:
+            // CurrentTick between ticks, t when called during tick t by an
+            // earlier system. The cohort leaves its Source no earlier than N + 1.
             var rig = Line();
-            Exception? thrown = null;
+            rig.Step(5);
+            CohortId between = rig.InjectNow(1, 2, 1);
+            Assert.True(rig.Flow.TryGetCohort(between, out PassengerCohort c));
+            Assert.Equal(5UL, c.EnteredNodeAt);
+            Assert.Equal(5UL, c.DueAt);
+
+            rig.Step(1);
+            Assert.Equal(2, rig.Pop(1));
+            rig.Step(1);
+            Assert.Equal(0, rig.Pop(1));
+
+            CohortId during = default;
+            ulong at = 0;
             rig.Inject = (in TickContext ctx) =>
             {
-                try
+                if (during.Value == 0)
                 {
-                    rig.Flow.Absorb(new NodeId(3), new FlightId(1));
-                }
-                catch (Exception e)
-                {
-                    thrown = e;
+                    at = ctx.Tick;
+                    during = rig.Flow.Inject(FlowKit.Key(2), 3, new NodeId(1));
                 }
             };
             rig.Step(1);
-            Assert.IsAssignableFrom<ArgumentException>(thrown);
+            rig.Inject = null;
+            Assert.Equal(7UL, at);
+            Assert.True(rig.Flow.TryGetCohort(during, out PassengerCohort d));
+            Assert.Equal(7UL, d.EnteredNodeAt);
+            Assert.Equal(3, rig.Pop(1));
+        }
+
+        [Fact]
+        public void test_flow_system_absorb_rejects_unknown_or_non_sink_and_ignores_unknown_flight()
+        {
+            // Q-033: unknown or non-Sink sink is ArgumentException; an unknown
+            // flight is not an error and returns 0.
+            var rig = Line();
+            var thrown = new List<Exception?>();
+            int unknownFlight = -1;
+            rig.Inject = (in TickContext ctx) =>
+            {
+                foreach (uint node in new uint[] { 99, 1, 2, 3 })
+                {
+                    try
+                    {
+                        rig.Flow.Absorb(new NodeId(node), new FlightId(1));
+                        thrown.Add(null);
+                    }
+                    catch (Exception e)
+                    {
+                        thrown.Add(e);
+                    }
+                }
+
+                unknownFlight = rig.Flow.Absorb(new NodeId(4), new FlightId(12345));
+            };
+            rig.Step(1);
+            Assert.Equal(4, thrown.Count);
+            Assert.All(thrown, e => Assert.IsType<ArgumentException>(e));
+            Assert.Equal(0, unknownFlight);
+            Assert.Empty(rig.Events!.Missed);
         }
 
         [Fact]

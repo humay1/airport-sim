@@ -74,6 +74,21 @@ namespace AirportSim.Sim.Flow.Tests
             return this;
         }
 
+        /// <summary>Ids of the Corridor nodes.</summary>
+        public HashSet<uint> Corridors()
+        {
+            var ids = new HashSet<uint>();
+            foreach (var n in _nodes)
+            {
+                if (n.Kind == "corridor")
+                {
+                    ids.Add(n.Id);
+                }
+            }
+
+            return ids;
+        }
+
         public string WorldJson()
         {
             var sb = new StringBuilder("{\"schema_version\": 1, \"nodes\": [");
@@ -182,21 +197,26 @@ namespace AirportSim.Sim.Flow.Tests
         public RecordingSink Checkpoints = null!;
         public ProbeTick? Inject;
         public ProbeSystem Injector = null!;
+        public HashSet<uint> Corridors = new HashSet<uint>();
 
         public static Rig Create(TestGraph graph, IContentIndex content, ulong seed = 1, bool recordEvents = true)
         {
-            return Create(b => graph.World(b), Fixtures.Utf8(graph.FlowJson()), "test.flow.json", content, seed, recordEvents);
+            Rig rig = Create(b => graph.World(b), Fixtures.Utf8(graph.FlowJson()), "test.flow.json", content, seed, recordEvents);
+            rig.Corridors = graph.Corridors();
+            return rig;
         }
 
         public static Rig Fixture(IContentIndex content, ulong seed = 1, bool recordEvents = true)
         {
-            return Create(
+            Rig rig = Create(
                 b => WorldFactory.CreateSystem(b.Services, WorldFactory.CreateGraphLoader().Load(Fixtures.Read(Fixtures.WorldPath), Fixtures.WorldPath)),
                 Fixtures.Read(Fixtures.FlowPath),
                 Fixtures.FlowPath,
                 content,
                 seed,
                 recordEvents);
+            rig.Corridors = new HashSet<uint> { Landside.LandsideCorridor, Landside.AirsideCorridor };
+            return rig;
         }
 
         public static Rig Create(Func<ISimHostBuilder, IWorldSystem> world, byte[] flowFile, string flowName, IContentIndex content, ulong seed, bool recordEvents)
@@ -265,7 +285,8 @@ namespace AirportSim.Sim.Flow.Tests
         /// Checks the invariants 09 states that hold after every tick: every
         /// cohort has Count > 0, sits on the node that lists it, CohortsAt is
         /// ascending, node population equals the sum of its cohorts, and no two
-        /// cohorts on a node share a CohortKey unless one is in an open blocking
+        /// cohorts on a node share a CohortKey (and, on a Corridor, a DueAt)
+        /// unless one is in an open blocking
         /// episode (merge is mandatory, §9.3; blocked cohorts do not merge, §9.12).
         /// Returns the total head count.
         /// </summary>
@@ -277,7 +298,8 @@ namespace AirportSim.Sim.Flow.Tests
             {
                 IReadOnlyList<CohortId> ids = Flow.CohortsAt(nodes[i]);
                 int sum = 0;
-                var keys = new HashSet<CohortKey>();
+                bool corridor = Corridors.Contains(nodes[i].Value);
+                var keys = new HashSet<(CohortKey, ulong)>();
                 for (int k = 0; k < ids.Count; k++)
                 {
                     if (k > 0 && ids[k - 1].Value >= ids[k].Value)
@@ -300,7 +322,13 @@ namespace AirportSim.Sim.Flow.Tests
                         throw new Xunit.Sdk.XunitException(where + ": cohort " + ids[k].Value + " carries ServiceCredit (Q-032: always zero)");
                     }
 
-                    if (!openEpisodes.Contains(c.Id.Value) && !keys.Add(c.Key))
+                    if (!corridor && c.DueAt != c.EnteredNodeAt)
+                    {
+                        throw new Xunit.Sdk.XunitException(where + ": cohort " + ids[k].Value + " off a Corridor has DueAt != EnteredNodeAt (Q-033)");
+                    }
+
+                    // Corridor cohorts of one key merge only with equal DueAt (Q-033).
+                    if (!openEpisodes.Contains(c.Id.Value) && !keys.Add((c.Key, corridor ? c.DueAt : 0UL)))
                     {
                         throw new Xunit.Sdk.XunitException(where + ": two unblocked cohorts with one key on node " + nodes[i].Value);
                     }
@@ -472,6 +500,34 @@ namespace AirportSim.Sim.Flow.Tests
         public static QueueProfileDefinition Lane(Fx rate, Fx threshold, Fx hysteresis)
         {
             return FlowKit.Queue(FlowKit.Lane, rate, 100000, threshold, hysteresis);
+        }
+
+        /// <summary>§9.12's traversalTicks, for expected values and cohort ceilings.</summary>
+        public static long TraversalTicks(uint lengthMetres, Fx walkSpeedMps)
+        {
+            return System.Math.Max(1, Fx.Ceil(Fx.Div(Fx.FromInt(lengthMetres), Fx.Mul(walkSpeedMps, Fx.FromInt(SimConstants.SIM_SECONDS_PER_TICK)))));
+        }
+
+        /// <summary>
+        /// The live-cohort ceiling of a fixture (09 §9.10: fixture sizing, set by
+        /// the Test Author, Q-033), derived from the merge rules. Once merged
+        /// (§9.3), an unblocked key has at most one cohort per non-Corridor node.
+        /// On a Corridor, cohorts of one key merge only with an equal DueAt
+        /// (Q-033). A cohort enters at most once per tick and stays traversalTicks
+        /// ticks, so a Corridor holds at most traversalTicks cohorts per key.
+        /// Blocked cohorts never merge, so each open episode adds at most one.
+        /// The ceiling is (sum over nodes of that per-key bound) x live keys +
+        /// open episodes.
+        /// </summary>
+        public static int CohortCeiling(IWorldSystem world, ISet<uint> corridors, Fx walkSpeedMps, int liveKeys, int openEpisodes)
+        {
+            long perKey = 0;
+            foreach (NodeId n in world.Nodes())
+            {
+                perKey += corridors.Contains(n.Value) ? TraversalTicks(world.LengthMetres(n), walkSpeedMps) : 1;
+            }
+
+            return (int)(perKey * liveKeys) + openEpisodes;
         }
 
         /// <summary>§9.12's PredictedWaitMinutes formula, for expected values.</summary>

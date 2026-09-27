@@ -10,6 +10,9 @@ namespace AirportSim.Sim.Flow.Tests
     /// </summary>
     public sealed class FlowHeadlessDayTests
     {
+        private static readonly HashSet<uint> Corridors = new HashSet<uint> { Landside.LandsideCorridor, Landside.AirsideCorridor };
+        private static readonly Fx WalkSpeed = Fx.FromRatio(13, 10);  // DayScenario's walker
+
         [Fact]
         public void test_flow_headless_day_keeps_every_invariant()
         {
@@ -18,7 +21,6 @@ namespace AirportSim.Sim.Flow.Tests
             var open = new HashSet<ulong>();
             long missed = 0;
             int missedSeen = 0;
-            int nodes = rig.World.Nodes().Count;
             day.Run(rig, 0xDA7_DA7UL, (int)SimConstants.TICKS_PER_SIM_DAY, afterTick: t =>
             {
                 FlowEvents ev = rig.Events!;
@@ -32,16 +34,18 @@ namespace AirportSim.Sim.Flow.Tests
                 int sink = rig.Pop(Landside.Departed);
                 Assert.True(total - sink + day.Boarded + missed == day.Injected, "tick " + t + ": head count not conserved");
 
-                // Merge is mandatory (§9.3): live cohorts stay bounded by the
-                // occupied (node, key) pairs plus open episodes, never growing
-                // with elapsed time. At most 3 flights are live at once here.
+                // Cohort ceiling (§9.10, Q-033: fixture sizing), derived in
+                // Graphs.CohortCeiling. Live keys: the scenario injects one key per
+                // flight and absorbs flight f at the start of hour f + 1, so at
+                // most 3 flights are live at once.
                 int live = 0;
                 foreach (NodeId n in rig.World.Nodes())
                 {
                     live += rig.Flow.CohortsAt(n).Count;
                 }
 
-                Assert.True(live <= nodes * 3 + open.Count, "tick " + t + ": " + live + " live cohorts");
+                int ceiling = Graphs.CohortCeiling(rig.World, Corridors, WalkSpeed, 3, open.Count);
+                Assert.True(live <= ceiling, "tick " + t + ": " + live + " live cohorts, ceiling " + ceiling);
             });
 
             FlowEvents events = rig.Events!;
