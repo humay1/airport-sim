@@ -6,20 +6,6 @@ using System.Text;
 namespace AirportSim.Sim.Core
 {
     /// <summary>
-    /// Builds the one <see cref="IContentLoader"/> implementation. Spec:
-    /// 08-interfaces-core.md §8.11 "The loader" (Q-011). Stateless, caches
-    /// nothing, reads nothing but its argument (07-conventions.md "Factories").
-    /// </summary>
-    public static class ContentLoaderFactory
-    {
-        /// <summary>Creates a fresh loader. Never throws.</summary>
-        public static IContentLoader Create()
-        {
-            return new ContentLoader();
-        }
-    }
-
-    /// <summary>
     /// The one <see cref="IContentLoader"/> implementation: a hand-written,
     /// package-free JSON subset parser (<see cref="JsonParser"/>) plus the field
     /// and cross-file validation of 08-interfaces-core.md §8.11 and
@@ -146,7 +132,7 @@ namespace AirportSim.Sim.Core
             RequireSchemaVersionOne(obj, path);
             ContentId id = RequireId(obj, path);
             JsonInteger ordinalNode = RequireIntegerNode(obj, path, "ordinal", id.Value);
-            int ordinal = RequireInt32(ordinalNode, path, "ordinal");
+            int ordinal = RequireInt32(ordinalNode, path, "ordinal", id.Value);
             return new SizeCategoryDefinition(id, ordinal);
         }
 
@@ -193,7 +179,7 @@ namespace AirportSim.Sim.Core
             }
 
             JsonInteger capacityNode = RequireIntegerNode(obj, path, "capacity_standing", id.Value);
-            int capacity = RequireInt32(capacityNode, path, "capacity_standing");
+            int capacity = RequireInt32(capacityNode, path, "capacity_standing", id.Value);
             if (capacity <= 0)
             {
                 throw JsonParser.Fail(path, "capacity_standing must be > 0 (id '" + id.Value + "')");
@@ -245,8 +231,8 @@ namespace AirportSim.Sim.Core
                 RequireExactKeys(bucketObj, path, new[] { "minutes_before_std", "share_permille" });
                 JsonInteger minutesNode = RequireIntegerNode(bucketObj, path, "minutes_before_std", id);
                 JsonInteger shareNode = RequireIntegerNode(bucketObj, path, "share_permille", id);
-                uint minutes = RequireUInt32(minutesNode, path, "minutes_before_std");
-                uint share = RequireUInt32(shareNode, path, "share_permille");
+                uint minutes = RequireUInt32(minutesNode, path, "minutes_before_std", id);
+                uint share = RequireUInt32(shareNode, path, "share_permille", id);
                 buckets.Add(new ShowUpBucket(minutes, share));
             }
 
@@ -354,18 +340,18 @@ namespace AirportSim.Sim.Core
             return ulong.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value);
         }
 
-        private static int RequireInt32(JsonInteger n, string path, string field)
+        private static int RequireInt32(JsonInteger n, string path, string field, string id)
         {
             if (!TryMagnitude(n.Digits, out ulong mag))
             {
-                throw JsonParser.Fail(path, field + " is out of range");
+                throw JsonParser.Fail(path, field + " is out of range (id '" + id + "')");
             }
 
             if (!n.Negative)
             {
                 if (mag > int.MaxValue)
                 {
-                    throw JsonParser.Fail(path, field + " is out of range");
+                    throw JsonParser.Fail(path, field + " is out of range (id '" + id + "')");
                 }
 
                 return (int)mag;
@@ -374,22 +360,22 @@ namespace AirportSim.Sim.Core
             const ulong intMinMagnitude = 1UL << 31;
             if (mag > intMinMagnitude)
             {
-                throw JsonParser.Fail(path, field + " is out of range");
+                throw JsonParser.Fail(path, field + " is out of range (id '" + id + "')");
             }
 
             return mag == intMinMagnitude ? int.MinValue : -(int)mag;
         }
 
-        private static uint RequireUInt32(JsonInteger n, string path, string field)
+        private static uint RequireUInt32(JsonInteger n, string path, string field, string id)
         {
             if (n.Negative)
             {
-                throw JsonParser.Fail(path, field + " must not be negative");
+                throw JsonParser.Fail(path, field + " must not be negative (id '" + id + "')");
             }
 
             if (!TryMagnitude(n.Digits, out ulong mag) || mag > uint.MaxValue)
             {
-                throw JsonParser.Fail(path, field + " is out of range");
+                throw JsonParser.Fail(path, field + " is out of range (id '" + id + "')");
             }
 
             return (uint)mag;
