@@ -14,7 +14,7 @@ and requires a recorded sign-off in `spec/CHANGELOG.md`.
 | Presentation | Unity 6 LTS, importing the sim library as a compiled assembly |
 | Language | C# for both layers |
 | Target platform | Windows and Linux desktop; macOS best-effort |
-| Minimum spec | 4-core CPU, 8 GB RAM, GPU with 2 GB VRAM |
+| Minimum spec | 4-core CPU, 8 GB RAM, integrated graphics with no dedicated VRAM. (HUMAN DECISION 2026-09-27 (Q-034), see `CHANGELOG.md`; was "GPU with 2 GB VRAM".) |
 | Max tier size | 800 daily movements, 90,000 daily passengers, 60 stands, 3 runways |
 | Sim tick rate | 10 Hz (`TICK_MS = 100`) at 1× game speed |
 | Sim frame budget | **6 ms per tick** at max tier, total across all sim modules |
