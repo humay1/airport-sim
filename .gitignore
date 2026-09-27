@@ -5,3 +5,4 @@
 # dotnet build output
 bin/
 obj/
+graphify-out/
