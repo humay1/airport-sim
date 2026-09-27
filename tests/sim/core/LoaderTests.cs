@@ -392,21 +392,28 @@ namespace AirportSim.Sim.Core.Tests
         [InlineData(Business, "-1")]
         [InlineData(Business, "4294967296")]
         [InlineData(Security, "2147483648")]
+        [InlineData(Security, "-2147483649")]
+        [InlineData(Security, "99999999999999999999999")]
+        [InlineData(Business, "99999999999999999999999")]
         public void test_loader_rejects_integer_outside_field_range(string path, string value)
         {
             string text = path == Small ? SizeJson(value)
                 : path == Business ? PaxJson("\"1\"", "[ { \"minutes_before_std\": " + value + ", \"share_permille\": 1000 } ]")
                 : QueueJson("\"1\"", value, "\"2\"", "\"1\"", "\"security_queue\"");
-            AssertLoadFails(Valid().With(path, text), path);
+            // Q-030: a range failure is a validation failure and names the definition id.
+            string id = path == Small ? "size.small" : path == Business ? "pax.business" : "queue.security_main";
+            AssertLoadFails(Valid().With(path, text), path, id);
         }
 
         [Theory]
         [InlineData("-1")]
         [InlineData("4294967296")]
+        [InlineData("-4294967296")]
+        [InlineData("99999999999999999999999")]
         public void test_loader_rejects_share_permille_outside_uint32(string value)
         {
             string curve = "[ { \"minutes_before_std\": 30, \"share_permille\": " + value + " } ]";
-            AssertLoadFails(Valid().With(Business, PaxJson("\"1\"", curve)), Business);
+            AssertLoadFails(Valid().With(Business, PaxJson("\"1\"", curve)), Business, "pax.business");
         }
 
         [Theory]
