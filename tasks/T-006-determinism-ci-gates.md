@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_REVIEW |
+| Status | MERGED |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`, which already exists) |
 | Assigned role | worker |
 | Depends on | T-004, T-005 |

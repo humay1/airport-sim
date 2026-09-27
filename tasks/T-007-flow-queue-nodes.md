@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | QUEUED (tests being authored) |
 | Module | `sim.flow` |
 | Assigned role | worker |
 | Depends on | T-003, T-012, T-026 |
