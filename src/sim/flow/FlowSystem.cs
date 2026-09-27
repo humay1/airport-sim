@@ -58,14 +58,15 @@ namespace AirportSim.Sim.Flow
 
         // Per-flight index for TryGetOutstanding (§9.7a, §9.10 "per-flight population
         // indexes"): derived, not hashed, kept in lock-step with every cohort mutation
-        // that touches a Departing cohort on a non-Gate node, so the query itself never
-        // scans nodes or cohorts (O(the flight's cohorts) only) and allocates nothing.
-        // Pre-sized like the slot pool above: a flight whose count reads zero at the
-        // gate (never at a Sink, which §9.7a's literal "any node whose NodeKind is not
-        // Gate" also counts) never frees its entry, so over a long run the number of
-        // distinct flights ever seen only grows. Generously pre-stocking the pool at
-        // construction, instead of lazily on first use, is what keeps a released entry
-        // always available and the update path allocation-free (§9.10) regardless.
+        // that touches a Departing cohort on an included (non-Gate, non-Sink) node, so
+        // the query itself never scans nodes or cohorts (O(the flight's cohorts) only)
+        // and allocates nothing. A flight's entry always returns to zero and frees back
+        // to the pool once every one of its Departing cohorts has either boarded (§9.7
+        // "leave the simulation", so it never lands as a live Sink cohort) or been
+        // reported missed and removed — so the number of concurrently live entries is
+        // bounded by flights still in transit, not by flights ever seen. Pre-stocking
+        // the pool at construction, like the slot pool above, is a warm-up nicety, not
+        // a workaround for an unbounded quantity.
         private const int InitialFlightCapacity = 512;
         private readonly Dictionary<ulong, FlightOutstanding> _outstandingByFlight = new Dictionary<ulong, FlightOutstanding>(InitialFlightCapacity);
         private readonly Stack<FlightOutstanding> _outstandingPool = new Stack<FlightOutstanding>(InitialFlightCapacity);
@@ -389,13 +390,21 @@ namespace AirportSim.Sim.Flow
         }
 
         /// <summary>
+        /// §9.7a counts a flight's Departing passengers "on any node whose NodeKind
+        /// is not Gate" — but a passenger who has reached a Gate or been boarded onto
+        /// a Sink is no longer "still in the terminal", so both are excluded the same
+        /// way, matching §9.7's "leave the simulation" for a Sink specifically.
+        /// </summary>
+        private static bool ExcludedFromOutstanding(NodeKind kind) => kind == NodeKind.Gate || kind == NodeKind.Sink;
+
+        /// <summary>
         /// Adds <paramref name="amount"/> Departing passengers of <paramref name="key"/>'s
         /// flight to the outstanding index at <paramref name="ordinal"/>, unless the node
-        /// is a Gate or the cohort is not Departing (§9.7a only counts those).
+        /// is excluded or the cohort is not Departing (§9.7a only counts those).
         /// </summary>
         private void OutstandingAdd(int ordinal, in CohortKey key, int amount)
         {
-            if (amount <= 0 || key.Direction != FlowDirection.Departing || _kind[ordinal] == NodeKind.Gate)
+            if (amount <= 0 || key.Direction != FlowDirection.Departing || ExcludedFromOutstanding(_kind[ordinal]))
             {
                 return;
             }
@@ -422,7 +431,7 @@ namespace AirportSim.Sim.Flow
         /// <summary>The inverse of <see cref="OutstandingAdd"/>.</summary>
         private void OutstandingRemove(int ordinal, in CohortKey key, int amount)
         {
-            if (amount <= 0 || key.Direction != FlowDirection.Departing || _kind[ordinal] == NodeKind.Gate)
+            if (amount <= 0 || key.Direction != FlowDirection.Departing || ExcludedFromOutstanding(_kind[ordinal]))
             {
                 return;
             }
@@ -517,11 +526,12 @@ namespace AirportSim.Sim.Flow
             // tick" guard (Q-033): Absorb has no TickContext of its own.
             _events.Publish(default(AbsorbPhaseGuard), EventRef.None);
 
-            // Computed before boarding: once boarded cohorts land on sink, they are
-            // no longer "still in the terminal" (§9.7a), but sink is a non-Gate node
-            // like any other, so TryGetOutstanding must be asked first.
             bool hasOutstanding = TryGetOutstanding(flight, out OutstandingPassengers outstanding);
 
+            // §9.7 "Exact rules": boarded cohorts "leave the simulation" — they are
+            // removed outright, never relocated onto sink as a live cohort. sink is
+            // still required to name a real Sink node (validated above), but nothing
+            // is ever placed on it.
             int boarded = 0;
             for (int g = 0; g < _gateOrdinals.Count; g++)
             {
@@ -533,7 +543,7 @@ namespace AirportSim.Sim.Flow
                     if (_slots[slot].Key.Direction == FlowDirection.Departing && _slots[slot].Key.Flight.Equals(flight))
                     {
                         boarded += _slots[slot].Count;
-                        MoveCohortPortion(slot, gateOrdinal, sinkOrdinal, _ticksCompleted, _slots[slot].Count);
+                        RemoveCohortEntirely(slot, gateOrdinal);
                     }
                 }
             }
