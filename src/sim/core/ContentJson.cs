@@ -302,6 +302,14 @@ namespace AirportSim.Sim.Core
                                 code = (code << 4) | d;
                             }
 
+                            if (code >= 0xD800 && code <= 0xDFFF)
+                            {
+                                // A surrogate, paired or not, is a load failure: a non-BMP
+                                // character is written as raw UTF-8, never as a \u escape
+                                // pair (04-data-schemas.md "Strings", Q-033).
+                                throw Fail(path, "a \\u escape may not encode a surrogate (U+D800-U+DFFF)");
+                            }
+
                             sb.Append((char)code);
                             pos += 4;
                             break;

@@ -14,8 +14,6 @@ namespace AirportSim.Sim.Core
     /// </summary>
     internal sealed class ContentLoader : IContentLoader
     {
-        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-
         /// <inheritdoc/>
         public IReadOnlyList<IContentDefinition> Load(IContentSource source)
         {
@@ -116,7 +114,12 @@ namespace AirportSim.Sim.Core
         {
             try
             {
-                return StrictUtf8.GetString(bytes);
+                // A fresh instance per call, not a static field: UTF8Encoding built
+                // with `new` is mutable (its fallback properties can be set), so a
+                // shared static would be hidden static state (CLAUDE.md, 07 L10).
+                // Load-time only, so the per-call allocation is fine.
+                var strictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+                return strictUtf8.GetString(bytes);
             }
             catch (DecoderFallbackException)
             {
