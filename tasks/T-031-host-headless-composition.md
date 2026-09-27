@@ -6,8 +6,15 @@
 | Module | `app.host` (headless side only) |
 | Assigned role | worker |
 | Depends on | T-008, T-012, T-020, T-021, T-022, T-023, T-024, T-026, T-027, T-029, T-030 |
-| Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8 (new module, D7) |
+| Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8, §16.10 (new module, D7; graphics preference and frame-loop steps 2/4/5, D10/Q-034) |
 | Blocked by | — |
+
+**Amendment (D10/Q-034, this cycle):** the owner's graphics-quality
+decision adds an `IPreferenceStore` parameter to `IPresentationComposer.
+Compose`, threads `Ui.Graphics` through frame-loop steps 2 and 4, and adds a
+step 5 that writes the graphics preference on change, defaulting to
+`Medium` when none is stored (`16` §16.6). This is additive inside this
+task's existing scope — it does not change this task's dependency list.
 
 ## Writable paths
 
@@ -45,8 +52,8 @@ change to this task's own interface was needed; the spec caught up to it.
 `spec/08-interfaces-core.md` §8.5, §8.9, §8.11, §8.11a, the Construction
 section of every registered module (`09` §9.11, `11` §11.9a, `12` §12.12a,
 `13` §13.10a, `14` §14.13a, `18` §18.4), `spec/15-interfaces-render.md`
-§15.3, §15.9, §15.10, `spec/17-interfaces-ui.md` §17.4, §17.7,
-`spec/16-interfaces-host.md`
+§15.3, §15.9, §15.10, §15.14, `spec/17-interfaces-ui.md` §17.4, §17.4a,
+§17.7, `spec/16-interfaces-host.md` (all sections, including §16.6, §16.10)
 
 ## Interface to implement
 
@@ -79,7 +86,12 @@ readonly struct Presentation {
 }
 
 interface IPresentationComposer {
-  Presentation Compose(in ComposedSim sim, IScenarioBundle bundle)
+  Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences)   // D10
+}
+
+interface IPreferenceStore {                      // D10; implemented by the bootstrap over the engine's player preferences
+  bool TryRead(string key, out string value)
+  void Write(string key, string value)
 }
 
 readonly struct FrameInput {
@@ -139,20 +151,35 @@ Binding, copied from `spec/16-interfaces-host.md`, not paraphrased:
   **pure function of the bundle's bytes and the content data** — no
   machine, runtime, OS, file-system-order or clock dependence. Once per
   session, no recomposition, no hot swap.
-- **Presentation assembly** (§16.5): build `RenderSources { Host, Airside,
-  Flow }` from the `ComposedSim`; load `render_layout.*` via
-  `IRenderLayoutLoader`, passing `Airside.Layout()` when registered — a
-  layout failure is a hard load failure; construct the scene builder,
-  promotion controller and pacer via `RenderFactory`, and the UI controller
-  plus lane sink via `UiFactory`; build the frame loop over those and
-  `sim.Host`.
-- **The frame loop** (§16.6): `RunFrame`, in order — 1) `Ui.Update(...)`;
-  2) `Promotion.Update(camera)`; 3) `n = Pacer.Advance(elapsed,
-  Ui.Pacing.Paused, Ui.Pacing.Speed)`, `if n>0: Host.Step(n)`; 4) `render =
-  Scene.Build(camera)`; 5) `ui = Ui.Frame()`; return both. UI first (a
-  pause pressed this frame stops this frame's `Step`); promotion before
-  `Step`; build after `Step`. No allocation per `RunFrame` after the first.
-  This is the **only** place a playable build calls `Step`.
+- **Presentation assembly** (§16.5, amended by D10/Q-034): build
+  `RenderSources { Host, Airside, Flow }` from the `ComposedSim`; load
+  `render_layout.*` via `IRenderLayoutLoader`, passing `Airside.Layout()`
+  when registered — a layout failure is a hard load failure; construct the
+  scene builder, promotion controller and pacer via `RenderFactory`.
+  **Graphics preference** (§16.6, D10): read `airportsim.graphics` from the
+  given `preferences`; if `TryDecodeGraphicsPreference` succeeds, that value
+  is the UI controller's `initialGraphics`, else the default of `15` §15.14
+  (`Medium`) is used. The value it started with counts as "last written"
+  (see step 5, below). Construct the UI controller plus lane sink via
+  `UiFactory.CreateController(layout, sink, initialGraphics)`; build the
+  frame loop over those and `sim.Host`. `IHeadlessRun` (§16.8) reads no
+  preference — the checkpoint run has no presentation at all.
+- **The frame loop** (§16.6, amended by D10/Q-034): `RunFrame`, in order —
+  1) `Ui.Update(...)` (may submit commands and change pacing and graphics
+  settings); 2) `Promotion.Update(camera, Ui.Graphics)`; 3) `n =
+  Pacer.Advance(elapsed, Ui.Pacing.Paused, Ui.Pacing.Speed)`, `if n>0:
+  Host.Step(n)`; 4) `render = Scene.Build(camera, Ui.Graphics)`; 5) if
+  `Ui.Graphics` differs from the value last written, write
+  `UiFactory.EncodeGraphicsPreference(Ui.Graphics)` to the
+  `IPreferenceStore` under the key `airportsim.graphics`; 6) `ui =
+  Ui.Frame()`; return both. UI first (a pause pressed this frame stops this
+  frame's `Step`, and so does the settings panel opening this frame —
+  `Ui.Pacing.Paused` already includes it, per `17` §17.4a, with no extra
+  rule needed here); promotion before `Step`; build after `Step`. No
+  allocation per `RunFrame` after the first. This is the **only** place a
+  playable build calls `Step`. The graphics preference is per machine and
+  per player: it is never part of the scenario bundle or a session's input,
+  and a session's checkpoints are identical whatever it holds.
 - **The headless checkpoint run and dump format** (§16.8): `Run` composes
   the bundle with a sink recording every checkpoint, steps to `Days ×
   TICKS_PER_SIM_DAY`, no presentation, writes the dump. Format is fixed,
@@ -193,6 +220,11 @@ Written by the Test Author. Expect at least:
   playtest bundle and a Phase 0 bundle with only `sim.world`,
   `sim.schedule` and `sim.flow` (T-009's composition). Dumps must be
   byte-identical.
+- `test_frame_loop_passes_ui_graphics_to_promotion_and_scene` (D10)
+- `test_frame_loop_writes_graphics_preference_only_on_change`
+- `test_presentation_uses_stored_graphics_preference_or_default` — the
+  default is `Medium` (Q-034)
+- `test_frame_loop_settings_opened_this_frame_steps_nothing` (Q-034)
 
 **Do not edit them.** If a test contradicts `spec/16-interfaces-host.md`,
 file an open question and stop.
@@ -203,6 +235,14 @@ file an open question and stop.
 calls of §16.6, allocating nothing after the first call; its callees carry
 their own budgets (`15` §15.11). Composition and bundle loading happen once
 at scene start, off the frame path — no time budget there.
+
+**Memory on minimum spec** (§16.10, HUMAN DECISION — owner, 2026-09-27,
+Q-034): the player process — resident memory plus any GPU memory it
+allocates, which on integrated graphics is shared system RAM counted
+against the 8 GB minimum — stays **≤ 2 GB** at max tier with the `Low` and
+`Medium` presets. CI cannot measure this; it is checked by the same manual
+measurement on a minimum-spec machine as `15` §15.14's frame-rate check
+(T-025 or a later playtest), not by a test this task authors.
 
 ## Done when
 
@@ -232,3 +272,12 @@ now (systematic recheck):** `IFlowSystem.TryGetLaneState`/
 wiring T-020/T-029 already require, so this was already transitively
 required through those two; it is now listed directly rather than relying
 on that transitivity. Do not release this task before all of them merge.
+
+**Graphics preference (D10/Q-034) does not change this task's dependency
+list.** `IPreferenceStore` is a plain interface this task declares and
+consumes; the bootstrap's real implementation over the engine's player
+preferences is T-034's, not this task's. This task's own tests use a fake
+store. The preference is per machine and per player — never part of the
+scenario bundle, a checkpoint dump or a save, and never read by
+`IHeadlessRun` — so `test_host_composition_matches_harness_checkpoints`
+needs no change.
