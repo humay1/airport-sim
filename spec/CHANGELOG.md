@@ -1773,3 +1773,45 @@ LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
              true blocking history, for the owner with D6. Also, an
              `Absorb` outside a tick is detected only when it has something
              to publish.
+
+## 2026-09-27 — spec/08 §8.6 "Allocation" (new); INDEX — Q-035: the event bus allocates nothing after `Build`
+Reason:      `EventBus.Publish<T>` creates a channel on the first publish of a
+             type with no subscriber. In T-007's budget test that happens at
+             tick 1695, inside the measured window, and allocates 368 bytes.
+             `08` §8.5 and `07` forbid allocation on the tick path, but §8.6
+             never said what that means for the bus. A module cannot
+             pre-warm the bus, because `Publish` outside a tick throws. So
+             the rule is on the bus:
+             - it allocates nothing after `Build`, with no warm-up;
+             - the channel set is fixed at `Build`;
+             - a type with no subscriber stores nothing, but it still
+               consumes its `Sequence`, returns its `EventId` and runs
+               every check;
+             - capacity for `MAX_EVENTS_PER_TICK` events is reserved at
+               `Build`, so a new per-tick peak does not grow storage.
+             The alternative, allowing a first publish to allocate, was
+             rejected. It would make every module's budget test depend on
+             which events happened to fire during warm-up.
+Raised by:   Q-035 (worker / T-007; filed as "Q-034" and renumbered)
+Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
+             `Channel.cs` create channels lazily and let their lists grow.
+             The Planner needs a small `sim.core` fix task:
+             - writable paths `src/sim/core/**` only;
+             - the five new tests of §8.6 are the Test Author's, in
+               `tests/sim/core/`;
+             - no dependencies, since everything it touches is merged;
+             - reviewed by `reviewer-core`.
+             T-007 stays blocked on
+             `test_flow_budget_update_path_allocates_nothing` until that
+             task merges. T-007's own code and tests are unchanged.
+             Nothing observable changes: `EventId`s, handler order and
+             calls, hashes and goldens stay the same, because events are
+             not hashed or saved (§8.9) and an unsubscribed event has no
+             handler. The existing `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`
+             stays valid, since the new rule is stricter. Reserving
+             `MAX_EVENTS_PER_TICK` per subscribed type costs, once at
+             `Build`, `MAX_EVENTS_PER_TICK` × (envelope + payload size) per
+             subscribed type. The storage layout is left open so the
+             implementer can share it if that figure matters. No scope
+             added.
+Signed off:  not required. `01` and `02` are untouched.
