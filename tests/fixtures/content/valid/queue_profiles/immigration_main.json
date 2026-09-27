@@ -1,0 +1,1 @@
+{ "delay_category": "immigration_queue", "hysteresis_minutes": "0", "threshold_wait_minutes": "0.5", "capacity_standing": 2147483647, "service_rate_per_server_per_minute": "0", "id": "queue.immigration_main", "schema_version": 1 }
