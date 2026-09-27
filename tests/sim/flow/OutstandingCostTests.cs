@@ -8,8 +8,9 @@ namespace AirportSim.Sim.Flow.Tests
     /// served from the per-flight index; it never scans all nodes or all
     /// cohorts, and it does not allocate. The flight under test has the same
     /// single cohort in a small sim and in a large one that adds about 200
-    /// nodes and 20000 cohorts of other flights, so any work that grows from
-    /// the small sim to the large one is work outside the flight's cohorts.
+    /// nodes and 20000 cohorts of other flights. These tests pin the result
+    /// and the allocation rule; the scan rule is enforced at review, since
+    /// through the public API only a timing test could observe it.
     /// </summary>
     public sealed class OutstandingCostTests
     {
