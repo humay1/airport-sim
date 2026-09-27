@@ -1035,3 +1035,46 @@ Answer:      `09` §9.7 "Exact rules", §9.3, §9.9, §9.10 and `08` §8.11
                `Promotion` gate promote. It depends on T-010 and on the CLI
                composition including `sim.flow`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#97-module-interface)
+
+### Q-034 — Player-adjustable graphics quality (D10)
+Raised by:   owner, via coordinator, 2026-09-27
+Blocking:    no (T-020, T-029, T-031, T-032, T-033, T-034 are to be amended)
+Question:    The owner decided that "the final user should be able to
+             increase or decrease graphics so the game can also be run on a
+             low resource laptop". How do the presentation specs support
+             it?
+Why it matters: No presentation spec had a quality setting, a settings
+             control or a player preference.
+Answer:      `15` §15.14:
+             - `GraphicsPreset` (Low/Medium/High/Custom) and
+               `GraphicsSettings`, with six knobs: `DrawAgents`,
+               `MaxDrawnAgentsPerNode`, `FrameRateCap`,
+               `ResolutionScalePercent` and `AntiAliasing`, plus `Preset`.
+             - Structural bounds and monotonicity. `High` is today's Phase 1
+               behaviour.
+             - The settings are passed to `Build` and `Update`, and the
+               backend applies its knobs. `DrawAgents` gates only
+               render-driven promotion, which is outcome-neutral.
+             `17` §17.4a: a modal settings panel, which does not pause, plus
+             three new inputs and a player-preference text codec. `16`
+             §16.6: `IPreferenceStore`, written on change and read at
+             assembly, never in the bundle.
+             Owner addendum, 2026-09-27: graphics never affect gameplay or
+             difficulty. A binding invariant in `15` §15.14 and `17` §17.4a:
+             - every non-`Agent` primitive is identical at every setting;
+             - no knob touches time, pacing, input or click targets;
+             - scaling is presentation only.
+             It has tests on both sides.
+             HUMAN DECISIONS — owner, 2026-09-27, applied:
+             - the minimum GPU is integrated graphics with no dedicated
+               VRAM (`01`, the one authorised line; CPU and RAM
+               unchanged);
+             - `Low` holds the render target on it, and shared GPU memory
+               counts against the 8 GB (`15` §15.11, `16` §16.10);
+             - the settings panel pauses the sim while it is open (`17`
+               §17.4, §17.4a);
+             - the first-launch default is `Medium` (`15` §15.14).
+             The Architect proposed the `Low` and `Medium` values (`15`
+             §15.14) and a 2 GB process memory budget (`16` §16.10), both
+             LOW CONFIDENCE — owner may revise.
+Status:      ANSWERED (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)
