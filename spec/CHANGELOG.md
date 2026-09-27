@@ -1773,3 +1773,51 @@ LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
              true blocking history, for the owner with D6. Also, an
              `Absorb` outside a tick is detected only when it has something
              to publish.
+
+## 2026-09-27 — spec/15 §15.5–§15.7, §15.9–§15.12, §15.14 (new); 17 §17.1, §17.3, §17.4a (new), §17.7, §17.8, §17.10, §17.11; 16 §16.5–§16.7, §16.11, §16.12; INDEX — D10 / Q-034: player-adjustable graphics quality
+Reason:      HUMAN DECISION — owner, 2026-09-27 (D10): "the final user
+             should be able to increase or decrease graphics so the game can
+             also be run on a low resource laptop." The Architect specified
+             the mechanism:
+             - presets and six knobs (§15.14), presentation only;
+             - `Build` and `Update` take the settings, and `DrawAgents`
+               gates render-driven promotion, which is outcome-neutral by
+               `09` §9.1;
+             - the backend applies frame cap, resolution scale and
+               anti-aliasing;
+             - a modal settings panel in `app.ui`;
+             - a pinned preference text, stored through the host's
+               `IPreferenceStore`, never in a bundle, save, command or hash.
+             `01` and `02` are untouched.
+Raised by:   D10 (owner), Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner,
+             these tasks are stale:
+             - **T-020** (render scene): new `Build`/`Update` signatures,
+               `RenderFrame.Graphics`, the `RenderFactory` graphics
+               functions, and six new tests;
+             - **T-029** (UI scene): the three new inputs, `UiFrame` fields,
+               `CreateController`'s `initialGraphics`, the preference codec,
+               and six new tests;
+             - **T-031** (headless host): frame loop steps 2, 4 and 5,
+               `IPresentationComposer.Compose`'s store, and three new
+               tests;
+             - **T-032** (render backend): apply the backend knobs;
+             - **T-033** (UI backend): the settings icon and panel, with
+               `LocalisedKey` text, the first player-visible text;
+             - **T-034** (Unity shell): the bootstrap's `IPreferenceStore`
+               over the engine's player preferences.
+             **Scope added: 1** (a settings panel and the graphics setting),
+             owner-decided. The running total becomes 9.
+Signed off:  owner, 2026-09-27 (D10, the requirement). The mechanism is the
+             Architect's.
+HUMAN DECISION PENDING (owner):
+             - the Low and Medium preset values (until set, both equal High,
+               as a placeholder);
+             - the first-launch default (High until decided);
+             - the low-end target machine, which may sit below `01`'s locked
+               minimum spec. Graphics cannot reduce the 6 ms sim cost.
+             - whether the settings panel pauses (it does not, until
+               decided).
+LOW CONFIDENCE: the knob set, in particular `AntiAliasing` as a bool and
+             the `FrameRateCap` floor of 15, derived from the pacer's
+             catch-up cap.

@@ -1035,3 +1035,34 @@ Answer:      `09` §9.7 "Exact rules", §9.3, §9.9, §9.10 and `08` §8.11
                `Promotion` gate promote. It depends on T-010 and on the CLI
                composition including `sim.flow`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#97-module-interface)
+
+### Q-034 — Player-adjustable graphics quality (D10)
+Raised by:   owner, via coordinator, 2026-09-27
+Blocking:    no (T-020, T-029, T-031, T-032, T-033, T-034 are to be amended)
+Question:    The owner decided that "the final user should be able to
+             increase or decrease graphics so the game can also be run on a
+             low resource laptop". How do the presentation specs support
+             it?
+Why it matters: No presentation spec had a quality setting, a settings
+             control or a player preference.
+Answer:      `15` §15.14:
+             - `GraphicsPreset` (Low/Medium/High/Custom) and
+               `GraphicsSettings`, with six knobs: `DrawAgents`,
+               `MaxDrawnAgentsPerNode`, `FrameRateCap`,
+               `ResolutionScalePercent` and `AntiAliasing`, plus `Preset`.
+             - Structural bounds and monotonicity. `High` is today's Phase 1
+               behaviour.
+             - The settings are passed to `Build` and `Update`, and the
+               backend applies its knobs. `DrawAgents` gates only
+               render-driven promotion, which is outcome-neutral.
+             `17` §17.4a: a modal settings panel, which does not pause, plus
+             three new inputs and a player-preference text codec. `16`
+             §16.6: `IPreferenceStore`, written on change and read at
+             assembly, never in the bundle.
+             HUMAN DECISIONS still pending:
+             - the Low and Medium values;
+             - the first-launch default;
+             - the low-end target machine, against `01`'s locked minimum
+               spec;
+             - whether the settings panel pauses.
+Status:      ANSWERED, owner values pending (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)
