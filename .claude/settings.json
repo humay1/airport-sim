@@ -42,6 +42,12 @@
       }
     ]
   },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin` after it has checked that a reviewer's APPROVED verdict comment names the PR's current head commit and that CI checks pass. Review happens through PR comments, not GitHub reviews."
+    ]
+  },
   "enabledPlugins": { "superpowers@claude-plugins-official": false },
   "$comment": "Layer 3 of the path guards. Layer 1 (branch protection + CODEOWNERS) is the one that actually holds; this one tells the agent in-turn instead of ten minutes later in CI."
 }
