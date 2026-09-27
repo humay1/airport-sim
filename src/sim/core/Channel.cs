@@ -10,8 +10,13 @@ namespace AirportSim.Sim.Core
     /// </summary>
     internal sealed class Channel<T> : IChannel where T : struct, ISimEvent
     {
-        private readonly List<EventEnvelope> _envelopes = new List<EventEnvelope>();
-        private readonly List<T> _payloads = new List<T>();
+        // Q-035: a channel exists only for a subscribed type, and only ever gets built
+        // (via EventBus.Subscribe) before EventBus.Build closes subscription — so
+        // reserving the full per-tick capacity here, at construction, means neither
+        // list ever grows afterward, however many events an earlier tick carried and
+        // whichever tick first reaches the new peak.
+        private readonly List<EventEnvelope> _envelopes = new List<EventEnvelope>(SimConstants.MAX_EVENTS_PER_TICK);
+        private readonly List<T> _payloads = new List<T>(SimConstants.MAX_EVENTS_PER_TICK);
         private readonly List<(ushort Owner, SimEventHandler<T> Handler)> _subscribers =
             new List<(ushort Owner, SimEventHandler<T> Handler)>();
 
