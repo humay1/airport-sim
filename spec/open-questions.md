@@ -1021,4 +1021,17 @@ Answer:      `09` §9.7 "Exact rules", §9.3, §9.9, §9.10 and `08` §8.11
              - (7) JSON's eight escapes plus `\uXXXX`, which matches the
                merged T-027 loader. Surrogate escapes, raw control
                characters and invalid UTF-8 are load failures.
+             Added from the T-010 Test Author (`09` §9.7 "Promotion rules",
+             `19` §19.2):
+             - (8) `AgentsAt` gives exactly one view per passenger, so its
+               count equals `Population`.
+             - (9) An unknown node throws `ArgumentException`. Every node is
+               promotable.
+             - (10) `SetPromoted` is callable at any time, inside a `Tick`
+               too.
+             - (11) `SetPromoted` never allocates, and `AgentsAt` allocates
+               nothing after warm-up.
+             - (12) A separate harness task, not T-010, makes the
+               `Promotion` gate promote. It depends on T-010 and on the CLI
+               composition including `sim.flow`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#97-module-interface)

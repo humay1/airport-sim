@@ -287,6 +287,23 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
 
+**Promotion rules (Q-033).**
+
+- **Every node is promotable.** `SetPromoted` or `AgentsAt` on an unknown
+  node throws `ArgumentException`. There is no other failure, and
+  promoting a promoted node, or demoting a demoted one, is a no-op.
+- **`AgentsAt(node)`** on a promoted node returns **exactly one view per
+  passenger**, so its count equals `Population(node)`. It is sorted by
+  `(Cohort, Index)`, and `Index` runs from 0 to `Count − 1` in each cohort.
+  On a node that is not promoted, it is empty.
+- **When.** `SetPromoted` may be called at any time, inside another
+  system's `Tick` included, because it changes no hashed state. Its only
+  production caller calls it between `Step`s (`15` §15.7).
+- **Allocation.** `SetPromoted` never allocates. `AgentsAt` allocates
+  nothing after warm-up. Its list is valid until the next `AgentsAt` or
+  `Tick` call, and its buffer grows only when a node's population exceeds
+  every earlier one.
+
 ### 9.7a Outstanding passengers (D6) — LOW CONFIDENCE
 
 ```

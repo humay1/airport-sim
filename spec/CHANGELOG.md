@@ -1759,6 +1759,16 @@ Impact:      Nothing of `sim.flow` is merged. `sim.delay` (`14` §14.9) only
              test, and the Planner should task it. Whether it rejects invalid
              UTF-8 was not checked. No scope added.
 Signed off:  not required
+Addendum:    The T-010 promotion rules are added (`09` §9.7 "Promotion
+             rules", `19` §19.2):
+             - one view per passenger;
+             - `ArgumentException` for an unknown node, and every node is
+               promotable;
+             - `SetPromoted` may be called at any time;
+             - no allocation after warm-up;
+             - a separate harness task, which the Planner creates, makes
+               the `Promotion` gate promote.
+             T-010 keeps its `src/sim/flow/**`-only grant.
 LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
              true blocking history, for the owner with D6. Also, an
              `Absorb` outside a tick is detected only when it has something
