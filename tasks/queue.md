@@ -10,9 +10,43 @@ answered and the row is moved back to `QUEUED` with the task file rewritten.
 Numbering follows `tasks/README.md`'s rule: one id block per build-order
 phase (Phase 0: `T-001`–`T-019`; Phase 1: `T-020` onward).
 
-**As of this cycle, `spec/open-questions.md` has no open question.** Q-002
-through Q-012 are all answered, and D1–D9 resolved every HUMAN DECISION
-Q-007/Q-008 left open. No row below is `BLOCKED` on a spec gap.
+**As of this cycle, `spec/open-questions.md` has no open question blocking a
+task file rewrite.** Q-002 through Q-034 are all answered, and D1–D10
+resolved every HUMAN DECISION Q-007/Q-008/Q-034 left open. Q-035 (the
+EventBus allocation fix) was open earlier this cycle and is now **ANSWERED
+and MERGED** (spec PR #45, commit `f8721c7`) — see the T-036 row and the
+Q-035 note below. No row below is `BLOCKED` on a spec gap.
+
+**D10/Q-034 (player-adjustable graphics quality) applied this cycle:** the
+owner's decision (CHANGELOG.md, 2026-09-27) adds a settings panel and a
+`GraphicsSettings` mechanism, presentation-only, to five already-queued
+Phase 1 tasks. T-020 (render scene): `Build`/`Update` take
+`GraphicsSettings`, `RenderFrame.Graphics`, `RenderFactory.GraphicsForPreset`/
+`ValidateGraphics`, render-driven promotion gated on `DrawAgents`, and six
+new tests. T-029 (UI scene): three new `UiInputKind` values,
+`SettingsOpen`/`Graphics` state and the modal-panel rule, the preference
+codec, and seven new tests. T-031 (headless host): an `IPreferenceStore`
+parameter on `IPresentationComposer.Compose`, frame-loop steps 2/4/5 now
+pass and persist `Ui.Graphics`, a `Medium` default, and four new tests.
+T-032 (render Unity backend): applies the three backend knobs and a
+draw-call bound. T-033 (UI Unity backend): draws the settings icon and
+panel, the first player-visible text (`LocalisedKey`s). None of these five
+tasks' dependency lists changed — this is additive scope inside directories
+each task already owns. T-025 (playtest) gains a done-condition: measure
+the `Low` preset on a minimum-spec machine (60 fps, ≤ 2 GB) and record it in
+`CHANGELOG.md`. The `Low`/`Medium` preset values and the 2 GB memory budget
+stay LOW CONFIDENCE, the owner's to revise; no task file states them as
+final.
+
+**Q-035 (EventBus zero-allocation fix, MERGED, spec PR #45, `f8721c7`)
+applied this cycle:** `08` §8.6 "Allocation" binds `IEventBus` to allocate
+nothing after `Build`. T-007's own budget test (no allocation in the update
+path) was unreachable while the bus it publishes through allocated, so a
+new task, **T-036** (`sim.core`, `src/sim/core/EventBus.cs`/`Channel.cs`
+only, depends on T-001, five named tests, `TESTS_AUTHORED` on
+`test-author/T-036-eventbus-zero-alloc-tests`), closes the gap. T-007 now
+depends on T-036 as well, with no code change of its own. See the T-036 row
+and its release-order entry, and the Phase 0 status corrections below.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
@@ -68,14 +102,15 @@ to wave through a failing `determinism` check.
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | MERGED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
-| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026 | QUEUED (tests being authored) |
+| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | IN_PROGRESS (blocked on T-036 merging, for its budget test) |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (blocked on T-007 merging) |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED (tests being authored) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
-| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | IN_PROGRESS |
+| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
+| T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | TESTS_AUTHORED (`test-author/T-036-eventbus-zero-alloc-tests`) |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -113,13 +148,24 @@ direct `Depends` edge. Order:
    (`Depends on` amended, above: `NodeId`/`EdgeId` are T-026 types). Own
    directory (`src/sim/world/**`), so it may run concurrently with any
    other open `sim.core` task once its own dependencies are met. **T-012
-   must merge before T-007** — see the Q-012 note below.
-8. **T-007** — after T-003, T-012 **and T-026** all merge (`Depends on`
-   amended, above: `CohortKey.PaxProfile` is `ContentId`, a T-026 type, in
-   addition to the `NodeId`/`EdgeId` it already picks up transitively
-   through T-012). Different module directory (`src/sim/flow/**`), so it
-   may run **concurrently** with any still-open `sim.core` task once its
-   own dependencies are met.
+   must merge before T-007** — see the Q-012 note below. **T-012 is now
+   MERGED** (status correction, this cycle — the previous `IN_PROGRESS` row
+   was stale).
+7a. **T-036** (`sim.core`, Q-035's EventBus zero-allocation fix) — after
+   T-001 merges. Touches only `src/sim/core/EventBus.cs`/`Channel.cs`, so it
+   serialises against any other open `sim.core` task by the same shared-path
+   rule as T-002/T-004/T-005/T-026/T-027, but depends on none of them
+   directly. **T-036 must merge before T-007** — its budget test needs a
+   non-allocating bus to publish through (see the Q-035 note above).
+8. **T-007** — after T-003, T-012, T-026 **and now T-036** all merge
+   (`Depends on` amended, above: `CohortKey.PaxProfile` is `ContentId`, a
+   T-026 type, in addition to the `NodeId`/`EdgeId` it already picks up
+   transitively through T-012; and its own budget test needs T-036's fix,
+   Q-035). Different module directory (`src/sim/flow/**`), so it may run
+   **concurrently** with any still-open `sim.core` task once its own
+   dependencies are met. **T-007 is now `IN_PROGRESS`** (status correction,
+   this cycle — the previous `QUEUED` row was stale), blocked on T-036
+   merging, not on any spec gap of its own.
 9. **T-006** — after T-004 merges.
 10. **T-008** — after T-001, T-003, T-026 **and now T-007** all merge
     (`Depends on` amended, above: `FlightRecord.MinTurnaround` is

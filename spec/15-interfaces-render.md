@@ -189,6 +189,7 @@ total, stable order.
 | each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` |
 
 **Agents.** `AgentsAt(node)` is sorted by `(Cohort, Index)` and truncated to
+`GraphicsSettings.MaxDrawnAgentsPerNode` (§15.14), which never exceeds
 `MAX_DRAWN_AGENTS_PER_NODE`. The *k*-th agent's position is a pure function
 of *k* and the box. The exact arrangement is the worker's choice, and tests
 assert only count and containment. `ProgressAlongEdge` is not used at
@@ -253,8 +254,8 @@ rejection, and the fakes in §15.12 throw if one is called.
 Cadence:
 
 - `Build` is called at most once per rendered frame. It **rebuilds** only if
-  `CurrentTick` or the camera differs from the previous `Build`; otherwise it
-  returns the previous frame unchanged. At 60 fps and 1x, the sim advances
+  `CurrentTick`, the camera or the `GraphicsSettings` (§15.14) differs from
+  the previous `Build`; otherwise it returns the previous frame unchanged. At 60 fps and 1x, the sim advances
   every sixth frame, so most frames re-read nothing.
 - No query is ever made while `Step` is running. Given §15.8's frame order and
   the fact that `Step` is synchronous (`08` §8.5), this holds by construction.
@@ -273,8 +274,11 @@ else. Rule 2 (identity needed by an incident or command) is not
 - A `FlowNodeBox` is **visible** if its box intersects the camera's view
   rectangle (§15.9), with closed intervals: touching counts.
 - It is **desired promoted** if it is visible **and**
-  `camera.ViewHeight <= AGENT_ZOOM_THRESHOLD`. The comparison is inclusive,
-  matching "at or below" in rule 1.
+  `camera.ViewHeight <= AGENT_ZOOM_THRESHOLD` **and**
+  `graphics.DrawAgents` (§15.14). The comparison is inclusive, matching "at
+  or below" in rule 1. With `DrawAgents` false, no node is desired promoted,
+  so the controller demotes every node it promoted and no agent views are
+  derived.
 - **First `Update`:** calls `SetPromoted(node, desired)` for **every**
   `FlowNodeBox`, in ascending `NodeId`. This establishes known state without
   assuming anything about the sim, for example after a load.
@@ -388,6 +392,7 @@ readonly struct RenderFrame {
   Tick                         Tick
   CameraView                   Camera
   IReadOnlyList<DrawPrimitive> Primitives    // valid until the next Build
+  GraphicsSettings             Graphics      // §15.14; what the backend applies (D10)
 }
 
 readonly struct RenderSources {
@@ -396,8 +401,8 @@ readonly struct RenderSources {
   IFlowSystem?    Flow
 }
 
-interface ISceneBuilder        { RenderFrame Build(in CameraView camera) }
-interface IPromotionController { void Update(in CameraView camera) }
+interface ISceneBuilder        { RenderFrame Build(in CameraView camera, in GraphicsSettings graphics) }        // D10
+interface IPromotionController { void Update(in CameraView camera, in GraphicsSettings graphics) }        // D10
 // ITickPacer: §15.8.   IRenderLayoutLoader: §15.4.
 ```
 
@@ -436,6 +441,22 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   never branches on sim state. Anything that needs a decision belongs in the
   scene layer, where it can be tested.
 - It issues no commands at Phase 1.
+- **Graphics (D10, §15.14).** It applies `RenderFrame.Graphics`'s backend
+  knobs (`FrameRateCap`, `ResolutionScalePercent`, `AntiAliasing`) through
+  the engine's own settings, and only when they differ from those last
+  applied. Which engine API it uses is its own choice. It reads no other
+  source of quality settings, and never Unity's quality levels on their
+  own. Resolution scale changes only the rendered image. The camera, the
+  screen size in `FrameInput` and every reported click stay in full-screen
+  pixels. It draws every primitive it is handed at every setting (the
+  §15.14 invariant).
+- **Draw calls (Q-034).** Integrated graphics is the minimum GPU (§15.11).
+  The backend's number of draw calls per frame is bounded by the number of
+  `DrawLayer`s and `ColourRole`s, never by the number of primitives. It
+  creates no engine object per primitive and allocates no engine object per
+  frame after the first. **LOW CONFIDENCE**: this binds the implementation
+  more tightly than the rest of the contract. It is the Architect's reading
+  of what `Low` needs to hold budget on integrated graphics.
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
 
@@ -453,13 +474,24 @@ layer:
   `03-module-map.md`'s protocol (reference machine, recorded scaling factor),
   against fakes sized to max tier: 3 runways, 60 stands all occupied, 100
   tracked aircraft on the graph, 200 `FlowNodeBox`es, 16 of them promoted with
-  `MAX_DRAWN_AGENTS_PER_NODE` agents each.
+  `MAX_DRAWN_AGENTS_PER_NODE` agents each, and with the `High` preset
+  (§15.14), which is the most expensive. A lower preset never costs more
+  (§15.14, monotonicity).
 - **No allocation** in `Build` or `Update` after the first call. The primitive
   buffer is reused, which is why `RenderFrame.Primitives` is valid only until
   the next `Build`. Presentation is not bound by the sim's zero-allocation
   rule, but a GC pause at 60 fps is a visible hitch.
 - The backend's draw cost is not budgeted here. It has no test to carry a
   number.
+- **On minimum spec, the `Low` preset holds the render target** (HUMAN
+  DECISION — owner, 2026-09-27, Q-034). The minimum GPU is integrated
+  graphics with no dedicated VRAM (`01-architecture.md`). The whole frame,
+  meaning the sim's share, the scene layer and the backend with the engine,
+  fits 16.7 ms at max tier with `Low`. `Medium` and `High` are not bound to
+  it on minimum spec. The check is a manual measurement on a minimum-spec
+  machine, since CI has no GPU (§15.14). Integrated graphics uses shared
+  memory, so the game's GPU memory counts against the 8 GB of RAM. The
+  process's combined budget is in `16` §16.10.
 - `app.render` adds nothing to the sim's 6 ms. The cost of `SetPromoted` and
   `AgentsAt` is `sim.flow`'s.
 
@@ -531,6 +563,19 @@ Author:
   because `IFlowSystem` offers no enumeration to check against (§15.4).
 - `test_scene_assembly_has_no_engine_reference` — static
 - `test_scene_build_within_frame_budget_at_max_tier`
+- `test_graphics_presets_are_monotone_and_high_matches_phase1_behaviour`
+  (D10, §15.14)
+- `test_graphics_low_and_medium_match_the_preset_table` (Q-034, §15.14)
+- `test_graphics_settings_validate_clamps_every_knob`
+- `test_scene_agents_capped_by_graphics_setting`
+- `test_scene_rebuilds_when_graphics_settings_change`
+- `test_promotion_draw_agents_off_demotes_every_promoted_node`
+- `test_render_loop_is_outcome_neutral_across_graphics_changes` —
+  integration, as `test_render_loop_is_outcome_neutral_with_scripted_camera`,
+  with the graphics settings also switched between every preset and several
+  custom values at irregular frames. Checkpoints must be identical.
+- `test_scene_gameplay_primitives_identical_at_every_graphics_setting` —
+  the §15.14 invariant
 
 ---
 
@@ -575,3 +620,146 @@ through the command queue, and speed and pause controls drive the pacer. There
 is no other UI at Phase 1 (`17-interfaces-ui.md`). The command plumbing and
 the lane-state read are answered by Q-010 (`08` §8.7, `09` §9.7b), and this
 module draws the lane state as pips (§15.5).
+
+---
+
+## 15.14 Graphics quality — HUMAN DECISION, owner, 2026-09-27 (D10)
+
+> **HUMAN DECISION — owner, 2026-09-27 (D10):** "the final user should be
+> able to increase or decrease graphics so the game can also be run on a low
+> resource laptop." The Architect specified the mechanism and did not decide
+> it. The owner's follow-up decisions (2026-09-27, Q-034) set the low-end
+> target, the first-launch default and the pause, and asked the Architect to
+> propose the `Low` and `Medium` values (below).
+
+**The rule that makes it safe.** Graphics quality is **presentation only**.
+It never changes sim state, the tick rate, a hash, a checkpoint, a command
+or the frame loop's `Step` count. It is not in a save and never reaches the
+sim. It can change `SetPromoted` calls (`DrawAgents`), and that is safe,
+because promotion is outcome-neutral by construction (`09` §9.1, §9.7). It
+changes only **render-driven** promotion (§15.7), never promotion for sim
+purposes (`01-architecture.md` promotion rule 2, which is not
+`app.render`'s). `test_render_loop_is_outcome_neutral_across_graphics_changes`
+and the `determinism_promotion` gate prove it.
+
+**Invariant: graphics never affect gameplay or difficulty.** This is binding,
+owner, 2026-09-27 (D10 addendum).
+
+1. **Same information at every setting.** For any sim state, camera and
+   `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
+   layer is **identical** in kind, layer, colour, geometry and source, and
+   so is their order. That covers runways, taxiways, stands, landside nodes,
+   queue fill, lane pips and aircraft. Only `Agent`-layer primitives
+   (individual passenger dots) may differ. They are decoration, since queue
+   length is always shown by the queue fill. A lower preset may simplify
+   **how** something is drawn, never **whether** it is shown.
+2. **This binds future elements too.** Any later gameplay-relevant element,
+   such as alerts, threshold states, flight or delay states, or anything the
+   player acts on, is added outside the `Agent` layer, or in `app.ui`, and is
+   never gated by a graphics knob. A knob that would hide or thin one is
+   rejected in review. It needs its own owner decision.
+3. **No effect on time or input.** No knob changes the sim tick, the game
+   speed, pause, the pacer, command timing or any click target. Pacing
+   depends only on elapsed real time (§15.8), and the `FrameRateCap` floor
+   of 15 keeps 4x real-time. Hit-testing uses the layout in world space (`17`
+   §17.5), which no knob touches. The backend reports clicks in full-screen
+   pixel coordinates whatever `ResolutionScalePercent` is (§15.10). The
+   settings panel pauses the sim while it is open (`17` §17.4a, owner,
+   Q-034). That pause depends only on whether the panel is open, never on a
+   knob's value, and pausing is outcome-neutral (§15.8).
+4. **Performance scaling is presentation only.** The sim runs the same fixed
+   tick at every setting. A low preset saves only presentation cost: drawing,
+   agent-view derivation and backend rendering.
+
+Tests: `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+builds a max-tier fake scene at each preset and at custom extremes, and
+asserts that the non-`Agent` primitive lists are equal element by element.
+`17` §17.10 adds the UI counterpart.
+
+```
+enum GraphicsPreset { Low, Medium, High, Custom }   // saved by name, never by number (17 §17.4a)
+
+readonly struct GraphicsSettings {
+  GraphicsPreset Preset
+  // scene-layer knobs
+  bool   DrawAgents                 // render-driven promotion and agent dots (§15.5, §15.7)
+  int32  MaxDrawnAgentsPerNode      // 1 .. MAX_DRAWN_AGENTS_PER_NODE
+  // backend knobs (§15.10)
+  int32  FrameRateCap               // 0 = uncapped, else 15 .. 240 frames per second
+  int32  ResolutionScalePercent     // 50 .. 100
+  bool   AntiAliasing
+}
+
+RenderFactory.GraphicsForPreset(GraphicsPreset preset) -> GraphicsSettings   // Custom throws ArgumentException
+RenderFactory.ValidateGraphics(in GraphicsSettings s) -> GraphicsSettings    // clamps every knob into range
+```
+
+Both are on `RenderFactory`, which stays the module's one factory (`08`
+§8.11a). Below, they are called `ForPreset` and `Validate`.
+
+- **Knobs.** They are exactly the six fields above. The scene layer reads
+  `DrawAgents` and `MaxDrawnAgentsPerNode`, and the backend reads the other
+  three (§15.10). `Preset` records the preset that produced the values.
+  Any knob changed by hand makes it `Custom`. Visual effects do not exist
+  at Phase 1 (§15.5, flat colours), so there is no effects knob. A new knob
+  is added by amendment.
+- **Bounds.** They are structural, not player-experience values.
+  `FrameRateCap ≥ 15` keeps the pacer's catch-up cap from binding at 4x
+  (§15.8: it binds below about 13 fps). `MaxDrawnAgentsPerNode ≥ 1` keeps a
+  promoted node visibly promoted.
+- **`Validate`** clamps each integer into its range, maps a non-zero
+  `FrameRateCap` below 15 to 15, and leaves `Preset` unchanged. Every
+  settings value entering the scene layer or the backend has passed through
+  it.
+- **Monotonicity (binding on the owner's values).** Every knob is `Low ≤
+  Medium ≤ High` in cost: `DrawAgents` false ≤ true, a smaller cap ≤ a
+  larger one, and `FrameRateCap` read as cost, with 0 counting as the most
+  expensive. So a lower preset never costs more.
+- **`High`** is the Phase 1 behaviour this file already specifies:
+  `DrawAgents = true`, `MaxDrawnAgentsPerNode = MAX_DRAWN_AGENTS_PER_NODE`,
+  `FrameRateCap = 0`, `ResolutionScalePercent = 100`, `AntiAliasing = true`.
+  That is not a new value.
+- **`Low` and `Medium` values.** The owner asked the Architect to propose
+  them (Q-034). **LOW CONFIDENCE — owner may revise.**
+
+  | Knob | `Low` | `Medium` | `High` |
+  |---|---|---|---|
+  | `DrawAgents` | false | true | true |
+  | `MaxDrawnAgentsPerNode` | 32 | 64 | 256 (`MAX_DRAWN_AGENTS_PER_NODE`) |
+  | `FrameRateCap` | 60 | 60 | 0 (uncapped) |
+  | `ResolutionScalePercent` | 75 | 100 | 100 |
+  | `AntiAliasing` | false | false | true |
+
+  Why these values:
+  - `Low` removes what integrated graphics pays for most: anti-aliasing,
+    fill rate (75 % scale is about 56 % of the pixels), and the agent dots.
+    Agents are decoration under invariant 1, so no information is lost.
+    Its `MaxDrawnAgentsPerNode` applies only if the player turns
+    `DrawAgents` back on, and it keeps monotonicity.
+  - `Low` caps at 60 rather than lower, because the render target is 60 fps
+    (`01`, §15.11). A lower cap would miss it by construction. The cap also
+    stops a laptop from rendering frames it cannot show, which saves heat
+    and battery.
+  - `Medium` keeps full resolution and the agent dots, at a quarter of
+    `High`'s dots per node, without anti-aliasing and capped at 60.
+  - The table is monotone in every knob.
+- **Default on first launch: `Medium`** (HUMAN DECISION — owner,
+  2026-09-27, Q-034). It is used when no valid preference is stored
+  (`16` §16.6). The spec binds only `Low` to the render target on minimum
+  spec (§15.11). `Medium` is not bound there.
+- **The low-end target** (HUMAN DECISION — owner, 2026-09-27, Q-034). The
+  minimum spec is a 4-core CPU, 8 GB RAM and integrated graphics with no
+  dedicated VRAM (`01-architecture.md`). `Low` holds the render target
+  there at max tier (§15.11). Shared GPU memory counts against the 8 GB
+  (`16` §16.10). CI has no GPU, so this is checked by a manual measurement
+  on a minimum-spec machine at 1920 × 1080, in the T-025 playtest or a
+  later one. The `Low` row keeps its LOW CONFIDENCE marker until that
+  measurement is recorded in `CHANGELOG.md`. If it misses, the `Low` values
+  are corrected by amendment, never by a worker. **LOW CONFIDENCE**: the
+  1920 × 1080 measurement resolution is the Architect's, so the check has a
+  fixed condition. Note also that graphics settings cannot reduce the
+  **sim's** cost (6 ms per tick at max tier, `01`), and the 4-core CPU
+  minimum is unchanged. On a laptop, CPU and integrated GPU share one power
+  and heat budget, so heavy drawing can slow the sim's CPU. That is one
+  more reason `Low` caps its frame rate. If real time is still missed, the
+  pacer slows gracefully (§15.8), and outcomes stay unchanged.

@@ -1773,3 +1773,183 @@ LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
              true blocking history, for the owner with D6. Also, an
              `Absorb` outside a tick is detected only when it has something
              to publish.
+
+## 2026-09-27 — spec/15 §15.5–§15.7, §15.9–§15.12, §15.14 (new); 17 §17.1, §17.3, §17.4a (new), §17.7, §17.8, §17.10, §17.11; 16 §16.5–§16.7, §16.11, §16.12; INDEX — D10 / Q-034: player-adjustable graphics quality
+Reason:      HUMAN DECISION — owner, 2026-09-27 (D10): "the final user
+             should be able to increase or decrease graphics so the game can
+             also be run on a low resource laptop." The Architect specified
+             the mechanism:
+             - presets and six knobs (§15.14), presentation only;
+             - `Build` and `Update` take the settings, and `DrawAgents`
+               gates render-driven promotion, which is outcome-neutral by
+               `09` §9.1;
+             - the backend applies frame cap, resolution scale and
+               anti-aliasing;
+             - a modal settings panel in `app.ui`;
+             - a pinned preference text, stored through the host's
+               `IPreferenceStore`, never in a bundle, save, command or hash.
+             `01` and `02` are untouched.
+Raised by:   D10 (owner), Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner,
+             these tasks are stale:
+             - **T-020** (render scene): new `Build`/`Update` signatures,
+               `RenderFrame.Graphics`, the `RenderFactory` graphics
+               functions, and six new tests;
+             - **T-029** (UI scene): the three new inputs, `UiFrame` fields,
+               `CreateController`'s `initialGraphics`, the preference codec,
+               and six new tests;
+             - **T-031** (headless host): frame loop steps 2, 4 and 5,
+               `IPresentationComposer.Compose`'s store, and three new
+               tests;
+             - **T-032** (render backend): apply the backend knobs;
+             - **T-033** (UI backend): the settings icon and panel, with
+               `LocalisedKey` text, the first player-visible text;
+             - **T-034** (Unity shell): the bootstrap's `IPreferenceStore`
+               over the engine's player preferences.
+             **Scope added: 1** (a settings panel and the graphics setting),
+             owner-decided. The running total becomes 9.
+Signed off:  owner, 2026-09-27 (D10, the requirement). The mechanism is the
+             Architect's.
+HUMAN DECISION PENDING (owner):
+             - the Low and Medium preset values (until set, both equal High,
+               as a placeholder);
+             - the first-launch default (High until decided);
+             - the low-end target machine, which may sit below `01`'s locked
+               minimum spec. Graphics cannot reduce the 6 ms sim cost.
+             - whether the settings panel pauses (it does not, until
+               decided).
+LOW CONFIDENCE: the knob set, in particular `AntiAliasing` as a bool and
+             the `FrameRateCap` floor of 15, derived from the pacer's
+             catch-up cap.
+Addendum:    HUMAN DECISION — owner, 2026-09-27: graphics must not affect
+             gameplay or difficulty. `15` §15.14 and `17` §17.4a state a
+             binding invariant:
+             - every primitive outside the `Agent` layer is identical at
+               every setting, and so is its order;
+             - future gameplay-relevant elements are never gated by a knob;
+             - no knob changes the tick, speed, pause, pacing, command
+               timing or click targets, and clicks stay in full-screen
+               pixels under resolution scale;
+             - performance scaling is presentation only.
+             New tests: `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+             (T-020) and
+             `test_ui_controls_and_hits_identical_at_every_graphics_setting`
+             (T-029). T-032 is bound by the backend clause.
+
+## 2026-09-27 — spec/01 (minimum-spec GPU line only); 15 §15.10, §15.11, §15.12, §15.14; 17 §17.4, §17.4a, §17.10, §17.11; 16 §16.6, §16.10, §16.11, §16.12; INDEX; open-questions — Q-034: owner decisions on graphics quality
+Reason:      HUMAN DECISIONS — owner, 2026-09-27, closing the items D10 left
+             pending:
+             1. The minimum GPU is integrated graphics with no dedicated
+                VRAM. The CPU (4 cores) and RAM (8 GB) minimums are
+                unchanged. It is recorded in `01-architecture.md` as
+                "HUMAN DECISION 2026-09-27 (Q-034)".
+             2. `Low` must hold the frame budget on that hardware. Shared
+                GPU memory counts against the 8 GB.
+             3. The settings panel pauses the sim while it is open.
+             4. The first-launch default is `Medium`.
+             5. The Architect proposes the `Low` and `Medium` values.
+             Changes:
+             - `01`: the minimum-spec row now reads "integrated graphics
+               with no dedicated VRAM" instead of "GPU with 2 GB VRAM".
+               Nothing else in `01` changed, and nothing in `02`.
+             - `15` §15.11: on minimum spec, `Low` holds 60 fps at max tier.
+               `Medium` and `High` are not bound there.
+             - `15` §15.14: the `Low`/`Medium` table, `Medium` as the
+               default, the low-end target, and a manual measurement on a
+               minimum-spec machine at 1920 × 1080. Invariant 3 notes the
+               panel's pause.
+             - `15` §15.10: the backend's draw calls are bounded by layers
+               and colour roles, never by primitive count.
+             - `17` §17.4, §17.4a: `Pacing.Paused` = player's pause OR
+               `SettingsOpen`. While the panel is open, only the three
+               settings inputs apply.
+             - `16` §16.6: the frame loop needs no change, since
+               `Ui.Pacing.Paused` includes the panel. §16.10 adds a 2 GB
+               process memory budget, shared GPU memory included.
+             Graphics stays presentation only. No change touches sim state,
+             the tick rate, a hash or difficulty. The panel's pause depends
+             on whether it is open, never on a knob, and pausing is
+             outcome-neutral (`15` §15.8).
+Raised by:   owner, Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner:
+             - **T-020**: `ForPreset` returns the new `Low`/`Medium` values.
+               New test `test_graphics_low_and_medium_match_the_preset_table`.
+             - **T-029**: the panel pauses, and pause, speed and clicks are
+               ignored while it is open. `test_ui_settings_toggle_does_not_pause`
+               is **replaced** by
+               `test_ui_settings_open_pauses_and_close_restores_player_pause`
+               and `test_ui_pause_and_speed_ignored_while_settings_open`.
+             - **T-031**: the default preference is `Medium`. New test
+               `test_frame_loop_settings_opened_this_frame_steps_nothing`.
+             - **T-032**: the draw-call bound.
+             - **T-033**: pause and speed controls are inert while the panel
+               is open.
+             - **T-025** (playtest), or a later one: measure `Low` (60 fps,
+               ≤ 2 GB) on a minimum-spec machine.
+             - `03-module-map.md`'s budget protocol uses "the minimum spec of
+               `01`" as its reference machine. That now means an
+               integrated-graphics machine. Sim budgets are CPU-only, so
+               their numbers are unaffected.
+             Scope added: 0. The panel already existed (D10). Running total
+             stays 9.
+Signed off:  owner, 2026-09-27 (Q-034). This includes the `01` GPU line,
+             which is the only `01` change the owner authorised.
+LOW CONFIDENCE — owner may revise:
+             - the `Low` and `Medium` values (`15` §15.14);
+             - the 2 GB process memory budget (`16` §16.10);
+             - the 1920 × 1080 measurement condition (`15` §15.14);
+             - the backend draw-call bound (`15` §15.10);
+             - the Architect's reading of `01`'s "60 fps at max tier on
+               minimum spec" as binding at `Low` (the owner's decision 2),
+               not at every preset.
+Budget note: `Medium` (the default) is **not** bound to 60 fps on minimum
+             spec, and nothing has been measured. The Architect expects it
+             to hold at 1920 × 1080 on current integrated graphics, since it
+             draws flat colours, about 1 000 agent dots and no
+             anti-aliasing, provided the backend batches (§15.10). It is at
+             risk on high-DPI laptop panels at 100 % scale, and where GPU
+             heat throttles the CPU. On such machines the first launch may
+             miss 60 fps until the player picks `Low`. The Architect did not
+             work around this, per the owner's instruction.
+
+## 2026-09-27 — spec/08 §8.6 "Allocation" (new); INDEX — Q-035: the event bus allocates nothing after `Build`
+Reason:      `EventBus.Publish<T>` creates a channel on the first publish of a
+             type with no subscriber. In T-007's budget test that happens at
+             tick 1695, inside the measured window, and allocates 368 bytes.
+             `08` §8.5 and `07` forbid allocation on the tick path, but §8.6
+             never said what that means for the bus. A module cannot
+             pre-warm the bus, because `Publish` outside a tick throws. So
+             the rule is on the bus:
+             - it allocates nothing after `Build`, with no warm-up;
+             - the channel set is fixed at `Build`;
+             - a type with no subscriber stores nothing, but it still
+               consumes its `Sequence`, returns its `EventId` and runs
+               every check;
+             - capacity for `MAX_EVENTS_PER_TICK` events is reserved at
+               `Build`, so a new per-tick peak does not grow storage.
+             The alternative, allowing a first publish to allocate, was
+             rejected. It would make every module's budget test depend on
+             which events happened to fire during warm-up.
+Raised by:   Q-035 (worker / T-007; filed as "Q-034" and renumbered)
+Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
+             `Channel.cs` create channels lazily and let their lists grow.
+             The Planner needs a small `sim.core` fix task:
+             - writable paths `src/sim/core/**` only;
+             - the five new tests of §8.6 are the Test Author's, in
+               `tests/sim/core/`;
+             - no dependencies, since everything it touches is merged;
+             - reviewed by `reviewer-core`.
+             T-007 stays blocked on
+             `test_flow_budget_update_path_allocates_nothing` until that
+             task merges. T-007's own code and tests are unchanged.
+             Nothing observable changes: `EventId`s, handler order and
+             calls, hashes and goldens stay the same, because events are
+             not hashed or saved (§8.9) and an unsubscribed event has no
+             handler. The existing `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`
+             stays valid, since the new rule is stricter. Reserving
+             `MAX_EVENTS_PER_TICK` per subscribed type costs, once at
+             `Build`, `MAX_EVENTS_PER_TICK` × (envelope + payload size) per
+             subscribed type. The storage layout is left open so the
+             implementer can share it if that figure matters. No scope
+             added.
+Signed off:  not required. `01` and `02` are untouched.
