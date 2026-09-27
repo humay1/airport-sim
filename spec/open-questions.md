@@ -988,3 +988,50 @@ Answer:      `09` §9.11 "File format" and the new §9.12:
              LOW CONFIDENCE for the owner: `EPSILON`, the cap value,
              unlimited `Hall` capacity and head-of-line blocking.
 Status:      ANSWERED (spec/09-interfaces-flow.md#912-exact-tick-semantics-q-032)
+
+### Q-033 — `sim.flow` entry-point details; JSON string escapes
+Raised by:   T-007 Test Author and reviews (via coordinator) / T-007
+Blocking:    T-007 tests
+Question:    (1) Which exceptions do `Inject` and `Absorb` throw? (2) Is
+             `PassengersMissedFlight` one event per flight or per cohort,
+             and what is `LastBlockedAt` for a cohort never blocked? (3)
+             What is the `DueAt` of a merged corridor cohort? (4) What is the
+             `EnteredNodeAt` of an injected cohort? (5) What value does the
+             live-cohort ceiling take? (6) May `Absorb` run outside a tick?
+             (7) Which string escapes does the `08` §8.11 JSON subset allow?
+Why it matters: Each one is a test assertion, and three loaders must agree
+             on strings.
+Answer:      `09` §9.7 "Exact rules", §9.3, §9.9, §9.10 and `08` §8.11
+             "Strings":
+             - (1) A wrong or unknown node throws `ArgumentException`, and
+               `count <= 0` throws `ArgumentOutOfRangeException`. An
+               unknown flight in `Absorb` returns 0.
+             - (2) One event per flight, and only if the count is above 0.
+               `LastBlockedAt` is the node holding the most missed
+               passengers (the `MostHeldAt` rule). Missed cohorts are
+               removed.
+             - (3) Corridor cohorts merge only with an equal `DueAt`.
+             - (4) `N`, the number of flow `Tick` calls completed: `t`
+               during tick `t`, or `CurrentTick` between ticks.
+             - (5) Fixture sizing, set by the Test Author. It is not
+               balance.
+             - (6) `Absorb` publishes before it mutates, so outside a tick
+               `Publish` throws `InvalidOperationException` with no state
+               changed. `Inject` may be called between ticks.
+             - (7) JSON's eight escapes plus `\uXXXX`, which matches the
+               merged T-027 loader. Surrogate escapes, raw control
+               characters and invalid UTF-8 are load failures.
+             Added from the T-010 Test Author (`09` §9.7 "Promotion rules",
+             `19` §19.2):
+             - (8) `AgentsAt` gives exactly one view per passenger, so its
+               count equals `Population`.
+             - (9) An unknown node throws `ArgumentException`. Every node is
+               promotable.
+             - (10) `SetPromoted` is callable at any time, inside a `Tick`
+               too.
+             - (11) `SetPromoted` never allocates, and `AgentsAt` allocates
+               nothing after warm-up.
+             - (12) A separate harness task, not T-010, makes the
+               `Promotion` gate promote. It depends on T-010 and on the CLI
+               composition including `sim.flow`.
+Status:      ANSWERED (spec/09-interfaces-flow.md#97-module-interface)

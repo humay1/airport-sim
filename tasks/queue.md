@@ -75,6 +75,7 @@ to wave through a failing `determinism` check.
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | IN_PROGRESS |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
+| T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -149,7 +150,14 @@ direct `Depends` edge. Order:
     sequence after T-007 (and, since T-023 also lands in that directory,
     serialised against it too — see Phase 1 below).
 13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
-    shared with T-006/T-030 — do not release concurrently with either.
+    shared with T-006/T-030/T-014 — do not release concurrently with any of
+    them.
+14. **T-014** (harness promotion gate, Q-033 item e) — after T-009 **and**
+    T-010 both merge (amends `HarnessGates.Promotion` to call
+    `IFlowSystem.SetPromoted`, needing both `sim.flow` in the CLI
+    composition and real promotion behaviour). Writes `tools/SimHarness/**`,
+    shared with T-006/T-013/T-030 — do not release concurrently with any of
+    them.
 
 ### Q-012 resolved: `sim.world` gates the kill-gate chain
 
