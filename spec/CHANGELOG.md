@@ -1733,3 +1733,33 @@ LOW CONFIDENCE: the choices below are player-visible and are for the
              - Blocked cohorts not merging. This may raise the live-cohort
                count during long spillback, and the §9.10 budget test's
                cohort ceiling will show whether it does.
+
+## 2026-09-27 — spec/09 §9.2, §9.3, §9.7, §9.9, §9.10; 08 §8.11 "Strings"; INDEX — Q-033: flow entry points, JSON strings
+Reason:      The T-007 Test Author and the reviews found seven gaps:
+             - exceptions of `Inject` and `Absorb`;
+             - the granularity of `PassengersMissedFlight` and its node;
+             - the merged corridor `DueAt`;
+             - the injected `EnteredNodeAt`;
+             - the value of the cohort ceiling;
+             - `Absorb` outside a tick;
+             - string escapes in the shared JSON subset.
+             Each gets the narrowest rule. `LastBlockedAt` is redefined as
+             the node holding the most missed passengers. The old wording,
+             "last blocked", needed per-cohort history that
+             `PassengerCohort` does not hold, and the new rule matches
+             §9.7a and the D6 hold's `heldAt`.
+Raised by:   Q-033
+Impact:      Nothing of `sim.flow` is merged. `sim.delay` (`14` §14.9) only
+             records the node, so its rules are unchanged. The string rule
+             was chosen to match the merged T-027 loader
+             (`src/sim/core/ContentJson.cs`). It already accepts exactly the
+             eight escapes plus `\u` and rejects raw control characters.
+             **One divergence:** that loader accepts a `\u` surrogate, which
+             is now a load failure. It needs a small follow-up fix with a
+             test, and the Planner should task it. Whether it rejects invalid
+             UTF-8 was not checked. No scope added.
+Signed off:  not required
+LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
+             true blocking history, for the owner with D6. Also, an
+             `Absorb` outside a tick is detected only when it has something
+             to publish.

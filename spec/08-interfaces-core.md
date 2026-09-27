@@ -949,6 +949,15 @@ ContentLoaderFactory.Create() -> IContentLoader
   exponent is a load failure: fixed-point values are **decimal strings**,
   read with `Fx.Parse` (`04-data-schemas.md`). Duplicate keys, unknown keys,
   missing keys and `schema_version != 1` are load failures.
+- **Strings (Q-033).** Binding on every loader that uses this subset
+  (`08`, `09` §9.11, `18` §18.2). A string is `"`, then characters, then
+  `"`. The only escapes are JSON's eight, `\"`, `\\`, `\/`, `\b`, `\f`,
+  `\n`, `\r` and `\t`, plus `\uXXXX`, where `XXXX` is exactly four hex
+  digits of either case. `\u` in `D800`–`DFFF` (a surrogate) is a load
+  failure, so a character outside the BMP is written as raw UTF-8. Any other
+  escape is a load failure. So is a raw character below `0x20` inside a
+  string, and so is invalid UTF-8 anywhere in the file. Keys are strings
+  under the same rule, and they compare ordinally after unescaping.
 - **Validation**, each a hard failure naming the path and the field
   (`07-conventions.md`): the field rules of `04-data-schemas.md`; ids unique
   across all files; `AircraftDefinition.SizeCategory` resolves; size
