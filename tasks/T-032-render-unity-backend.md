@@ -6,8 +6,14 @@
 | Module | `app.render` (backend only) |
 | Assigned role | worker |
 | Depends on | T-020, T-031 |
-| Spec source | `spec/15-interfaces-render.md` §15.10 "The backend contract" |
+| Spec source | `spec/15-interfaces-render.md` §15.10 "The backend contract" (graphics knobs added by D10/Q-034) |
 | Blocked by | — |
+
+**Amendment (D10/Q-034, this cycle):** the backend now applies three
+graphics knobs from `RenderFrame.Graphics` (`FrameRateCap`,
+`ResolutionScalePercent`, `AntiAliasing`) and is bound by a draw-call cap
+tied to `DrawLayer`/`ColourRole`, never to primitive count. This does not
+change this task's dependency list.
 
 ## Writable paths
 
@@ -18,8 +24,8 @@ src/app/render/Unity/**
 ## Readable specs
 
 `CLAUDE.md`, `spec/00-overview.md`, `spec/01-architecture.md`,
-`spec/15-interfaces-render.md` §15.9, §15.10, `spec/16-interfaces-host.md`
-§16.2, §16.6, §16.7
+`spec/15-interfaces-render.md` §15.9, §15.10, §15.11, §15.14,
+`spec/16-interfaces-host.md` §16.2, §16.6, §16.7, §16.10
 
 ## Interface to implement
 
@@ -41,6 +47,24 @@ paraphrased:
   branches on sim state. Anything needing a decision belongs in the scene
   layer (T-020), where it is testable.
 - Issues no commands at Phase 1.
+- **Graphics (D10, §15.14).** Applies `RenderFrame.Graphics`'s backend
+  knobs (`FrameRateCap`, `ResolutionScalePercent`, `AntiAliasing`) through
+  the engine's own settings, and only when they differ from those last
+  applied. Which engine API it uses is its own choice. It reads no other
+  source of quality settings, and never Unity's quality levels on their
+  own. Resolution scale changes only the rendered image — the camera, the
+  screen size in `FrameInput` and every reported click stay in
+  full-screen pixels. It draws every primitive it is handed at every
+  setting (`15` §15.14's invariant) — it never filters, thins or hides a
+  primitive by graphics setting itself.
+- **Draw calls (Q-034).** Integrated graphics is the minimum GPU (`15`
+  §15.11). The number of draw calls per frame is bounded by the number of
+  `DrawLayer`s and `ColourRole`s, never by the number of primitives. It
+  creates no engine object per primitive and allocates no engine object
+  per frame after the first. **LOW CONFIDENCE**: this binds the
+  implementation more tightly than the rest of the contract; it is the
+  Architect's reading of what `Low` needs to hold budget on integrated
+  graphics.
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
 
@@ -65,6 +89,8 @@ here. It has no test to carry a number."
 - [ ] No writes outside writable paths
 - [ ] No sim member call, no branch on sim state
 - [ ] Reviewer approved
+- [ ] Graphics knobs applied only on change, and every primitive still
+      drawn at every setting (D10, Q-034)
 
 ## Worker notes
 
@@ -74,3 +100,12 @@ shell (T-034) it will eventually sit inside — build and review it against
 the published contract; it cannot be exercised end-to-end until the shell
 exists. Do not add the frame order, input polling ownership, or any camera
 decision here that §15.10 assigns to the scene layer.
+
+**Graphics (D10/Q-034) does not change this task's dependency list.** The
+three backend knobs and the draw-call bound are additive to the same
+contract this task already implements. Which control or knob is shown, and
+whether the panel pauses, are `app.ui`'s decisions (T-029/T-033), not this
+task's — this backend only reads `RenderFrame.Graphics` and applies its
+three fields. The draw-call bound is LOW CONFIDENCE and the tightest part
+of this contract; if it cannot be met as written, file an open question
+rather than loosening it unilaterally.
