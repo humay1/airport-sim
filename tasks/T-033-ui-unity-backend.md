@@ -6,8 +6,14 @@
 | Module | `app.ui` (backend only) |
 | Assigned role | worker |
 | Depends on | T-029, T-031 |
-| Spec source | `spec/17-interfaces-ui.md` §17.8 "The backend contract" |
+| Spec source | `spec/17-interfaces-ui.md` §17.8 "The backend contract" (settings panel and control added by D10/Q-034) |
 | Blocked by | — |
+
+**Amendment (D10/Q-034, this cycle):** the control strip gains a fifth,
+settings icon reporting `ToggleSettings`, and a modal panel drawn from
+`UiFrame.Graphics`/`SettingsOpen` — the first player-visible text at Phase 1
+(`LocalisedKey`s). This is additive to this task's existing scope and does
+not change its dependency list.
 
 ## Writable paths
 
@@ -19,8 +25,9 @@ Built in `app.host`'s Unity project (`16` §16.2), the same as T-032.
 
 ## Readable specs
 
-`CLAUDE.md`, `spec/00-overview.md`, `spec/17-interfaces-ui.md` §17.7, §17.8,
-`spec/16-interfaces-host.md` §16.2, §16.6, §16.7
+`CLAUDE.md`, `spec/00-overview.md`, `spec/17-interfaces-ui.md` §17.4a, §17.7,
+§17.8, `spec/15-interfaces-render.md` §15.14, `spec/04-data-schemas.md`
+(`LocalisedKey`), `spec/16-interfaces-host.md` §16.2, §16.6, §16.7
 
 ## Interface to implement
 
@@ -37,6 +44,14 @@ Binding, copied from `spec/17-interfaces-ui.md` §17.8, not paraphrased:
   other primary/secondary click inside the game view as
   `PrimaryClick`/`SecondaryClick` at its screen position. Optional keyboard
   shortcuts map to the same inputs.
+- **Settings (D10, §17.4a).** A fifth control, a settings icon, reports
+  `ToggleSettings`. While `UiFrame.SettingsOpen`, it draws a panel from
+  `UiFrame.Graphics`: one control per preset (`Low`, `Medium`, `High`),
+  reporting `SetGraphicsPreset`, and one control per knob of `15` §15.14,
+  reporting `SetGraphicsSettings` with that knob changed. Panel text is
+  `LocalisedKey`s (`04-data-schemas.md`) — the first player-visible text at
+  Phase 1. A click on the panel is never also reported as a world click.
+  The layout and look of the panel are this task's own choice.
 - Collects this frame's inputs, in arrival order, for the bootstrap to put
   in `FrameInput` (`16` §16.6).
 - Calls **no** sim member, never branches on sim state. Like T-032, must
@@ -62,11 +77,23 @@ Not budgeted here.
 - [ ] No writes outside writable paths
 - [ ] No sim member call, no branch on sim state
 - [ ] Reviewer approved
+- [ ] Settings icon and panel present, reading only `UiFrame`, and every
+      other control inert while `SettingsOpen` (D10, Q-034)
 
 ## Worker notes
 
-No text of any kind — icons only, at Phase 1. If a later phase needs
-labels, that is a spec amendment introducing `LocalisedKey`s, not a local
-string literal added here. Depends on T-031 for the same reason T-032
-does: this backend is exercised end-to-end only once the host's frame loop
-and Unity shell exist.
+The four pause/speed controls stay icons only, at Phase 1 — no text of any
+kind. If a later phase needs labels on them, that is a spec amendment
+introducing `LocalisedKey`s, not a local string literal added here. Depends
+on T-031 for the same reason T-032 does: this backend is exercised
+end-to-end only once the host's frame loop and Unity shell exist.
+
+**Settings panel (D10/Q-034) does not change this task's dependency
+list.** It is the first — and, at Phase 1, only — control this task draws
+with text, and that text is `LocalisedKey`s from the start, never a raw
+string: the "icons only" rule above is unchanged for the other four
+controls. The panel's own layout is this task's choice; which presets and
+knobs it exposes, and what pressing them means, is fixed by `17` §17.8 and
+§17.4a and is not this task's to reinterpret. Do not decide whether the
+panel pauses here — that is `app.ui`'s scene layer (T-029), which already
+reflects it in `UiFrame.Pacing`.

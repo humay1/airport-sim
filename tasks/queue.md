@@ -10,9 +10,33 @@ answered and the row is moved back to `QUEUED` with the task file rewritten.
 Numbering follows `tasks/README.md`'s rule: one id block per build-order
 phase (Phase 0: `T-001`–`T-019`; Phase 1: `T-020` onward).
 
-**As of this cycle, `spec/open-questions.md` has no open question.** Q-002
-through Q-012 are all answered, and D1–D9 resolved every HUMAN DECISION
-Q-007/Q-008 left open. No row below is `BLOCKED` on a spec gap.
+**As of this cycle, `spec/open-questions.md` has one open question, Q-035**
+(the EventBus allocation fix, spec PR #45, not yet merged), blocking T-007
+and transitively T-008. Q-002 through Q-034 are all answered, and D1–D10
+resolved every HUMAN DECISION Q-007/Q-008/Q-034 left open. No row below is
+`BLOCKED` in the formal sense (no task file is rewritten pending an answer),
+but T-007 is `IN_PROGRESS (blocked on Q-035)` — see the Phase 0 table.
+
+**D10/Q-034 (player-adjustable graphics quality) applied this cycle:** the
+owner's decision (CHANGELOG.md, 2026-09-27) adds a settings panel and a
+`GraphicsSettings` mechanism, presentation-only, to five already-queued
+Phase 1 tasks. T-020 (render scene): `Build`/`Update` take
+`GraphicsSettings`, `RenderFrame.Graphics`, `RenderFactory.GraphicsForPreset`/
+`ValidateGraphics`, render-driven promotion gated on `DrawAgents`, and six
+new tests. T-029 (UI scene): three new `UiInputKind` values,
+`SettingsOpen`/`Graphics` state and the modal-panel rule, the preference
+codec, and seven new tests. T-031 (headless host): an `IPreferenceStore`
+parameter on `IPresentationComposer.Compose`, frame-loop steps 2/4/5 now
+pass and persist `Ui.Graphics`, a `Medium` default, and four new tests.
+T-032 (render Unity backend): applies the three backend knobs and a
+draw-call bound. T-033 (UI Unity backend): draws the settings icon and
+panel, the first player-visible text (`LocalisedKey`s). None of these five
+tasks' dependency lists changed — this is additive scope inside directories
+each task already owns. T-025 (playtest) gains a done-condition: measure
+the `Low` preset on a minimum-spec machine (60 fps, ≤ 2 GB) and record it in
+`CHANGELOG.md`. The `Low`/`Medium` preset values and the 2 GB memory budget
+stay LOW CONFIDENCE, the owner's to revise; no task file states them as
+final.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
@@ -68,17 +92,27 @@ to wave through a failing `determinism` check.
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | MERGED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
-| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026 | QUEUED (tests being authored) |
+| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026 | IN_PROGRESS (blocked on Q-035) |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (blocked on T-007 merging) |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED (tests being authored) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
-| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | IN_PROGRESS |
+| T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
+
+**Status corrections, this cycle:** T-012 is **MERGED**, not `IN_PROGRESS` —
+the previous row was stale. T-007 is **IN_PROGRESS**, not `QUEUED`, and is
+now blocked on **Q-035** (the EventBus allocation fix, spec PR #45, not yet
+merged); its worker's own task file and `spec/open-questions.md` carry the
+detail. This Planner does not write a Q-035 task row or task file this
+cycle — Q-035 is not yet answered, and `tasks/README.md`'s lifecycle
+reserves that to once the Architect's fix lands. T-008 stays
+`TESTS_AUTHORED (blocked on T-007 merging)`, transitively blocked on the
+same question.
 
 ### Release order within Phase 0 (respecting shared-path serialisation)
 
