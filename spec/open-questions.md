@@ -1078,3 +1078,38 @@ Answer:      `15` §15.14:
              §15.14) and a 2 GB process memory budget (`16` §16.10), both
              LOW CONFIDENCE — owner may revise.
 Status:      ANSWERED (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)
+
+### Q-035 — `sim.core`'s `EventBus` allocates on the first publish of an event type
+Raised by:   worker / T-007, 2026-09-27. It was filed as "Q-034", which
+             collides with the graphics question, and was renumbered by the
+             coordinator.
+Blocking:    T-007 (`FlowBudgetTests.test_flow_budget_update_path_allocates_nothing`)
+Question:    `EventBus.Publish<T>` creates a `Channel<T>` the first time a
+             type with no subscriber is published. In `FlowBudgetTests.Loaded`
+             nothing subscribes to `sim.flow`'s events. The first
+             `QueueThresholdExceeded` comes at tick 1695, inside the
+             measured window (ticks 1201–1799), and allocates 368 bytes
+             there. `08` §8.6 did not say whether that is allowed. It
+             reproduces on `origin/main` without T-007's changes, and the
+             fix is outside `sim.flow`'s paths. Is this a `sim.core` defect,
+             or is the test's expectation wrong?
+Answer:      A `sim.core` defect, from a gap in `08` §8.6. The test is right:
+             `08` §8.5 and `07` "Performance" forbid allocation on the tick
+             path, and neither makes an exception for a first publish.
+             A module cannot pre-warm the bus, because `Publish` outside a
+             tick throws. So a first-publish allowance would push an
+             unfixable warm-up duty onto every module.
+             `08` §8.6 "Allocation" now states:
+             - after `Build`, the bus allocates nothing, from the first
+               tick, whatever was published before and whatever the
+               earlier per-tick peaks were;
+             - the channel set is fixed at `Build`, because subscription
+               closes there;
+             - a type with no subscriber stores nothing, but its `Publish`
+               still runs every check, consumes a `Sequence` and returns
+               its `EventId`;
+             - capacity for `MAX_EVENTS_PER_TICK` events is reserved at
+               `Build`.
+             Five new `sim.core` tests are named in §8.6. No outcome, hash
+             or golden changes.
+Status:      ANSWERED (spec/08-interfaces-core.md#86-event-bus)
