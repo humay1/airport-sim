@@ -45,7 +45,7 @@
   "autoMode": {
     "allow": [
       "$defaults",
-      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin` after it has checked that a reviewer's APPROVED verdict comment names the PR's current head commit and that CI checks pass. Review happens through PR comments, not GitHub reviews."
+      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin` after it has checked that a reviewer's APPROVED verdict comment names the PR's current head commit and that CI checks pass. Review happens through PR comments, not GitHub reviews. He is then allowed to share his report to the team leader."
     ]
   },
   "enabledPlugins": { "superpowers@claude-plugins-official": false },
