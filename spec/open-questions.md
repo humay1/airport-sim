@@ -1065,4 +1065,10 @@ Answer:      `15` §15.14:
              - the low-end target machine, against `01`'s locked minimum
                spec;
              - whether the settings panel pauses.
+             Owner addendum, 2026-09-27: graphics never affect gameplay or
+             difficulty. A binding invariant in `15` §15.14 and `17` §17.4a:
+             - every non-`Agent` primitive is identical at every setting;
+             - no knob touches time, pacing, input or click targets;
+             - scaling is presentation only.
+             It has tests on both sides.
 Status:      ANSWERED, owner values pending (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)

@@ -446,7 +446,10 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   the engine's own settings, and only when they differ from those last
   applied. Which engine API it uses is its own choice. It reads no other
   source of quality settings, and never Unity's quality levels on their
-  own.
+  own. Resolution scale changes only the rendered image. The camera, the
+  screen size in `FrameInput` and every reported click stay in full-screen
+  pixels. It draws every primitive it is handed at every setting (the
+  §15.14 invariant).
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
 
@@ -554,6 +557,8 @@ Author:
   integration, as `test_render_loop_is_outcome_neutral_with_scripted_camera`,
   with the graphics settings also switched between every preset and several
   custom values at irregular frames. Checkpoints must be identical.
+- `test_scene_gameplay_primitives_identical_at_every_graphics_setting` —
+  the §15.14 invariant
 
 ---
 
@@ -617,6 +622,37 @@ changes only **render-driven** promotion (§15.7), never promotion for sim
 purposes (`01-architecture.md` promotion rule 2, which is not
 `app.render`'s). `test_render_loop_is_outcome_neutral_across_graphics_changes`
 and the `determinism_promotion` gate prove it.
+
+**Invariant: graphics never affect gameplay or difficulty.** This is binding,
+owner, 2026-09-27 (D10 addendum).
+
+1. **Same information at every setting.** For any sim state, camera and
+   `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
+   layer is **identical** in kind, layer, colour, geometry and source, and
+   so is their order. That covers runways, taxiways, stands, landside nodes,
+   queue fill, lane pips and aircraft. Only `Agent`-layer primitives
+   (individual passenger dots) may differ. They are decoration, since queue
+   length is always shown by the queue fill. A lower preset may simplify
+   **how** something is drawn, never **whether** it is shown.
+2. **This binds future elements too.** Any later gameplay-relevant element,
+   such as alerts, threshold states, flight or delay states, or anything the
+   player acts on, is added outside the `Agent` layer, or in `app.ui`, and is
+   never gated by a graphics knob. A knob that would hide or thin one is
+   rejected in review. It needs its own owner decision.
+3. **No effect on time or input.** No knob changes the sim tick, the game
+   speed, pause, the pacer, command timing or any click target. Pacing
+   depends only on elapsed real time (§15.8), and the `FrameRateCap` floor
+   of 15 keeps 4x real-time. Hit-testing uses the layout in world space (`17`
+   §17.5), which no knob touches. The backend reports clicks in full-screen
+   pixel coordinates whatever `ResolutionScalePercent` is (§15.10).
+4. **Performance scaling is presentation only.** The sim runs the same fixed
+   tick at every setting. A low preset saves only presentation cost: drawing,
+   agent-view derivation and backend rendering.
+
+Tests: `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+builds a max-tier fake scene at each preset and at custom extremes, and
+asserts that the non-`Agent` primitive lists are equal element by element.
+`17` §17.10 adds the UI counterpart.
 
 ```
 enum GraphicsPreset { Low, Medium, High, Custom }   // saved by name, never by number (17 §17.4a)

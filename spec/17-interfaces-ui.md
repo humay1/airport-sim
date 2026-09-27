@@ -128,6 +128,12 @@ sim.
   (§17.4), whether or not the panel is open.
 - While `SettingsOpen`, `PrimaryClick` and `SecondaryClick` are ignored, so
   the panel is modal over the world. Pause and speed still work.
+- **Invariant: graphics never affect gameplay (owner, 2026-09-27, D10
+  addendum; `15` §15.14).** `Graphics` is read by nothing in this module
+  except `UiFrame.Graphics` and the preference codec. Pacing, the pause and
+  speed controls, the hit test, the lane request and its command timing,
+  and the control strip are identical at every graphics setting. A future
+  control or alert the player acts on is never gated by a graphics knob.
 - **Persistence: a player preference, not save state.** The preference
   value is the text
   `graphics 1 <Preset name> <DrawAgents 0|1> <MaxDrawnAgentsPerNode> <FrameRateCap> <ResolutionScalePercent> <AntiAliasing 0|1>`,
@@ -312,6 +318,10 @@ Done-condition tests, phrased per `07-conventions.md`:
 - `test_ui_graphics_changes_do_not_change_outcome` — integration, as
   `test_ui_pause_and_speed_do_not_change_outcome`, with scripted graphics
   inputs.
+- `test_ui_controls_and_hits_identical_at_every_graphics_setting` — the same
+  inputs, including clicks, give the same lane requests, the same pacing
+  state and the same `UiFrame.Pacing` at each preset and at custom extremes
+  (the §17.4a invariant).
 
 ---
 

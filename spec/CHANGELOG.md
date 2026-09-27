@@ -1821,3 +1821,17 @@ HUMAN DECISION PENDING (owner):
 LOW CONFIDENCE: the knob set, in particular `AntiAliasing` as a bool and
              the `FrameRateCap` floor of 15, derived from the pacer's
              catch-up cap.
+Addendum:    HUMAN DECISION — owner, 2026-09-27: graphics must not affect
+             gameplay or difficulty. `15` §15.14 and `17` §17.4a state a
+             binding invariant:
+             - every primitive outside the `Agent` layer is identical at
+               every setting, and so is its order;
+             - future gameplay-relevant elements are never gated by a knob;
+             - no knob changes the tick, speed, pause, pacing, command
+               timing or click targets, and clicks stay in full-screen
+               pixels under resolution scale;
+             - performance scaling is presentation only.
+             New tests: `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+             (T-020) and
+             `test_ui_controls_and_hits_identical_at_every_graphics_setting`
+             (T-029). T-032 is bound by the backend clause.

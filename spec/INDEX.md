@@ -234,7 +234,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `netstandard2.1` (§15.3, D1); all §15.13 decisions made; lane pips drawn
   from `TryGetLaneState` (§15.5, Q-010); **player graphics quality (§15.14,
   D10): `GraphicsPreset` Low/Medium/High/Custom and six knobs, presentation
-  only, passed to `Build` and `Update`, applied by the backend**.
+  only, passed to `Build` and `Update`, applied by the backend; binding
+  invariant: every non-`Agent` primitive is identical at every setting, and
+  no knob touches time, input or click targets**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **HD pending
