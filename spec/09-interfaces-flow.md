@@ -79,7 +79,8 @@ readonly struct PassengerCohort {
 
 `Count` is an integer. Passengers are never fractional; the fractional part of a
 service rate lives in `ServiceCredit`, never in a head count. A test asserts the
-total head count is conserved across every operation except `Source` and `Sink`.
+total head count is conserved across every operation except `Source` and `Sink`,
+and the missed-passenger removal in `Absorb` (§9.7).
 
 ---
 
@@ -89,7 +90,10 @@ A cohort exists because its members are interchangeable. Therefore:
 
 - Two cohorts **may merge** only if they are on the same node and their
   `CohortKey` compares equal in every field. Merge sums `Count`, takes the earlier
-  `EnteredNodeAt` and sums `ServiceCredit`.
+  `EnteredNodeAt` and sums `ServiceCredit`. On a `Corridor`, two cohorts
+  merge only if their `DueAt` is also equal, so a merge never moves a
+  release tick. Elsewhere the merged `DueAt` is the merged `EnteredNodeAt`,
+  as §9.12 has for every non-`Corridor` node (Q-033).
 - Merging is **mandatory** at end of update, not optional: without it, cohort
   count grows without bound over a day and the O(nodes) cost claim fails. This is
   a budget requirement, not tidiness.
@@ -248,6 +252,38 @@ any `Gate` node, since gates are pooled (§9.6), into `sink`. It returns their
 count, and it reports everyone else of the flight as `PassengersMissedFlight`
 (§9.9). `sink` must be a `Sink` node; anything else throws.
 
+**Exact rules (Q-033).**
+
+- **Exceptions.** In `Inject`, an unknown `at` or one that is not a `Source`
+  throws `ArgumentException`, and `count <= 0` throws
+  `ArgumentOutOfRangeException`. In `Absorb`, an unknown `sink` or one that
+  is not a `Sink` throws `ArgumentException`. An unknown `flight` is not an
+  error, and it returns 0.
+- **`EnteredNodeAt` of an injected cohort** is `N`, the number of `Tick`
+  calls `sim.flow` has completed. Called during tick `t` by an earlier
+  system (`sim.schedule`, `sim.airside`), that is `t`. Called between ticks,
+  it is the next tick to run (`ISimHost.CurrentTick`). In both cases the
+  cohort leaves its `Source` no earlier than the tick after `N` (§9.12).
+- **`Absorb`, in this order.** It boards the flight's `Departing` cohorts on
+  every `Gate` node, which leave the simulation. The flight's other
+  `Departing` cohorts, on any non-`Gate` node, are the **missed** passengers.
+  For each missed cohort in an open blocking episode, in ascending
+  `CohortId`, it publishes `FlowUnblocked`. Then, if the missed count is
+  above 0, it publishes **one** `PassengersMissedFlight` for the flight
+  (never one per cohort), with `Count` = the missed total. Then it removes
+  the missed cohorts from the simulation and returns the boarded count.
+  `LastBlockedAt` is the node holding the most missed passengers, with
+  ties broken by ascending `NodeId`, which is §9.7a's `MostHeldAt` rule. So a
+  never-blocked cohort still names a real node.
+- **Outside a tick.** `Absorb` publishes through `services.Events` before
+  it changes any state. Outside phases 1–3, that first `Publish` throws
+  `InvalidOperationException` (`08` §8.6), and nothing has changed. An
+  `Absorb` with nothing to publish is not detected outside a tick. Callers
+  call it only from their own `Tick`. The envelope's `Source` is the
+  calling system, since that is whose code runs (`08` §8.6), while the
+  event's owner in `10` §10.6 stays `sim.flow`. `Inject` publishes nothing,
+  and it may be called between ticks, which tests use to seed a fixture.
+
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
 
@@ -349,9 +385,11 @@ Full field lists in `10-events.md`.
 | `PassengersArrivedAtGate` | A cohort reaches its `Gate` node |
 | `PassengersMissedFlight` | Passengers still upstream at gate close |
 
-`PassengersMissedFlight` carries the node at which the cohort was last blocked, so
-`sim.delay` gets a real parent and never has to guess (`06-delay-attribution.md`
-rule 3).
+`PassengersMissedFlight` carries a real node, so `sim.delay` never has to
+guess (`06-delay-attribution.md` rule 3). That node is the one holding most
+of the missed passengers (§9.7 "Exact rules", Q-033). It replaces the earlier
+"the node at which the cohort was last blocked", which would have needed
+per-cohort history that `PassengerCohort` does not hold.
 
 ---
 
@@ -379,7 +417,10 @@ demands, stated so it is not discovered late:
   individuals anywhere in the update path is a review rejection.
 - Cohort count is bounded by mandatory merging (§9.3). The budget test asserts a
   ceiling on live cohorts as well as on time, because a passing time with an
-  unbounded cohort count only means the fixture was short.
+  unbounded cohort count only means the fixture was short. The ceiling's
+  value is **fixture sizing**, not balance and not a sim constant (Q-033).
+  The Test Author sets it per fixture, as for `11` §11.10, and states its
+  derivation in the test.
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
 
