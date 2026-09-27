@@ -105,6 +105,10 @@ readonly struct PacingState { bool Paused; GameSpeed Speed }
 - `TogglePause` flips `Paused`. `SetSpeed(s)` sets `Speed = s` and leaves
   `Paused` unchanged.
 - Inputs are applied in list order. A frame may carry several.
+- **The settings panel pauses (Q-034, §17.4a).** The controller holds the
+  player's own pause separately. `IUiController.Pacing` and `UiFrame.Pacing`
+  report `Paused = player's pause OR SettingsOpen`, and `Speed` unchanged.
+  So closing the panel restores exactly the pause state the player had.
 - The frame loop passes `Paused` and `Speed` to `ITickPacer.Advance`
   (`16` §16.6). The pacing state is presentation state, never saved, and it
   cannot change a sim outcome: the sim sees only a sequence of `Step` calls
@@ -120,20 +124,27 @@ sim.
 - **State.** The controller holds `SettingsOpen`, initially false, and
   `Graphics`, initially the value it was constructed with (§17.7, from the
   stored preference or the default).
-- `ToggleSettings` flips `SettingsOpen`. Opening the panel does **not**
-  pause. Whether it should is left to the owner and is not decided here.
+- `ToggleSettings` flips `SettingsOpen`. **While the panel is open, the sim
+  is paused** (HUMAN DECISION — owner, 2026-09-27, Q-034). The pause is the
+  `OR` of §17.4, so it takes effect in the same `RunFrame` as the input
+  that opens the panel (`16` §16.6), and it ends in the same `RunFrame` as
+  the input that closes it.
 - `SetGraphicsPreset(p)` sets `Graphics = ForPreset(p)`, and `p = Custom` is
   ignored. `SetGraphicsSettings(g)` sets `Graphics` to `Validate` of a copy
   of `g` whose `Preset` is `Custom`. Both apply in input order
   (§17.4), whether or not the panel is open.
-- While `SettingsOpen`, `PrimaryClick` and `SecondaryClick` are ignored, so
-  the panel is modal over the world. Pause and speed still work.
+- While `SettingsOpen`, the panel is modal. Only `ToggleSettings`,
+  `SetGraphicsPreset` and `SetGraphicsSettings` apply. `TogglePause`,
+  `SetSpeed`, `PrimaryClick` and `SecondaryClick` are ignored, so the
+  player's own pause and speed are unchanged when the panel closes. Inputs
+  after a `ToggleSettings` in the same frame see the new `SettingsOpen`.
 - **Invariant: graphics never affect gameplay (owner, 2026-09-27, D10
   addendum; `15` §15.14).** `Graphics` is read by nothing in this module
   except `UiFrame.Graphics` and the preference codec. Pacing, the pause and
   speed controls, the hit test, the lane request and its command timing,
   and the control strip are identical at every graphics setting. A future
   control or alert the player acts on is never gated by a graphics knob.
+  The panel's pause depends on `SettingsOpen` only, never on `Graphics`.
 - **Persistence: a player preference, not save state.** The preference
   value is the text
   `graphics 1 <Preset name> <DrawAgents 0|1> <MaxDrawnAgentsPerNode> <FrameRateCap> <ResolutionScalePercent> <AntiAliasing 0|1>`,
@@ -142,8 +153,8 @@ sim.
   `UiFactory.TryDecodeGraphicsPreference(string, out GraphicsSettings) -> bool`
   produce and parse it (on the module's one factory, `08` §8.11a), and the
   decoder runs `Validate`. A missing, unknown
-  or malformed value decodes to false, and the caller then uses the default
-  (`15` §15.14). The host stores and loads it (`16` §16.6). It is never in
+  or malformed value decodes to false, and the caller then uses the default,
+  `Medium` (`15` §15.14, owner, Q-034). The host stores and loads it (`16` §16.6). It is never in
   `bundle.json`, a checkpoint dump, a command or a save.
 
 ---
@@ -310,7 +321,10 @@ Done-condition tests, phrased per `07-conventions.md`:
 - `test_ui_lane_request_clamped_and_no_submit_when_unchanged`
 - `test_ui_two_clicks_before_tick_runs_build_on_pending_target`
 - `test_ui_rejected_command_is_dropped_not_redated`
-- `test_ui_settings_toggle_does_not_pause` (D10, §17.4a)
+- `test_ui_settings_open_pauses_and_close_restores_player_pause` (Q-034,
+  §17.4, §17.4a): opening pauses whether or not the player had paused, and
+  closing restores the player's own state, paused or not
+- `test_ui_pause_and_speed_ignored_while_settings_open` (Q-034)
 - `test_ui_set_graphics_preset_applies_preset_values_and_ignores_custom`
 - `test_ui_set_graphics_settings_marks_custom_and_validates`
 - `test_ui_world_clicks_ignored_while_settings_open`
@@ -327,5 +341,5 @@ Done-condition tests, phrased per `07-conventions.md`:
 
 ## 17.11 Open
 
-- Whether opening the settings panel pauses the game (§17.4a) is for the
-  owner. Until decided, it does not.
+- None. Whether the settings panel pauses was decided by the owner on
+  2026-09-27 (Q-034): it pauses (§17.4a).

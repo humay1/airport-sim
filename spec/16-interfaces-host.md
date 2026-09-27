@@ -281,7 +281,10 @@ checkpoints are identical whatever it holds. `IHeadlessRun` (§16.8) reads no
 preference.
 
 UI goes first, so a pause pressed this frame stops this frame's `Step`, and a
-command submitted this frame is already queued before its tick runs.
+command submitted this frame is already queued before its tick runs. The
+same holds for the settings panel, which pauses while open (`17` §17.4a,
+owner, Q-034): the frame loop has no rule of its own for it, because
+`Ui.Pacing.Paused` already includes it.
 Promotion goes before `Step`, so a node that comes into view promotes before
 the tick that shows it. Building goes after `Step`, so the frame shows the
 state just produced. Nothing touches the sim while `Step` is running
@@ -413,6 +416,16 @@ subcommand, `IHeadlessRun`, the dump writer and the bootstrap's batch mode.
   first call, and its callees carry their own budgets (`15` §15.11).
 - Composition and bundle loading happen once, at scene start, off the frame
   path. No time budget.
+- **Memory on minimum spec (Q-034).** The minimum GPU is integrated
+  graphics, whose memory is shared system RAM and counts against the 8 GB
+  (HUMAN DECISION — owner, 2026-09-27). The player process, meaning its
+  resident memory plus the GPU memory it allocates, stays **≤ 2 GB** at
+  max tier with the `Low` and `Medium` presets. The rest of the 8 GB is
+  left to the operating system and the integrated GPU's own reservation.
+  CI cannot measure it, so it is checked with `15` §15.14's manual
+  measurement on a minimum-spec machine. **LOW CONFIDENCE — owner may
+  revise**: 2 GB is the Architect's estimate, with no measurement behind
+  it.
 
 ---
 
@@ -448,7 +461,9 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - `test_host_composition_matches_harness_checkpoints`
 - `test_frame_loop_passes_ui_graphics_to_promotion_and_scene` (D10)
 - `test_frame_loop_writes_graphics_preference_only_on_change`
-- `test_presentation_uses_stored_graphics_preference_or_default`
+- `test_presentation_uses_stored_graphics_preference_or_default` — the
+  default is `Medium` (Q-034)
+- `test_frame_loop_settings_opened_this_frame_steps_nothing` (Q-034)
 
 ---
 
@@ -458,6 +473,8 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
   gates.
 - **§16.9 adoption**: an owner decision, because it touches
   `02-determinism.md` and `ci/`.
-- **D10 values** (`15` §15.14): the `Low` and `Medium` preset values, the
-  first-launch default, and the low-end target machine. All are owner
-  decisions.
+- **D10 values** (`15` §15.14): decided by the owner on 2026-09-27
+  (Q-034): the low-end target (integrated graphics), the first-launch
+  default (`Medium`) and the pause. The `Low` and `Medium` values and the
+  2 GB memory budget (§16.10) are the Architect's proposals, marked LOW
+  CONFIDENCE, for the owner to revise.

@@ -450,6 +450,13 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   screen size in `FrameInput` and every reported click stay in full-screen
   pixels. It draws every primitive it is handed at every setting (the
   §15.14 invariant).
+- **Draw calls (Q-034).** Integrated graphics is the minimum GPU (§15.11).
+  The backend's number of draw calls per frame is bounded by the number of
+  `DrawLayer`s and `ColourRole`s, never by the number of primitives. It
+  creates no engine object per primitive and allocates no engine object per
+  frame after the first. **LOW CONFIDENCE**: this binds the implementation
+  more tightly than the rest of the contract. It is the Architect's reading
+  of what `Low` needs to hold budget on integrated graphics.
 - Because it cannot be tested in CI, it must stay small enough for the
   Reviewer to check against this list line by line.
 
@@ -476,6 +483,15 @@ layer:
   rule, but a GC pause at 60 fps is a visible hitch.
 - The backend's draw cost is not budgeted here. It has no test to carry a
   number.
+- **On minimum spec, the `Low` preset holds the render target** (HUMAN
+  DECISION — owner, 2026-09-27, Q-034). The minimum GPU is integrated
+  graphics with no dedicated VRAM (`01-architecture.md`). The whole frame,
+  meaning the sim's share, the scene layer and the backend with the engine,
+  fits 16.7 ms at max tier with `Low`. `Medium` and `High` are not bound to
+  it on minimum spec. The check is a manual measurement on a minimum-spec
+  machine, since CI has no GPU (§15.14). Integrated graphics uses shared
+  memory, so the game's GPU memory counts against the 8 GB of RAM. The
+  process's combined budget is in `16` §16.10.
 - `app.render` adds nothing to the sim's 6 ms. The cost of `SetPromoted` and
   `AgentsAt` is `sim.flow`'s.
 
@@ -549,6 +565,7 @@ Author:
 - `test_scene_build_within_frame_budget_at_max_tier`
 - `test_graphics_presets_are_monotone_and_high_matches_phase1_behaviour`
   (D10, §15.14)
+- `test_graphics_low_and_medium_match_the_preset_table` (Q-034, §15.14)
 - `test_graphics_settings_validate_clamps_every_knob`
 - `test_scene_agents_capped_by_graphics_setting`
 - `test_scene_rebuilds_when_graphics_settings_change`
@@ -611,7 +628,9 @@ module draws the lane state as pips (§15.5).
 > **HUMAN DECISION — owner, 2026-09-27 (D10):** "the final user should be
 > able to increase or decrease graphics so the game can also be run on a low
 > resource laptop." The Architect specified the mechanism and did not decide
-> it. The preset **values** are owner values and are still pending (below).
+> it. The owner's follow-up decisions (2026-09-27, Q-034) set the low-end
+> target, the first-launch default and the pause, and asked the Architect to
+> propose the `Low` and `Medium` values (below).
 
 **The rule that makes it safe.** Graphics quality is **presentation only**.
 It never changes sim state, the tick rate, a hash, a checkpoint, a command
@@ -644,7 +663,10 @@ owner, 2026-09-27 (D10 addendum).
    depends only on elapsed real time (§15.8), and the `FrameRateCap` floor
    of 15 keeps 4x real-time. Hit-testing uses the layout in world space (`17`
    §17.5), which no knob touches. The backend reports clicks in full-screen
-   pixel coordinates whatever `ResolutionScalePercent` is (§15.10).
+   pixel coordinates whatever `ResolutionScalePercent` is (§15.10). The
+   settings panel pauses the sim while it is open (`17` §17.4a, owner,
+   Q-034). That pause depends only on whether the panel is open, never on a
+   knob's value, and pausing is outcome-neutral (§15.8).
 4. **Performance scaling is presentation only.** The sim runs the same fixed
    tick at every setting. A low preset saves only presentation cost: drawing,
    agent-view derivation and backend rendering.
@@ -697,20 +719,47 @@ Both are on `RenderFactory`, which stays the module's one factory (`08`
   `DrawAgents = true`, `MaxDrawnAgentsPerNode = MAX_DRAWN_AGENTS_PER_NODE`,
   `FrameRateCap = 0`, `ResolutionScalePercent = 100`, `AntiAliasing = true`.
   That is not a new value.
-- **`Low` and `Medium` values: HUMAN DECISION PENDING (owner).** The
-  Architect does not choose them. The only constraint is D10's goal (Low
-  runs on a low-resource laptop), within the bounds and monotonicity above.
-  Until the owner sets them, both equal `High`, and the tests above assert
-  only structure. That is a placeholder, not a choice.
-- **Default on first launch: HUMAN DECISION PENDING (owner).** It is `High`
-  until decided.
+- **`Low` and `Medium` values.** The owner asked the Architect to propose
+  them (Q-034). **LOW CONFIDENCE — owner may revise.**
 
-> **HUMAN DECISION NEEDED — the low-end target.** `01-architecture.md`
-> (locked) fixes one minimum spec (4-core CPU, 8 GB RAM, 2 GB VRAM) and
-> 60 fps at max tier on it. D10's "low resource laptop" may sit **below**
-> that spec, for example on integrated graphics. Whether `Low` must meet a
-> named machine, at what frame rate and at what tier, is the owner's call,
-> and so is any change to `01`. Note also that graphics settings cannot
-> reduce the **sim's** cost (6 ms per tick at max tier, `01`). On a CPU below
-> minimum spec, 4x may not keep real time at any preset. The pacer then
-> slows gracefully (§15.8), and outcomes stay unchanged.
+  | Knob | `Low` | `Medium` | `High` |
+  |---|---|---|---|
+  | `DrawAgents` | false | true | true |
+  | `MaxDrawnAgentsPerNode` | 32 | 64 | 256 (`MAX_DRAWN_AGENTS_PER_NODE`) |
+  | `FrameRateCap` | 60 | 60 | 0 (uncapped) |
+  | `ResolutionScalePercent` | 75 | 100 | 100 |
+  | `AntiAliasing` | false | false | true |
+
+  Why these values:
+  - `Low` removes what integrated graphics pays for most: anti-aliasing,
+    fill rate (75 % scale is about 56 % of the pixels), and the agent dots.
+    Agents are decoration under invariant 1, so no information is lost.
+    Its `MaxDrawnAgentsPerNode` applies only if the player turns
+    `DrawAgents` back on, and it keeps monotonicity.
+  - `Low` caps at 60 rather than lower, because the render target is 60 fps
+    (`01`, §15.11). A lower cap would miss it by construction. The cap also
+    stops a laptop from rendering frames it cannot show, which saves heat
+    and battery.
+  - `Medium` keeps full resolution and the agent dots, at a quarter of
+    `High`'s dots per node, without anti-aliasing and capped at 60.
+  - The table is monotone in every knob.
+- **Default on first launch: `Medium`** (HUMAN DECISION — owner,
+  2026-09-27, Q-034). It is used when no valid preference is stored
+  (`16` §16.6). The spec binds only `Low` to the render target on minimum
+  spec (§15.11). `Medium` is not bound there.
+- **The low-end target** (HUMAN DECISION — owner, 2026-09-27, Q-034). The
+  minimum spec is a 4-core CPU, 8 GB RAM and integrated graphics with no
+  dedicated VRAM (`01-architecture.md`). `Low` holds the render target
+  there at max tier (§15.11). Shared GPU memory counts against the 8 GB
+  (`16` §16.10). CI has no GPU, so this is checked by a manual measurement
+  on a minimum-spec machine at 1920 × 1080, in the T-025 playtest or a
+  later one. The `Low` row keeps its LOW CONFIDENCE marker until that
+  measurement is recorded in `CHANGELOG.md`. If it misses, the `Low` values
+  are corrected by amendment, never by a worker. **LOW CONFIDENCE**: the
+  1920 × 1080 measurement resolution is the Architect's, so the check has a
+  fixed condition. Note also that graphics settings cannot reduce the
+  **sim's** cost (6 ms per tick at max tier, `01`), and the 4-core CPU
+  minimum is unchanged. On a laptop, CPU and integrated GPU share one power
+  and heat budget, so heavy drawing can slow the sim's CPU. That is one
+  more reason `Low` caps its frame rate. If real time is still missed, the
+  pacer slows gracefully (§15.8), and outcomes stay unchanged.

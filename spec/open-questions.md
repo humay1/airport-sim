@@ -1059,16 +1059,22 @@ Answer:      `15` §15.14:
              three new inputs and a player-preference text codec. `16`
              §16.6: `IPreferenceStore`, written on change and read at
              assembly, never in the bundle.
-             HUMAN DECISIONS still pending:
-             - the Low and Medium values;
-             - the first-launch default;
-             - the low-end target machine, against `01`'s locked minimum
-               spec;
-             - whether the settings panel pauses.
              Owner addendum, 2026-09-27: graphics never affect gameplay or
              difficulty. A binding invariant in `15` §15.14 and `17` §17.4a:
              - every non-`Agent` primitive is identical at every setting;
              - no knob touches time, pacing, input or click targets;
              - scaling is presentation only.
              It has tests on both sides.
-Status:      ANSWERED, owner values pending (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)
+             HUMAN DECISIONS — owner, 2026-09-27, applied:
+             - the minimum GPU is integrated graphics with no dedicated
+               VRAM (`01`, the one authorised line; CPU and RAM
+               unchanged);
+             - `Low` holds the render target on it, and shared GPU memory
+               counts against the 8 GB (`15` §15.11, `16` §16.10);
+             - the settings panel pauses the sim while it is open (`17`
+               §17.4, §17.4a);
+             - the first-launch default is `Medium` (`15` §15.14).
+             The Architect proposed the `Low` and `Medium` values (`15`
+             §15.14) and a 2 GB process memory budget (`16` §16.10), both
+             LOW CONFIDENCE — owner may revise.
+Status:      ANSWERED (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)

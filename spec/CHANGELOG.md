@@ -1835,3 +1835,79 @@ Addendum:    HUMAN DECISION — owner, 2026-09-27: graphics must not affect
              (T-020) and
              `test_ui_controls_and_hits_identical_at_every_graphics_setting`
              (T-029). T-032 is bound by the backend clause.
+
+## 2026-09-27 — spec/01 (minimum-spec GPU line only); 15 §15.10, §15.11, §15.12, §15.14; 17 §17.4, §17.4a, §17.10, §17.11; 16 §16.6, §16.10, §16.11, §16.12; INDEX; open-questions — Q-034: owner decisions on graphics quality
+Reason:      HUMAN DECISIONS — owner, 2026-09-27, closing the items D10 left
+             pending:
+             1. The minimum GPU is integrated graphics with no dedicated
+                VRAM. The CPU (4 cores) and RAM (8 GB) minimums are
+                unchanged. It is recorded in `01-architecture.md` as
+                "HUMAN DECISION 2026-09-27 (Q-034)".
+             2. `Low` must hold the frame budget on that hardware. Shared
+                GPU memory counts against the 8 GB.
+             3. The settings panel pauses the sim while it is open.
+             4. The first-launch default is `Medium`.
+             5. The Architect proposes the `Low` and `Medium` values.
+             Changes:
+             - `01`: the minimum-spec row now reads "integrated graphics
+               with no dedicated VRAM" instead of "GPU with 2 GB VRAM".
+               Nothing else in `01` changed, and nothing in `02`.
+             - `15` §15.11: on minimum spec, `Low` holds 60 fps at max tier.
+               `Medium` and `High` are not bound there.
+             - `15` §15.14: the `Low`/`Medium` table, `Medium` as the
+               default, the low-end target, and a manual measurement on a
+               minimum-spec machine at 1920 × 1080. Invariant 3 notes the
+               panel's pause.
+             - `15` §15.10: the backend's draw calls are bounded by layers
+               and colour roles, never by primitive count.
+             - `17` §17.4, §17.4a: `Pacing.Paused` = player's pause OR
+               `SettingsOpen`. While the panel is open, only the three
+               settings inputs apply.
+             - `16` §16.6: the frame loop needs no change, since
+               `Ui.Pacing.Paused` includes the panel. §16.10 adds a 2 GB
+               process memory budget, shared GPU memory included.
+             Graphics stays presentation only. No change touches sim state,
+             the tick rate, a hash or difficulty. The panel's pause depends
+             on whether it is open, never on a knob, and pausing is
+             outcome-neutral (`15` §15.8).
+Raised by:   owner, Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner:
+             - **T-020**: `ForPreset` returns the new `Low`/`Medium` values.
+               New test `test_graphics_low_and_medium_match_the_preset_table`.
+             - **T-029**: the panel pauses, and pause, speed and clicks are
+               ignored while it is open. `test_ui_settings_toggle_does_not_pause`
+               is **replaced** by
+               `test_ui_settings_open_pauses_and_close_restores_player_pause`
+               and `test_ui_pause_and_speed_ignored_while_settings_open`.
+             - **T-031**: the default preference is `Medium`. New test
+               `test_frame_loop_settings_opened_this_frame_steps_nothing`.
+             - **T-032**: the draw-call bound.
+             - **T-033**: pause and speed controls are inert while the panel
+               is open.
+             - **T-025** (playtest), or a later one: measure `Low` (60 fps,
+               ≤ 2 GB) on a minimum-spec machine.
+             - `03-module-map.md`'s budget protocol uses "the minimum spec of
+               `01`" as its reference machine. That now means an
+               integrated-graphics machine. Sim budgets are CPU-only, so
+               their numbers are unaffected.
+             Scope added: 0. The panel already existed (D10). Running total
+             stays 9.
+Signed off:  owner, 2026-09-27 (Q-034). This includes the `01` GPU line,
+             which is the only `01` change the owner authorised.
+LOW CONFIDENCE — owner may revise:
+             - the `Low` and `Medium` values (`15` §15.14);
+             - the 2 GB process memory budget (`16` §16.10);
+             - the 1920 × 1080 measurement condition (`15` §15.14);
+             - the backend draw-call bound (`15` §15.10);
+             - the Architect's reading of `01`'s "60 fps at max tier on
+               minimum spec" as binding at `Low` (the owner's decision 2),
+               not at every preset.
+Budget note: `Medium` (the default) is **not** bound to 60 fps on minimum
+             spec, and nothing has been measured. The Architect expects it
+             to hold at 1920 × 1080 on current integrated graphics, since it
+             draws flat colours, about 1 000 agent dots and no
+             anti-aliasing, provided the backend batches (§15.10). It is at
+             risk on high-DPI laptop panels at 100 % scale, and where GPU
+             heat throttles the CPU. On such machines the first launch may
+             miss 60 fps until the player picks `Low`. The Architect did not
+             work around this, per the owner's instruction.

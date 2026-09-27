@@ -57,7 +57,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: **the sim targets `netstandard2.1` only, `LangVersion 9`, with zero
   engine references; tests and the harness are `net8.0` (HD, D1)**; 10 Hz at
   1x; 6 ms/tick at max tier; player actions enter only as commands;
-  promotion must be outcome-neutral; never per-agent A\*.
+  promotion must be outcome-neutral; never per-agent A\*; **minimum spec
+  4 cores, 8 GB RAM, integrated graphics with no dedicated VRAM (owner,
+  2026-09-27, Q-034)**.
 - LC: none.
 - Read if: any sim task (all of it).
 
@@ -236,12 +238,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   D10): `GraphicsPreset` Low/Medium/High/Custom and six knobs, presentation
   only, passed to `Build` and `Update`, applied by the backend; binding
   invariant: every non-`Agent` primitive is identical at every setting, and
-  no knob touches time, input or click targets**.
+  no knob touches time, input or click targets**; **`Low` holds 60 fps at
+  max tier on integrated graphics; the first-launch default is `Medium`
+  (owner, Q-034, §15.11, §15.14)**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
-  render rather than as a UI overlay (`CHANGELOG`, Q-010). **HD pending
-  (D10):** the Low and Medium values, the first-launch default, and the
-  low-end target machine (§15.14).
+  render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
+  revise (Q-034):** the `Low` and `Medium` values and the 1920 × 1080
+  measurement condition (§15.14); the backend's draw-call bound (§15.10).
 - Read if: T-020; the render backend task (§15.10).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
@@ -257,7 +261,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   through `HostFactory.LoadContent` (§16.3); the graphics preference is
   read and written through `IPreferenceStore`, never in the bundle (§16.6,
   D10).
-- LC: the gate runs nightly on the real player (§16.9, proposed, not adopted).
+- LC: the gate runs nightly on the real player (§16.9, proposed, not adopted);
+  the 2 GB process memory budget, which counts shared GPU memory (§16.10,
+  Q-034).
 - Read if: the host tasks, the harness `checkpoints` subcommand, and the
   cross-runtime gate.
 
@@ -266,8 +272,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   mapping, the icon-only backend contract.
 - Key: starts unpaused at 1x; primary click = one more server, secondary = one
   fewer; the topmost (highest `NodeId`) box wins; the only panel is the
-  graphics settings panel (§17.4a, D10: modal, does not pause, stored as a
-  player preference); the production lane sink computes `clamp(base ± 1)` from a
+  graphics settings panel (§17.4a, D10: modal, pauses while open (owner,
+  Q-034), stored as a player preference); the production lane sink computes `clamp(base ± 1)` from a
   pending target or `TryGetLaneState`, and submits `SetServersOpen` for the
   next tick (§17.5, Q-010).
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
@@ -311,7 +317,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
-  and D10's preset values, default, low-end target and settings-pause
-  (`15` §15.14, `17` §17.11).
+  and review of the Q-034 LOW CONFIDENCE proposals: the `Low` and `Medium`
+  values (`15` §15.14) and the 2 GB memory budget (`16` §16.10).
 - Read if: before starting any task, check that your task is not blocked
   here.
