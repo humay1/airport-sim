@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using AirportSim.Sim.Core;
 using Xunit;
@@ -16,6 +17,21 @@ namespace AirportSim.Sim.Flow.Tests
         private const int Branches = 40;
         private const int FlightTicks = 150;
         private const int LiveFlights = 7;
+
+        private static readonly Fx WalkSpeed = Fx.FromRatio(13, 10);
+        private static readonly HashSet<uint> Corridors = CorridorIds();
+
+        private static HashSet<uint> CorridorIds()
+        {
+            var ids = new HashSet<uint> { 1000 };
+            for (uint b = 0; b < Branches; b++)
+            {
+                ids.Add(10 + b * 5 + 2);
+                ids.Add(10 + b * 5 + 4);
+            }
+
+            return ids;
+        }
 
         private static long ElapsedMicros(long start, long end)
         {
@@ -51,7 +67,7 @@ namespace AirportSim.Sim.Flow.Tests
         {
             return ContentIndexFactory.Create(new IContentDefinition[]
             {
-                FlowKit.Pax(FlowKit.Walker, Fx.FromRatio(13, 10)),
+                FlowKit.Pax(FlowKit.Walker, WalkSpeed),
                 FlowKit.Queue(FlowKit.Lane, Fx.FromInt(4), 1000000, Fx.FromInt(30), Fx.FromInt(5)),
             });
         }
@@ -111,11 +127,18 @@ namespace AirportSim.Sim.Flow.Tests
             long perTick = ElapsedMicros(start, end) / Measured;
             Assert.True(perTick <= BudgetMicrosPerTick, "sim.flow max tier took " + perTick + " us/tick, budget " + BudgetMicrosPerTick);
 
-            // Merge is mandatory (§9.3): with no blocking (capacities are huge),
-            // there is at most one cohort per (node, live key).
+            // Cohort ceiling (§9.10, Q-033: fixture sizing), derived in
+            // Graphs.CohortCeiling. One key per flight, LiveFlights live at once
+            // (each is absorbed LiveFlights - 1 flights later); capacities are
+            // huge, so no cohort is ever blocked. Here that is 122 one-cohort
+            // nodes plus 80 corridors of 8 ticks and one of 16, times 7 keys:
+            // 5446. Without mandatory merging the count would instead grow by
+            // about three cohorts every tick, without bound.
             int live = LiveCohorts(rig);
             Assert.True(live > 0);
-            Assert.True(live <= nodes * LiveFlights, live + " live cohorts exceed " + nodes + " nodes x " + LiveFlights + " live keys");
+            int ceiling = Graphs.CohortCeiling(rig.World, Corridors, WalkSpeed, LiveFlights, 0);
+            Assert.Equal(5446, ceiling);
+            Assert.True(live <= ceiling, live + " live cohorts exceed the ceiling " + ceiling);
             Assert.True(FlowKit.TotalPopulation(rig.Flow, rig.World) > 1000, "the load never built up");
         }
 

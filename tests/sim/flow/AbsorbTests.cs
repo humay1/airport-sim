@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AirportSim.Sim.Core;
 using Xunit;
@@ -5,12 +6,12 @@ using Xunit;
 namespace AirportSim.Sim.Flow.Tests
 {
     /// <summary>
-    /// Absorb (09 §9.7): boards the flight's Departing passengers on any Gate
-    /// node, returns their count, and reports everyone else of the flight as
-    /// PassengersMissedFlight. A cohort removed with an open blocking episode
-    /// emits FlowUnblocked first, at the same tick (§9.12, 10 §10.3 rule 2).
-    /// Absorb is a downward call made during a tick, so it runs in the
-    /// position-2 probe here.
+    /// Absorb (09 §9.7 "Exact rules", Q-033): boards the flight's Departing
+    /// cohorts on every Gate and returns their count; publishes FlowUnblocked
+    /// for each missed cohort in an open episode (ascending CohortId), then one
+    /// PassengersMissedFlight for the flight if any were missed, naming the
+    /// node holding most of them; then removes them. Absorb is a downward call
+    /// made during a tick, so it runs in the position-2 probe here.
     /// </summary>
     public sealed class AbsorbTests
     {
@@ -21,22 +22,6 @@ namespace AirportSim.Sim.Flow.Tests
             rig.Step(1);
             rig.Inject = null;
             return boarded;
-        }
-
-        /// <summary>
-        /// Total missed for a flight. 09 does not say whether one event or one per
-        /// cohort is emitted, so only the total is asserted.
-        /// </summary>
-        private static int MissedCount(FlowEvents ev, ulong flight)
-        {
-            int n = 0;
-            foreach (var m in ev.Missed)
-            {
-                Assert.Equal(flight, m.E.Flight.Value);
-                n += m.E.Count;
-            }
-
-            return n;
         }
 
         [Fact]
@@ -72,12 +57,14 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.Equal(3, rig.Pop(3));
             Assert.Equal(0, rig.Pop(2));
             Assert.False(rig.Flow.TryGetOutstanding(new FlightId(1), out _));
-            Assert.Equal(4, MissedCount(rig.Events, 1));
-            int missedEvents = rig.Events.Missed.Count;
+            Assert.Single(rig.Events.Missed);
+            Assert.Equal(1UL, rig.Events.Missed[0].E.Flight.Value);
+            Assert.Equal(4, rig.Events.Missed[0].E.Count);
+            Assert.Equal(new NodeId(2), rig.Events.Missed[0].E.LastBlockedAt);
 
-            // Flight 2 is untouched and boards alone.
+            // Flight 2 is untouched and boards alone; nobody missed, no event.
             Assert.Equal(3, AbsorbInTick(rig, 2));
-            Assert.Equal(missedEvents, rig.Events.Missed.Count);
+            Assert.Single(rig.Events.Missed);
             Assert.Equal(0, rig.Pop(3));
         }
 
@@ -102,14 +89,16 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.Equal(ev.Blocked[0].E.Cohort, ev.Unblocked[0].E.Cohort);
             Assert.Equal(ev.Blocked[0].E.Held, ev.Unblocked[0].E.Held);
             Assert.Equal(ev.Blocked[0].E.BlockedBy, ev.Unblocked[0].E.BlockedBy);
-            Assert.Equal(3, MissedCount(ev, 1));
-            Assert.All(ev.Missed, m => Assert.Equal(t, m.Tick));
-            // The held cohort's Unblocked precedes its own missed report. Missed
-            // events carry no cohort id, so the test can only require that some
-            // missed report follows the Unblocked in the same tick.
+            // One event for the flight: 1 missed on the queue (node 2), 2 held at
+            // the source (node 1), so LastBlockedAt is node 1, the node holding
+            // most. FlowUnblocked comes first.
+            Assert.Single(ev.Missed);
+            Assert.Equal(t, ev.Missed[0].Tick);
+            Assert.Equal(3, ev.Missed[0].E.Count);
+            Assert.Equal(new NodeId(1), ev.Missed[0].E.LastBlockedAt);
             int unblocked = ev.Log.FindIndex(l => l.StartsWith(t + " unblocked"));
-            int lastMissed = ev.Log.FindLastIndex(l => l.StartsWith(t + " missed"));
-            Assert.True(unblocked >= 0 && unblocked < lastMissed, string.Join("\n", ev.Log));
+            int missed = ev.Log.FindIndex(l => l.StartsWith(t + " missed"));
+            Assert.True(unblocked >= 0 && unblocked < missed, string.Join("\n", ev.Log));
             Assert.Equal(0, rig.Pop(1));
             Assert.Equal(0, rig.Pop(2));
         }
@@ -137,6 +126,50 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.Equal(10, o.Count);
             Assert.Equal(new NodeId(1), o.MostHeldAt);
             Assert.False(rig.Flow.TryGetOutstanding(new FlightId(2), out _));
+        }
+
+        [Fact]
+        public void test_absorb_missed_ties_name_the_smaller_node()
+        {
+            // 2 missed on the source (node 1), 2 on the queue (node 2): a tie,
+            // broken by ascending NodeId.
+            var rig = Rig.Create(Graphs.Line(1, 0, FlowKit.Lane), Graphs.Content(Graphs.Lane(Fx.FromInt(60), 2)));
+            rig.InjectNow(1, 2, 1);
+            rig.Step(4);
+            rig.InjectNow(1, 2, 1);
+            rig.Step(4);
+            Assert.Equal(2, rig.Pop(1));
+            Assert.Equal(2, rig.Pop(2));
+            Assert.Equal(0, AbsorbInTick(rig, 1));
+            Assert.Single(rig.Events!.Missed);
+            Assert.Equal(4, rig.Events.Missed[0].E.Count);
+            Assert.Equal(new NodeId(1), rig.Events.Missed[0].E.LastBlockedAt);
+        }
+
+        [Fact]
+        public void test_absorb_outside_a_tick_throws_and_changes_nothing()
+        {
+            // Q-033: Absorb publishes before it changes state; outside phases
+            // 1-3 that Publish throws InvalidOperationException, and nothing
+            // has changed.
+            var rig = Rig.Create(Graphs.Line(1, 1, FlowKit.Lane), Graphs.Content(Graphs.Lane(Fx.FromInt(60))));
+            rig.InjectNow(1, 3, 1);
+            rig.Step(6);
+            Assert.True(rig.Submit(2, 0, out _));
+            rig.Step(1);
+            rig.InjectNow(1, 2, 1);
+            rig.Step(4);
+            Assert.Equal(3, rig.Pop(3));
+            Assert.Equal(2, rig.Pop(2));
+            ulong hash = rig.Flow.ComputeStateHash();
+            int events = rig.Events!.Log.Count;
+
+            Assert.Throws<InvalidOperationException>(() => rig.Flow.Absorb(new NodeId(4), new FlightId(1)));
+            Assert.Equal(hash, rig.Flow.ComputeStateHash());
+            Assert.Equal(3, rig.Pop(3));
+            Assert.Equal(2, rig.Pop(2));
+            rig.Step(1);
+            Assert.Equal(events, rig.Events.Log.Count);
         }
     }
 }

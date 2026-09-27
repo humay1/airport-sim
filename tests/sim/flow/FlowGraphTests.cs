@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using AirportSim.Sim.Core;
 using AirportSim.Sim.World;
 using Xunit;
@@ -198,6 +199,89 @@ namespace AirportSim.Sim.Flow.Tests
             IWorldSystem world = World();
             Assert.Throws<ArgumentNullException>(() => loader.Load(bytes, null!, world));
             Assert.Throws<ArgumentNullException>(() => loader.Load(bytes, Source, null!));
+        }
+
+        private static FormatException RejectsBytes(byte[] bytes)
+        {
+            FormatException ex = Assert.Throws<FormatException>(() => FlowFactory.CreateGraphLoader().Load(bytes, Source, World()));
+            Assert.StartsWith(Source + ": ", ex.Message, StringComparison.Ordinal);
+            return ex;
+        }
+
+        /// <summary>A JSON \u escape for the hex digits, built at run time.</summary>
+        private static string U(string hex)
+        {
+            return "\\" + "u" + hex;
+        }
+
+        [Fact]
+        public void test_flow_graph_accepts_json_string_escapes()
+        {
+            // 08 §8.11 "Strings" (Q-033): the eight JSON escapes plus \uXXXX in
+            // either case; keys compare after unescaping. The escaped profile id
+            // must resolve to queue_test_lane in CreateSystem.
+            string q = "{\"id\": 12, \"k" + U("0069") + "nd\": \"qu" + U("0065") + "ue\", \"server_count\": 2, \"servers_open\": 1, \"queue_profile\": \"queue" + U("005F") + "test" + U("005f") + "lane\"}";
+            string json = Doc("{\"id\": 11, \"kind\": \"sour" + U("0063") + "e\"}", q, N(13, "gate"), N(14, "sink"), N(15, "hall"));
+            ISimHostBuilder b = FlowKit.Builder(Graphs.Content(Graphs.Lane(Fx.One)));
+            var g = new TestGraph()
+                .Node(11, "source").Queue(12, 2, 1, FlowKit.Lane).Node(13, "gate").Node(14, "sink").Node(15, "hall")
+                .Edge(11, 12).Edge(12, 13).Edge(15, 13).Edge(13, 14);
+            IWorldSystem world = g.World(b);
+            FlowGraph graph = FlowFactory.CreateGraphLoader().Load(Fixtures.Utf8(json), Source, world);
+            IFlowSystem flow = FlowFactory.CreateSystem(b.Services, graph, world);
+            Assert.True(flow.TryGetLaneState(new NodeId(12), out LaneState lanes));
+            Assert.Equal(2, lanes.ServerCount);
+
+            // Every other standard escape and raw UTF-8 outside the BMP load
+            // (the profile is only resolved in CreateSystem, not in Load).
+            foreach (string id in new[] { "a\\\"b", "a\\\\b", "a\\/b", "a\\bb", "a\\fb", "a\\nb", "a\\rb", "a\\tb", "\\u00e9t\\u00C9", "pax_\U0001F600" })
+            {
+                string queue = "{\"id\": 12, \"kind\": \"queue\", \"server_count\": 2, \"servers_open\": 1, \"queue_profile\": \"" + id + "\"}";
+                Load(Doc(N(11, "source"), queue, N(13, "gate"), N(14, "sink"), N(15, "hall")));
+            }
+        }
+
+        [Fact]
+        public void test_flow_graph_rejects_bad_string_escapes_and_control_characters()
+        {
+            string Queue(string profile) => "{\"id\": 12, \"kind\": \"queue\", \"server_count\": 2, \"servers_open\": 1, \"queue_profile\": \"" + profile + "\"}";
+            // Escapes as JSON text (C# "\\" is one backslash), then raw control
+            // characters (C# escapes producing U+0009, U+0001, U+001F).
+            foreach (string bad in new[] { "a\\xb", "a\\u12", "a\\u12G4", "a\\uD800", "a\\udfff", "a\\uDBFF", "a\\U0041", "a\\'b", "a\\", "a\tb", "a\u0001b", "a\u001fb" })
+            {
+                Rejects(Doc(N(11, "source"), Queue(bad), N(13, "gate"), N(14, "sink"), N(15, "hall")));
+            }
+
+            // A raw newline inside a string is a control character too; the line
+            // of a syntax failure is still reported.
+            FormatException ex = Rejects("{\n\"schema_version\": 1,\n\"nodes\": [{\"id\": 11, \"kind\": \"sou\nrce\"}]\n}\n");
+            Assert.Contains("line ", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void test_flow_graph_rejects_invalid_utf8_anywhere()
+        {
+            byte[] valid = Fixtures.Utf8(Valid());
+            int kindAt = Fixtures.Utf8(Valid().Substring(0, Valid().IndexOf("hall", StringComparison.Ordinal))).Length;
+            foreach (byte[] junk in new[]
+            {
+                new byte[] { 0xFF },               // never valid
+                new byte[] { 0xC3 },               // truncated two-byte sequence
+                new byte[] { 0xC0, 0xAF },         // overlong
+                new byte[] { 0xED, 0xA0, 0x80 },   // encoded surrogate
+                new byte[] { 0x80 },               // lone continuation
+            })
+            {
+                // Inside a string value.
+                var inString = new List<byte>(valid);
+                inString.InsertRange(kindAt, junk);
+                RejectsBytes(inString.ToArray());
+
+                // Between tokens, outside any string.
+                var outside = new List<byte>(valid);
+                outside.InsertRange(valid.Length - 1, junk);
+                RejectsBytes(outside.ToArray());
+            }
         }
     }
 }
