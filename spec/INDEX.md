@@ -136,7 +136,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: **`SIM_SECONDS_PER_TICK = 6`, so a day is 14 400 ticks, and goldens
   may be authored (HD, D2, §8.2)**; **`Fx` hand-rolls its 128-bit multiply,
   divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
-  handlers in registry order (§8.6); commands admitted only at ≥ 1 tick of
+  handlers in registry order (§8.6); **the bus allocates nothing after
+  `Build`, with no warm-up, and a type with no subscriber stores nothing
+  (§8.6, Q-035)**; commands admitted only at ≥ 1 tick of
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
@@ -313,7 +315,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-034 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Q-002 to Q-035 are answered (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
