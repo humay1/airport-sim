@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AirportSim.Sim.Core;
 using Xunit;
@@ -60,11 +61,61 @@ namespace AirportSim.Sim.Flow.Tests
                     SortedSet<(ulong Cohort, int Index)> actual = PromoAgents.Refs(views);
                     Assert.True(expected.SetEquals(actual), "node " + n + " after tick " + (rig.Host.CurrentTick - 1UL) + ": agents do not match its cohorts' (id, index) pairs");
                     Assert.Equal(rig.Flow.Population(node), views.Count);
+                    for (int i = 1; i < views.Count; i++)
+                    {
+                        // Q-033: sorted by (Cohort, Index).
+                        (ulong, int) prev = (views[i - 1].Ref.Cohort.Value, views[i - 1].Ref.Index);
+                        (ulong, int) cur = (views[i].Ref.Cohort.Value, views[i].Ref.Index);
+                        Assert.True(prev.CompareTo(cur) < 0, "node " + n + ": view " + i + " out of (Cohort, Index) order");
+                    }
+
                     nonEmpty += views.Count > 0 ? 1 : 0;
                 }
             }
 
             Assert.True(nonEmpty > 20);
+        }
+
+        [Fact]
+        public void test_agents_at_unknown_node_throws_argument_exception()
+        {
+            var rig = new PromoRig(PromoPlan.Standard(), record: false);
+            rig.Host.Step(6000);
+            Assert.True(rig.TotalPopulation() > 0);
+            foreach (uint bad in new uint[] { 0U, 10U, 999U })
+            {
+                Assert.Throws<ArgumentException>(() => rig.Flow.AgentsAt(new NodeId(bad)));
+                Assert.Throws<ArgumentException>(() => rig.Flow.SetPromoted(new NodeId(bad), true));
+                Assert.Throws<ArgumentException>(() => rig.Flow.SetPromoted(new NodeId(bad), false));
+            }
+
+            // Every known node is promotable (Q-033).
+            rig.SetAll(true);
+            int shown = 0;
+            foreach (uint n in PromoConst.AllNodes)
+            {
+                shown += rig.Flow.AgentsAt(new NodeId(n)).Count;
+            }
+
+            Assert.Equal(rig.TotalPopulation(), shown);
+        }
+
+        [Fact]
+        public void test_agents_at_repeated_set_promoted_is_a_no_op()
+        {
+            // Promoting a promoted node, or demoting a demoted one, is a no-op (Q-033): no counting.
+            PromoRig rig = RunTo(6000);
+            var node = new NodeId(PromoConst.Gate);
+            Assert.True(rig.Flow.Population(node) > 0);
+            rig.Flow.SetPromoted(node, false);
+            rig.Flow.SetPromoted(node, false);
+            rig.Flow.SetPromoted(node, true);
+            Assert.Equal(rig.Flow.Population(node), rig.Flow.AgentsAt(node).Count);
+            rig.Flow.SetPromoted(node, true);
+            rig.Flow.SetPromoted(node, true);
+            Assert.Equal(rig.Flow.Population(node), rig.Flow.AgentsAt(node).Count);
+            rig.Flow.SetPromoted(node, false);
+            Assert.Empty(rig.Flow.AgentsAt(node));
         }
 
         [Fact]
