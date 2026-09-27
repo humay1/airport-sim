@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using AirportSim.Sim.Core;
@@ -55,7 +56,63 @@ namespace AirportSim.Sim.Flow
         private readonly List<int> _fifoScratch = new List<int>(InitialSlotCapacity);
         private readonly Comparison<int> _fifoComparer;
 
+        // Per-flight index for TryGetOutstanding (§9.7a, §9.10 "per-flight population
+        // indexes"): derived, not hashed, kept in lock-step with every cohort mutation
+        // that touches a Departing cohort on a non-Gate node, so the query itself never
+        // scans nodes or cohorts (O(the flight's cohorts) only) and allocates nothing.
+        // Pre-sized like the slot pool above: a flight whose count reads zero at the
+        // gate (never at a Sink, which §9.7a's literal "any node whose NodeKind is not
+        // Gate" also counts) never frees its entry, so over a long run the number of
+        // distinct flights ever seen only grows. Generously pre-stocking the pool at
+        // construction, instead of lazily on first use, is what keeps a released entry
+        // always available and the update path allocation-free (§9.10) regardless.
+        private const int InitialFlightCapacity = 512;
+        private readonly Dictionary<ulong, FlightOutstanding> _outstandingByFlight = new Dictionary<ulong, FlightOutstanding>(InitialFlightCapacity);
+        private readonly Stack<FlightOutstanding> _outstandingPool = new Stack<FlightOutstanding>(InitialFlightCapacity);
+
+        // Reused buffer for AgentsAt (§9.7 "Allocation": "AgentsAt allocates nothing
+        // after warm-up ... its buffer grows only when a node's population exceeds
+        // every earlier one"). One buffer suffices because its result is valid only
+        // until the next AgentsAt or Tick call.
+        private readonly AgentViewBuffer _agentViewBuffer = new AgentViewBuffer();
+
         private ulong _ticksCompleted;
+
+        /// <summary>Per-flight aggregate for TryGetOutstanding: total count and count by node ordinal.</summary>
+        private sealed class FlightOutstanding
+        {
+            internal int TotalCount;
+            internal readonly Dictionary<int, int> ByOrdinal;
+
+            // Sized to the node count at construction: the worst case for one
+            // flight's spread of non-Gate ordinals is every node in the graph, so
+            // this never needs to grow again once warmed up (§9.10).
+            internal FlightOutstanding(int nodeCount)
+            {
+                ByOrdinal = new Dictionary<int, int>(nodeCount);
+            }
+        }
+
+        /// <summary>A reusable, index-stable list of <see cref="AgentView"/>, backing <see cref="AgentsAt"/>.</summary>
+        private sealed class AgentViewBuffer : IReadOnlyList<AgentView>
+        {
+            internal AgentView[] Items = Array.Empty<AgentView>();
+            internal int Length;
+
+            public AgentView this[int index] => Items[index];
+
+            public int Count => Length;
+
+            public IEnumerator<AgentView> GetEnumerator()
+            {
+                for (int i = 0; i < Length; i++)
+                {
+                    yield return Items[i];
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
 
         internal FlowSystem(in SystemServices services, in FlowGraph graph, IWorldSystem world)
         {
@@ -111,6 +168,11 @@ namespace AirportSim.Sim.Flow
                     _thresholdWait[i] = profile.ThresholdWaitMinutes;
                     _hysteresis[i] = profile.HysteresisMinutes;
                 }
+            }
+
+            for (int i = 0; i < InitialFlightCapacity; i++)
+            {
+                _outstandingPool.Push(new FlightOutstanding(n));
             }
 
             services.Commands.Register(FlowSystemId, new SetServersOpenHandler(this));
@@ -298,43 +360,95 @@ namespace AirportSim.Sim.Flow
 
         public bool TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)
         {
-            int total = 0;
-            int bestOrdinal = -1;
-            int bestCount = 0;
-            for (int i = 0; i < _nodeId.Length; i++)
-            {
-                if (_kind[i] == NodeKind.Gate)
-                {
-                    continue;
-                }
-
-                int c = 0;
-                List<int> list = _cohortsOnNode[i];
-                for (int k = 0; k < list.Count; k++)
-                {
-                    CohortSlot s = _slots[list[k]];
-                    if (s.Key.Direction == FlowDirection.Departing && s.Key.Flight.Equals(flight))
-                    {
-                        c += s.Count;
-                    }
-                }
-
-                total += c;
-                if (c > 0 && (bestOrdinal < 0 || c > bestCount))
-                {
-                    bestCount = c;
-                    bestOrdinal = i;
-                }
-            }
-
-            if (total == 0)
+            // O(the flight's cohorts), served from the per-flight index (§9.7a):
+            // never scans all nodes or all cohorts.
+            if (!_outstandingByFlight.TryGetValue(flight.Value, out FlightOutstanding entry) || entry.TotalCount <= 0)
             {
                 outstanding = default;
                 return false;
             }
 
-            outstanding = new OutstandingPassengers(flight, total, _nodeId[bestOrdinal]);
+            int bestOrdinal = -1;
+            int bestCount = 0;
+            foreach (KeyValuePair<int, int> kv in entry.ByOrdinal)
+            {
+                int ordinal = kv.Key;
+                int count = kv.Value;
+                bool better = bestOrdinal < 0
+                    || count > bestCount
+                    || (count == bestCount && _nodeId[ordinal].Value < _nodeId[bestOrdinal].Value);
+                if (better)
+                {
+                    bestOrdinal = ordinal;
+                    bestCount = count;
+                }
+            }
+
+            outstanding = new OutstandingPassengers(flight, entry.TotalCount, _nodeId[bestOrdinal]);
             return true;
+        }
+
+        /// <summary>
+        /// Adds <paramref name="amount"/> Departing passengers of <paramref name="key"/>'s
+        /// flight to the outstanding index at <paramref name="ordinal"/>, unless the node
+        /// is a Gate or the cohort is not Departing (§9.7a only counts those).
+        /// </summary>
+        private void OutstandingAdd(int ordinal, in CohortKey key, int amount)
+        {
+            if (amount <= 0 || key.Direction != FlowDirection.Departing || _kind[ordinal] == NodeKind.Gate)
+            {
+                return;
+            }
+
+            if (!_outstandingByFlight.TryGetValue(key.Flight.Value, out FlightOutstanding entry))
+            {
+                if (_outstandingPool.Count > 0)
+                {
+                    entry = _outstandingPool.Pop();
+                }
+                else
+                {
+                    entry = new FlightOutstanding(_nodeId.Length);
+                }
+
+                _outstandingByFlight[key.Flight.Value] = entry;
+            }
+
+            entry.TotalCount += amount;
+            entry.ByOrdinal.TryGetValue(ordinal, out int existing);
+            entry.ByOrdinal[ordinal] = existing + amount;
+        }
+
+        /// <summary>The inverse of <see cref="OutstandingAdd"/>.</summary>
+        private void OutstandingRemove(int ordinal, in CohortKey key, int amount)
+        {
+            if (amount <= 0 || key.Direction != FlowDirection.Departing || _kind[ordinal] == NodeKind.Gate)
+            {
+                return;
+            }
+
+            if (!_outstandingByFlight.TryGetValue(key.Flight.Value, out FlightOutstanding entry))
+            {
+                return;
+            }
+
+            entry.TotalCount -= amount;
+            int remaining = entry.ByOrdinal[ordinal] - amount;
+            if (remaining > 0)
+            {
+                entry.ByOrdinal[ordinal] = remaining;
+            }
+            else
+            {
+                entry.ByOrdinal.Remove(ordinal);
+            }
+
+            if (entry.TotalCount <= 0)
+            {
+                _outstandingByFlight.Remove(key.Flight.Value);
+                entry.ByOrdinal.Clear();
+                _outstandingPool.Push(entry);
+            }
         }
 
         public bool TryGetLaneState(NodeId node, out LaneState lanes)
@@ -383,6 +497,7 @@ namespace AirportSim.Sim.Flow
             };
             _cohortsOnNode[ordinal].Add(slot);
             _slotByCohortId[id] = slot;
+            OutstandingAdd(ordinal, key, count);
             return new CohortId(id);
         }
 
@@ -461,18 +576,37 @@ namespace AirportSim.Sim.Flow
         {
             if (!_ordinalByNodeValue.TryGetValue(node.Value, out int ordinal) || !_promoted[ordinal])
             {
-                return Array.Empty<AgentView>();
+                _agentViewBuffer.Length = 0;
+                return _agentViewBuffer;
             }
 
+            // Exactly one view per passenger (§9.7): for each cohort, in the node's
+            // ascending-CohortId order, Index runs 0 .. Count - 1.
             List<int> list = _cohortsOnNode[ordinal];
-            var result = new AgentView[list.Count];
+            int total = 0;
+            for (int k = 0; k < list.Count; k++)
+            {
+                total += _slots[list[k]].Count;
+            }
+
+            if (_agentViewBuffer.Items.Length < total)
+            {
+                Array.Resize(ref _agentViewBuffer.Items, total);
+            }
+
+            int w = 0;
             for (int k = 0; k < list.Count; k++)
             {
                 CohortSlot s = _slots[list[k]];
-                result[k] = new AgentView(new PassengerRef(new CohortId(s.Id), 0), node, Fx.Zero);
+                var cohortId = new CohortId(s.Id);
+                for (int idx = 0; idx < s.Count; idx++)
+                {
+                    _agentViewBuffer.Items[w++] = new AgentView(new PassengerRef(cohortId, idx), node, Fx.Zero);
+                }
             }
 
-            return result;
+            _agentViewBuffer.Length = total;
+            return _agentViewBuffer;
         }
 
         // -------------------------------------------------------------- internal seams (SetServersOpenHandler)
@@ -666,8 +800,10 @@ namespace AirportSim.Sim.Flow
             };
             _cohortsOnNode[toOrdinal].Add(newSlot);
             _slotByCohortId[newId] = newSlot;
+            OutstandingAdd(toOrdinal, key, amount);
 
             _slots[slot].Count -= amount;
+            OutstandingRemove(fromOrdinal, key, amount);
             if (_slots[slot].Count == 0)
             {
                 _cohortsOnNode[fromOrdinal].Remove(slot);
@@ -683,6 +819,7 @@ namespace AirportSim.Sim.Flow
                 _events.Publish(new FlowUnblocked(new CohortId(_slots[slot].Id), _nodeId[ordinal], _nodeId[_slots[slot].BlockedByOrdinal]), EventRef.None);
             }
 
+            OutstandingRemove(ordinal, _slots[slot].Key, _slots[slot].Count);
             _cohortsOnNode[ordinal].Remove(slot);
             _slotByCohortId.Remove(_slots[slot].Id);
             FreeSlot(slot);
