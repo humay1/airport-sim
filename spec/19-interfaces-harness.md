@@ -95,10 +95,12 @@ If every checkpoint agrees but the final hashes differ: `final`.
   HUMAN DECISION (owner, 2026-09-26) in §19.5.
 - **`Promotion` before `sim.flow` promotion (T-010).** Without a promotable
   system, the second run differs from the first in nothing. The gate
-  compares for real and passes vacuously. T-010 amends the second run to
-  promote, through `IFlowSystem.SetPromoted` (`09` §9.7), the nodes the
-  `02` gate calls "a gate". Until then, a harness that stubs the comparison
-  is wrong.
+  compares for real and passes vacuously. A **harness task**, not T-010,
+  amends the second run to promote, through `IFlowSystem.SetPromoted` (`09`
+  §9.7), the nodes the `02` gate calls "a gate". T-010 writes `sim.flow`
+  only. The harness task depends on T-010 and on the CLI composition
+  including `sim.flow`, and the Planner creates it (Q-033). Until then, a
+  harness that stubs the comparison is wrong.
 - **The CLI composition.** For CLI runs, `content` is
   `ContentIndexFactory.Create` of an empty list, and the composer registers
   **no systems**. The task that first puts a module into the harness

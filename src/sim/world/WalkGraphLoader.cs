@@ -151,13 +151,13 @@ namespace AirportSim.Sim.World
                 if (!nodeIds.Contains(from))
                 {
                     throw Fail(sourceName, line, "edge " + id.ToString(CultureInfo.InvariantCulture)
-                        + " references unknown node " + from.ToString(CultureInfo.InvariantCulture));
+                        + " 'from' references unknown node " + from.ToString(CultureInfo.InvariantCulture));
                 }
 
                 if (!nodeIds.Contains(to))
                 {
                     throw Fail(sourceName, line, "edge " + id.ToString(CultureInfo.InvariantCulture)
-                        + " references unknown node " + to.ToString(CultureInfo.InvariantCulture));
+                        + " 'to' references unknown node " + to.ToString(CultureInfo.InvariantCulture));
                 }
 
                 if (from == to)
@@ -209,7 +209,7 @@ namespace AirportSim.Sim.World
             while (true)
             {
                 SkipWs(file, ref pos, ref line);
-                Dictionary<string, long> obj = ParseIntObject(file, ref pos, ref line, sourceName, NodeKeys);
+                Dictionary<string, long> obj = ParseIntObject(file, ref pos, ref line, sourceName, new[] { "id", "length_metres" });
                 uint id = ValidateRange(obj["id"], 1, MaxId, sourceName, line, "id");
                 uint length = ValidateRange(obj["length_metres"], 0, MaxId, sourceName, line, "length_metres");
                 result.Add((id, length));
@@ -253,7 +253,7 @@ namespace AirportSim.Sim.World
             while (true)
             {
                 SkipWs(file, ref pos, ref line);
-                Dictionary<string, long> obj = ParseIntObject(file, ref pos, ref line, sourceName, EdgeKeys);
+                Dictionary<string, long> obj = ParseIntObject(file, ref pos, ref line, sourceName, new[] { "id", "from", "to" });
                 uint id = ValidateRange(obj["id"], 1, MaxId, sourceName, line, "id");
                 uint from = ValidateRange(obj["from"], 1, MaxId, sourceName, line, "from");
                 uint to = ValidateRange(obj["to"], 1, MaxId, sourceName, line, "to");
@@ -284,9 +284,6 @@ namespace AirportSim.Sim.World
 
             return result;
         }
-
-        private static readonly string[] NodeKeys = { "id", "length_metres" };
-        private static readonly string[] EdgeKeys = { "id", "from", "to" };
 
         /// <summary>Parses an object whose every value is a plain integer (node and edge objects).</summary>
         private static Dictionary<string, long> ParseIntObject(ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName, string[] allowedKeys)
@@ -414,6 +411,12 @@ namespace AirportSim.Sim.World
             return b >= (byte)'0' && b <= (byte)'9';
         }
 
+        /// <summary>
+        /// The standard JSON string grammar (08 §8.11's subset): the escapes
+        /// <c>" \ / b f n r t</c> and <c>\uXXXX</c>, nothing else, and no raw
+        /// control character. Any other escape (for example <c>\d</c>) is a
+        /// syntax failure, not a literal backslash-then-letter.
+        /// </summary>
         private static string ParseString(ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName)
         {
             int startLine = line;
@@ -441,16 +444,159 @@ namespace AirportSim.Sim.World
                         throw Fail(sourceName, startLine, "unterminated string");
                     }
 
-                    chars.Add((char)file[pos]);
+                    byte e = file[pos];
+                    switch ((char)e)
+                    {
+                        case '"': chars.Add('"'); Advance(file, ref pos, ref line); break;
+                        case '\\': chars.Add('\\'); Advance(file, ref pos, ref line); break;
+                        case '/': chars.Add('/'); Advance(file, ref pos, ref line); break;
+                        case 'b': chars.Add('\b'); Advance(file, ref pos, ref line); break;
+                        case 'f': chars.Add('\f'); Advance(file, ref pos, ref line); break;
+                        case 'n': chars.Add('\n'); Advance(file, ref pos, ref line); break;
+                        case 'r': chars.Add('\r'); Advance(file, ref pos, ref line); break;
+                        case 't': chars.Add('\t'); Advance(file, ref pos, ref line); break;
+                        case 'u':
+                            Advance(file, ref pos, ref line);
+                            int code = ParseHex4(file, ref pos, ref line, sourceName, startLine);
+                            if (code >= 0xD800 && code <= 0xDFFF)
+                            {
+                                throw Fail(sourceName, startLine, "\\u surrogate escape is not allowed (Q-033)");
+                            }
+
+                            chars.Add((char)code);
+                            break;
+                        default:
+                            throw Fail(sourceName, startLine, "invalid escape '\\" + (char)e + "'");
+                    }
+
+                    continue;
+                }
+
+                if (b < 0x20)
+                {
+                    throw Fail(sourceName, startLine, "control character in string literal");
+                }
+
+                if (b < 0x80)
+                {
+                    chars.Add((char)b);
                     Advance(file, ref pos, ref line);
                     continue;
                 }
 
-                chars.Add((char)b);
-                Advance(file, ref pos, ref line);
+                AppendUtf8Character(file, ref pos, ref line, sourceName, startLine, chars);
             }
 
             return new string(chars.ToArray());
+        }
+
+        /// <summary>
+        /// Decodes one non-ASCII UTF-8 character starting at a lead byte
+        /// already known to be &gt;= 0x80, validating it strictly (08 §8.11
+        /// "Strings", Q-033): no overlong encoding, no surrogate code point, no
+        /// value above U+10FFFF, and every continuation byte in 0x80-0xBF.
+        /// Invalid UTF-8 anywhere in the file is a load failure.
+        /// </summary>
+        private static void AppendUtf8Character(
+            ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName, int startLine, List<char> chars)
+        {
+            byte lead = file[pos];
+            int extra;
+            int codepoint;
+            int minCodepoint;
+            if (lead >= 0xC2 && lead <= 0xDF)
+            {
+                extra = 1;
+                codepoint = lead & 0x1F;
+                minCodepoint = 0x80;
+            }
+            else if (lead >= 0xE0 && lead <= 0xEF)
+            {
+                extra = 2;
+                codepoint = lead & 0x0F;
+                minCodepoint = 0x800;
+            }
+            else if (lead >= 0xF0 && lead <= 0xF4)
+            {
+                extra = 3;
+                codepoint = lead & 0x07;
+                minCodepoint = 0x10000;
+            }
+            else
+            {
+                throw Fail(sourceName, startLine, "invalid UTF-8 byte");
+            }
+
+            Advance(file, ref pos, ref line);
+            for (int k = 0; k < extra; k++)
+            {
+                if (pos >= file.Length || (file[pos] & 0xC0) != 0x80)
+                {
+                    throw Fail(sourceName, startLine, "invalid UTF-8 continuation byte");
+                }
+
+                codepoint = (codepoint << 6) | (file[pos] & 0x3F);
+                Advance(file, ref pos, ref line);
+            }
+
+            if (codepoint < minCodepoint || codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+            {
+                throw Fail(sourceName, startLine, "invalid UTF-8 code point");
+            }
+
+            if (codepoint <= 0xFFFF)
+            {
+                chars.Add((char)codepoint);
+            }
+            else
+            {
+                int v = codepoint - 0x10000;
+                chars.Add((char)(0xD800 + (v >> 10)));
+                chars.Add((char)(0xDC00 + (v & 0x3FF)));
+            }
+        }
+
+        private static int ParseHex4(ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName, int startLine)
+        {
+            if (pos + 4 > file.Length)
+            {
+                throw Fail(sourceName, startLine, "invalid \\u escape");
+            }
+
+            int code = 0;
+            for (int k = 0; k < 4; k++)
+            {
+                int d = HexDigit(file[pos]);
+                if (d < 0)
+                {
+                    throw Fail(sourceName, startLine, "invalid \\u escape");
+                }
+
+                code = (code << 4) | d;
+                Advance(file, ref pos, ref line);
+            }
+
+            return code;
+        }
+
+        private static int HexDigit(byte b)
+        {
+            if (b >= (byte)'0' && b <= (byte)'9')
+            {
+                return b - (byte)'0';
+            }
+
+            if (b >= (byte)'a' && b <= (byte)'f')
+            {
+                return b - (byte)'a' + 10;
+            }
+
+            if (b >= (byte)'A' && b <= (byte)'F')
+            {
+                return b - (byte)'A' + 10;
+            }
+
+            return -1;
         }
 
         private static long ParseInteger(ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName)

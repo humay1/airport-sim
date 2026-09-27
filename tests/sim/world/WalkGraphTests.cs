@@ -244,5 +244,72 @@ namespace AirportSim.Sim.World.Tests
             byte[] body = WorldKit.Utf8(Doc(TwoNodes, ""));
             Assert.Throws<ArgumentNullException>(() => loader.Load(body, null!));
         }
+
+        /// <summary>A JSON backslash-u escape for the hex digits, built at run time.</summary>
+        private static string U(string hex)
+        {
+            return "\\" + "u" + hex;
+        }
+
+        [Fact]
+        public void test_walk_graph_accepts_escaped_keys()
+        {
+            // 08 §8.11 "Strings" (Q-033): the file's only strings are keys, which
+            // compare ordinally after unescaping; \uXXXX takes either case.
+            string json = "{\"schema" + U("005f") + "version\": 1, \"nodes\": ["
+                + "{\"i" + U("0064") + "\": 4101, \"length" + U("005F") + "metres\": 5}, {\"id\": 4102, \"length_metres\": 6}], "
+                + "\"e" + U("0064") + "ges\": [{\"id\": 7, \"fr" + U("006f") + "m\": 4101, \"t" + U("006F") + "\": 4102}]}";
+            Assert.Contains("\\", json, StringComparison.Ordinal);
+            WalkGraph g = WorldKit.Load(json);
+            Assert.Equal("N4101:5;N4102:6;E7:4101>4102;", WorldKit.Content(g));
+        }
+
+        [Fact]
+        public void test_walk_graph_rejects_bad_escapes_and_control_characters_in_strings()
+        {
+            // Escapes shown as JSON text (C# "\\" is one backslash): anything but
+            // the eight JSON escapes and \uXXXX, a surrogate \u, and a raw
+            // character below 0x20 are load failures.
+            string[] badKeys =
+            {
+                "i\\xd", "i" + U("12"), "i" + U("12G4"), "i" + U("D800"), "i" + U("dfff"),
+                "i\\U0064", "i\\'d", "i\\", "i\td", "i" + (char)1 + "d", "i" + (char)31 + "d",
+            };
+            foreach (string key in badKeys)
+            {
+                Rejects("{\"schema_version\": 1, \"nodes\": [{\"" + key + "\": 1, \"length_metres\": 5}], \"edges\": []}");
+            }
+
+            // A raw newline inside a string: a syntax failure, with its line.
+            FormatException ex = Rejects("{\n\"schema_version\": 1,\n\"nodes\": [{\"id\": 1, \"length_\nmetres\": 5}],\n\"edges\": []\n}\n");
+            Assert.Contains("line ", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void test_walk_graph_rejects_invalid_utf8_anywhere()
+        {
+            string valid = Doc(TwoNodes, "");
+            byte[] bytes = WorldKit.Utf8(valid);
+            int inKey = WorldKit.Utf8(valid.Substring(0, valid.IndexOf("length_metres", StringComparison.Ordinal) + 3)).Length;
+            foreach (byte[] junk in new[]
+            {
+                new byte[] { 0xFF },               // never valid
+                new byte[] { 0xC3 },               // truncated two-byte sequence
+                new byte[] { 0xC0, 0xAF },         // overlong
+                new byte[] { 0xED, 0xA0, 0x80 },   // encoded surrogate
+                new byte[] { 0x80 },               // lone continuation
+            })
+            {
+                var insideKey = new System.Collections.Generic.List<byte>(bytes);
+                insideKey.InsertRange(inKey, junk);
+                FormatException a = Assert.Throws<FormatException>(() => WorldFactory.CreateGraphLoader().Load(insideKey.ToArray(), Source));
+                Assert.StartsWith(Source + ": ", a.Message, StringComparison.Ordinal);
+
+                var betweenTokens = new System.Collections.Generic.List<byte>(bytes);
+                betweenTokens.InsertRange(bytes.Length - 1, junk);
+                FormatException b = Assert.Throws<FormatException>(() => WorldFactory.CreateGraphLoader().Load(betweenTokens.ToArray(), Source));
+                Assert.StartsWith(Source + ": ", b.Message, StringComparison.Ordinal);
+            }
+        }
     }
 }
