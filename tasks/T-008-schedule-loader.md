@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | TESTS_AUTHORED |
 | Module | `sim.schedule` |
 | Assigned role | worker |
-| Depends on | T-001, T-003, T-026 |
+| Depends on | T-001, T-003, T-026, T-007 |
 | Spec source | `spec/00-overview.md` build order #2; `spec/11-interfaces-schedule.md` (answers Q-004) |
 | Blocked by | — |
 
@@ -33,17 +33,27 @@ T-020, T-021, T-022, T-024, T-029, T-031) — concurrent `.sln` edits
 conflict (`07` L8).
 
 `sim.schedule` depends on `core` and `flow` (`spec/03-module-map.md`, corrected
-by the Q-004 answer) but this task must build and pass **without** `sim.flow`
-registered — §11.6 "Running without `sim.flow`" is binding: the module's state
-hash must be identical with and without the injector wired in. Do not add a
-hard dependency on T-007 merging first.
+by the Q-004 answer). §11.6 "Running without `sim.flow`" governs
+**registration/behaviour only**: at runtime, this module's state hash must be
+identical whether or not the injector is wired in — it does not mean
+`sim.schedule` builds without `sim.flow` existing.
+
+**Dependency correction (Test Author, found compiling T-008):** the
+`AirportSim.Sim.Schedule.csproj` this task creates references
+`AirportSim.Sim.Flow` (`07` L2's project table), and whatever this task's
+own factory/`CreateSystem` surface takes an `IFlowSystem` for (the §11.6
+injector wiring) cannot compile until `src/sim/flow/**` exists. So **this
+task cannot compile, let alone build or pass, until T-007 has merged** —
+`Depends on` is amended to add `T-007`. This is a compile-time dependency on
+top of, not instead of, the runtime "identical hash with/without flow
+registered" behaviour above.
 
 **Dependency correction (systematic type-dependency recheck):**
 `FlightRecord.MinTurnaround` is `SimMinutes`, which is `Fx` (`08` §8.2), and
 `FlightRecord.EntryNode` is `NodeId` while `FlightRecord.AircraftType`/
 `PaxProfile` are `ContentId` — both `sim.core` types T-026 authors. This
 task cannot compile without either `T-003` or `T-026`. `Depends on` is
-amended to `T-001, T-003, T-026`.
+amended to `T-001, T-003, T-026` (further amended above to add `T-007`).
 
 ## Readable specs
 
