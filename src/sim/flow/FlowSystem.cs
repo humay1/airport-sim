@@ -704,24 +704,25 @@ namespace AirportSim.Sim.Flow
                 {
                     int slotB = list[j];
                     bool sameKey = !_slots[slotB].Blocked && _slots[slotA].Key.Equals(_slots[slotB].Key);
-                    if (sameKey)
+
+                    // On a Corridor, two cohorts merge only if their DueAt also matches,
+                    // so a merge never moves a release tick (Q-033); a Corridor can
+                    // therefore hold up to traversalTicks live cohorts of one key.
+                    // Elsewhere DueAt already equals EnteredNodeAt on both sides, so this
+                    // is never a real restriction there.
+                    bool sameDue = !corridor || _slots[slotA].DueAt == _slots[slotB].DueAt;
+
+                    if (sameKey && sameDue)
                     {
                         _slots[slotA].Count += _slots[slotB].Count;
                         if (_slots[slotB].EnteredNodeAt < _slots[slotA].EnteredNodeAt)
                         {
                             _slots[slotA].EnteredNodeAt = _slots[slotB].EnteredNodeAt;
+                            if (!corridor)
+                            {
+                                _slots[slotA].DueAt = _slots[slotA].EnteredNodeAt;
+                            }
                         }
-
-                        // The merged cohort's DueAt always follows from its (possibly
-                        // earlier) EnteredNodeAt: recomputed for a Corridor, equal to it
-                        // otherwise. "Corridor cohorts merge only when DueAt is equal"
-                        // (Q-033) describes this recomputed value, not a pre-merge gate —
-                        // a gate would leave same-key waves permanently unmerged on a
-                        // multi-tick corridor, which the O(nodes+cohorts) budget and the
-                        // one-cohort-per-live-key invariant both forbid.
-                        _slots[slotA].DueAt = corridor
-                            ? _slots[slotA].EnteredNodeAt + (ulong)TraversalTicks(_nodeId[ordinal], WalkSpeedOf(_slots[slotA].Key.PaxProfile))
-                            : _slots[slotA].EnteredNodeAt;
 
                         list.RemoveAt(j);
                         _slotByCohortId.Remove(_slots[slotB].Id);

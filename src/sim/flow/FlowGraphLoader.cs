@@ -263,8 +263,22 @@ namespace AirportSim.Sim.Flow
             return result;
         }
 
-        private static readonly string[] KindNames = { "source", "corridor", "hall", "queue", "gate", "sink" };
-        private static readonly NodeKind[] KindValues = { NodeKind.Source, NodeKind.Corridor, NodeKind.Hall, NodeKind.Queue, NodeKind.Gate, NodeKind.Sink };
+        /// <summary>A switch, not a static lookup table (CLAUDE.md: no mutable statics).</summary>
+        private static bool TryParseKind(string text, out NodeKind kind)
+        {
+            switch (text)
+            {
+                case "source": kind = NodeKind.Source; return true;
+                case "corridor": kind = NodeKind.Corridor; return true;
+                case "hall": kind = NodeKind.Hall; return true;
+                case "queue": kind = NodeKind.Queue; return true;
+                case "gate": kind = NodeKind.Gate; return true;
+                case "sink": kind = NodeKind.Sink; return true;
+                default:
+                    kind = default;
+                    return false;
+            }
+        }
 
         private static RawNode ParseNodeObject(ReadOnlySpan<byte> file, ref int pos, ref int line, string sourceName)
         {
@@ -313,13 +327,11 @@ namespace AirportSim.Sim.Flow
 
                             hasKind = true;
                             string kindText = ParseString(file, ref pos, ref line, sourceName);
-                            int kindIndex = Array.IndexOf(KindNames, kindText);
-                            if (kindIndex < 0)
+                            if (!TryParseKind(kindText, out kind))
                             {
                                 throw FailShape(sourceName, line, "unknown node kind '" + kindText + "'");
                             }
 
-                            kind = KindValues[kindIndex];
                             break;
 
                         case "server_count":
