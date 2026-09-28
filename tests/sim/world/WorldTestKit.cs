@@ -645,4 +645,30 @@ namespace AirportSim.Sim.World.Tests
                 .Build(FixtureHash);
         }
     }
+
+    /// <summary>
+    /// Every zero-allocation assertion measures through this; a copy of the
+    /// sim.core test kit's Allocation (test projects share no code).
+    /// GC.GetAllocatedBytesForCurrentThread subtracts the unused part of the
+    /// thread's allocation context, so when the runtime retires a partly used
+    /// context inside the window the delta can grow by up to one allocation
+    /// quantum (about 8 KB) with nothing allocated. A full blocking collection
+    /// right before the first read leaves the thread with no context to
+    /// retire; any real allocation still shows up in full.
+    /// </summary>
+    internal static class Allocation
+    {
+        public static long Start()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            return GC.GetAllocatedBytesForCurrentThread();
+        }
+
+        public static long Since(long start)
+        {
+            return GC.GetAllocatedBytesForCurrentThread() - start;
+        }
+    }
 }
