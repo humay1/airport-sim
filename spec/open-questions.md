@@ -1113,3 +1113,80 @@ Answer:      A `sim.core` defect, from a gap in `08` §8.6. The test is right:
              Five new `sim.core` tests are named in §8.6. No outcome, hash
              or golden changes.
 Status:      ANSWERED (spec/08-interfaces-core.md#86-event-bus)
+
+### Q-038 — `sim.schedule`: a show-up bucket due before its flight's publication
+Raised by:   Reviewer, PR #54 (T-008) finding 1, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    §11.6 computes injections at publication, and `PublishTick` is
+             one day before `ScheduledTick`. `minutes_before_std` is
+             unbounded in content, so two failures are possible on day
+             `d ≥ 2`:
+             - with `minutes_before_std > 1440 + minute-of-STD`, a bucket's
+               tick has already passed when the day is materialised, so
+               those passengers are never injected;
+             - between 1440 and that value, passengers are injected before
+               `FlightPlanPublished`.
+             Clamp, reject, or extend the horizon?
+Answer:      Reject at load, which is the narrowest option. The new constant
+             `MAX_SHOW_UP_MINUTES_BEFORE_STD = PLAN_PUBLISH_LEAD_TICKS /
+             TICKS_PER_SIM_MINUTE` (1440) bounds every bucket of every
+             referenced pax profile. The check is at `CreateSystem`, where
+             profiles resolve (§11.9a), with the existing `FormatException`
+             shape. With the bound, every injection tick is at or after
+             `PublishTick` (§11.6, stated as an inequality), so nothing is
+             queued for a past tick and conservation holds. The day-0
+             `clamp to 0` is unchanged and is the day-0 case of the same
+             inequality.
+             The early-injection case is closed **by tick**: no passenger
+             reaches `sim.flow` in an earlier tick than its flight's
+             `FlightPlanPublished`. On a **shared tick** (a bucket exactly
+             at the bound, or the day-0 clamp), `Inject` runs in phase 2
+             and handlers see the event in phase 3 (`08` §8.5, §8.6). So
+             `sim.flow` holds the cohort first. This is explicitly accepted
+             (§11.6): no Phase 0/1 consumer depends on the opposite order.
+             §11.6 also fixes the order of the calls inside
+             `sim.schedule`'s `Tick` (materialise, publish, inject), which
+             makes them deterministic, and states that this order is not
+             observable across modules.
+             Revision after the PR #57 review:
+             - the test is rewritten to be observable (recorder tick
+               against the fake flow's `Inject` tick). After round 2 it
+               pins exact values: `pax=10`, buckets 60/400 and 1440/600,
+               which split exactly as 4 + 6. It asserts all four
+               occurrences the run publishes (days 0 to 3), with their
+               ticks listed;
+             - §11.9a names the reported bucket and the order of failures.
+             Rejected alternatives:
+             - clamping to `PublishTick` would silently reshape an owner's
+               curve;
+             - extending the horizon would change `PLAN_PUBLISH_LEAD_TICKS`
+               and every publish tick.
+             Two new tests (§11.10).
+             The 1440-minute (24 h) bound is owner-confirmed 2026-09-28.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#expansion-to-injections)
+
+### Q-039 — `sim.schedule`: the `FlightId` stride invariant
+Raised by:   Reviewer, PR #54 (T-008) finding 2, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    `FlightId.Value = DayIndex × 100000 + RowOrdinal + 1`, and
+             `RowOrdinal` counts across the whole file. The loader limited
+             only rows per `day`, so 60000 + 60000 rows load, and two
+             flights on adjacent days collide. What does the spec
+             guarantee? Should the total be bounded, or the id redefined?
+Answer:      Bound the total. `MAX_FIXTURE_ROWS_PER_DAY` is replaced by
+             `MAX_FIXTURE_ROWS = FLIGHT_ID_DAY_STRIDE − 1` (99999) on the
+             file's total data rows. It is counted in file order, and the
+             failure names line `MAX_FIXTURE_ROWS + 2` (the first row over
+             the limit), with no dictionary walk. §11.3 now states what the
+             derivation guarantees for every loaded table, and nothing
+             stronger:
+             - ids are unique across all days;
+             - `Value / STRIDE = DayIndex`;
+             - `Value % STRIDE − 1 = RowOrdinal`;
+             - ascending `FlightId` equals ascending `(DayIndex,
+               RowOrdinal)`.
+             The id formula is unchanged, so no id or golden changes for
+             any fixture that loads today. Max tier is 800 daily movements
+             (`01`), far below the bound. Two new tests (§11.10). This also
+             settles PR #54 finding 3: the row-limit failure has a line.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#flight-id-derivation)
