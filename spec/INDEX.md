@@ -189,8 +189,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: flight records, derived `FlightId`, CSV fixture format, publication,
   show-up curve and injection.
 - Key: query-only; no RNG; fixture hash fed into the state hash; runs
-  identically with or without `sim.flow` (§11.6).
-- LC: none.
+  identically with or without `sim.flow` (§11.6); **show-up buckets are
+  bounded by the one-day publish lead, so no injection precedes its
+  publication, and within `Tick` the order is materialise, then publish,
+  then inject (§11.6, §11.9a, Q-038)**; **at most `MAX_FIXTURE_ROWS`
+  (99999) rows per file, which makes `FlightId` unique and decodable
+  (§11.3, §11.4, Q-039)**.
+- LC: the 1440-minute show-up bound (Q-038).
 - Read if: T-008; §11.3/§11.7 for consumers.
 
 ### `12-interfaces-airside.md` — `sim.airside`
@@ -315,7 +320,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-035 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Q-002 to Q-035, Q-038 and Q-039 are answered, and Q-036
+  and Q-037 are answered in PR #55 (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),

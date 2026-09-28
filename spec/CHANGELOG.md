@@ -1953,3 +1953,38 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              implementer can share it if that figure matters. No scope
              added.
 Signed off:  not required. `01` and `02` are untouched.
+
+## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
+Reason:      The PR #54 (T-008) review found two gaps.
+             - **Q-038:** an unbounded `minutes_before_std` can put an
+               injection before its flight's publication, or before its
+               day is materialised. Those passengers are then lost, or
+               injected before `FlightPlanPublished`. The fix:
+               - `MAX_SHOW_UP_MINUTES_BEFORE_STD` (1440, derived from the
+                 publish lead) is checked at `CreateSystem`, which makes
+                 injection tick ≥ `PublishTick` hold on every day;
+               - an explicit order within `Tick`: materialise, then
+                 publish, then inject.
+             - **Q-039:** `RowOrdinal` indexes the whole file, but only rows
+               per day were bounded, so `FlightId`s could collide across
+               days. The fix: `MAX_FIXTURE_ROWS` (99999) on total rows, a
+               line-numbered failure, and a statement of exactly what the
+               derivation guarantees.
+Raised by:   Q-038, Q-039 (Reviewer, PR #54, via coordinator)
+Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
+             (PR #54):
+             - rename `MAX_FIXTURE_ROWS_PER_DAY` to `MAX_FIXTURE_ROWS` and
+               make it a total-row check with the line number (this also
+               clears review findings 3 and 4);
+             - add the show-up bound check at `CreateSystem`;
+             - compute injections at publication, per the Tick order,
+               rather than at materialisation (finding 1).
+             For the T-008 Test Author, four new tests (§11.10). Every
+             fixture that loads today keeps its ids and hashes. The
+             largest `minutes_before_std` in `data/`, `tests/` and the
+             T-008 test branch is 180, well inside the bound. No scope
+             added.
+Signed off:  not required. `01` and `02` are untouched.
+LOW CONFIDENCE: the 1440-minute show-up bound (Q-038) is structural, but it
+             limits a content value the owner sets. The owner should
+             confirm that no intended profile needs a longer lead.
