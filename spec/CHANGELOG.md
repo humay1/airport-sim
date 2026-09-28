@@ -1954,28 +1954,68 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              added.
 Signed off:  not required. `01` and `02` are untouched.
 
-## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.10; 18 §18.5; INDEX; open-questions — Q-036, Q-037: routing-cache rules and gate count in `sim.flow` fixtures
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037: routing-cache rules and gate count in `sim.flow` fixtures
 Reason:      T-011's black-box scaling runs show routing cost linear in the
              number of pooled gates (p99 of 9.9 ms at 96 gates), with the
              worst ticks after show-up injections. `09` allowed a cache but
              never said what it must preserve. It also left open whether
              `18` §18.5's single `Gate` bound `sim.flow` stress fixtures.
              - **Q-036:** six binding rules for an optional cache (§9.6):
-               observably identical, including tie-breaks and the
-               term-by-term `Fx` sum; a static part that may live for the
-               run; a wait-dependent part memoised within one tick only;
-               not hashed, not saved, rebuilt on restore; no allocation; no
-               other inputs. It also names the required oracle test,
-               `test_flow_routing_cache_matches_uncached_reference`, owned
-               by the Test Author of the future performance task.
-             - **Q-037:** the single `Gate` binds the shared world fixture
-               and fixtures built on it. `sim.flow`-local stress and budget
-               fixtures may pool several gates, stating the count and its
-               derivation (§9.10, §18.5).
+               - observably identical: the same per-pair cost `Raw` and
+                 the same tie-break, with per-node terms that are each
+                 node's own §9.12 value;
+               - a static part from three named sources that may live for
+                 the run;
+               - a wait-dependent part memoised within one tick only;
+               - not hashed, not saved, rebuilt on restore;
+               - no allocation;
+               - no other inputs.
+               It also names the required oracle test,
+               `test_flow_routing_cache_matches_uncached_reference`, with
+               mandatory cases, owned by the Test Author of the
+               performance task.
+             - **Q-037:** the single `Gate` binds the shared file
+               `phase0-landside.json` and fixtures that load it.
+               `sim.flow`-local stress and budget fixtures build their own
+               graph and may pool several gates, stating the count and its
+               derivation (§9.10, §18.5). §18.6's list of users is
+               corrected.
+Revision:    after the PR #55 review (rejected at 9741b6d), four findings
+             were fixed:
+             - (1) §18.6 no longer lists T-011's stress fixture as a user
+               of the shared file. The single-gate scope is now "the file
+               and fixtures that load it", in §18.5, §18.6, §9.10 and
+               Q-037.
+             - (2) Rule 1 no longer forbids reordering or factoring on a
+               false premise. `Fx.Add` and integer-multiple `Mul` are exact
+               and every term is non-negative (`08` §8.3), so the grouping
+               cannot change `Raw` or the overflow condition. The real
+               hazards are named instead: per-node `Ceil` in
+               `traversalTicks` and per-node `Div` in the predicted wait.
+             - (3) Rule 2 names its three sources: `IWorldSystem`'s
+               load-time answers, the `FlowGraph` node behaviour, and the
+               pax profiles' walk speeds. Rule 4 rebuilds from exactly
+               those.
+             - (4) The oracle test now requires these cases:
+               - distinct walk speeds released from one node in one tick,
+                 choosing different edges;
+               - exact-cost gate and edge ties;
+               - lane changes;
+               - a blocked re-route;
+               - a show-up spike;
+               - a restart.
+               Rule 3 explains why differing destination sets cannot occur
+               at Phase 0/1: the effective set is filtered by
+               `CanReachVia` from the current node. It also binds the
+               amendment that makes them possible to extend the key and the
+               test. The restart case says what it proves: until
+               `sim.save`, replay shows reproducibility only (finding 5).
 Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect)
-Impact:      Nothing merged changes. There is no cache in `src/sim/flow`
-             today, so it violates no rule. T-011's 24-gate `StressDay`
-             conforms to Q-037. For the Planner: a future `sim.flow`
+Impact:      Nothing merged changes. `main` has no cache in `src/sim/flow`,
+             so it violates no rule. PR #56 (T-010) adds a per-tick cache
+             keyed by (node, walk speed). It must meet these rules and
+             carry the oracle test. Rule 3 allows its key at Phase 0/1.
+             T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
              performance task:
              - writable paths `src/sim/flow/**`;
              - depends on T-010 merged;

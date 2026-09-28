@@ -1127,20 +1127,39 @@ Question:    T-011's black-box runs show routing cost growing linearly with
              cache passes the time budget and silently changes routing.
 Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
              against a failing measurement, under six binding rules:
-             - (1) observably identical to the uncached rule, including
-               tie-breaks and the term-by-term `Fx` evaluation of §9.12;
-             - (2) the static part (paths, reachability, traversal terms
-               per walk speed) may live for the run;
+             - (1) observably identical to the uncached rule: the same
+               cost `Raw` per pair and the same tie-break. Grouping the
+               sums is free, since `Fx` addition and integer-multiple
+               `Mul` are exact. The per-node `traversalTicks` and snapshot
+               waits must each be that node's own §9.12 value;
+             - (2) the static part may live for the run, and depends only
+               on `IWorldSystem`'s load-time answers, the `FlowGraph`
+               node kinds and the pax profiles' walk speeds;
              - (3) the wait-dependent part is memoised within one tick
-               only;
-             - (4) it is not hashed or saved, and is rebuilt on
-               restore/replay with the same routes;
+               only, keyed by node, destination set and walk speed. At
+               Phase 0/1 the effective destination set is a function of
+               the node, and the amendment that changes that must extend
+               the key and the test;
+             - (4) it is not hashed or saved, and is rebuilt from rule 2's
+               sources on restore/replay with the same routes;
              - (5) no allocation in the update path;
              - (6) no dependence on promotion, presentation, iteration
                order or fill order.
              Required test when a cache is added, owned by the Test Author
-             of the future `sim.flow` performance task:
-             `test_flow_routing_cache_matches_uncached_reference`.
+             of whichever `sim.flow` task adds it:
+             `test_flow_routing_cache_matches_uncached_reference`. It
+             checks every tick against an uncached oracle, and its script
+             must include each of these, so a cache wrong in that way
+             fails:
+             - distinct walk speeds released from one node in one tick,
+               choosing different edges;
+             - an exact-cost gate tie (NodeId) and an edge tie (EdgeId);
+             - lane changes that flip the choice;
+             - a blocked cohort re-routed;
+             - a show-up spike;
+             - a restart. Until `sim.save` exists this is replay from
+               seed, which proves reproducibility only, not fill-order
+               independence.
              HUMAN DECISION — owner, 2026-09-28: gate assignment is not
              brought forward, and the 90k max-tier measurement decides
              whether the performance task is released.
@@ -1156,12 +1175,17 @@ Question:    `18` §18.5 said "Phase 0/1 fixtures declare **one** `Gate`
              single-gate rule bind only the shared world fixture (§18.6),
              or every `sim.flow` fixture?
 Answer:      Architect's authority: this is fixture sizing (Q-033), not
-             balance or scope. The single `Gate` binds the shared world
-             fixture (`18` §18.6) and every fixture built on it. A
-             `sim.flow`-local stress or budget fixture may declare several
-             pooled `Gate` nodes, and states the count and its derivation in
-             the test (`09` §9.10, `18` §18.5). `StressDay`'s 24 gates
-             conform. Nothing merged changes.
+             balance or scope. The single `Gate` binds the shared file
+             `tests/fixtures/world/phase0-landside.json` (`18` §18.6) and
+             every fixture that loads it. A `sim.flow`-local stress or
+             budget fixture builds its own walk graph and does not load
+             that file. It may declare several pooled `Gate` nodes, and
+             states the count and its derivation in the test (`09` §9.10,
+             `18` §18.5). `18` §18.6's list of users is corrected to match.
+             T-011's `StressDay` builds its own graph, so it is not one of
+             them, and its 24 gates conform. T-011's other tests that load
+             the shared file keep its single `Gate`. Nothing merged
+             changes.
              Recommendation for the owner, not decided: the 90k max-tier
              fixture should pool **60** `Gate` nodes, one per max-tier
              stand (`01`). The owner said this measurement decides, and

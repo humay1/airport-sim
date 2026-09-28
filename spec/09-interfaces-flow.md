@@ -205,21 +205,35 @@ only against a failing budget measurement (`07` "Performance").
 1. **Observably identical.** The cache is an implementation detail only
    because nothing can tell it from the uncached rule. For every released
    cohort at every tick, the chosen edge equals what the rule above and
-   §9.12 "Traversal and route cost" choose. That includes the lowest `Raw`
-   cost, then ascending `g` `NodeId`, then ascending `EdgeId`. It also
-   includes evaluating the cost term by term exactly as §9.12 writes it:
-   one `Fx.FromInt(traversalTicks)` per node and one
-   `Fx.Mul(snapshotWait, Fx.FromInt(TICKS_PER_SIM_MINUTE))` per `Queue`
-   node, summed in path order. Factoring a multiply out of a sum, or
-   reordering the sum, is forbidden even where it looks equal, because
-   `Fx` floors.
-2. **Static part: may live for the run.** Data that depends only on the
-   walk graph and on content may be kept from construction onwards:
-   `CanReachVia(e, g)`, the `PathVia(e, g)` node list, which of its nodes
-   are `Queue` nodes, and each path's traversal terms per distinct
-   `walk_speed_mps` in the loaded pax profiles. The walk graph is fixed at
-   Phase 0/1 (`18` §18.3, §18.5). When construction arrives, a
-   construction change is the invalidation point, by amendment.
+   §9.12 "Traversal and route cost" choose: the lowest cost by `Raw`, then
+   ascending `g` `NodeId`, then ascending `EdgeId`. What must match is
+   each pair's cost `Raw` and the tie-break. The grouping of the sums does
+   not need to match. Every term is non-negative, `Fx.Add` is exact, and
+   `Fx.Mul` by `Fx.FromInt` of an integer is exact (`08` §8.3). So any
+   order or grouping of the additions, and factoring
+   `Fx.FromInt(TICKS_PER_SIM_MINUTE)` out of the wait sum, gives the same
+   `Raw`. It also overflows exactly when the total does. The real
+   rounding hazards are in the **per-node terms**, which floor and ceil:
+   - each node's `traversalTicks` is §9.12's value for that node's own
+     `LengthMetres`. It is never derived from a summed length, because
+     `Ceil` of a sum differs from a sum of `Ceil`s;
+   - each `Queue` node's wait is that node's own snapshot
+     `PredictedWaitMinutes` (§9.12 "Predicted wait"). It is never derived
+     from pooled populations or capacities, because `Div` floors.
+2. **Static part: may live for the run.** Data may be kept from
+   construction onwards only if it depends on nothing but these three
+   sources, all fixed after construction:
+   - the walk graph, through `IWorldSystem`'s load-time answers
+     (`CanReachVia`, `PathVia`, `LengthMetres`; `18` §18.3);
+   - the `FlowGraph` node behaviour given to `CreateSystem` (§9.11), for
+     which nodes are `Queue`, `Gate` and so on;
+   - the loaded pax profiles' `walk_speed_mps` (content, `04`).
+   That covers `CanReachVia(e, g)`, the `PathVia(e, g)` node list, which of
+   its nodes are `Queue` nodes, and each path's per-node `traversalTicks`,
+   or their sum, per distinct walk speed. Nothing that changes at runtime
+   is static: not `ServersOpen`, not a population, not a wait. The walk
+   graph is fixed at Phase 0/1 (`18` §18.3, §18.5). When construction
+   arrives, a construction change is the invalidation point, by amendment.
 3. **Wait-dependent part: never outlives its tick.** Wait terms, cost
    totals and chosen edges read §9.12's start-of-tick snapshot. They may be
    memoised **within one tick only**, keyed by every input the rule reads:
@@ -228,10 +242,20 @@ only against a failing budget measurement (`07` "Performance").
    one computation. The memo is discarded before the next tick's snapshot.
    Lane changes (`SetServersOpen`, §9.8) change waits, so they are covered
    by this rule, with no invalidation of their own.
+   **Destination set at Phase 0/1.** "Destinations" above defines a set
+   only for `Departing` cohorts, and that set is every reachable `Gate`.
+   Only pairs with `CanReachVia(e, g)` from the current node's out-edges
+   count. Anything reachable from the current node was also reachable
+   earlier on the cohort's path, so the effective set is the same for every
+   cohort on one node. Two cohorts on one node therefore
+   cannot have different effective destination sets yet. The amendment
+   that introduces per-cohort destinations (gate assignment, `18` §18.5, or
+   routed `Arriving` or `Transferring` cohorts) must add the set to the key
+   **and** add a differing-destination case to the test below.
 4. **Not state.** The cache is not hashed (§9.10) and not saved. A system
    restored from a save, or replayed from seed, starts with an empty
-   per-tick memo and the static part rebuilt from the graph and content.
-   It must then choose exactly the routes the original run chose.
+   per-tick memo. It rebuilds the static part from rule 2's three sources
+   only. It must then choose exactly the routes the original run chose.
 5. **No allocation in the update path** (§9.10, `07`). Static tables are
    sized at construction, and filled then or lazily into that storage. The
    per-tick memo is preallocated and reset each tick, never grown.
@@ -239,18 +263,53 @@ only against a failing budget measurement (`07` "Performance").
    (§9.7), presentation, dictionary or hash-set iteration order, object
    identity, or the order in which entries were filled.
 
-Required test, when a cache is added. Owner: the Test Author of the
-`sim.flow` performance task that adds it:
+Required test, when a cache is added. Owner: the Test Author of whichever
+`sim.flow` task adds it. A cache does not merge without this test:
 `test_flow_routing_cache_matches_uncached_reference`. A reference oracle in
-the test implements this section and §9.12 from `IWorldSystem` and the
-start-of-tick `PredictedWaitMinutes`, with no cache. Over a scripted
-sim-day with show-up injections and `SetServersOpen` lane changes on
-alternative security queues, the test asserts two things at every tick.
-First, every cohort, or served part, that leaves a node enters the node the
-oracle chooses. Second, the chosen node is the same after a restart partway
-through the day, from a save, or by replay from seed until `sim.save` exists
-(`19` §19.5). The existing `sim.flow` tests and budget
-tests must also still pass.
+the test implements this section and §9.12 with no cache. It uses the
+`FlowGraph`, `IWorldSystem`, the pax profiles, and the start-of-tick
+`PredictedWaitMinutes` of every `Queue` node. The fixture is `sim.flow`-local
+(§9.10) and pools several `Gate` nodes.
+
+**Assertion.** At every tick of a scripted sim-day, every cohort, or served
+part, that leaves a node enters the node the oracle chooses.
+
+The script must contain each of these cases at least once. Each one is
+there so that a cache that is wrong in that way fails:
+- **Walk speed.** Two or more pax profiles with distinct `walk_speed_mps`
+  are released from the **same node in the same tick**, where the
+  different traversal terms lead them to **different** edges. This fails a
+  memo that leaves walk speed out of the key.
+- **Gate tie-break.** Two gates reachable at exactly equal cost `Raw`, so
+  that ascending `g` `NodeId` decides. The lower-id gate must come
+  **later** in edge order and in file order, so a cache that keeps the
+  first tie it meets fails.
+- **Edge tie-break.** Two out-edges reaching the same gate at exactly equal
+  cost `Raw`, so that ascending `EdgeId` decides. The lower `EdgeId` is
+  likewise not the first in file order.
+- **Lane changes.** `SetServersOpen` on alternative security queues flips
+  the choice between ticks. This fails a memo that outlives its tick.
+- **Blocked re-route.** A cohort is refused by a full target (§9.12
+  "Blocking episodes"), and a later tick's routing picks a different
+  target.
+- **Show-up spike.** Several cohorts released from one `Source` in one
+  tick.
+- **Restart.** The run is restarted partway through the day, and the
+  assertion keeps holding afterwards.
+
+Differing destination sets are not scripted at Phase 0/1, since they
+cannot occur there (rule 3). The amendment that makes them possible adds
+that case.
+
+**What the restart case proves.** Until `sim.save` exists, a restart is a
+replay from seed from tick 0 (`19` §19.5, owner-approved interim). That
+replay fills the cache in the same order as the original run. So it proves
+only that routing is reproducible. It cannot show independence from fill
+order or history (rules 4 and 6). What guards those until then is the
+per-tick oracle assertion, which catches any wrong choice whatever its
+cause, together with review. Once `sim.save` exists, the case restores from
+a mid-day save into a fresh system with a cold cache. The existing
+`sim.flow` tests and budget tests must also still pass.
 
 > **LOW CONFIDENCE — deterministic least-cost routing.** It is correct and cheap,
 > but every passenger taking the same door can look wrong on screen and can make
@@ -494,11 +553,13 @@ demands, stated so it is not discovered late:
   The Test Author sets it per fixture, as for `11` §11.10, and states its
   derivation in the test.
 - **Gate count is fixture sizing too (Q-037).** A `sim.flow`-local stress
-  or budget fixture may declare several `Gate` nodes. They are pooled
+  or budget fixture builds its own walk graph and does not load
+  `tests/fixtures/world/phase0-landside.json`. It may declare several
+  `Gate` nodes. They are pooled
   (§9.6), so every departing cohort routes over all the reachable ones,
   which is the current rule's worst case. The Test Author states the count
   and its derivation in the test. `18` §18.5's single `Gate` binds only
-  the shared world fixture and fixtures built on it.
+  that shared file and the fixtures that load it (`18` §18.6).
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
 
