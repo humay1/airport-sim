@@ -2010,5 +2010,19 @@ Revision:    after the PR #57 review (rejected at 18f5960):
              - the Q-039 test has a concrete shape (99 999 `A` rows on day
                1, at most 70 per minute, days 1 to 3), with the day-0
                event-limit trap stated.
+Revision 2:  after the second PR #57 review (rejected at 90cc883):
+             - the Q-038 test fixture is pinned: `pax=10`, both permille
+               values 0, curve `[60/400, 1440/600]`. That gives 4 + 6 with
+               no remainder, so the 1440-minute bucket always injects 6;
+             - the run's four published occurrences (days 0 to 3) are all
+               asserted, with each one's publish tick and both injection
+               ticks listed. The latest is 42600, inside the run;
+             - §11.7's registry sentence is reworded to match §11.6's
+               phase-3 statement;
+             - the INDEX line is reworded to stay true whichever of #55 and
+               #57 merges first;
+             - §11.9a is rewrapped.
+             The red CI was the `WorldBudgetTests` timing flake, unrelated
+             to this diff, and was rerun by the coordinator.
 Signed off:  not required. `01` and `02` are untouched. The 1440-minute
              show-up bound (Q-038) is owner-confirmed 2026-09-28.

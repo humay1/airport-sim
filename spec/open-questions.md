@@ -1150,8 +1150,11 @@ Answer:      Reject at load, which is the narrowest option. The new constant
              observable across modules.
              Revision after the PR #57 review:
              - the test is rewritten to be observable (recorder tick
-               against the fake flow's `Inject` tick), and covers days 0,
-               1 and 2 at 00:00;
+               against the fake flow's `Inject` tick). After round 2 it
+               pins exact values: `pax=10`, buckets 60/400 and 1440/600,
+               which split exactly as 4 + 6. It asserts all four
+               occurrences the run publishes (days 0 to 3), with their
+               ticks listed;
              - §11.9a names the reported bucket and the order of failures.
              Rejected alternatives:
              - clamping to `PublishTick` would silently reshape an owner's

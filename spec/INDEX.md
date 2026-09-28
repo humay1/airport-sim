@@ -322,8 +322,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-035, Q-038 and Q-039 are answered, and Q-036
-  and Q-037 are answered in PR #55 (Q-016 by the owner: `--fast`
+- Open now: none. Every question in the file from Q-002 on is answered
+  (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),

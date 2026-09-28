@@ -365,8 +365,10 @@ interface IScheduleSystem : ISimSystem {
 - There is no mutating entry point. Nothing may write to `sim.schedule`.
 
 Registry position is **2** (`08-interfaces-core.md` §8.5), before `sim.airside`
-and `sim.flow`: intent is published, and passengers injected, before the systems
-that consume them run in the same tick.
+and `sim.flow`. So in phase 2 of a tick, a passenger injected in that tick is
+already in `sim.flow` when `sim.flow` ticks. `FlightPlanPublished` is only
+queued in phase 2, and subscribers see it in phase 3 (§11.6 "What is
+guaranteed").
 
 ---
 
@@ -448,9 +450,9 @@ table's order, ascending `flight_ref` (§11.4). Within a row it checks in a
 fixed order: `aircraft_type` resolves, then `pax_profile` resolves, then
 the show-up bound. It throws the first failure it meets, so a resolution
 miss on an earlier row wins over a bound failure on a later one, and on
-one row a resolution miss wins over the bound. The check lives here, not in `sim.core`'s content
-loader, because the bound is derived from `sim.schedule`'s
-`PLAN_PUBLISH_LEAD_TICKS`.
+one row a resolution miss wins over the bound. The check lives here, not
+in `sim.core`'s content loader, because the bound is derived from
+`sim.schedule`'s `PLAN_PUBLISH_LEAD_TICKS`.
 
 ## 11.10 The Phase 0 fixture (T-008)
 
@@ -478,24 +480,40 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_show_up_split_conserves_head_count`
 - `test_profile_with_show_up_beyond_publish_lead_fails_load` (Q-038)
 - `test_injection_tick_never_before_publication_tick_on_any_day` (Q-038).
-  - **Fixture.** One `D` row with `day=0`, `repeat_daily=1`,
-    `sched_hhmm=00:00`, `pax > 0` and an `entry_node`. Its profile has one
-    bucket at exactly `MAX_SHOW_UP_MINUTES_BEFORE_STD` and one below it.
-  - **Run.** Ticks `0` to `3 × TICKS_PER_SIM_DAY − 1`, so days 0, 1 and 2
-    are covered.
+  - **Fixture, exact values.** One `D` row with `day=0`, `repeat_daily=1`,
+    `sched_hhmm=00:00`, `pax=10`, `hold_bag_permille=0`,
+    `assist_permille=0`, no `rotation_ref`, and an `entry_node`. Its pax
+    profile's curve is exactly
+    `[ { minutes_before_std: 60, share_permille: 400 }, { minutes_before_std: 1440, share_permille: 600 } ]`.
+  - **What that gives.** The split is exact, with no remainder: bucket 0
+    (60 min) gets 4 and bucket 1 (1440 min) gets 6. All go to class 0,
+    since both permille values are 0. So every occurrence makes exactly two
+    `Inject` calls, `count` 4 and `count` 6, and the 1440-minute bucket is
+    never empty.
+  - **Run.** Ticks `0` to `3 × TICKS_PER_SIM_DAY − 1` (0 to 43199).
+    **Four** occurrences are published inside the run: days 0, 1, 2 and 3.
+    Day 3 is materialised and published at tick 28800. Day 4 is
+    materialised at 43200, outside the run.
   - **Observed.** The kit's recorder (`RecorderSystemId` 7, which receives
     in phase 3) records the tick of each `FlightPlanPublished`. The kit's
     fake `IFlowSystem` records the tick of each `Inject` call.
-  - **Asserted, per occurrence.** Every `Inject` tick is `≥` the flight's
-    `FlightPlanPublished` tick. The 1440-minute bucket's `Inject` is **on**
-    that tick, a shared tick. The injected counts sum to `PaxCount`, and
-    `PendingInjectionCount` reaches 0.
-  - **The three days** cover the three edges:
-    - day 0: the bucket clamps to tick 0 and shares `PublishTick` 0;
-    - day 1: STD tick 14400 gives `PublishTick` 0 and the bucket tick 0;
-    - day 2: STD tick 28800 gives `PublishTick` 14400, the tick that also
-      materialises day 2. Materialisation, publication and injection all
-      fall on `(d − 1) · 14400`.
+  - **Asserted, for each of the four occurrences.**
+    - Its `FlightPlanPublished` tick equals its `PublishTick`.
+    - Its 6-passenger `Inject` falls on that same tick, a shared tick.
+    - Its 4-passenger `Inject` falls on `ScheduledTick − 600` (60 × 10),
+      clamped to 0.
+    - Every `Inject` tick is `≥` the publication tick, and the injected
+      counts sum to 10.
+    - `PendingInjectionCount` is 0 at the end of the run. All eight
+      injections fall inside it: the latest is day 3's at tick 42600.
+  - **The four days** give these ticks
+    `(ScheduledTick; PublishTick = 1440-bucket tick; 60-bucket tick)`:
+    - day 0: `(0; 0; 0)`. Both buckets clamp to 0.
+    - day 1: `(14400; 0; 13800)`.
+    - day 2: `(28800; 14400; 28200)`. Tick 14400 also materialises day 2.
+    - day 3: `(43200; 28800; 42600)`. Tick 28800 also materialises day 3.
+    Days 2 and 3 are the 00:00 edge, where materialisation, publication and
+    injection all fall on `(d − 1) · 14400`.
   - The test does **not** assert an order between the recorder's event and
     the `Inject` within a shared tick. That order is the accepted
     cross-module one of §11.6.
