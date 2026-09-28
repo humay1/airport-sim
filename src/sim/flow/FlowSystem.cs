@@ -56,6 +56,53 @@ namespace AirportSim.Sim.Flow
         private readonly List<int> _fifoScratch = new List<int>(InitialSlotCapacity);
         private readonly Comparison<int> _fifoComparer;
 
+        // Routing (§9.6) depends only on the releasing node and the cohort's walk
+        // speed, never on the cohort itself, and the snapshot it reads is fixed for
+        // the whole tick (§9.12 step 1). Caching it per (node, walk speed) for the
+        // duration of one Tick turns an O(cohorts) cost into O(distinct node/profile
+        // pairs), which is what §9.6's budget note anticipates ("the budget test is
+        // what shows whether this needs caching"). Cleared every tick; a struct key
+        // and Dictionary.Clear() keep this allocation-free once warmed up.
+        private readonly Dictionary<RouteCacheKey, RouteCacheEntry> _routeCache = new Dictionary<RouteCacheKey, RouteCacheEntry>(64);
+
+        private readonly struct RouteCacheKey : IEquatable<RouteCacheKey>
+        {
+            internal readonly int FromOrdinal;
+            internal readonly long WalkSpeedRaw;
+
+            internal RouteCacheKey(int fromOrdinal, long walkSpeedRaw)
+            {
+                FromOrdinal = fromOrdinal;
+                WalkSpeedRaw = walkSpeedRaw;
+            }
+
+            public bool Equals(RouteCacheKey other) => FromOrdinal == other.FromOrdinal && WalkSpeedRaw == other.WalkSpeedRaw;
+
+            public override bool Equals(object obj) => obj is RouteCacheKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (FromOrdinal * 397) ^ WalkSpeedRaw.GetHashCode();
+                }
+            }
+        }
+
+        private readonly struct RouteCacheEntry
+        {
+            internal readonly bool Found;
+            internal readonly EdgeId Edge;
+            internal readonly NodeId Target;
+
+            internal RouteCacheEntry(bool found, EdgeId edge, NodeId target)
+            {
+                Found = found;
+                Edge = edge;
+                Target = target;
+            }
+        }
+
         // Reused by Absorb's missed-passenger sweep to collect every missed slot
         // across nodes before sorting by ascending CohortId (§9.7 "Exact rules"),
         // so the FlowUnblocked publish order does not depend on NodeId iteration
@@ -220,6 +267,10 @@ namespace AirportSim.Sim.Flow
                 _snapshotPopulation[i] = ComputeLivePopulation(i);
                 _snapshotWait[i] = _kind[i] == NodeKind.Queue ? ComputeWait(i, _snapshotPopulation[i]) : Fx.Zero;
             }
+
+            // The snapshot above is what §9.6 routing costs read; a route decision
+            // computed against it stays valid for the rest of this tick (§9.12).
+            _routeCache.Clear();
 
             for (int i = 0; i < n; i++)
             {
@@ -613,15 +664,14 @@ namespace AirportSim.Sim.Flow
 
         public void SetPromoted(NodeId node, bool promoted)
         {
-            if (_ordinalByNodeValue.TryGetValue(node.Value, out int ordinal))
-            {
-                _promoted[ordinal] = promoted;
-            }
+            int ordinal = RequireOrdinal(node, nameof(node));
+            _promoted[ordinal] = promoted;
         }
 
         public IReadOnlyList<AgentView> AgentsAt(NodeId node)
         {
-            if (!_ordinalByNodeValue.TryGetValue(node.Value, out int ordinal) || !_promoted[ordinal])
+            int ordinal = RequireOrdinal(node, nameof(node));
+            if (!_promoted[ordinal])
             {
                 _agentViewBuffer.Length = 0;
                 return _agentViewBuffer;
@@ -942,6 +992,21 @@ namespace AirportSim.Sim.Flow
         // -------------------------------------------------------------- routing (§9.6, §9.12)
 
         private bool TryRoute(int fromOrdinal, Fx walkSpeed, out EdgeId bestEdge, out NodeId bestTarget)
+        {
+            var cacheKey = new RouteCacheKey(fromOrdinal, walkSpeed.Raw);
+            if (_routeCache.TryGetValue(cacheKey, out RouteCacheEntry cached))
+            {
+                bestEdge = cached.Edge;
+                bestTarget = cached.Target;
+                return cached.Found;
+            }
+
+            bool found = ComputeRoute(fromOrdinal, walkSpeed, out bestEdge, out bestTarget);
+            _routeCache[cacheKey] = new RouteCacheEntry(found, bestEdge, bestTarget);
+            return found;
+        }
+
+        private bool ComputeRoute(int fromOrdinal, Fx walkSpeed, out EdgeId bestEdge, out NodeId bestTarget)
         {
             NodeId from = _nodeId[fromOrdinal];
             IReadOnlyList<EdgeId> outs = _world.OutEdges(from);
