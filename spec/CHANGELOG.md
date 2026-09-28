@@ -1972,8 +1972,8 @@ Reason:      T-011's black-box scaling runs show routing cost linear in the
                - no other inputs.
                It also names the required oracle test,
                `test_flow_routing_cache_matches_uncached_reference`, with
-               mandatory cases, owned by the Test Author of the
-               performance task.
+               mandatory cases, owned by the Test Author of whichever
+               `sim.flow` task adds the cache.
              - **Q-037:** the single `Gate` binds the shared file
                `phase0-landside.json` and fixtures that load it.
                `sim.flow`-local stress and budget fixtures build their own
@@ -2010,11 +2010,44 @@ Revision:    after the PR #55 review (rejected at 9741b6d), four findings
                amendment that makes them possible to extend the key and the
                test. The restart case says what it proves: until
                `sim.save`, replay shows reproducibility only (finding 5).
+Revision 2:  after the second PR #55 review (rejected at 2dab56a):
+             - (1) Rule 3's claim that cohorts on one node cannot differ in
+               destination set was false. `Inject` accepts any
+               `FlowDirection` (§9.7). Rule 3 now fixes the key itself: an
+               entry serves a cohort only for the same node, walk speed and
+               every cohort field that determines the destination set,
+               which is `Key.Direction` at Phase 0/1. The allowed forms are
+               `(node, Direction, walk speed)`, or `(node, walk speed)`
+               used for `Departing` cohorts only. A `(node, walk speed)`
+               memo serving every direction is a review rejection. The
+               oracle test gains a Direction case: a `Departing` and a
+               non-`Departing` cohort on one node in one tick, in both
+               `CohortId` orders. How non-`Departing` cohorts are routed is
+               filed as Q-040 (OPEN), and the cache rules do not depend on
+               its answer.
+             - (2) The assertion now covers every cohort that attempts
+               release, not only those that leave. A refused cohort's
+               target is checked through `BlockedBy`, and a `Queue`'s
+               served count through the oracle's FIFO service. The restart
+               paragraph no longer overclaims: the per-tick assertion
+               covers scripted states, and review covers the rest until
+               the restore arm exists.
+             - (3) The test's owner is "the Test Author of whichever
+               `sim.flow` task adds the cache" everywhere.
+             - Notes tidied:
+               - the edge-tie "file order" clause is dropped, because
+                 `18` §18.3 returns edges in ascending id;
+               - the gate tie now puts the lower-id gate behind the
+                 higher `EdgeId`;
+               - rule 2 lists all of `IWorldSystem`'s load-time answers.
 Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect)
 Impact:      Nothing merged changes. `main` has no cache in `src/sim/flow`,
              so it violates no rule. PR #56 (T-010) adds a per-tick cache
-             keyed by (node, walk speed). It must meet these rules and
-             carry the oracle test. Rule 3 allows its key at Phase 0/1.
+             keyed by (node, walk speed). Under rule 3 that key is allowed
+             only if the memo is read and written for `Departing` cohorts
+             alone. Otherwise the key must include `Key.Direction`. #56
+             must also meet the other rules and carry the oracle test,
+             including the Direction case.
              T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
              performance task:
              - writable paths `src/sim/flow/**`;

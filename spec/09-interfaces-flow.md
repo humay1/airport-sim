@@ -223,8 +223,9 @@ only against a failing budget measurement (`07` "Performance").
 2. **Static part: may live for the run.** Data may be kept from
    construction onwards only if it depends on nothing but these three
    sources, all fixed after construction:
-   - the walk graph, through `IWorldSystem`'s load-time answers
-     (`CanReachVia`, `PathVia`, `LengthMetres`; `18` §18.3);
+   - the walk graph, through any of `IWorldSystem`'s load-time answers
+     (`Nodes`, `OutEdges`, `EdgeTo`, `CanReach`, `CanReachVia`, `PathVia`,
+     `LengthMetres`; `18` §18.3);
    - the `FlowGraph` node behaviour given to `CreateSystem` (§9.11), for
      which nodes are `Queue`, `Gate` and so on;
    - the loaded pax profiles' `walk_speed_mps` (content, `04`).
@@ -236,22 +237,35 @@ only against a failing budget measurement (`07` "Performance").
    arrives, a construction change is the invalidation point, by amendment.
 3. **Wait-dependent part: never outlives its tick.** Wait terms, cost
    totals and chosen edges read §9.12's start-of-tick snapshot. They may be
-   memoised **within one tick only**, keyed by every input the rule reads:
-   the node, the destination set and the walk speed. That is how cohorts
-   released together from one node, as after a show-up injection, share
-   one computation. The memo is discarded before the next tick's snapshot.
+   memoised **within one tick only**. That is how cohorts released
+   together from one node, as after a show-up injection, share one
+   computation. The memo is discarded before the next tick's snapshot.
    Lane changes (`SetServersOpen`, §9.8) change waits, so they are covered
    by this rule, with no invalidation of their own.
-   **Destination set at Phase 0/1.** "Destinations" above defines a set
-   only for `Departing` cohorts, and that set is every reachable `Gate`.
-   Only pairs with `CanReachVia(e, g)` from the current node's out-edges
-   count. Anything reachable from the current node was also reachable
-   earlier on the cohort's path, so the effective set is the same for every
-   cohort on one node. Two cohorts on one node therefore
-   cannot have different effective destination sets yet. The amendment
-   that introduces per-cohort destinations (gate assignment, `18` §18.5, or
-   routed `Arriving` or `Transferring` cohorts) must add the set to the key
-   **and** add a differing-destination case to the test below.
+   **The key.** A memo entry may serve a cohort only if it was computed
+   for the same node, the same walk speed, and the same value of **every
+   cohort field that determines the destination set**. The destination set
+   is determined like this:
+   - At Phase 0/1 it depends on `Key.Direction`: "Destinations" above gives
+     `Departing` cohorts every reachable `Gate`, and gives other directions
+     no set.
+   - For `Departing` cohorts on one node, it depends on nothing else. Only
+     pairs with `CanReachVia(e, g)` from the current node's out-edges
+     count, and anything reachable from the current node was also
+     reachable earlier on the cohort's path.
+   `Inject` accepts every `FlowDirection` (§9.7), so a non-`Departing`
+   cohort can share a node and a walk speed with a `Departing` one. Two key
+   forms are therefore allowed at Phase 0/1:
+   - `(node, Key.Direction, walk speed)`; or
+   - `(node, walk speed)`, with the memo read and written **only for
+     `Departing` cohorts**. Every other cohort is routed by the uncached
+     rule.
+   A `(node, walk speed)` memo that serves every direction is a review
+   rejection. The amendment that makes the destination set depend on
+   anything more (gate assignment, `18` §18.5, or destinations for
+   `Arriving` or `Transferring` cohorts) must extend the key, and the
+   test's differing-set case, to match. How a non-`Departing` cohort is
+   routed at Phase 0/1 is Q-040. The cache must not assume an answer.
 4. **Not state.** The cache is not hashed (§9.10) and not saved. A system
    restored from a save, or replayed from seed, starts with an empty
    per-tick memo. It rebuilds the static part from rule 2's three sources
@@ -266,13 +280,28 @@ only against a failing budget measurement (`07` "Performance").
 Required test, when a cache is added. Owner: the Test Author of whichever
 `sim.flow` task adds it. A cache does not merge without this test:
 `test_flow_routing_cache_matches_uncached_reference`. A reference oracle in
-the test implements this section and §9.12 with no cache. It uses the
-`FlowGraph`, `IWorldSystem`, the pax profiles, and the start-of-tick
-`PredictedWaitMinutes` of every `Queue` node. The fixture is `sim.flow`-local
-(§9.10) and pools several `Gate` nodes.
+the test implements, with no cache, this section and §9.12's movement
+step: eligibility, `Queue` service in FIFO order, the choice of target, and
+the snapshot fullness test. It uses the `FlowGraph`, `IWorldSystem`, the pax
+profiles, and the start-of-tick `Population` and `PredictedWaitMinutes`.
+The fixture is `sim.flow`-local (§9.10) and pools several `Gate` nodes.
 
-**Assertion.** At every tick of a scripted sim-day, every cohort, or served
-part, that leaves a node enters the node the oracle chooses.
+**Assertion.** At every tick of a scripted sim-day, the test checks
+**every cohort that attempts release** under §9.12. That is every eligible
+cohort on a `Source`, `Hall` or `Corridor`, and on a `Queue` each cohort
+served up to and including the first one refused. For each `Departing`
+one, the oracle gives a target `m`. Non-`Departing` cohorts are asserted by
+the Direction case below.
+- If `m` is not full in the snapshot, the cohort, or its served part, is
+  on `m` after the tick.
+- If `m` is full, the cohort has not moved, and its open blocking episode
+  has `BlockedBy = m`. The test reads that from the tick's `FlowBlocked`
+  and `FlowUnblocked` events. There is a `FlowBlocked` at the first
+  refusal, and an `Unblocked`/`Blocked` pair when the target changes. No
+  event means the previous tick's `BlockedBy` still holds and must equal
+  `m`.
+- On a `Queue`, the oracle's served count and stopping point match.
+A choice is therefore asserted whether it ends in a move or a refusal.
 
 The script must contain each of these cases at least once. Each one is
 there so that a cache that is wrong in that way fails:
@@ -281,33 +310,44 @@ there so that a cache that is wrong in that way fails:
   different traversal terms lead them to **different** edges. This fails a
   memo that leaves walk speed out of the key.
 - **Gate tie-break.** Two gates reachable at exactly equal cost `Raw`, so
-  that ascending `g` `NodeId` decides. The lower-id gate must come
-  **later** in edge order and in file order, so a cache that keeps the
-  first tie it meets fails.
+  that ascending `g` `NodeId` decides. The lower-id gate is reachable only
+  through the **higher**-`EdgeId` out-edge. A search that walks edges in
+  ascending id (`18` §18.3's order) and keeps the first tie it meets then
+  picks the wrong gate.
 - **Edge tie-break.** Two out-edges reaching the same gate at exactly equal
-  cost `Raw`, so that ascending `EdgeId` decides. The lower `EdgeId` is
-  likewise not the first in file order.
+  cost `Raw`, so that ascending `EdgeId` decides.
+- **Direction.** A `Departing` cohort and a non-`Departing` cohort with
+  the same pax profile are released from the **same node in the same
+  tick**, once with the non-`Departing` one at the lower `CohortId` and
+  once at the higher. The oracle cannot compute the non-`Departing`
+  cohort's route until Q-040 is answered. So for that cohort, the expected
+  target is the one the system gives it when the same fixture runs with
+  the `Departing` cohort left out. For the `Departing` cohort, the
+  oracle's target is expected in both orders. This fails a memo that lets
+  one direction's result serve the other.
 - **Lane changes.** `SetServersOpen` on alternative security queues flips
   the choice between ticks. This fails a memo that outlives its tick.
 - **Blocked re-route.** A cohort is refused by a full target (§9.12
-  "Blocking episodes"), and a later tick's routing picks a different
-  target.
+  "Blocking episodes"). A later tick's routing picks a different target,
+  which is either not full, so the cohort moves, or also full, so the
+  `Unblocked`/`Blocked` pair names it. This fails a memo that keeps a
+  stale target.
 - **Show-up spike.** Several cohorts released from one `Source` in one
   tick.
 - **Restart.** The run is restarted partway through the day, and the
   assertion keeps holding afterwards.
 
-Differing destination sets are not scripted at Phase 0/1, since they
-cannot occur there (rule 3). The amendment that makes them possible adds
-that case.
-
 **What the restart case proves.** Until `sim.save` exists, a restart is a
 replay from seed from tick 0 (`19` §19.5, owner-approved interim). That
 replay fills the cache in the same order as the original run. So it proves
 only that routing is reproducible. It cannot show independence from fill
-order or history (rules 4 and 6). What guards those until then is the
-per-tick oracle assertion, which catches any wrong choice whatever its
-cause, together with review. Once `sim.save` exists, the case restores from
+order or history (rules 4 and 6). What guards those until then:
+- **The per-tick assertion.** It catches a wrong choice, whatever the
+  cause, for every cohort that attempts release in the scripted day, and
+  for the non-`Departing` cohorts as compared above.
+- **Review.** A history-dependent cache can be right on every scripted
+  tick and wrong on a state the script never reaches. Only review catches
+  that until the restore arm exists. Once `sim.save` exists, the case restores from
 a mid-day save into a fresh system with a cold cache. The existing
 `sim.flow` tests and budget tests must also still pass.
 

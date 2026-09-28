@@ -1136,10 +1136,14 @@ Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
                on `IWorldSystem`'s load-time answers, the `FlowGraph`
                node kinds and the pax profiles' walk speeds;
              - (3) the wait-dependent part is memoised within one tick
-               only, keyed by node, destination set and walk speed. At
-               Phase 0/1 the effective destination set is a function of
-               the node, and the amendment that changes that must extend
-               the key and the test;
+               only. An entry serves a cohort only for the same node, the
+               same walk speed and every cohort field that determines the
+               destination set, which is `Key.Direction` at Phase 0/1,
+               because `Inject` accepts any direction. The allowed keys
+               are `(node, Direction, walk speed)`, or `(node, walk
+               speed)` used only for `Departing` cohorts. The amendment
+               that widens what determines the set must extend the key and
+               the test;
              - (4) it is not hashed or saved, and is rebuilt from rule 2's
                sources on restore/replay with the same routes;
              - (5) no allocation in the update path;
@@ -1147,13 +1151,18 @@ Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
                order or fill order.
              Required test when a cache is added, owned by the Test Author
              of whichever `sim.flow` task adds it:
-             `test_flow_routing_cache_matches_uncached_reference`. It
-             checks every tick against an uncached oracle, and its script
+             `test_flow_routing_cache_matches_uncached_reference`. At
+             every tick it checks, against an uncached oracle, the choice
+             of every cohort that attempts release, whether it moves or is
+             refused. A refusal is checked through `BlockedBy`. The script
              must include each of these, so a cache wrong in that way
              fails:
              - distinct walk speeds released from one node in one tick,
                choosing different edges;
-             - an exact-cost gate tie (NodeId) and an edge tie (EdgeId);
+             - a `Departing` and a non-`Departing` cohort on one node in
+               one tick, in both `CohortId` orders;
+             - an exact-cost gate tie (NodeId, with the lower id only via
+               the higher `EdgeId`) and an edge tie (EdgeId);
              - lane changes that flip the choice;
              - a blocked cohort re-routed;
              - a show-up spike;
@@ -1195,3 +1204,29 @@ Answer:      Architect's authority: this is fixture sizing (Q-033), not
              Test Author's, with the derivation stated. **LOW CONFIDENCE —
              owner may revise.**
 Status:      ANSWERED (spec/09-interfaces-flow.md#910-state-hashing-and-budget); recommendation for the owner
+
+### Q-040 — `sim.flow`: how is a non-`Departing` cohort routed at Phase 0/1?
+Raised by:   Architect, from the PR #55 review (finding 1), 2026-09-28
+Blocking:    no. No Phase 0/1 production caller injects a non-`Departing`
+             cohort: `11` §11.1 and `12` "Arriving passengers" have a pax
+             count of zero. The Q-036 cache rules are written so as not to
+             depend on the answer.
+Question:    `Inject` (§9.7) accepts any `FlowDirection`, and tests may seed
+             fixtures through it. But §9.6 "Destinations" defines a set only
+             for `Departing` cohorts, so the uncached routing rule has no
+             pairs for an `Arriving` or `Transferring` cohort on a `Source`
+             or `Hall`. Does such a cohort stay put, go to a `Sink`, or is
+             it rejected at `Inject`?
+Options:     - (a) `Inject` with `Direction ≠ Departing` throws
+               `ArgumentException` at Phase 0/1. This is the narrowest
+               option, but it changes merged T-007 behaviour and may break
+               merged tests that seed other directions, so that must be
+               checked first.
+             - (b) An empty pair set means the cohort stays on its node.
+               That is additive and needs no merged change.
+             - (c) Destinations for `Arriving` cohorts (a `Sink`). That is
+               new behaviour and scope.
+Recommendation: (b) now, as the smallest amendment. (a) can come when the
+             merged tests have been checked. (c) waits for arriving
+             passengers, which is owner scope.
+Status:      OPEN
