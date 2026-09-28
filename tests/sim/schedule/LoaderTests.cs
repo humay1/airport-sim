@@ -448,18 +448,32 @@ namespace AirportSim.Sim.Schedule.Tests
             Assert.Equal(4, Load.Table(csv, Src).Rows.Count);
         }
 
-        [Fact]
-        public void test_loader_rejects_more_than_99999_rows_per_day()
+        /// <summary>
+        /// Arrival rows F000000.. in descending flight_ref, so file order and
+        /// table order differ, spread over days 0-2 with repeat_daily mixed,
+        /// so no single day holds more than MAX_FIXTURE_ROWS / 2 rows.
+        /// </summary>
+        private static byte[] ManyRows(int count)
         {
             var sb = new StringBuilder();
             sb.Append(Csv.Header).Append('\n');
-            for (int i = 0; i < 100000; i++)
+            for (int i = count - 1; i >= 0; i--)
             {
                 sb.Append('F').Append(i.ToString("D6", System.Globalization.CultureInfo.InvariantCulture))
-                  .Append(",0,0,A,NVA,a320,06:00,,35,0,business,0,0,\n");
+                  .Append(',').Append((i % 3).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                  .Append(',').Append(i % 3 == 2 ? '1' : '0')
+                  .Append(",A,NVA,a320,06:00,,35,0,business,0,0,\n");
             }
 
-            Load.AssertFails(Csv.Utf8(sb.ToString()), Src);
+            return Csv.Utf8(sb.ToString());
+        }
+
+        [Fact]
+        public void test_loader_rejects_rows_over_max_fixture_rows_with_line_number()
+        {
+            // Q-039: the bound is on the file's total data rows, not per day.
+            Assert.Equal(SchedConst.MaxFixtureRows, Load.Table(ManyRows(SchedConst.MaxFixtureRows), Src).Rows.Count);
+            Load.AssertFails(ManyRows(SchedConst.MaxFixtureRows + 1), Src, SchedConst.MaxFixtureRows + 2);
         }
 
         [Fact]
