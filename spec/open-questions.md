@@ -1134,12 +1134,25 @@ Answer:      Reject at load, which is the narrowest option. The new constant
              profiles resolve (§11.9a), with the existing `FormatException`
              shape. With the bound, every injection tick is at or after
              `PublishTick` (§11.6, stated as an inequality), so nothing is
-             queued for a past tick and conservation holds. §11.6 now fixes
-             the order within `Tick`: materialise, then publish (events,
-             then queue injections), then drain the injections due,
-             including same-tick ones. So `FlightPlanPublished` always
-             precedes the flight's first `Inject`. The day-0 `clamp to 0`
-             is unchanged and is the day-0 case of the same inequality.
+             queued for a past tick and conservation holds. The day-0
+             `clamp to 0` is unchanged and is the day-0 case of the same
+             inequality.
+             The early-injection case is closed **by tick**: no passenger
+             reaches `sim.flow` in an earlier tick than its flight's
+             `FlightPlanPublished`. On a **shared tick** (a bucket exactly
+             at the bound, or the day-0 clamp), `Inject` runs in phase 2
+             and handlers see the event in phase 3 (`08` §8.5, §8.6). So
+             `sim.flow` holds the cohort first. This is explicitly accepted
+             (§11.6): no Phase 0/1 consumer depends on the opposite order.
+             §11.6 also fixes the order of the calls inside
+             `sim.schedule`'s `Tick` (materialise, publish, inject), which
+             makes them deterministic, and states that this order is not
+             observable across modules.
+             Revision after the PR #57 review:
+             - the test is rewritten to be observable (recorder tick
+               against the fake flow's `Inject` tick), and covers days 0,
+               1 and 2 at 00:00;
+             - §11.9a names the reported bucket and the order of failures.
              Rejected alternatives:
              - clamping to `PublishTick` would silently reshape an owner's
                curve;

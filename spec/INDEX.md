@@ -190,9 +190,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   show-up curve and injection.
 - Key: query-only; no RNG; fixture hash fed into the state hash; runs
   identically with or without `sim.flow` (§11.6); **show-up buckets are
-  bounded by the one-day publish lead, so no injection precedes its
-  publication, and within `Tick` the order is materialise, then publish,
-  then inject (§11.6, §11.9a, Q-038)**; **at most `MAX_FIXTURE_ROWS`
+  bounded by the one-day publish lead, so no injection's tick is before
+  its publication's tick. On a shared tick, `sim.flow` has the cohort
+  before handlers see the plan, which is accepted (§11.6, §11.9a,
+  Q-038)**; **at most `MAX_FIXTURE_ROWS`
   (99999) rows per file, which makes `FlightId` unique and decodable
   (§11.3, §11.4, Q-039)**.
 - LC: none. The 1440-minute show-up bound is owner-confirmed 2026-09-28

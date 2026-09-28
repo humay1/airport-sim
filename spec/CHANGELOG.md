@@ -1963,8 +1963,13 @@ Reason:      The PR #54 (T-008) review found two gaps.
                - `MAX_SHOW_UP_MINUTES_BEFORE_STD` (1440, derived from the
                  publish lead) is checked at `CreateSystem`, which makes
                  injection tick ≥ `PublishTick` hold on every day;
-               - an explicit order within `Tick`: materialise, then
-                 publish, then inject.
+               - a fixed order for `sim.schedule`'s calls within `Tick`:
+                 materialise, then publish, then inject;
+               - a statement of what is observable: injection tick ≥
+                 publication tick. On a shared tick, `sim.flow` holds the
+                 cohort (phase 2) before handlers see
+                 `FlightPlanPublished` (phase 3). That order is explicitly
+                 accepted.
              - **Q-039:** `RowOrdinal` indexes the whole file, but only rows
                per day were bounded, so `FlightId`s could collide across
                days. The fix: `MAX_FIXTURE_ROWS` (99999) on total rows, a
@@ -1980,9 +1985,30 @@ Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
              - compute injections at publication, per the Tick order,
                rather than at materialisation (finding 1).
              For the T-008 Test Author, four new tests (§11.10). Every
-             fixture that loads today keeps its ids and hashes. The
-             largest `minutes_before_std` in `data/`, `tests/` and the
-             T-008 test branch is 180, well inside the bound. No scope
-             added.
+             fixture that loads today keeps its ids and hashes.
+             `minutes_before_std` values, checked on `main` and on
+             `test-author/T-008-schedule-loader-tests`:
+             - `data/pax_profiles` peaks at 180;
+             - the T-008 `ScheduleTestKit` curves peak at 180;
+             - `tests/fixtures/content` peaks at 120;
+             - `sim.core`'s content-loader tests go well past the bound:
+               `LoaderTests.cs` line 191 loads 4294967295, and lines 259
+               and 401 are parameterised. They test the `sim.core` loader
+               alone and never reach `sim.schedule`'s `CreateSystem`, where
+               the bound is checked, so they are unaffected.
+             No scope added.
+Revision:    after the PR #57 review (rejected at 18f5960):
+             - §11.6's "publication precedes injection" claim is replaced
+               by the observable guarantee and the explicitly accepted
+               shared-tick order;
+             - the Q-038 test is made observable and covers days 0, 1 and
+               2 at 00:00;
+             - this Impact statement is corrected;
+             - §11.9a names the reported bucket (the first over the bound)
+               and the order of failures (row order, then `aircraft_type`,
+               then `pax_profile`, then the bound);
+             - the Q-039 test has a concrete shape (99 999 `A` rows on day
+               1, at most 70 per minute, days 1 to 3), with the day-0
+               event-limit trap stated.
 Signed off:  not required. `01` and `02` are untouched. The 1440-minute
              show-up bound (Q-038) is owner-confirmed 2026-09-28.
