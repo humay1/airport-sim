@@ -65,11 +65,22 @@ namespace AirportSim.Sim.Core.Tests
             // its steady-state size, then measure ticks 601..1199.
             host.Step(600);
             host.Step(1);
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             host.Step(599);
-            long after = GC.GetAllocatedBytesForCurrentThread();
+            long allocated = Allocation.Since(start);
             Assert.Equal(1200UL, host.CurrentTick);
-            return after - before;
+            return allocated;
+        }
+
+        [Fact]
+        public void test_allocation_meter_real_allocation_is_counted()
+        {
+            // The collection in Allocation.Start must not hide what the window allocates.
+            long start = Allocation.Start();
+            byte[] buffer = new byte[1000];
+            long allocated = Allocation.Since(start);
+            GC.KeepAlive(buffer);
+            Assert.True(allocated >= 1000, $"allocated {allocated}");
         }
 
         [Fact]

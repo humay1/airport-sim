@@ -66,11 +66,11 @@ namespace AirportSim.Sim.World.Tests
             foreach (IWorldSystem world in worlds)
             {
                 long warm = Sweep(world);
-                long before = GC.GetAllocatedBytesForCurrentThread();
+                long start = Allocation.Start();
                 long again = Sweep(world);
-                long after = GC.GetAllocatedBytesForCurrentThread();
+                long allocated = Allocation.Since(start);
                 Assert.Equal(warm, again);
-                Assert.Equal(0L, after - before);
+                Assert.Equal(0L, allocated);
             }
         }
 
@@ -82,14 +82,14 @@ namespace AirportSim.Sim.World.Tests
             var events = new CountingPublisher();
             TickContext ctx = WorldKit.Context(1, rng, events);
             world.Tick(ctx);
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             for (int i = 0; i < 1000; i++)
             {
                 world.Tick(ctx);
             }
 
-            long after = GC.GetAllocatedBytesForCurrentThread();
-            Assert.Equal(0L, after - before);
+            long allocated = Allocation.Since(start);
+            Assert.Equal(0L, allocated);
             Assert.Equal(0, rng.Touches);
         }
     }
