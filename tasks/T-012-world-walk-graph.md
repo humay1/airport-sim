@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_PROGRESS |
+| Status | MERGED |
 | Module | `sim.world` |
 | Assigned role | worker |
 | Depends on | T-001, T-003, T-026 |

@@ -44,11 +44,11 @@ namespace AirportSim.Sim.Core.Tests
         {
             host.Step(600);
             host.Step(1);
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             host.Step(599);
-            long after = GC.GetAllocatedBytesForCurrentThread();
+            long allocated = Allocation.Since(start);
             Assert.Equal(1200UL, host.CurrentTick);
-            return after - before;
+            return allocated;
         }
 
         /// <summary>
