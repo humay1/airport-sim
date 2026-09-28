@@ -1113,3 +1113,61 @@ Answer:      A `sim.core` defect, from a gap in `08` §8.6. The test is right:
              Five new `sim.core` tests are named in §8.6. No outcome, hash
              or golden changes.
 Status:      ANSWERED (spec/08-interfaces-core.md#86-event-bus)
+
+### Q-036 — `sim.flow` routing cache: what a cache may and may not do
+Raised by:   Test Author / T-011, via coordinator, 2026-09-28
+Blocking:    no. T-011 passes: mean 0.50 ms and p99 2.60 ms against 2.5 and
+             5.0 ms.
+Question:    T-011's black-box runs show routing cost growing linearly with
+             the number of pooled gates: p99 of 5.0 ms at 48 gates and
+             9.9 ms at 96. The worst ticks follow show-up injections.
+             `09` §9.6 says the budget test shows whether routing needs
+             caching, and §9.10 says a cached result is not hashed. Neither
+             says what a cache must preserve. Without that, a subtly wrong
+             cache passes the time budget and silently changes routing.
+Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
+             against a failing measurement, under six binding rules:
+             - (1) observably identical to the uncached rule, including
+               tie-breaks and the term-by-term `Fx` evaluation of §9.12;
+             - (2) the static part (paths, reachability, traversal terms
+               per walk speed) may live for the run;
+             - (3) the wait-dependent part is memoised within one tick
+               only;
+             - (4) it is not hashed or saved, and is rebuilt on
+               restore/replay with the same routes;
+             - (5) no allocation in the update path;
+             - (6) no dependence on promotion, presentation, iteration
+               order or fill order.
+             Required test when a cache is added, owned by the Test Author
+             of the future `sim.flow` performance task:
+             `test_flow_routing_cache_matches_uncached_reference`.
+             HUMAN DECISION — owner, 2026-09-28: gate assignment is not
+             brought forward, and the 90k max-tier measurement decides
+             whether the performance task is released.
+Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
+
+### Q-037 — Does `18` §18.5's single pooled `Gate` bind `sim.flow` stress fixtures?
+Raised by:   Architect, from the Q-036 assessment, 2026-09-28
+Blocking:    no. It affects the T-011 test branch
+             (`test-author/T-011-stress-30k-tests`, whose `StressDay` has 24
+             gates) and the future 90k max-tier fixture.
+Question:    `18` §18.5 said "Phase 0/1 fixtures declare **one** `Gate`
+             node". `StressDay` declares 24 pooled `Gate` nodes. Does the
+             single-gate rule bind only the shared world fixture (§18.6),
+             or every `sim.flow` fixture?
+Answer:      Architect's authority: this is fixture sizing (Q-033), not
+             balance or scope. The single `Gate` binds the shared world
+             fixture (`18` §18.6) and every fixture built on it. A
+             `sim.flow`-local stress or budget fixture may declare several
+             pooled `Gate` nodes, and states the count and its derivation in
+             the test (`09` §9.10, `18` §18.5). `StressDay`'s 24 gates
+             conform. Nothing merged changes.
+             Recommendation for the owner, not decided: the 90k max-tier
+             fixture should pool **60** `Gate` nodes, one per max-tier
+             stand (`01`). The owner said this measurement decides, and
+             until gate assignment arrives, pooling over every gate is the
+             cost Phase 1 content will actually pay. One gate would measure
+             a cost the game does not have. Setting the count stays the
+             Test Author's, with the derivation stated. **LOW CONFIDENCE —
+             owner may revise.**
+Status:      ANSWERED (spec/09-interfaces-flow.md#910-state-hashing-and-budget); recommendation for the owner

@@ -1953,3 +1953,42 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              implementer can share it if that figure matters. No scope
              added.
 Signed off:  not required. `01` and `02` are untouched.
+
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.10; 18 §18.5; INDEX; open-questions — Q-036, Q-037: routing-cache rules and gate count in `sim.flow` fixtures
+Reason:      T-011's black-box scaling runs show routing cost linear in the
+             number of pooled gates (p99 of 9.9 ms at 96 gates), with the
+             worst ticks after show-up injections. `09` allowed a cache but
+             never said what it must preserve. It also left open whether
+             `18` §18.5's single `Gate` bound `sim.flow` stress fixtures.
+             - **Q-036:** six binding rules for an optional cache (§9.6):
+               observably identical, including tie-breaks and the
+               term-by-term `Fx` sum; a static part that may live for the
+               run; a wait-dependent part memoised within one tick only;
+               not hashed, not saved, rebuilt on restore; no allocation; no
+               other inputs. It also names the required oracle test,
+               `test_flow_routing_cache_matches_uncached_reference`, owned
+               by the Test Author of the future performance task.
+             - **Q-037:** the single `Gate` binds the shared world fixture
+               and fixtures built on it. `sim.flow`-local stress and budget
+               fixtures may pool several gates, stating the count and its
+               derivation (§9.10, §18.5).
+Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect)
+Impact:      Nothing merged changes. There is no cache in `src/sim/flow`
+             today, so it violates no rule. T-011's 24-gate `StressDay`
+             conforms to Q-037. For the Planner: a future `sim.flow`
+             performance task:
+             - writable paths `src/sim/flow/**`;
+             - depends on T-010 merged;
+             - released only on a failing budget measurement (the 90k
+               max-tier fixture decides, owner, 2026-09-28);
+             - done condition: the existing tests plus the oracle test;
+             - reviewed by `reviewer-core`, since routing is
+               determinism-critical.
+             No scope added.
+Signed off:  owner, 2026-09-28: go-ahead for both drafts. Gate assignment
+             is not brought forward.
+LOW CONFIDENCE — owner may revise: the recommended 60 pooled `Gate` nodes
+             for the 90k max-tier fixture, one per max-tier stand
+             (open-questions Q-037). It is a recommendation, not a spec
+             rule. The count is the Test Author's, with the derivation
+             stated.

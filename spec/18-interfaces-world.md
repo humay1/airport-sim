@@ -183,9 +183,11 @@ This follows `08` §8.11a's factory rule. `sim.flow` is not constructed without
 - **Gate assignment** (which `Gate` node serves which flight, and how it
   follows the stand) is a gameplay system with player-facing consequences.
   It is **not** decided here and is left to the owner. Until it is, Phase 0/1
-  pools gates (`09` §9.6): a departing cohort may go to any reachable `Gate`,
-  and Phase 0/1 fixtures declare **one** `Gate` node, a shared departure
-  lounge.
+  pools gates (`09` §9.6): a departing cohort may go to any reachable `Gate`.
+  The shared world fixture (§18.6), and every fixture built on it, declares
+  **one** `Gate` node, a shared departure lounge. A `sim.flow`-local stress
+  or budget fixture may declare several pooled `Gate` nodes, with the count
+  and its derivation stated in the test (`09` §9.10, Q-037).
 - **Construction and flow fields.** When construction arrives, "routes
   recomputed per construction change" (`01-architecture.md`) replaces §18.3's
   load-time computation, by amendment.

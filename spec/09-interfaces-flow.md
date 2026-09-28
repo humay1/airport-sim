@@ -197,6 +197,61 @@ service-standard KPI, and never fed back into the sim.
 - Cost: O(out-degree × gates × path length) per released cohort. The budget
   test (§9.10) is what shows whether this needs caching.
 
+**Routing cache (Q-036).** `sim.flow` may cache routing results, but only
+under all six rules below. A cache that breaks one is a review rejection,
+even when every budget test passes. Adding a cache is optional. It is done
+only against a failing budget measurement (`07` "Performance").
+
+1. **Observably identical.** The cache is an implementation detail only
+   because nothing can tell it from the uncached rule. For every released
+   cohort at every tick, the chosen edge equals what the rule above and
+   §9.12 "Traversal and route cost" choose. That includes the lowest `Raw`
+   cost, then ascending `g` `NodeId`, then ascending `EdgeId`. It also
+   includes evaluating the cost term by term exactly as §9.12 writes it:
+   one `Fx.FromInt(traversalTicks)` per node and one
+   `Fx.Mul(snapshotWait, Fx.FromInt(TICKS_PER_SIM_MINUTE))` per `Queue`
+   node, summed in path order. Factoring a multiply out of a sum, or
+   reordering the sum, is forbidden even where it looks equal, because
+   `Fx` floors.
+2. **Static part: may live for the run.** Data that depends only on the
+   walk graph and on content may be kept from construction onwards:
+   `CanReachVia(e, g)`, the `PathVia(e, g)` node list, which of its nodes
+   are `Queue` nodes, and each path's traversal terms per distinct
+   `walk_speed_mps` in the loaded pax profiles. The walk graph is fixed at
+   Phase 0/1 (`18` §18.3, §18.5). When construction arrives, a
+   construction change is the invalidation point, by amendment.
+3. **Wait-dependent part: never outlives its tick.** Wait terms, cost
+   totals and chosen edges read §9.12's start-of-tick snapshot. They may be
+   memoised **within one tick only**, keyed by every input the rule reads:
+   the node, the destination set and the walk speed. That is how cohorts
+   released together from one node, as after a show-up injection, share
+   one computation. The memo is discarded before the next tick's snapshot.
+   Lane changes (`SetServersOpen`, §9.8) change waits, so they are covered
+   by this rule, with no invalidation of their own.
+4. **Not state.** The cache is not hashed (§9.10) and not saved. A system
+   restored from a save, or replayed from seed, starts with an empty
+   per-tick memo and the static part rebuilt from the graph and content.
+   It must then choose exactly the routes the original run chose.
+5. **No allocation in the update path** (§9.10, `07`). Static tables are
+   sized at construction, and filled then or lazily into that storage. The
+   per-tick memo is preallocated and reset each tick, never grown.
+6. **No other inputs.** A cached result never depends on promotion state
+   (§9.7), presentation, dictionary or hash-set iteration order, object
+   identity, or the order in which entries were filled.
+
+Required test, when a cache is added. Owner: the Test Author of the
+`sim.flow` performance task that adds it:
+`test_flow_routing_cache_matches_uncached_reference`. A reference oracle in
+the test implements this section and §9.12 from `IWorldSystem` and the
+start-of-tick `PredictedWaitMinutes`, with no cache. Over a scripted
+sim-day with show-up injections and `SetServersOpen` lane changes on
+alternative security queues, the test asserts two things at every tick.
+First, every cohort, or served part, that leaves a node enters the node the
+oracle chooses. Second, the chosen node is the same after a restart partway
+through the day, from a save, or by replay from seed until `sim.save` exists
+(`19` §19.5). The existing `sim.flow` tests and budget
+tests must also still pass.
+
 > **LOW CONFIDENCE — deterministic least-cost routing.** It is correct and cheap,
 > but every passenger taking the same door can look wrong on screen and can make
 > two queues oscillate. The mitigation, if playtest shows it, is a fixed
@@ -425,7 +480,7 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 
 Not hashed, because derived: predicted waits, agent views, per-flight population
 indexes, `TryGetOutstanding` and `TryGetLaneState` results, any cached
-routing result.
+routing result (§9.6 "Routing cache", Q-036).
 
 Budget: **2.5 ms/tick at max tier** (`03-module-map.md`). The shape that budget
 demands, stated so it is not discovered late:
@@ -438,6 +493,12 @@ demands, stated so it is not discovered late:
   value is **fixture sizing**, not balance and not a sim constant (Q-033).
   The Test Author sets it per fixture, as for `11` §11.10, and states its
   derivation in the test.
+- **Gate count is fixture sizing too (Q-037).** A `sim.flow`-local stress
+  or budget fixture may declare several `Gate` nodes. They are pooled
+  (§9.6), so every departing cohort routes over all the reachable ones,
+  which is the current rule's worst case. The Test Author states the count
+  and its derivation in the test. `18` §18.5's single `Gate` binds only
+  the shared world fixture and fixtures built on it.
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
 
