@@ -67,16 +67,16 @@ namespace AirportSim.Sim.Core.Tests
                 sink ^= service.Stream(b).ComputeStateHash();
             }
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             for (int i = 0; i < 100000; i++)
             {
                 sink ^= service.Stream(a).NextUInt64();
                 sink ^= (ulong)service.Stream(b).NextInt(0, 3);
                 sink ^= service.MasterSeed;
             }
-            long after = GC.GetAllocatedBytesForCurrentThread();
+            long allocated = Allocation.Since(start);
 
-            Assert.Equal(0L, after - before);
+            Assert.Equal(0L, allocated);
             Assert.NotEqual(0UL, sink);
         }
 

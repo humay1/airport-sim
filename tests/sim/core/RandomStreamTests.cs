@@ -540,7 +540,7 @@ namespace AirportSim.Sim.Core.Tests
                 sink ^= stream.ComputeStateHash();
             }
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             for (int i = 0; i < 100000; i++)
             {
                 sink ^= stream.NextUInt64();
@@ -553,9 +553,9 @@ namespace AirportSim.Sim.Core.Tests
                 sink ^= (ulong)deck[0];
                 sink ^= stream.ComputeStateHash();
             }
-            long after = GC.GetAllocatedBytesForCurrentThread();
+            long allocated = Allocation.Since(start);
 
-            Assert.Equal(0L, after - before);
+            Assert.Equal(0L, allocated);
             Assert.NotEqual(0UL, sink);
         }
     }
