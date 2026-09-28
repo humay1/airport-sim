@@ -287,13 +287,13 @@ blocking episodes and threshold flags. Every one of its inputs is one that
 the test itself authors or reads from a public interface. Nothing comes
 from `FlowGraph`'s members, which are internal (§9.11), or from
 `src/sim/flow`:
-- **The graph.** Node kinds, `CapacityStanding`, `server_count`, initial
-  `servers_open` and each `Queue`'s profile come from the flow-graph JSON
-  the test writes (§9.11 "File format"). The same bytes go to
-  `IFlowGraphLoader`.
-- **Content.** Each queue profile's rate, each pax profile's
-  `walk_speed_mps`, and the threshold and hysteresis values come from the
-  content definitions the test builds.
+- **The graph.** Node kinds, `server_count`, initial `servers_open` and
+  each `Queue`'s profile id come from the flow-graph JSON the test writes
+  (§9.11 "File format"). The same bytes go to `IFlowGraphLoader`.
+- **Content.** The queue profile definitions the test builds give each
+  `Queue`'s `service_rate_per_server_per_minute`, `capacity_standing`,
+  `threshold_wait_minutes` and `hysteresis_minutes` (`04`). The pax
+  profiles give `walk_speed_mps`. Non-`Queue` nodes are never full (§9.5).
 - **The walk graph.** `OutEdges`, `EdgeTo`, `CanReachVia`, `PathVia` and
   `LengthMetres` come from `IWorldSystem`, over the test's walk-graph
   fixture.
