@@ -183,9 +183,13 @@ This follows `08` §8.11a's factory rule. `sim.flow` is not constructed without
 - **Gate assignment** (which `Gate` node serves which flight, and how it
   follows the stand) is a gameplay system with player-facing consequences.
   It is **not** decided here and is left to the owner. Until it is, Phase 0/1
-  pools gates (`09` §9.6): a departing cohort may go to any reachable `Gate`,
-  and Phase 0/1 fixtures declare **one** `Gate` node, a shared departure
-  lounge.
+  pools gates (`09` §9.6): a departing cohort may go to any reachable `Gate`.
+  The shared world fixture `tests/fixtures/world/phase0-landside.json`
+  (§18.6) declares **one** `Gate` node, a shared departure lounge, and so
+  does every fixture that loads it. A `sim.flow`-local stress or budget
+  fixture builds its own walk graph and does not load that file. It may
+  declare several pooled `Gate` nodes, with the count and its derivation
+  stated in the test (`09` §9.10, Q-037).
 - **Construction and flow fields.** When construction arrives, "routes
   recomputed per construction change" (`01-architecture.md`) replaces §18.3's
   load-time computation, by amendment.
@@ -197,8 +201,10 @@ This follows `08` §8.11a's factory rule. `sim.flow` is not constructed without
 ## 18.6 Fixture and tests
 
 `tests/fixtures/world/phase0-landside.json` (§18.2 format), binding on the Test Author. It is
-shared by T-007's, T-011's and T-023's flow fixtures and by the render layout
-(`15` §15.12):
+shared by T-007's and T-023's flow fixtures, by any other test that loads it
+(T-011's included), and by the render layout (`15` §15.12). T-011's 30k
+stress fixture (`StressDay`) is not one of them. It builds its own
+`sim.flow`-local walk graph and is governed by `09` §9.10 (Q-037).
 
 - every landside path from each schedule-fixture `entry_node` (a `Source`)
   reaches the single `Gate` node through at least one security `Queue`

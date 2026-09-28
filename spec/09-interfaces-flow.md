@@ -101,6 +101,20 @@ A cohort exists because its members are interchangeable. Therefore:
   remainder keeps the original `CohortId`; the moving part gets a new one. Keeping
   the id on the remainder means a `PassengerRef` into a waiting cohort stays valid
   for the delay tree.
+- **Every move takes a new id (Q-036).** Whenever passengers move from one
+  node to another, the moving group gets a **new** `CohortId` from
+  `IIdAllocator`. That covers a part, a whole cohort leaving a `Source`,
+  `Hall` or `Corridor`, and a `Queue` serving a cohort's entire count. A
+  whole move leaves no remainder, so the old id ceases to exist. New ids
+  are allocated in the order the moves happen in §9.12's movement step:
+  - nodes in ascending `NodeId`;
+  - within a node, the order that step gives for its kind (ascending
+    `CohortId`, or `Queue` FIFO order).
+  Ids are monotone per owner (`08` §8.4, Q-017). So cohorts entering one
+  node in the same tick are ordered by that move order, and so is their
+  `Queue` FIFO position `(EnteredNodeAt, CohortId)`. `Inject` also takes
+  one new id per call, in call order. Merging allocates nothing: the
+  survivor is the lowest id (§9.12 step 3).
 - Iteration over cohorts is **always** in ascending `CohortId` order
   (`02-determinism.md` rule 5). Iteration over nodes is in ascending `NodeId`.
 
@@ -183,6 +197,14 @@ service-standard KPI, and never fed back into the sim.
   `Gate` node it can reach (`CanReach`). Gates are pooled at Phase 0/1, and
   gate assignment is deferred (`18` §18.5). A cohort on a `Gate` node stays
   there until `Absorb` or missed-flight handling (§9.9).
+- **Only `Departing` cohorts exist at Phase 0/1 (Q-040).** `Inject` with
+  `Key.Direction ≠ Departing` throws `ArgumentException` (§9.7). There are
+  no arriving or transferring passengers at Phase 0/1 (`11` §11.1, `12`
+  "Arriving passengers"), and this section defines no destination for
+  them. Admitting them is an amendment that must also define their
+  destinations. Queries that take a `FlowDirection`, such as
+  `PopulationForFlight`, still accept every value and return 0 for a
+  direction with no cohorts.
 - **Routing (Q-012).** When a cohort is released from a node, it takes the
   outbound edge chosen by a **declared, deterministic rule**. Over every pair
   `(e, g)` with `e` in `OutEdges(node)`, `g` in the destination set and
@@ -196,6 +218,197 @@ service-standard KPI, and never fed back into the sim.
   of scope at Phase 0 and needs a spec amendment, not a local invention.
 - Cost: O(out-degree × gates × path length) per released cohort. The budget
   test (§9.10) is what shows whether this needs caching.
+
+**Routing cache (Q-036).** `sim.flow` may cache routing results, but only
+under all six rules below. A cache that breaks one is a review rejection,
+even when every budget test passes. Adding a cache is optional. It is done
+only against a failing budget measurement (`07` "Performance").
+
+1. **Observably identical.** The cache is an implementation detail only
+   because nothing can tell it from the uncached rule. For every released
+   cohort at every tick, the chosen edge equals what the rule above and
+   §9.12 "Traversal and route cost" choose: the lowest cost by `Raw`, then
+   ascending `g` `NodeId`, then ascending `EdgeId`. What must match is
+   each pair's cost `Raw` and the tie-break. The grouping of the sums does
+   not need to match. Every term is non-negative, `Fx.Add` is exact, and
+   `Fx.Mul` by `Fx.FromInt` of an integer is exact (`08` §8.3). So any
+   order or grouping of the additions, and factoring
+   `Fx.FromInt(TICKS_PER_SIM_MINUTE)` out of the wait sum, gives the same
+   `Raw`. It also overflows exactly when the total does. The real
+   rounding hazards are in the **per-node terms**, which floor and ceil:
+   - each node's `traversalTicks` is §9.12's value for that node's own
+     `LengthMetres`. It is never derived from a summed length, because
+     `Ceil` of a sum differs from a sum of `Ceil`s;
+   - each `Queue` node's wait is that node's own snapshot
+     `PredictedWaitMinutes` (§9.12 "Predicted wait"). It is never derived
+     from pooled populations or capacities, because `Div` floors.
+2. **Static part: may live for the run.** Data may be kept from
+   construction onwards only if it depends on nothing but these three
+   sources, all fixed after construction:
+   - the walk graph, through any of `IWorldSystem`'s load-time answers
+     (`Nodes`, `OutEdges`, `EdgeTo`, `CanReach`, `CanReachVia`, `PathVia`,
+     `LengthMetres`; `18` §18.3);
+   - the `FlowGraph` node behaviour given to `CreateSystem` (§9.11), for
+     which nodes are `Queue`, `Gate` and so on;
+   - the loaded pax profiles' `walk_speed_mps` (content, `04`).
+   That covers `CanReachVia(e, g)`, the `PathVia(e, g)` node list, which of
+   its nodes are `Queue` nodes, and each path's per-node `traversalTicks`,
+   or their sum, per distinct walk speed. Nothing that changes at runtime
+   is static: not `ServersOpen`, not a population, not a wait. The walk
+   graph is fixed at Phase 0/1 (`18` §18.3, §18.5). When construction
+   arrives, a construction change is the invalidation point, by amendment.
+3. **Wait-dependent part: never outlives its tick.** Wait terms, cost
+   totals and chosen edges read §9.12's start-of-tick snapshot. They may be
+   memoised **within one tick only**. That is how cohorts released
+   together from one node, as after a show-up injection, share one
+   computation. The memo is discarded before the next tick's snapshot.
+   Lane changes (`SetServersOpen`, §9.8) change waits, so they are covered
+   by this rule, with no invalidation of their own.
+   **The key.** A memo entry may serve a cohort only if it was computed
+   for the same node, the same walk speed, and the same value of **every
+   cohort field that determines the destination set**. At Phase 0/1 that
+   is no field at all, so the key is `(node, walk speed)`:
+   - every cohort is `Departing`, because `Inject` rejects the other
+     directions ("Only `Departing` cohorts exist", above, Q-040);
+   - a `Departing` cohort's effective set depends only on the node. Only
+     pairs with `CanReachVia(e, g)` from the current node's out-edges
+     count, and anything reachable from the current node was also
+     reachable earlier on the cohort's path.
+   The amendment that makes the destination set depend on anything more
+   must extend the key **and** add a differing-set case to the test below.
+   That covers admitting another direction, gate assignment (`18` §18.5),
+   and any per-cohort destination.
+4. **Not state.** The cache is not hashed (§9.10) and not saved. A system
+   restored from a save, or replayed from seed, starts with an empty
+   per-tick memo. It rebuilds the static part from rule 2's three sources
+   only. It must then choose exactly the routes the original run chose.
+5. **No allocation in the update path** (§9.10, `07`). Static tables are
+   sized at construction, and filled then or lazily into that storage. The
+   per-tick memo is preallocated and reset each tick, never grown.
+6. **No other inputs.** A cached result never depends on promotion state
+   (§9.7), presentation, dictionary or hash-set iteration order, object
+   identity, or the order in which entries were filled.
+
+Required test, when a cache is added. Owner: the Test Author of whichever
+`sim.flow` task adds it. A cache does not merge without this test:
+`test_flow_routing_cache_matches_uncached_reference`.
+
+**The reference.** The test contains a **reference model**, a lockstep,
+uncached implementation written from this spec. It covers:
+- §9.12's whole `Tick`: snapshot, movement, merge and thresholds;
+- this section's routing rule;
+- §9.3's id rule;
+- §9.7's `Inject` and `Absorb`, including boarding, the missed-cohort
+  removal and its `FlowUnblocked` events.
+It carries its own state from tick 0: cohorts, node `ServiceCredit`,
+blocking episodes and threshold flags. It also keeps its own **id
+counter**, advanced exactly where §9.3 allocates: one per `Inject` and
+one per move, in movement order. Its ids are used only to order cohorts
+(FIFO, iteration, merge survivor). They are never compared with the
+system's ids. Because both sequences are monotone and allocated at the
+same points in the same order, the relative order is the same.
+
+Every one of its inputs is one that the test itself authors or reads from
+a public interface. Nothing comes
+from `FlowGraph`'s members, which are internal (§9.11), or from
+`src/sim/flow`:
+- **The graph.** Node kinds, `server_count`, initial `servers_open` and
+  each `Queue`'s profile id come from the flow-graph JSON the test writes
+  (§9.11 "File format"). The same bytes go to `IFlowGraphLoader`.
+- **Content.** The queue profile definitions the test builds give each
+  `Queue`'s `service_rate_per_server_per_minute`, `capacity_standing`,
+  `threshold_wait_minutes` and `hysteresis_minutes` (`04`). The pax
+  profiles give `walk_speed_mps`. Non-`Queue` nodes are never full (§9.5).
+- **The walk graph.** `OutEdges`, `EdgeTo`, `CanReachVia`, `PathVia` and
+  `LengthMetres` come from `IWorldSystem`, over the test's walk-graph
+  fixture.
+- **The script, and where it runs.** The build registers `sim.world` at
+  1, **one scripted caller at registry position 2**, and `sim.flow` at 4
+  (`08` §8.5), as `tests/sim/flow/FlowRig.cs` does. It may also register
+  an event recorder after `sim.flow`, which calls nothing. Every scripted
+  `Inject` and `Absorb` is made from the caller's own `Tick`, never between
+  `Step`s and never from a system after `sim.flow`. Every `SetServersOpen`
+  is submitted as a command and applied in phase 1 of its tick (§9.8).
+  So for tick `t`, the reference applies things in this order:
+  1. the `SetServersOpen` commands due at `t`, in command order;
+  2. the caller's `Inject` and `Absorb` calls for `t`, in call order;
+  3. its own `Tick` for `t`.
+  That is the system's order. It follows that an `Absorb` never runs
+  after `sim.flow`'s `Tick` in the same tick. A cohort refused at `t` is
+  still on its node after `t`, so the `Key` rule below always applies. An
+  `Absorb` at `t + 1` or later that removes it emits the `FlowUnblocked`,
+  whose `Key` was remembered after `t`.
+
+So the expected state after every tick is fully determined by §9.12, the
+fixture and the script. Two correct references agree. The fixture is
+`sim.flow`-local (§9.10), pools several `Gate` nodes, and uses only
+`Departing` cohorts (Q-040).
+
+**Assertion.** After every tick of a scripted sim-day, the test compares
+the system with the reference. It uses only `IFlowSystem` queries between
+`Step`s and the tick's events:
+- for every node and every `CohortKey`, the head count on that node, which
+  is the sum of `Count` over `CohortsAt(node)` read through `TryGetCohort`,
+  grouped by `Key`;
+- `Population` for every node, and `PredictedWaitMinutes` by `Raw` for
+  every `Queue` node;
+- the tick's `FlowBlocked` and `FlowUnblocked` events, as a multiset of
+  `(event kind, Held, BlockedBy, the cohort's Key)`. The test gets the
+  `Key` like this:
+  - for a `FlowBlocked`, from `TryGetCohort(event.Cohort)` after the tick.
+    A refused cohort stays on its node, and a cohort in an open episode
+    does not merge (§9.12);
+  - for a `FlowUnblocked`, from the `Key` it remembered for that `Cohort`
+    at the episode's `FlowBlocked`. By then the cohort may have moved
+    under a new id, or been removed by `Absorb`.
+  The reference knows its own keys directly.
+`CohortId`s are not compared. The per-key head count on each node is what
+a wrong route changes, whether it ends in a move, a refusal or a different
+merge. A refusal the reference does not make, or a stale target, shows up
+as a head count on the wrong node or as a `BlockedBy` mismatch.
+
+The script must contain each of these cases at least once. Each one is
+there so that a cache that is wrong in that way fails:
+- **Walk speed.** Two or more pax profiles with distinct `walk_speed_mps`
+  are released from the **same node in the same tick**, where the
+  different traversal terms lead them to **different** edges. This fails a
+  memo that leaves walk speed out of the key.
+- **Gate tie-break.** Two gates reachable at exactly equal cost `Raw`, so
+  that ascending `g` `NodeId` decides. The lower-id gate is reachable only
+  through the **higher**-`EdgeId` out-edge. A search that walks edges in
+  ascending id (`18` §18.3's order) and keeps the first tie it meets then
+  picks the wrong gate.
+- **Edge tie-break.** Two out-edges reaching the same gate at exactly equal
+  cost `Raw`, so that ascending `EdgeId` decides.
+- **Lane changes.** `SetServersOpen` on alternative security queues flips
+  the choice between ticks. This fails a memo that outlives its tick.
+- **Blocked re-route.** A cohort is refused by a full target (§9.12
+  "Blocking episodes"). A later tick's routing picks a different target,
+  which is either not full, so the cohort moves, or also full, so the
+  `Unblocked`/`Blocked` pair names it. This fails a memo that keeps a
+  stale target.
+- **Show-up spike.** Several cohorts released from one `Source` in one
+  tick.
+- **Restart.** The run is restarted partway through the day, and the
+  assertion keeps holding afterwards.
+
+**What the restart case proves.** Until `sim.save` exists, a restart is a
+replay from seed from tick 0 (`19` §19.5, owner-approved interim). That
+replay fills the cache in the same order as the original run. So it proves
+only that routing is reproducible. It cannot show independence from fill
+order or history (rules 4 and 6). What guards those until then:
+- **The per-tick assertion.** Any wrong choice changes a per-key head
+  count or a `BlockedBy`, so it fails on any tick of the scripted day,
+  whatever its cause.
+- **Review.** A history-dependent cache can be right on every scripted
+  tick and wrong on a state the script never reaches. Only review catches
+  that until the restore arm exists.
+
+Once `sim.save` exists, the restart case restores from a mid-day save into
+a fresh system with a cold cache, and the reference continues from its own
+state.
+
+The existing `sim.flow` tests and budget tests must also still pass.
 
 > **LOW CONFIDENCE — deterministic least-cost routing.** It is correct and cheap,
 > but every passenger taking the same door can look wrong on screen and can make
@@ -254,9 +467,28 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
 
 **Exact rules (Q-033).**
 
-- **Exceptions.** In `Inject`, an unknown `at` or one that is not a `Source`
-  throws `ArgumentException`, and `count <= 0` throws
-  `ArgumentOutOfRangeException`. In `Absorb`, an unknown `sink` or one that
+- **Exceptions.** `Inject` checks in this order, throws at the first
+  failure, and changes nothing on a throw:
+  1. an unknown `at`: `ArgumentException`;
+  2. an `at` that is not a `Source`: `ArgumentException`;
+  3. `count <= 0`: `ArgumentOutOfRangeException`;
+  4. `key.Direction ≠ Departing`, at Phase 0/1 (Q-040, §9.6):
+     `ArgumentException`.
+  So `Inject(Arriving, 0, a valid Source)` throws
+  `ArgumentOutOfRangeException`. Checks 1 to 3 are the merged order, and 4
+  is appended.
+  Test (Q-040), owned by the Test Author of the fix task:
+  `test_inject_rejects_non_departing_direction`.
+  - **Cases.** One `Inject` with `Direction = Arriving` and one with
+    `Direction = Transferring`, each with a valid `Source` and
+    `count > 0`. Each throws `ArgumentException`.
+  - **"Changes nothing" is asserted.** After each throw, and before any
+    `Step`, the test checks `Population`, `CohortsAt` and
+    `PopulationForFlight` for every node and direction. It also checks the
+    `CohortId` returned by the next valid `Departing` `Inject`. All must
+    equal those of a control run that made the same valid calls without
+    the two rejected ones. So the `IIdAllocator` counter was not advanced.
+  In `Absorb`, an unknown `sink` or one that
   is not a `Sink` throws `ArgumentException`. An unknown `flight` is not an
   error, and it returns 0.
 - **`EnteredNodeAt` of an injected cohort** is `N`, the number of `Tick`
@@ -425,7 +657,7 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 
 Not hashed, because derived: predicted waits, agent views, per-flight population
 indexes, `TryGetOutstanding` and `TryGetLaneState` results, any cached
-routing result.
+routing result (§9.6 "Routing cache", Q-036).
 
 Budget: **2.5 ms/tick at max tier** (`03-module-map.md`). The shape that budget
 demands, stated so it is not discovered late:
@@ -438,6 +670,14 @@ demands, stated so it is not discovered late:
   value is **fixture sizing**, not balance and not a sim constant (Q-033).
   The Test Author sets it per fixture, as for `11` §11.10, and states its
   derivation in the test.
+- **Gate count is fixture sizing too (Q-037).** A `sim.flow`-local stress
+  or budget fixture builds its own walk graph and does not load
+  `tests/fixtures/world/phase0-landside.json`. It may declare several
+  `Gate` nodes. They are pooled
+  (§9.6), so every departing cohort routes over all the reachable ones,
+  which is the current rule's worst case. The Test Author states the count
+  and its derivation in the test. `18` §18.5's single `Gate` binds only
+  that shared file and the fixtures that load it (`18` §18.6).
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
 
@@ -545,8 +785,9 @@ loosely, this section governs.
    moves **whole** into the target node `m`, unless `m` is full in the
    snapshot. There is no partial admission, so a node can end a tick above
    its capacity by at most one tick's inflow. A refused cohort stays where
-   it is. A served part moves under a new `CohortId`, and the remainder
-   keeps its id (§9.3).
+   it is. Every group that moves, whether a whole cohort or a served part,
+   moves under a **new** `CohortId`, allocated in movement order. A
+   remainder keeps its id (§9.3 "Every move takes a new id").
 3. **Merge** (§9.3), except that a cohort in an open blocking episode does
    not merge. The survivor is the lowest `CohortId`.
 4. **Thresholds.** For each `Queue` node in ascending `NodeId`, compute
