@@ -2127,3 +2127,92 @@ LOW CONFIDENCE — owner may revise: the recommended 60 pooled `Gate` nodes
              (open-questions Q-037). It is a recommendation, not a spec
              rule. The count is the Test Author's, with the derivation
              stated.
+
+## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.7, §11.9, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
+Reason:      The PR #54 (T-008) review found two gaps.
+             - **Q-038:** an unbounded `minutes_before_std` can put an
+               injection before its flight's publication, or before its
+               day is materialised. Those passengers are then lost, or
+               injected before `FlightPlanPublished`. The fix:
+               - `MAX_SHOW_UP_MINUTES_BEFORE_STD` (1440, derived from the
+                 publish lead) is checked at `CreateSystem`, which makes
+                 injection tick ≥ `PublishTick` hold on every day;
+               - a fixed order for `sim.schedule`'s calls within `Tick`:
+                 materialise, then publish, then inject;
+               - a statement of what is observable: injection tick ≥
+                 publication tick. On a shared tick, `sim.flow` holds the
+                 cohort (phase 2) before handlers see
+                 `FlightPlanPublished` (phase 3). That order is explicitly
+                 accepted.
+             - **Q-039:** `RowOrdinal` indexes the whole file, but only rows
+               per day were bounded, so `FlightId`s could collide across
+               days. The fix: `MAX_FIXTURE_ROWS` (99999) on total rows, a
+               line-numbered failure, and a statement of exactly what the
+               derivation guarantees.
+Raised by:   Q-038, Q-039 (Reviewer, PR #54, via coordinator)
+Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
+             (PR #54):
+             - rename `MAX_FIXTURE_ROWS_PER_DAY` to `MAX_FIXTURE_ROWS` and
+               make it a total-row check with the line number (this also
+               clears review findings 3 and 4);
+             - add the show-up bound check at `CreateSystem`;
+             - compute injections at publication, per the Tick order,
+               rather than at materialisation (finding 1).
+             For the T-008 Test Author, four new tests (§11.10). Every
+             fixture that loads today keeps its ids and hashes.
+             `minutes_before_std` values, checked on `main` and on
+             `test-author/T-008-schedule-loader-tests`:
+             - `data/pax_profiles` peaks at 180;
+             - the T-008 `ScheduleTestKit` curves peak at 180;
+             - `tests/fixtures/content` peaks at 120;
+             - `sim.core`'s content-loader tests go well past the bound:
+               `LoaderTests.cs` line 191 loads 4294967295, and lines 259
+               and 401 are parameterised. They test the `sim.core` loader
+               alone and never reach `sim.schedule`'s `CreateSystem`, where
+               the bound is checked, so they are unaffected.
+             No scope added.
+Revision:    after the PR #57 review (rejected at 18f5960):
+             - §11.6's "publication precedes injection" claim is replaced
+               by the observable guarantee and the explicitly accepted
+               shared-tick order;
+             - the Q-038 test is made observable and covers days 0, 1 and
+               2 at 00:00;
+             - this Impact statement is corrected;
+             - §11.9a names the reported bucket (the first over the bound)
+               and the order of failures (row order, then `aircraft_type`,
+               then `pax_profile`, then the bound);
+             - the Q-039 test has a concrete shape (99 999 `A` rows on day
+               1, at most 70 per minute, days 1 to 3), with the day-0
+               event-limit trap stated.
+Revision 2:  after the second PR #57 review (rejected at 90cc883):
+             - the Q-038 test fixture is pinned: `pax=10`, both permille
+               values 0, curve `[60/400, 1440/600]`. That gives 4 + 6 with
+               no remainder, so the 1440-minute bucket always injects 6;
+             - the run's four published occurrences (days 0 to 3) are all
+               asserted, with each one's publish tick and both injection
+               ticks listed. The latest is 42600, inside the run;
+             - §11.7's registry sentence is reworded to match §11.6's
+               phase-3 statement;
+             - the INDEX line is reworded to stay true whichever of #55 and
+               #57 merges first;
+             - §11.9a is rewrapped.
+             The red CI was the `WorldBudgetTests` timing flake, unrelated
+             to this diff, and was rerun by the coordinator.
+Revision 3:  after the third PR #57 review (rejected at f16c2f7):
+             - `test_profile_with_show_up_beyond_publish_lead_fails_load`
+               is pinned, with one case per §11.9a rule:
+               - (a) 1440 loads, 1441 fails;
+               - (b) `pax=0` still fails;
+               - (c) the curve `[60/500, 1500/300, 2000/200]` names 1500,
+                 not 2000;
+               - (d) the failure order, over two rows, both ways, and
+                 within one row.
+               Multi-row files list rows in descending `flight_ref`;
+             - §11.9 Budget now separates the publication queue (built at
+               load and materialisation) from the injection queue
+               (storage reserved at materialisation, entries written at
+               publication), matching §11.6 step 2;
+             - §11.10 says day 1 is also the 00:00 edge (tick 0);
+             - this header lists §11.7 and §11.9.
+Signed off:  not required. `01` and `02` are untouched. The 1440-minute
+             show-up bound (Q-038) is owner-confirmed 2026-09-28.

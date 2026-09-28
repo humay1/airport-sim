@@ -48,7 +48,8 @@ Compile-time constants in `sim.schedule`.
 |---|---|---|
 | `PLAN_PUBLISH_LEAD_TICKS` | `TICKS_PER_SIM_DAY` (14400) | §11.5 |
 | `FLIGHT_ID_DAY_STRIDE` | 100000 | §11.3, id derivation |
-| `MAX_FIXTURE_ROWS_PER_DAY` | 99999 | `< FLIGHT_ID_DAY_STRIDE`, asserted at load |
+| `MAX_FIXTURE_ROWS` | 99999 | `FLIGHT_ID_DAY_STRIDE − 1`. Total data rows in the file, asserted at load (§11.3, Q-039). It replaces the earlier per-day limit |
+| `MAX_SHOW_UP_MINUTES_BEFORE_STD` | `PLAN_PUBLISH_LEAD_TICKS / TICKS_PER_SIM_MINUTE` (1440) | The largest `minutes_before_std` a referenced pax profile may use, asserted at load (§11.6, Q-038) |
 | `TICK_UNSCHEDULED` | `uint64.MaxValue` | "this rotation has no such movement" |
 
 `TICK_UNSCHEDULED` is the only sentinel in the module. It appears in
@@ -101,6 +102,23 @@ gives three properties worth the arithmetic: file order cannot change behaviour
 machine and in every replay, and a flight id read from a log names its day and
 its fixture row by inspection. `IIdAllocator` is **not** used for `FlightId`.
 
+**What the derivation guarantees (Q-039).** `RowOrdinal` indexes the whole
+file, not one day, so the bound is on the file. A fixture loads only if it
+has at most `MAX_FIXTURE_ROWS` data rows (§11.4). Each row occurs at most
+once per day, so for every loaded table:
+
+- `0 ≤ RowOrdinal ≤ MAX_FIXTURE_ROWS − 1`, so
+  `1 ≤ Value % FLIGHT_ID_DAY_STRIDE ≤ MAX_FIXTURE_ROWS`;
+- `FlightId` is unique across all days of the session;
+- `Value / FLIGHT_ID_DAY_STRIDE = DayIndex` and
+  `Value % FLIGHT_ID_DAY_STRIDE − 1 = RowOrdinal`, so both can be decoded
+  from an id;
+- ascending `FlightId` equals ascending `(DayIndex, RowOrdinal)`.
+
+The module may rely on these four facts and on nothing stronger. The
+`uint64` `Value` cannot overflow for any `uint32` day. Nothing else bounds
+`DayIndex`.
+
 Ordering rule: every iteration over flights, every publication and every
 injection is in ascending `FlightId` (`02-determinism.md` rule 5).
 
@@ -148,7 +166,10 @@ flight_ref,day,repeat_daily,movement,airline,aircraft_type,sched_hhmm,rotation_r
 
 Additional load-time validations, all hard failures:
 
-- row count per day `<= MAX_FIXTURE_ROWS_PER_DAY`;
+- total data rows `<= MAX_FIXTURE_ROWS` (Q-039). Rows are counted in file
+  order, and the failure names the line of the first row over the limit
+  (line `MAX_FIXTURE_ROWS + 2`, since line 1 is the header). The check
+  enumerates no dictionary and does not depend on `day` or `repeat_daily`;
 - a `rotation_ref` pair must satisfy `STA < STD` on the same day — cross-midnight
   rotations are **not supported at Phase 0** and are a question, not a workaround;
 - a `D` row with `pax > 0` must name an `entry_node`;
@@ -241,6 +262,52 @@ At publication, the flight's injections are computed once and queued:
    cohorts with equal keys (`09-interfaces-flow.md` §9.3).
 4. Classes with a count of 0 produce no injection.
 
+**No injection is due before its publication (Q-038).** Every bucket has
+`minutes_before_std ≤ MAX_SHOW_UP_MINUTES_BEFORE_STD` (§11.9a), so:
+
+`max(0, ScheduledTick − minutes_before_std × TICKS_PER_SIM_MINUTE) ≥ max(0, ScheduledTick − PLAN_PUBLISH_LEAD_TICKS) = PublishTick`
+
+So every injection tick is at or after its flight's `PublishTick`. It is
+therefore also at or after the tick that materialised its day (§11.9). No
+entry is ever queued for a tick that has already run. Every passenger of
+a published flight is injected exactly once, so no passenger is created or
+lost. `clamp to 0` stays the only clamp. It is the day-0 case of the same
+inequality. A profile past the bound fails load. Neither clamping nor
+dropping is used.
+
+**Order of the steps in `sim.schedule`'s `Tick` (Q-038).** For tick `t`:
+1. day materialisation, if `t % TICKS_PER_SIM_DAY == 0` (§11.9);
+2. publication (§11.5): for each flight with `PublishTick == t` in
+   ascending `FlightId`, its two events are **published**, and then its
+   injections are computed and queued;
+3. injection: every entry due at `t` is drained, including entries queued
+   in step 2 of this tick, in ascending `(FlightId, bucketIndex,
+   classIndex)`.
+
+This fixes the order of the calls, and so the `EventId`s and the `Inject`
+sequence. It is **not** an order a handler can observe between an event
+and an injection.
+
+**What is guaranteed, in observable terms.**
+- **By tick.** For every flight, every `Inject` of its passengers happens in
+  a tick `≥` the tick in which its `FlightPlanPublished` is published. No
+  passenger ever reaches `sim.flow` in an earlier tick than its flight's
+  plan. That closes Q-038's early-injection case.
+- **On a shared tick** (injection tick `= PublishTick`), the order across
+  modules follows `08` §8.5 and §8.6 rule 1. `Publish` only queues. The
+  `Inject` call is synchronous, in phase 2, inside `sim.schedule`'s
+  `Tick`. `sim.flow` then ticks in the same phase 2; the new cohort has
+  `EnteredNodeAt = t`, so it does not move before `t + 1` (§9.12).
+  Handlers see `FlightPlanPublished` only in phase 3. So on a shared tick,
+  **`sim.flow` holds the cohort before any subscriber sees the plan.** This
+  is **accepted**, and nothing depends on the opposite. No Phase 0/1
+  handler of `FlightPlanPublished` reads `sim.flow`, and nothing in
+  `sim.flow` reads the plan. A shared tick happens when a bucket sits
+  exactly at `MAX_SHOW_UP_MINUTES_BEFORE_STD`, and for day-0 flights whose
+  buckets clamp to tick 0, which `PublishTick` 0 shares (§11.10 requires
+  one). A future consumer that needs the plan before the passengers exist
+  needs an amendment. It must not assume this order.
+
 No RNG is consumed anywhere in this expansion. See §11.9.
 
 ### Injection
@@ -298,8 +365,10 @@ interface IScheduleSystem : ISimSystem {
 - There is no mutating entry point. Nothing may write to `sim.schedule`.
 
 Registry position is **2** (`08-interfaces-core.md` §8.5), before `sim.airside`
-and `sim.flow`: intent is published, and passengers injected, before the systems
-that consume them run in the same tick.
+and `sim.flow`. So in phase 2 of a tick, a passenger injected in that tick is
+already in `sim.flow` when `sim.flow` ticks. `FlightPlanPublished` is only
+queued in phase 2, and subscribers see it in phase 3 (§11.6 "What is
+guaranteed").
 
 ---
 
@@ -345,12 +414,19 @@ Budget: **0.10 ms/tick at max tier** (`03-module-map.md`). It is measured
 with `03`'s statistic, "How a budget is measured": mean ≤ 0.10 ms **and**
 p99 ≤ 0.20 ms over the ticks of one full sim-day. A mean alone, or a mean
 over several days, does not satisfy it (Q-031). Per-tick work is
-O(flights published this tick + injections due this tick) and nothing else. A
-scan over the whole flight table inside `Tick` is a review rejection: both
-publication and injection are due-ordered queues, built once at load and at day
-materialisation. No allocation in the update path (`07-conventions.md`); day
-materialisation for a `repeat_daily` fixture happens off the injection path, at
-the day boundary, and may allocate.
+O(flights published this tick + injections queued or due this tick) and
+nothing else. A scan over the whole flight table inside `Tick` is a review
+rejection. The two queues are built at different times (Q-038):
+- **Publication queue.** It is due-ordered by `PublishTick`, built at load
+  and extended at each day's materialisation.
+- **Injection queue.** It is due-ordered by injection tick. Its storage for
+  a day's occurrences is reserved when that day is materialised, sized from
+  their buckets and classes. Its **entries** are written at publication
+  (§11.6 step 2), in O(1) each, into that reserved storage.
+No allocation in the update path (`07-conventions.md`). Day materialisation
+for a `repeat_daily` fixture happens at the day boundary, before any
+publication on that tick (§11.9), and may allocate. Publication and
+injection never do.
 
 ---
 
@@ -367,6 +443,23 @@ ScheduleFactory.CreateSystem(in SystemServices services, in ScheduleTable table,
 load failure (§11.4). It throws `FormatException` whose message starts with
 `sim.schedule: ` and contains the row's `flight_ref`, the column name and
 the unresolved id (`07` "Error handling", Q-031).
+
+**Show-up bound (Q-038).** At the same point, a resolved `pax_profile`
+with any bucket whose `minutes_before_std > MAX_SHOW_UP_MINUTES_BEFORE_STD`
+is a load failure. This applies whatever the row's `pax`. It throws the
+same `FormatException` shape: `sim.schedule: `, the row's `flight_ref`,
+the column `pax_profile`, the profile id, and the `minutes_before_std` of
+the **first** bucket over the bound in curve order. Buckets are strictly
+ascending, so that is the smallest offending value.
+
+**Which failure is reported (Q-038).** Construction checks rows in the
+table's order, ascending `flight_ref` (§11.4). Within a row it checks in a
+fixed order: `aircraft_type` resolves, then `pax_profile` resolves, then
+the show-up bound. It throws the first failure it meets, so a resolution
+miss on an earlier row wins over a bound failure on a later one, and on
+one row a resolution miss wins over the bound. The check lives here, not
+in `sim.core`'s content loader, because the bound is derived from
+`sim.schedule`'s `PLAN_PUBLISH_LEAD_TICKS`.
 
 ## 11.10 The Phase 0 fixture (T-008)
 
@@ -392,6 +485,90 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_loader_rejects_reordered_header_with_line_number`
 - `test_flight_ids_are_independent_of_row_order`
 - `test_show_up_split_conserves_head_count`
+- `test_profile_with_show_up_beyond_publish_lead_fails_load` (Q-038). Every
+  case calls `CreateSystem` over a loaded table and test-built content.
+  "Fails" means it throws `FormatException` whose message starts with
+  `sim.schedule: ` and contains the listed parts (§11.9a). In every
+  multi-row case the rows appear in the file in **descending**
+  `flight_ref`, so file order and table order differ.
+  - **(a) The bound is inclusive.** A curve of `[ {1440, 1000} ]` loads. A
+    curve of `[ {1441, 1000} ]` fails, and the message contains the row's
+    `flight_ref`, `pax_profile`, the profile id and `1441`.
+  - **(b) `pax` does not matter.** The same 1441 profile on a `D` row with
+    `pax=0` and no `entry_node` fails the same way.
+  - **(c) The first offending bucket is named.** A curve of
+    `[ {60, 500}, {1500, 300}, {2000, 200} ]` fails. The message contains
+    `1500` and does not contain `2000`.
+  - **(d) The failure order.** Rows `R1` and `R2`, where `R1 < R2` by
+    ordinal `flight_ref`:
+    - `R1` has the 1441 profile and `R2` has an unresolved `aircraft_type`:
+      the failure names `R1` and `1441`;
+    - `R1` has an unresolved `aircraft_type` and `R2` has the 1441
+      profile: the failure names `R1` and the column `aircraft_type`;
+    - one row with an unresolved `aircraft_type` **and** the 1441 profile:
+      the failure names the column `aircraft_type`;
+    - one row whose `pax_profile` does not resolve: the failure names the
+      column `pax_profile` and the unresolved id. The bound is not reached.
+- `test_injection_tick_never_before_publication_tick_on_any_day` (Q-038).
+  - **Fixture, exact values.** One `D` row with `day=0`, `repeat_daily=1`,
+    `sched_hhmm=00:00`, `pax=10`, `hold_bag_permille=0`,
+    `assist_permille=0`, no `rotation_ref`, and an `entry_node`. Its pax
+    profile's curve is exactly
+    `[ { minutes_before_std: 60, share_permille: 400 }, { minutes_before_std: 1440, share_permille: 600 } ]`.
+  - **What that gives.** The split is exact, with no remainder: bucket 0
+    (60 min) gets 4 and bucket 1 (1440 min) gets 6. All go to class 0,
+    since both permille values are 0. So every occurrence makes exactly two
+    `Inject` calls, `count` 4 and `count` 6, and the 1440-minute bucket is
+    never empty.
+  - **Run.** Ticks `0` to `3 × TICKS_PER_SIM_DAY − 1` (0 to 43199).
+    **Four** occurrences are published inside the run: days 0, 1, 2 and 3.
+    Day 3 is materialised and published at tick 28800. Day 4 is
+    materialised at 43200, outside the run.
+  - **Observed.** The kit's recorder (`RecorderSystemId` 7, which receives
+    in phase 3) records the tick of each `FlightPlanPublished`. The kit's
+    fake `IFlowSystem` records the tick of each `Inject` call.
+  - **Asserted, for each of the four occurrences.**
+    - Its `FlightPlanPublished` tick equals its `PublishTick`.
+    - Its 6-passenger `Inject` falls on that same tick, a shared tick.
+    - Its 4-passenger `Inject` falls on `ScheduledTick − 600` (60 × 10),
+      clamped to 0.
+    - Every `Inject` tick is `≥` the publication tick, and the injected
+      counts sum to 10.
+    - `PendingInjectionCount` is 0 at the end of the run. All eight
+      injections fall inside it: the latest is day 3's at tick 42600.
+  - **The four days** give these ticks
+    `(ScheduledTick; PublishTick = 1440-bucket tick; 60-bucket tick)`:
+    - day 0: `(0; 0; 0)`. Both buckets clamp to 0.
+    - day 1: `(14400; 0; 13800)`.
+    - day 2: `(28800; 14400; 28200)`. Tick 14400 also materialises day 2.
+    - day 3: `(43200; 28800; 42600)`. Tick 28800 also materialises day 3.
+    Days 1, 2 and 3 are all the 00:00 edge, where materialisation,
+    publication and the 1440-bucket injection fall on `(d − 1) · 14400`.
+    For day 1 that is tick 0, which also carries day 0's publication.
+  - The test does **not** assert an order between the recorder's event and
+    the `Inject` within a shared tick. That order is the accepted
+    cross-module one of §11.6.
+- `test_loader_rejects_rows_over_max_fixture_rows_with_line_number` (Q-039).
+  A file of `MAX_FIXTURE_ROWS + 1` rows fails at line `MAX_FIXTURE_ROWS + 2`.
+- `test_flight_ids_unique_and_decodable_at_max_fixture_rows` (Q-039).
+  - **Fixture.** Exactly `MAX_FIXTURE_ROWS` rows, all `A` with `pax=0`,
+    `day=1`, `repeat_daily=1` and no `rotation_ref`. `sched_hhmm` is
+    spread so that no minute holds more than 70 rows. That puts at most
+    140 events on any publication tick, within `MAX_EVENTS_PER_TICK`
+    (4096).
+  - **Run.** Ticks `0` to `3 × TICKS_PER_SIM_DAY − 1`, which publishes days
+    1, 2 and 3.
+  - **Asserted.**
+    - `PublishedFlights()` holds `3 × MAX_FIXTURE_ROWS` distinct ids, in
+      ascending order;
+    - each id decodes to its `(DayIndex, RowOrdinal)`;
+    - `RowOrdinal` `MAX_FIXTURE_ROWS − 1` on day `d` and `RowOrdinal` 0 on
+      day `d + 1` do not collide.
+  - The fixture must **not** put these rows on day 0. Every day-0 flight
+    publishes at tick 0 (§11.5), so 99 999 of them would publish about
+    200 000 events in one tick. That throws `SimInvariantException` at the
+    event limit (`08` §8.6), which is the fixture bug §11.5 describes, not
+    a `FlightId` failure.
 - `test_publication_emits_plan_then_milestone_once_per_flight`
 - `test_schedule_hash_identical_with_and_without_flow_registered`
 - `test_schedule_tick_consumes_no_rng`
