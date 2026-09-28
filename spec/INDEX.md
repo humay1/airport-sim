@@ -168,8 +168,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   is a budget requirement (§9.3); **routing over `sim.world`'s walk graph:
   pooled `Gate` destinations, lowest traversal plus queue wait along
   `PathVia` (§9.6, Q-012)**; **an optional routing cache under six binding
-  rules, observably identical to the uncached rule and with a required
-  oracle test (§9.6, Q-036)**; **gate count in `sim.flow`-local fixtures is
+  rules, observably identical to the uncached rule, keyed by `(node, walk
+  speed)` at Phase 0/1, and with a required reference-model test (§9.6,
+  Q-036)**; **only `Departing` cohorts at Phase 0/1: `Inject` rejects
+  other directions (§9.6, §9.7, Q-040)**; **gate count in `sim.flow`-local fixtures is
   fixture sizing (§9.10, Q-037)**; factory plus `IFlowGraphLoader`, where
   `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
   **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
@@ -319,9 +321,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: Q-040 (routing of non-`Departing` cohorts, not blocking; the
-  Q-036 cache rules are written so as not to depend on it). Q-002 to
-  Q-037 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Every question in the file from Q-002 on is answered
+  (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),

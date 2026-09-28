@@ -1954,7 +1954,7 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              added.
 Signed off:  not required. `01` and `02` are untouched.
 
-## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037: routing-cache rules and gate count in `sim.flow` fixtures
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.6 destinations, §9.7 `Inject`, §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037, Q-040: routing-cache rules, gate count in `sim.flow` fixtures, `Departing`-only cohorts
 Reason:      T-011's black-box scaling runs show routing cost linear in the
              number of pooled gates (p99 of 9.9 ms at 96 gates), with the
              worst ticks after show-up injections. `09` allowed a cache but
@@ -2040,14 +2040,45 @@ Revision 2:  after the second PR #55 review (rejected at 2dab56a):
                - the gate tie now puts the lower-id gate behind the
                  higher `EdgeId`;
                - rule 2 lists all of `IWorldSystem`'s load-time answers.
-Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect)
-Impact:      Nothing merged changes. `main` has no cache in `src/sim/flow`,
-             so it violates no rule. PR #56 (T-010) adds a per-tick cache
-             keyed by (node, walk speed). Under rule 3 that key is allowed
-             only if the memo is read and written for `Departing` cohorts
-             alone. Otherwise the key must include `Key.Direction`. #56
-             must also meet the other rules and carry the oracle test,
-             including the Direction case.
+Revision 3:  after the third PR #55 review (rejected at ba17fda):
+             - (1)/(3) **Q-040 is answered (a).** At Phase 0/1, `Inject`
+               rejects `key.Direction ≠ Departing` (§9.6, §9.7), because
+               the spec defines no destinations for other directions. Rule
+               3's key is therefore `(node, walk speed)`. The Direction case
+               and its comparison run are removed, which leaves no
+               undefined oracle step.
+             - (2)/(4) The oracle is now a lockstep, uncached **reference
+               model of §9.12's whole tick**, carrying its own credit,
+               cohorts, episodes and flags from tick 0. Every input is
+               named with its source: the flow-graph JSON the test writes,
+               the content it builds, `IWorldSystem`, and the script.
+               Nothing comes from `FlowGraph` internals or `ServiceCredit`.
+               It compares:
+               - per-node, per-`CohortKey` head counts;
+               - `Population` and `PredictedWaitMinutes`;
+               - `(kind, Held, BlockedBy, Key)` event multisets.
+               It does not compare `CohortId`s, which settles the "served
+               part" note.
+             - Notes fixed:
+               - the "differing-set case" wording;
+               - the restore-arm sentence is moved out of the Review
+                 bullet.
+Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
+             Q-040 (Architect, from the review)
+Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache
+             rule. **But merged T-007 code does not conform to Q-040:**
+             - `Inject` accepts every `FlowDirection`;
+             - `AttemptRelease` routes every cohort to the pooled gates.
+             The Planner needs a small `sim.flow` fix task:
+             - writable paths `src/sim/flow/**`;
+             - `Inject` throws `ArgumentException` for `key.Direction ≠
+               Departing`;
+             - Test Author test `test_inject_rejects_non_departing_direction`;
+             - no other merged test injects a non-`Departing` cohort, and
+               `FlowSystemTests.cs:52` only queries.
+             PR #56 (T-010) adds a per-tick cache keyed by (node, walk
+             speed). That is the Phase 0/1 key under rule 3. #56 must also
+             meet the other rules and carry the reference-model test.
              T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
              performance task:
              - writable paths `src/sim/flow/**`;

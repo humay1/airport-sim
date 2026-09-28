@@ -1138,12 +1138,10 @@ Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
              - (3) the wait-dependent part is memoised within one tick
                only. An entry serves a cohort only for the same node, the
                same walk speed and every cohort field that determines the
-               destination set, which is `Key.Direction` at Phase 0/1,
-               because `Inject` accepts any direction. The allowed keys
-               are `(node, Direction, walk speed)`, or `(node, walk
-               speed)` used only for `Departing` cohorts. The amendment
-               that widens what determines the set must extend the key and
-               the test;
+               destination set. At Phase 0/1 that is no field, because
+               only `Departing` cohorts exist (Q-040), so the key is
+               `(node, walk speed)`. The amendment that widens what
+               determines the set must extend the key and the test;
              - (4) it is not hashed or saved, and is rebuilt from rule 2's
                sources on restore/replay with the same routes;
              - (5) no allocation in the update path;
@@ -1151,16 +1149,19 @@ Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
                order or fill order.
              Required test when a cache is added, owned by the Test Author
              of whichever `sim.flow` task adds it:
-             `test_flow_routing_cache_matches_uncached_reference`. At
-             every tick it checks, against an uncached oracle, the choice
-             of every cohort that attempts release, whether it moves or is
-             refused. A refusal is checked through `BlockedBy`. The script
-             must include each of these, so a cache wrong in that way
-             fails:
+             `test_flow_routing_cache_matches_uncached_reference`. It
+             runs a lockstep, uncached reference model of §9.12's whole
+             tick. Every input comes from the fixture, content and script
+             the test authors, or from `IWorldSystem`. After every tick it
+             compares:
+             - the per-node, per-`CohortKey` head counts;
+             - `Population` and `PredictedWaitMinutes`;
+             - the multiset of `FlowBlocked`/`FlowUnblocked` as
+               `(kind, Held, BlockedBy, Key)`.
+             No `CohortId`s are compared. The script must include each of
+             these, so a cache wrong in that way fails:
              - distinct walk speeds released from one node in one tick,
                choosing different edges;
-             - a `Departing` and a non-`Departing` cohort on one node in
-               one tick, in both `CohortId` orders;
              - an exact-cost gate tie (NodeId, with the lower id only via
                the higher `EdgeId`) and an edge tie (EdgeId);
              - lane changes that flip the choice;
@@ -1207,10 +1208,10 @@ Status:      ANSWERED (spec/09-interfaces-flow.md#910-state-hashing-and-budget);
 
 ### Q-040 — `sim.flow`: how is a non-`Departing` cohort routed at Phase 0/1?
 Raised by:   Architect, from the PR #55 review (finding 1), 2026-09-28
-Blocking:    no. No Phase 0/1 production caller injects a non-`Departing`
-             cohort: `11` §11.1 and `12` "Arriving passengers" have a pax
-             count of zero. The Q-036 cache rules are written so as not to
-             depend on the answer.
+Blocking:    no production work. No Phase 0/1 production caller injects a
+             non-`Departing` cohort: `11` §11.1 and `12` "Arriving
+             passengers" have a pax count of zero. It was needed to make the
+             Q-036 rules and test well-defined, and is answered in PR #55.
 Question:    `Inject` (§9.7) accepts any `FlowDirection`, and tests may seed
              fixtures through it. But §9.6 "Destinations" defines a set only
              for `Departing` cohorts, so the uncached routing rule has no
@@ -1226,7 +1227,28 @@ Options:     - (a) `Inject` with `Direction ≠ Departing` throws
                That is additive and needs no merged change.
              - (c) Destinations for `Arriving` cohorts (a `Sink`). That is
                new behaviour and scope.
-Recommendation: (b) now, as the smallest amendment. (a) can come when the
-             merged tests have been checked. (c) waits for arriving
-             passengers, which is owner scope.
-Status:      OPEN
+Answer:      **(a).** This is what the spec already implies. §9.6 defines
+             destinations only for `Departing` cohorts, and Phase 0/1 has
+             no arriving or transferring passengers (`11` §11.1, `12`). So a
+             non-`Departing` cohort is a state the spec never gave a
+             meaning. Rejecting it at `Inject` is the narrowest rule, and it
+             removes the direction question from the Q-036 cache key and
+             test. The checks:
+             - on `main` and every open test-author or worker branch, the
+               only non-`Departing` use is the query
+               `PopulationForFlight(…, FlowDirection.Arriving)` in
+               `FlowSystemTests.cs:52`, which stays valid, because queries
+               still accept every direction;
+             - (b) was rejected. It would keep an undefined state alive and
+               make the route cache depend on direction;
+             - (c) is scope, and waits for arriving passengers, which is
+               the owner's call.
+             `09` §9.6 "Only `Departing` cohorts exist at Phase 0/1" and
+             §9.7 "Exceptions" now state it.
+             **The merged T-007 code does not conform.** `Inject` accepts
+             every direction, and `AttemptRelease` routes every cohort to
+             the pooled gates whatever its direction. A `sim.flow` fix task
+             is needed: `Inject` throws `ArgumentException` for
+             `key.Direction ≠ Departing`, with the Test Author's test
+             `test_inject_rejects_non_departing_direction`.
+Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
