@@ -91,6 +91,17 @@ cohorts), but merge only after **T-010** merges, same reasoning as T-038 —
 `tests/sim/flow/**` is shared with T-010's still-open branches. A worker is
 needed only if the budget fails once T-010's code lands.
 
+**Q-040 (a), this cycle, spec PR #55 (merged, `3a6ba7c`):** at Phase 0/1
+there are no arriving or transferring passengers, so `Inject` must reject
+`key.Direction ≠ Departing` as `09` §9.7's check 4, appended after
+unknown-`at`/not-a-`Source`/`count<=0`. Merged T-007 code
+(`src/sim/flow/FlowSystem.cs` `Inject`) implements only the first three
+checks. New task **T-039** (`src/sim/flow/**` only, depends on **T-010**,
+PR #56, open) closes the gap; the Test Author's own test is
+`test_inject_rejects_non_departing_direction` (`09` §9.7). **T-039 must not
+release before T-010 merges** — T-010's own PR also edits
+`FlowSystem.cs`. See the T-039 row and its release-order entry.
+
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
 Q-016 (what counts as "green" before T-006 merges) is now a **HUMAN
@@ -156,6 +167,7 @@ to wave through a failing `determinism` check.
 | T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
 | T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | MERGED (PR #51, `7bb30b5`) |
 | T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | QUEUED (blocked on T-010 merging) |
+| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | QUEUED (blocked on T-010 merging) |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -258,6 +270,11 @@ direct `Depends` edge. Order:
     currently open — release only once T-010 has actually merged, not
     merely once it is `QUEUED`/`IN_PROGRESS`, to avoid conflicting with
     tests those branches are still writing.
+12b. **T-039** (`src/sim/flow/**` only, the `Inject` direction-rejection
+    fix, Q-040) — after **T-010** merges (PR #56, open as of this cycle,
+    also edits `src/sim/flow/FlowSystem.cs`). Release only once T-010 has
+    actually merged, same reasoning as T-038/12a, to avoid a conflicting
+    edit to the same file.
 13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
     shared with T-006/T-030/T-014 — do not release concurrently with any of
     them.
