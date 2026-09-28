@@ -195,7 +195,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   then inject (§11.6, §11.9a, Q-038)**; **at most `MAX_FIXTURE_ROWS`
   (99999) rows per file, which makes `FlightId` unique and decodable
   (§11.3, §11.4, Q-039)**.
-- LC: the 1440-minute show-up bound (Q-038).
+- LC: none. The 1440-minute show-up bound is owner-confirmed 2026-09-28
+  (Q-038).
 - Read if: T-008; §11.3/§11.7 for consumers.
 
 ### `12-interfaces-airside.md` — `sim.airside`

@@ -1146,10 +1146,7 @@ Answer:      Reject at load, which is the narrowest option. The new constant
              - extending the horizon would change `PLAN_PUBLISH_LEAD_TICKS`
                and every publish tick.
              Two new tests (§11.10).
-             **LOW CONFIDENCE**: 1440 minutes (24 h) is a structural bound,
-             not a balance value. No realistic show-up curve comes near it.
-             But the owner should confirm that no intended profile needs a
-             longer lead.
+             The 1440-minute (24 h) bound is owner-confirmed 2026-09-28.
 Status:      ANSWERED (spec/11-interfaces-schedule.md#expansion-to-injections)
 
 ### Q-039 — `sim.schedule`: the `FlightId` stride invariant

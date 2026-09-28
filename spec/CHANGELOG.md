@@ -1984,7 +1984,5 @@ Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
              largest `minutes_before_std` in `data/`, `tests/` and the
              T-008 test branch is 180, well inside the bound. No scope
              added.
-Signed off:  not required. `01` and `02` are untouched.
-LOW CONFIDENCE: the 1440-minute show-up bound (Q-038) is structural, but it
-             limits a content value the owner sets. The owner should
-             confirm that no intended profile needs a longer lead.
+Signed off:  not required. `01` and `02` are untouched. The 1440-minute
+             show-up bound (Q-038) is owner-confirmed 2026-09-28.
