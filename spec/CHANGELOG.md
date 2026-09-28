@@ -1773,3 +1773,446 @@ LOW CONFIDENCE: `LastBlockedAt` as "most missed passengers here" rather than
              true blocking history, for the owner with D6. Also, an
              `Absorb` outside a tick is detected only when it has something
              to publish.
+
+## 2026-09-27 — spec/15 §15.5–§15.7, §15.9–§15.12, §15.14 (new); 17 §17.1, §17.3, §17.4a (new), §17.7, §17.8, §17.10, §17.11; 16 §16.5–§16.7, §16.11, §16.12; INDEX — D10 / Q-034: player-adjustable graphics quality
+Reason:      HUMAN DECISION — owner, 2026-09-27 (D10): "the final user
+             should be able to increase or decrease graphics so the game can
+             also be run on a low resource laptop." The Architect specified
+             the mechanism:
+             - presets and six knobs (§15.14), presentation only;
+             - `Build` and `Update` take the settings, and `DrawAgents`
+               gates render-driven promotion, which is outcome-neutral by
+               `09` §9.1;
+             - the backend applies frame cap, resolution scale and
+               anti-aliasing;
+             - a modal settings panel in `app.ui`;
+             - a pinned preference text, stored through the host's
+               `IPreferenceStore`, never in a bundle, save, command or hash.
+             `01` and `02` are untouched.
+Raised by:   D10 (owner), Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner,
+             these tasks are stale:
+             - **T-020** (render scene): new `Build`/`Update` signatures,
+               `RenderFrame.Graphics`, the `RenderFactory` graphics
+               functions, and six new tests;
+             - **T-029** (UI scene): the three new inputs, `UiFrame` fields,
+               `CreateController`'s `initialGraphics`, the preference codec,
+               and six new tests;
+             - **T-031** (headless host): frame loop steps 2, 4 and 5,
+               `IPresentationComposer.Compose`'s store, and three new
+               tests;
+             - **T-032** (render backend): apply the backend knobs;
+             - **T-033** (UI backend): the settings icon and panel, with
+               `LocalisedKey` text, the first player-visible text;
+             - **T-034** (Unity shell): the bootstrap's `IPreferenceStore`
+               over the engine's player preferences.
+             **Scope added: 1** (a settings panel and the graphics setting),
+             owner-decided. The running total becomes 9.
+Signed off:  owner, 2026-09-27 (D10, the requirement). The mechanism is the
+             Architect's.
+HUMAN DECISION PENDING (owner):
+             - the Low and Medium preset values (until set, both equal High,
+               as a placeholder);
+             - the first-launch default (High until decided);
+             - the low-end target machine, which may sit below `01`'s locked
+               minimum spec. Graphics cannot reduce the 6 ms sim cost.
+             - whether the settings panel pauses (it does not, until
+               decided).
+LOW CONFIDENCE: the knob set, in particular `AntiAliasing` as a bool and
+             the `FrameRateCap` floor of 15, derived from the pacer's
+             catch-up cap.
+Addendum:    HUMAN DECISION — owner, 2026-09-27: graphics must not affect
+             gameplay or difficulty. `15` §15.14 and `17` §17.4a state a
+             binding invariant:
+             - every primitive outside the `Agent` layer is identical at
+               every setting, and so is its order;
+             - future gameplay-relevant elements are never gated by a knob;
+             - no knob changes the tick, speed, pause, pacing, command
+               timing or click targets, and clicks stay in full-screen
+               pixels under resolution scale;
+             - performance scaling is presentation only.
+             New tests: `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+             (T-020) and
+             `test_ui_controls_and_hits_identical_at_every_graphics_setting`
+             (T-029). T-032 is bound by the backend clause.
+
+## 2026-09-27 — spec/01 (minimum-spec GPU line only); 15 §15.10, §15.11, §15.12, §15.14; 17 §17.4, §17.4a, §17.10, §17.11; 16 §16.6, §16.10, §16.11, §16.12; INDEX; open-questions — Q-034: owner decisions on graphics quality
+Reason:      HUMAN DECISIONS — owner, 2026-09-27, closing the items D10 left
+             pending:
+             1. The minimum GPU is integrated graphics with no dedicated
+                VRAM. The CPU (4 cores) and RAM (8 GB) minimums are
+                unchanged. It is recorded in `01-architecture.md` as
+                "HUMAN DECISION 2026-09-27 (Q-034)".
+             2. `Low` must hold the frame budget on that hardware. Shared
+                GPU memory counts against the 8 GB.
+             3. The settings panel pauses the sim while it is open.
+             4. The first-launch default is `Medium`.
+             5. The Architect proposes the `Low` and `Medium` values.
+             Changes:
+             - `01`: the minimum-spec row now reads "integrated graphics
+               with no dedicated VRAM" instead of "GPU with 2 GB VRAM".
+               Nothing else in `01` changed, and nothing in `02`.
+             - `15` §15.11: on minimum spec, `Low` holds 60 fps at max tier.
+               `Medium` and `High` are not bound there.
+             - `15` §15.14: the `Low`/`Medium` table, `Medium` as the
+               default, the low-end target, and a manual measurement on a
+               minimum-spec machine at 1920 × 1080. Invariant 3 notes the
+               panel's pause.
+             - `15` §15.10: the backend's draw calls are bounded by layers
+               and colour roles, never by primitive count.
+             - `17` §17.4, §17.4a: `Pacing.Paused` = player's pause OR
+               `SettingsOpen`. While the panel is open, only the three
+               settings inputs apply.
+             - `16` §16.6: the frame loop needs no change, since
+               `Ui.Pacing.Paused` includes the panel. §16.10 adds a 2 GB
+               process memory budget, shared GPU memory included.
+             Graphics stays presentation only. No change touches sim state,
+             the tick rate, a hash or difficulty. The panel's pause depends
+             on whether it is open, never on a knob, and pausing is
+             outcome-neutral (`15` §15.8).
+Raised by:   owner, Q-034
+Impact:      No `app.*` code is merged, so nothing breaks. For the Planner:
+             - **T-020**: `ForPreset` returns the new `Low`/`Medium` values.
+               New test `test_graphics_low_and_medium_match_the_preset_table`.
+             - **T-029**: the panel pauses, and pause, speed and clicks are
+               ignored while it is open. `test_ui_settings_toggle_does_not_pause`
+               is **replaced** by
+               `test_ui_settings_open_pauses_and_close_restores_player_pause`
+               and `test_ui_pause_and_speed_ignored_while_settings_open`.
+             - **T-031**: the default preference is `Medium`. New test
+               `test_frame_loop_settings_opened_this_frame_steps_nothing`.
+             - **T-032**: the draw-call bound.
+             - **T-033**: pause and speed controls are inert while the panel
+               is open.
+             - **T-025** (playtest), or a later one: measure `Low` (60 fps,
+               ≤ 2 GB) on a minimum-spec machine.
+             - `03-module-map.md`'s budget protocol uses "the minimum spec of
+               `01`" as its reference machine. That now means an
+               integrated-graphics machine. Sim budgets are CPU-only, so
+               their numbers are unaffected.
+             Scope added: 0. The panel already existed (D10). Running total
+             stays 9.
+Signed off:  owner, 2026-09-27 (Q-034). This includes the `01` GPU line,
+             which is the only `01` change the owner authorised.
+LOW CONFIDENCE — owner may revise:
+             - the `Low` and `Medium` values (`15` §15.14);
+             - the 2 GB process memory budget (`16` §16.10);
+             - the 1920 × 1080 measurement condition (`15` §15.14);
+             - the backend draw-call bound (`15` §15.10);
+             - the Architect's reading of `01`'s "60 fps at max tier on
+               minimum spec" as binding at `Low` (the owner's decision 2),
+               not at every preset.
+Budget note: `Medium` (the default) is **not** bound to 60 fps on minimum
+             spec, and nothing has been measured. The Architect expects it
+             to hold at 1920 × 1080 on current integrated graphics, since it
+             draws flat colours, about 1 000 agent dots and no
+             anti-aliasing, provided the backend batches (§15.10). It is at
+             risk on high-DPI laptop panels at 100 % scale, and where GPU
+             heat throttles the CPU. On such machines the first launch may
+             miss 60 fps until the player picks `Low`. The Architect did not
+             work around this, per the owner's instruction.
+
+## 2026-09-27 — spec/08 §8.6 "Allocation" (new); INDEX — Q-035: the event bus allocates nothing after `Build`
+Reason:      `EventBus.Publish<T>` creates a channel on the first publish of a
+             type with no subscriber. In T-007's budget test that happens at
+             tick 1695, inside the measured window, and allocates 368 bytes.
+             `08` §8.5 and `07` forbid allocation on the tick path, but §8.6
+             never said what that means for the bus. A module cannot
+             pre-warm the bus, because `Publish` outside a tick throws. So
+             the rule is on the bus:
+             - it allocates nothing after `Build`, with no warm-up;
+             - the channel set is fixed at `Build`;
+             - a type with no subscriber stores nothing, but it still
+               consumes its `Sequence`, returns its `EventId` and runs
+               every check;
+             - capacity for `MAX_EVENTS_PER_TICK` events is reserved at
+               `Build`, so a new per-tick peak does not grow storage.
+             The alternative, allowing a first publish to allocate, was
+             rejected. It would make every module's budget test depend on
+             which events happened to fire during warm-up.
+Raised by:   Q-035 (worker / T-007; filed as "Q-034" and renumbered)
+Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
+             `Channel.cs` create channels lazily and let their lists grow.
+             The Planner needs a small `sim.core` fix task:
+             - writable paths `src/sim/core/**` only;
+             - the five new tests of §8.6 are the Test Author's, in
+               `tests/sim/core/`;
+             - no dependencies, since everything it touches is merged;
+             - reviewed by `reviewer-core`.
+             T-007 stays blocked on
+             `test_flow_budget_update_path_allocates_nothing` until that
+             task merges. T-007's own code and tests are unchanged.
+             Nothing observable changes: `EventId`s, handler order and
+             calls, hashes and goldens stay the same, because events are
+             not hashed or saved (§8.9) and an unsubscribed event has no
+             handler. The existing `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`
+             stays valid, since the new rule is stricter. Reserving
+             `MAX_EVENTS_PER_TICK` per subscribed type costs, once at
+             `Build`, `MAX_EVENTS_PER_TICK` × (envelope + payload size) per
+             subscribed type. The storage layout is left open so the
+             implementer can share it if that figure matters. No scope
+             added.
+Signed off:  not required. `01` and `02` are untouched.
+
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.6 destinations, §9.7 `Inject`, §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037, Q-040: routing-cache rules, gate count in `sim.flow` fixtures, `Departing`-only cohorts
+Reason:      T-011's black-box scaling runs show routing cost linear in the
+             number of pooled gates (p99 of 9.9 ms at 96 gates), with the
+             worst ticks after show-up injections. `09` allowed a cache but
+             never said what it must preserve. It also left open whether
+             `18` §18.5's single `Gate` bound `sim.flow` stress fixtures.
+             - **Q-036:** six binding rules for an optional cache (§9.6):
+               - observably identical: the same per-pair cost `Raw` and
+                 the same tie-break, with per-node terms that are each
+                 node's own §9.12 value;
+               - a static part from three named sources that may live for
+                 the run;
+               - a wait-dependent part memoised within one tick only;
+               - not hashed, not saved, rebuilt on restore;
+               - no allocation;
+               - no other inputs.
+               It also names the required oracle test,
+               `test_flow_routing_cache_matches_uncached_reference`, with
+               mandatory cases, owned by the Test Author of whichever
+               `sim.flow` task adds the cache.
+             - **Q-037:** the single `Gate` binds the shared file
+               `phase0-landside.json` and fixtures that load it.
+               `sim.flow`-local stress and budget fixtures build their own
+               graph and may pool several gates, stating the count and its
+               derivation (§9.10, §18.5). §18.6's list of users is
+               corrected.
+Revision:    after the PR #55 review (rejected at 9741b6d), four findings
+             were fixed:
+             - (1) §18.6 no longer lists T-011's stress fixture as a user
+               of the shared file. The single-gate scope is now "the file
+               and fixtures that load it", in §18.5, §18.6, §9.10 and
+               Q-037.
+             - (2) Rule 1 no longer forbids reordering or factoring on a
+               false premise. `Fx.Add` and integer-multiple `Mul` are exact
+               and every term is non-negative (`08` §8.3), so the grouping
+               cannot change `Raw` or the overflow condition. The real
+               hazards are named instead: per-node `Ceil` in
+               `traversalTicks` and per-node `Div` in the predicted wait.
+             - (3) Rule 2 names its three sources: `IWorldSystem`'s
+               load-time answers, the `FlowGraph` node behaviour, and the
+               pax profiles' walk speeds. Rule 4 rebuilds from exactly
+               those.
+             - (4) The oracle test now requires these cases:
+               - distinct walk speeds released from one node in one tick,
+                 choosing different edges;
+               - exact-cost gate and edge ties;
+               - lane changes;
+               - a blocked re-route;
+               - a show-up spike;
+               - a restart.
+               Rule 3 explains why differing destination sets cannot occur
+               at Phase 0/1: the effective set is filtered by
+               `CanReachVia` from the current node. It also binds the
+               amendment that makes them possible to extend the key and the
+               test. The restart case says what it proves: until
+               `sim.save`, replay shows reproducibility only (finding 5).
+Revision 2:  after the second PR #55 review (rejected at 2dab56a):
+             - (1) Rule 3's claim that cohorts on one node cannot differ in
+               destination set was false. `Inject` accepts any
+               `FlowDirection` (§9.7). Rule 3 now fixes the key itself: an
+               entry serves a cohort only for the same node, walk speed and
+               every cohort field that determines the destination set,
+               which is `Key.Direction` at Phase 0/1. The allowed forms are
+               `(node, Direction, walk speed)`, or `(node, walk speed)`
+               used for `Departing` cohorts only. A `(node, walk speed)`
+               memo serving every direction is a review rejection. The
+               oracle test gains a Direction case: a `Departing` and a
+               non-`Departing` cohort on one node in one tick, in both
+               `CohortId` orders. How non-`Departing` cohorts are routed is
+               filed as Q-040 (OPEN), and the cache rules do not depend on
+               its answer.
+             - (2) The assertion now covers every cohort that attempts
+               release, not only those that leave. A refused cohort's
+               target is checked through `BlockedBy`, and a `Queue`'s
+               served count through the oracle's FIFO service. The restart
+               paragraph no longer overclaims: the per-tick assertion
+               covers scripted states, and review covers the rest until
+               the restore arm exists.
+             - (3) The test's owner is "the Test Author of whichever
+               `sim.flow` task adds the cache" everywhere.
+             - Notes tidied:
+               - the edge-tie "file order" clause is dropped, because
+                 `18` §18.3 returns edges in ascending id;
+               - the gate tie now puts the lower-id gate behind the
+                 higher `EdgeId`;
+               - rule 2 lists all of `IWorldSystem`'s load-time answers.
+Revision 3:  after the third PR #55 review (rejected at ba17fda):
+             - (1)/(3) **Q-040 is answered (a).** At Phase 0/1, `Inject`
+               rejects `key.Direction ≠ Departing` (§9.6, §9.7), because
+               the spec defines no destinations for other directions. Rule
+               3's key is therefore `(node, walk speed)`. The Direction case
+               and its comparison run are removed, which leaves no
+               undefined oracle step.
+             - (2)/(4) The oracle is now a lockstep, uncached **reference
+               model of §9.12's whole tick**, carrying its own credit,
+               cohorts, episodes and flags from tick 0. Every input is
+               named with its source: the flow-graph JSON the test writes,
+               the content it builds, `IWorldSystem`, and the script.
+               Nothing comes from `FlowGraph` internals or `ServiceCredit`.
+               It compares:
+               - per-node, per-`CohortKey` head counts;
+               - `Population` and `PredictedWaitMinutes`;
+               - `(kind, Held, BlockedBy, Key)` event multisets.
+               It does not compare `CohortId`s, which settles the "served
+               part" note.
+             - Notes fixed:
+               - the "differing-set case" wording;
+               - the restore-arm sentence is moved out of the Review
+                 bullet.
+Revision 4:  after the fourth PR #55 review (rejected at b9b0371):
+             - (1) §9.3 and §9.12 now say that **every move takes a new
+               `CohortId`**: a whole cohort as well as a served part,
+               allocated in movement order. That fixes the relative id
+               order of same-tick arrivals, and so the `Queue` FIFO
+               tie-break. It is the merged behaviour (`MoveCohortPortion`
+               always allocates), so no code change follows. The reference
+               keeps its own id counter, advanced at the same points, and
+               uses it only for ordering.
+             - (2) §9.7 `Inject` gives a total check order: unknown `at`,
+               not a `Source`, `count <= 0`, then direction. The first
+               three are the merged order.
+             - (3) The reference's scope names §9.7's `Inject` and
+               `Absorb`, including boarding, missed removal and
+               `FlowUnblocked`.
+             - (4) A `FlowUnblocked`'s `Key` is the one the test remembered
+               at the episode's `FlowBlocked`.
+Revision 5:  after the fifth PR #55 review (rejected at 9f37ffa):
+             - (1) The reference test pins where the script runs:
+               `sim.world` at 1, one scripted caller at 2, `sim.flow` at 4
+               (as `FlowRig`), and an optional recorder after it that
+               calls nothing. Every `Inject` and `Absorb` is made from the
+               caller's `Tick`, and `SetServersOpen` is a phase-1 command.
+               The reference applies each tick as commands, then calls,
+               then its own `Tick`. So `Absorb` never follows `sim.flow` in
+               a tick, and the `Key` rule always applies.
+             - (2) `test_inject_rejects_non_departing_direction` is pinned
+               in §9.7. It covers `Arriving` and `Transferring`, and
+               asserts "changes nothing" against a control run, including
+               the next id, so the `IIdAllocator` counter is not advanced.
+             - (3) A long line in "The reference" is rewrapped.
+Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
+             Q-040 (Architect, from the review)
+Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache
+             rule. **But merged T-007 code does not conform to Q-040:**
+             - `Inject` accepts every `FlowDirection`;
+             - `AttemptRelease` routes every cohort to the pooled gates.
+             The Planner needs a small `sim.flow` fix task:
+             - writable paths `src/sim/flow/**`;
+             - `Inject` throws `ArgumentException` for `key.Direction ≠
+               Departing`;
+             - Test Author test `test_inject_rejects_non_departing_direction`;
+             - no other merged test injects a non-`Departing` cohort, and
+               `FlowSystemTests.cs:52` only queries.
+             PR #56 (T-010) adds a per-tick cache keyed by (node, walk
+             speed). That is the Phase 0/1 key under rule 3. #56 must also
+             meet the other rules and carry the reference-model test.
+             T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
+             performance task:
+             - writable paths `src/sim/flow/**`;
+             - depends on T-010 merged;
+             - released only on a failing budget measurement (the 90k
+               max-tier fixture decides, owner, 2026-09-28);
+             - done condition: the existing tests plus the oracle test;
+             - reviewed by `reviewer-core`, since routing is
+               determinism-critical.
+             No scope added.
+Signed off:  owner, 2026-09-28: go-ahead for both drafts. Gate assignment
+             is not brought forward.
+LOW CONFIDENCE — owner may revise: the recommended 60 pooled `Gate` nodes
+             for the 90k max-tier fixture, one per max-tier stand
+             (open-questions Q-037). It is a recommendation, not a spec
+             rule. The count is the Test Author's, with the derivation
+             stated.
+
+## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.7, §11.9, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
+Reason:      The PR #54 (T-008) review found two gaps.
+             - **Q-038:** an unbounded `minutes_before_std` can put an
+               injection before its flight's publication, or before its
+               day is materialised. Those passengers are then lost, or
+               injected before `FlightPlanPublished`. The fix:
+               - `MAX_SHOW_UP_MINUTES_BEFORE_STD` (1440, derived from the
+                 publish lead) is checked at `CreateSystem`, which makes
+                 injection tick ≥ `PublishTick` hold on every day;
+               - a fixed order for `sim.schedule`'s calls within `Tick`:
+                 materialise, then publish, then inject;
+               - a statement of what is observable: injection tick ≥
+                 publication tick. On a shared tick, `sim.flow` holds the
+                 cohort (phase 2) before handlers see
+                 `FlightPlanPublished` (phase 3). That order is explicitly
+                 accepted.
+             - **Q-039:** `RowOrdinal` indexes the whole file, but only rows
+               per day were bounded, so `FlightId`s could collide across
+               days. The fix: `MAX_FIXTURE_ROWS` (99999) on total rows, a
+               line-numbered failure, and a statement of exactly what the
+               derivation guarantees.
+Raised by:   Q-038, Q-039 (Reviewer, PR #54, via coordinator)
+Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
+             (PR #54):
+             - rename `MAX_FIXTURE_ROWS_PER_DAY` to `MAX_FIXTURE_ROWS` and
+               make it a total-row check with the line number (this also
+               clears review findings 3 and 4);
+             - add the show-up bound check at `CreateSystem`;
+             - compute injections at publication, per the Tick order,
+               rather than at materialisation (finding 1).
+             For the T-008 Test Author, four new tests (§11.10). Every
+             fixture that loads today keeps its ids and hashes.
+             `minutes_before_std` values, checked on `main` and on
+             `test-author/T-008-schedule-loader-tests`:
+             - `data/pax_profiles` peaks at 180;
+             - the T-008 `ScheduleTestKit` curves peak at 180;
+             - `tests/fixtures/content` peaks at 120;
+             - `sim.core`'s content-loader tests go well past the bound:
+               `LoaderTests.cs` line 191 loads 4294967295, and lines 259
+               and 401 are parameterised. They test the `sim.core` loader
+               alone and never reach `sim.schedule`'s `CreateSystem`, where
+               the bound is checked, so they are unaffected.
+             No scope added.
+Revision:    after the PR #57 review (rejected at 18f5960):
+             - §11.6's "publication precedes injection" claim is replaced
+               by the observable guarantee and the explicitly accepted
+               shared-tick order;
+             - the Q-038 test is made observable and covers days 0, 1 and
+               2 at 00:00;
+             - this Impact statement is corrected;
+             - §11.9a names the reported bucket (the first over the bound)
+               and the order of failures (row order, then `aircraft_type`,
+               then `pax_profile`, then the bound);
+             - the Q-039 test has a concrete shape (99 999 `A` rows on day
+               1, at most 70 per minute, days 1 to 3), with the day-0
+               event-limit trap stated.
+Revision 2:  after the second PR #57 review (rejected at 90cc883):
+             - the Q-038 test fixture is pinned: `pax=10`, both permille
+               values 0, curve `[60/400, 1440/600]`. That gives 4 + 6 with
+               no remainder, so the 1440-minute bucket always injects 6;
+             - the run's four published occurrences (days 0 to 3) are all
+               asserted, with each one's publish tick and both injection
+               ticks listed. The latest is 42600, inside the run;
+             - §11.7's registry sentence is reworded to match §11.6's
+               phase-3 statement;
+             - the INDEX line is reworded to stay true whichever of #55 and
+               #57 merges first;
+             - §11.9a is rewrapped.
+             The red CI was the `WorldBudgetTests` timing flake, unrelated
+             to this diff, and was rerun by the coordinator.
+Revision 3:  after the third PR #57 review (rejected at f16c2f7):
+             - `test_profile_with_show_up_beyond_publish_lead_fails_load`
+               is pinned, with one case per §11.9a rule:
+               - (a) 1440 loads, 1441 fails;
+               - (b) `pax=0` still fails;
+               - (c) the curve `[60/500, 1500/300, 2000/200]` names 1500,
+                 not 2000;
+               - (d) the failure order, over two rows, both ways, and
+                 within one row.
+               Multi-row files list rows in descending `flight_ref`;
+             - §11.9 Budget now separates the publication queue (built at
+               load and materialisation) from the injection queue
+               (storage reserved at materialisation, entries written at
+               publication), matching §11.6 step 2;
+             - §11.10 says day 1 is also the 00:00 edge (tick 0);
+             - this header lists §11.7 and §11.9.
+Signed off:  not required. `01` and `02` are untouched. The 1440-minute
+             show-up bound (Q-038) is owner-confirmed 2026-09-28.

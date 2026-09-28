@@ -6,7 +6,7 @@
 | Module | — (human decision gate, not a worker task) |
 | Assigned role | — |
 | Depends on | T-024, T-031, T-032, T-033, T-034 |
-| Spec source | `spec/00-overview.md` Phase 1 gate |
+| Spec source | `spec/00-overview.md` Phase 1 gate; `spec/15-interfaces-render.md` §15.11, §15.14; `spec/16-interfaces-host.md` §16.10 (minimum-spec measurement, D10/Q-034) |
 | Blocked by | — (all Q-002 through Q-012 are answered; T-024 and the full playable-build chain, T-027–T-034, are `QUEUED`, not blocked) |
 
 ## Why this task cannot be released
@@ -31,5 +31,17 @@ be attempted is ordinary task completion, not a further open question.
 - [ ] T-024 merged
 - [ ] T-031 and T-034 merged (a running player build)
 - [ ] T-032 and T-033 merged (both engine backends)
+- [ ] The manual minimum-spec measurement of `15` §15.14/§16.10 is taken and
+      recorded in `CHANGELOG.md` (HUMAN DECISION — owner, 2026-09-27,
+      Q-034): on a minimum-spec machine (4-core CPU, 8 GB RAM, integrated
+      graphics with no dedicated VRAM) at 1920 × 1080, the `Low` preset
+      holds **60 fps** at max tier, and the player process — resident
+      memory plus any GPU memory it allocates, shared system RAM on
+      integrated graphics — stays **at most 2 GB**. CI cannot run this; it
+      is a manual step of this playtest (or a later one, if the build is
+      not ready in time), not a task any worker can complete standalone.
+      Both the 60 fps and the 2 GB figures are the Architect's LOW
+      CONFIDENCE estimates until this measurement records them, and are
+      corrected by amendment if it misses, never by a worker.
 - [ ] The human owner runs the playtest and records the verdict — an agent
       does not update this file's status to done under any circumstance

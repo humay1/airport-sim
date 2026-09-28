@@ -6,8 +6,15 @@
 | Module | `app.ui` (scene layer only) |
 | Assigned role | worker |
 | Depends on | T-005, T-020, T-023, T-026 |
-| Spec source | `spec/00-overview.md`; `spec/17-interfaces-ui.md` (new file, D5; command plumbing answered by Q-010) |
+| Spec source | `spec/00-overview.md`; `spec/17-interfaces-ui.md` (new file, D5; command plumbing answered by Q-010; §17.4a graphics settings panel, D10/Q-034) |
 | Blocked by | — |
+
+**Amendment (D10/Q-034, this cycle):** the owner's graphics-quality decision
+adds a settings panel to this module's scope: three new `UiInputKind`
+values, `SettingsOpen`/`Graphics` state, the `OR`-of-pauses rule, and the
+graphics-preference text codec (`17` §17.4a). This is additive inside the
+scope this task already owns (the one exception `17` §17.1 already carved
+out for a settings panel) — it does not change this task's dependency list.
 
 ## Writable paths
 
@@ -36,43 +43,57 @@ T-033, once `app.host`'s Unity project exists.
 `CLAUDE.md`, `spec/00-overview.md`, `spec/01-architecture.md`,
 `spec/02-determinism.md`, `spec/03-module-map.md`, `spec/07-conventions.md`,
 `spec/08-interfaces-core.md` §8.5, §8.7, `spec/09-interfaces-flow.md` §9.7b,
-§9.8, `spec/15-interfaces-render.md` §15.4, §15.5, §15.8, §15.9,
-`spec/16-interfaces-host.md` §16.6, `spec/17-interfaces-ui.md`
+§9.8, `spec/15-interfaces-render.md` §15.4, §15.5, §15.8, §15.9, §15.14,
+`spec/16-interfaces-host.md` §16.6, `spec/17-interfaces-ui.md` (all sections,
+including §17.4a)
 
 ## Interface to implement
 
 ```
 readonly struct ScreenPoint { float X; float Y }
 
-enum UiInputKind { TogglePause, SetSpeed, PrimaryClick, SecondaryClick }
+enum UiInputKind {
+  TogglePause, SetSpeed, PrimaryClick, SecondaryClick,
+  ToggleSettings, SetGraphicsPreset, SetGraphicsSettings        // appended, D10 (§17.4a)
+}
 
 readonly struct UiInput {
-  UiInputKind Kind
-  GameSpeed   Speed          // SetSpeed only
-  ScreenPoint At             // PrimaryClick / SecondaryClick only
+  UiInputKind      Kind
+  GameSpeed        Speed          // SetSpeed only
+  ScreenPoint      At             // PrimaryClick / SecondaryClick only
+  GraphicsPreset   Preset         // SetGraphicsPreset only (15 §15.14)
+  GraphicsSettings Graphics       // SetGraphicsSettings only
 }
 
 readonly struct PacingState { bool Paused; GameSpeed Speed }
 
-readonly struct UiFrame { PacingState Pacing }
+readonly struct UiFrame {
+  PacingState      Pacing                  // includes SettingsOpen, per §17.4
+  bool             SettingsOpen            // D10, §17.4a
+  GraphicsSettings Graphics                // what the settings panel shows
+}
 
 interface ILaneCommandSink {
   void Request(NodeId node, int32 delta)   // delta is +1 or −1
 }
 
 interface IUiController {
-  void        Update(IReadOnlyList<UiInput> inputs, in CameraView camera,
-                     float screenWidth, float screenHeight)
-  PacingState Pacing { get }
-  UiFrame     Frame()
+  void             Update(IReadOnlyList<UiInput> inputs, in CameraView camera,
+                          float screenWidth, float screenHeight)
+  PacingState      Pacing   { get }
+  GraphicsSettings Graphics { get }        // D10, §17.4a
+  UiFrame          Frame()
 }
 ```
 
 Construction (`17` §17.7, Q-009):
 
 ```
-UiFactory.CreateController(in RenderLayout layout, ILaneCommandSink sink) -> IUiController
+UiFactory.CreateController(in RenderLayout layout, ILaneCommandSink sink,
+                           in GraphicsSettings initialGraphics) -> IUiController   // D10: initial value is validated
 UiFactory.CreateLaneCommandSink(ISimHost host, IFlowSystem flow) -> ILaneCommandSink   // Q-010
+UiFactory.EncodeGraphicsPreference(in GraphicsSettings) -> string          // D10
+UiFactory.TryDecodeGraphicsPreference(string, out GraphicsSettings) -> bool // D10
 ```
 
 Binding, copied from `spec/17-interfaces-ui.md`, not paraphrased:
@@ -85,6 +106,39 @@ Binding, copied from `spec/17-interfaces-ui.md`, not paraphrased:
   `TogglePause` flips `Paused`; `SetSpeed(s)` sets `Speed` and leaves
   `Paused` unchanged. Inputs apply in list order. Never saved; cannot
   change a sim outcome (the sim sees only `Step` calls, `15` §15.8).
+  **The settings panel pauses (§17.4a, D10/Q-034).** The controller holds
+  the player's own pause separately from `SettingsOpen`. `Pacing` and
+  `UiFrame.Pacing` report `Paused = player's pause OR SettingsOpen`, `Speed`
+  unchanged — closing the panel restores exactly the pause state the player
+  had.
+- **Graphics settings** (§17.4a, D10/Q-034): the controller holds
+  `SettingsOpen` (initially false) and `Graphics` (initially
+  `initialGraphics`, from the stored preference or the default, `17`
+  §17.4a/`15` §15.14). `ToggleSettings` flips `SettingsOpen`.
+  `SetGraphicsPreset(p)` sets `Graphics = ForPreset(p)`; `p = Custom` is
+  ignored. `SetGraphicsSettings(g)` sets `Graphics = Validate` of a copy of
+  `g` with `Preset = Custom`. Both apply in input order regardless of
+  `SettingsOpen`. **While `SettingsOpen`, the panel is modal**: only
+  `ToggleSettings`, `SetGraphicsPreset` and `SetGraphicsSettings` apply;
+  `TogglePause`, `SetSpeed`, `PrimaryClick` and `SecondaryClick` are ignored,
+  so the player's own pause and speed are unchanged when the panel closes.
+  Inputs after a `ToggleSettings` in the same frame see the new
+  `SettingsOpen`. **Invariant, binding:** `Graphics` is read by nothing in
+  this module except `UiFrame.Graphics` and the preference codec. Pacing,
+  the pause/speed controls, the hit test, the lane request and its command
+  timing, and the control strip are identical at every graphics setting. A
+  future control or alert the player acts on is never gated by a graphics
+  knob. The panel's pause depends on `SettingsOpen` only, never on
+  `Graphics`.
+- **The graphics preference codec** (§17.4a, D10): the preference value is
+  the text `graphics 1 <Preset name> <DrawAgents 0|1>
+  <MaxDrawnAgentsPerNode> <FrameRateCap> <ResolutionScalePercent>
+  <AntiAliasing 0|1>`, single spaces, decimal numbers, invariant formatting.
+  `EncodeGraphicsPreference`/`TryDecodeGraphicsPreference` produce and parse
+  it; the decoder runs `Validate`. A missing, unknown or malformed value
+  decodes to `false`; the caller (`app.host`, T-031) then falls back to the
+  default, `Medium` (`15` §15.14). This task encodes/decodes the string
+  only — reading and writing it through `IPreferenceStore` is T-031's.
 - **The lane click** (§17.5): hit-test against the validated `RenderLayout`'s
   `FlowNodeBox`es, closed intervals, highest `NodeId` wins on overlap, no
   box → ignored. `PrimaryClick` = request `+1`; `SecondaryClick` = request
@@ -141,6 +195,21 @@ least:
 - `test_ui_lane_request_clamped_and_no_submit_when_unchanged`
 - `test_ui_two_clicks_before_tick_runs_build_on_pending_target`
 - `test_ui_rejected_command_is_dropped_not_redated`
+- `test_ui_settings_open_pauses_and_close_restores_player_pause` (Q-034,
+  §17.4, §17.4a): opening pauses whether or not the player had paused, and
+  closing restores the player's own state, paused or not
+- `test_ui_pause_and_speed_ignored_while_settings_open` (Q-034)
+- `test_ui_set_graphics_preset_applies_preset_values_and_ignores_custom`
+- `test_ui_set_graphics_settings_marks_custom_and_validates`
+- `test_ui_world_clicks_ignored_while_settings_open`
+- `test_ui_graphics_preference_round_trips_and_rejects_malformed`
+- `test_ui_graphics_changes_do_not_change_outcome` — integration, as
+  `test_ui_pause_and_speed_do_not_change_outcome`, with scripted graphics
+  inputs
+- `test_ui_controls_and_hits_identical_at_every_graphics_setting` — the same
+  inputs, including clicks, give the same lane requests, the same pacing
+  state and the same `UiFrame.Pacing` at each preset and at custom extremes
+  (the §17.4a invariant)
 
 **Do not edit them.** If a test contradicts `spec/17-interfaces-ui.md`, file
 an open question and stop.
@@ -165,10 +234,19 @@ nothing to the sim's 6 ms.
 ## Worker notes
 
 The scene layer references `app.render`'s scene layer for `CameraView`,
-`WorldPoint`, `GameSpeed` and `RenderLayout` (`03-module-map.md`: `app.ui`
-depends on render) — never its backend, never `app.host`. It targets
-`netstandard2.1`/`LangVersion 9` like every other headless layer (D1);
-tests target `net8.0`.
+`WorldPoint`, `GameSpeed`, `RenderLayout`, `GraphicsPreset` and
+`GraphicsSettings` (`03-module-map.md`: `app.ui` depends on render) — never
+its backend, never `app.host`. It targets `netstandard2.1`/`LangVersion 9`
+like every other headless layer (D1); tests target `net8.0`.
+
+**Graphics settings panel (D10/Q-034) does not change this task's
+dependency list.** It is the one exception `17` §17.1 already carves out of
+"no panel at Phase 1", added to the scope this task already owns. Do not
+draw the panel here — that is the backend's, T-033 — this task only holds
+`SettingsOpen`/`Graphics` state, applies the modal-input rule, and
+encodes/decodes the preference string. Whether and what the panel pauses is
+the owner's decision (Q-034: it pauses, unconditionally, while open); do not
+second-guess it.
 
 The +1/−1 click grammar is the Architect's reading of D5, flagged in
 `CHANGELOG.md` as worth the owner's attention, not this task's to

@@ -439,6 +439,35 @@ would silently consume the whole core budget. See the emission discipline in
 Events are **not saved**. They are derived within a tick and must never be the
 sole carrier of state.
 
+**Allocation (Q-035).** After `Build`, the bus allocates **nothing**. That
+covers `Publish`, dispatch and the per-tick reset, for every tick of at most
+`MAX_EVENTS_PER_TICK` events. It holds from the first tick, with no warm-up.
+It does not depend on which event types have been published before, or on
+how many events an earlier tick carried. Allocations inside a handler are
+the subscriber's, not the bus's.
+
+- **The channel set is fixed at `Build`.** Subscription closes at `Build`
+  (§8.11a), so the event types with at least one subscriber are known
+  then. The bus creates all of their storage then, and never later.
+- **A type with no subscriber stores nothing.** Its `Publish` still runs
+  every check above: the phase, the final cascade pass and
+  `MAX_EVENTS_PER_TICK`. It still consumes the next `Sequence` and returns
+  its `EventId`. It is not queued, because no handler could observe it.
+  The `EventId`s and handler calls of every other event are unchanged, so
+  this changes no outcome and no hash.
+- **Capacity is reserved at `Build`.** The storage behind the tick's FIFO,
+  and the storage of each subscribed type, can hold `MAX_EVENTS_PER_TICK`
+  events without growing. A new per-tick peak later in a run therefore
+  allocates nothing. How the storage is laid out is the implementer's
+  choice.
+
+Tests (Q-035, Test Author, `tests/sim/core/`):
+- `test_bus_first_publish_of_unsubscribed_type_after_warm_up_allocates_nothing`
+- `test_bus_first_publish_of_subscribed_type_after_warm_up_allocates_nothing`
+- `test_bus_new_per_tick_peak_up_to_max_events_per_tick_allocates_nothing`
+- `test_bus_unsubscribed_publish_consumes_sequence_and_returns_event_id`
+- `test_bus_unsubscribed_publish_still_enforces_phase_cascade_and_limit`
+
 ---
 
 ## 8.7 Commands

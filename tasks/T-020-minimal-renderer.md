@@ -6,7 +6,7 @@
 | Module | `app.render` (scene layer only) |
 | Assigned role | worker |
 | Depends on | T-009, T-010, T-021, T-023, T-026 |
-| Spec source | `spec/00-overview.md` build order; `spec/15-interfaces-render.md` (all §15.13 HUMAN DECISIONS now made: D1, D4, D5, D7; lane pips answer Q-010 item 5) |
+| Spec source | `spec/00-overview.md` build order; `spec/15-interfaces-render.md` (all §15.13 HUMAN DECISIONS now made: D1, D4, D5, D7; lane pips answer Q-010 item 5; §15.14 graphics quality, D10/Q-034) |
 | Blocked by | — |
 
 ## Scope note
@@ -16,6 +16,12 @@ Q-008 is now fully answered: all five §15.13 HUMAN DECISIONS have been made
 and the composition root). This task remains the **headless scene layer
 only**; the Unity backend (`src/app/render/Unity/**`) is now taskable as
 T-032, once this task and `app.host`'s headless side (T-031) exist.
+
+**Amendment (D10/Q-034, this cycle):** the owner's graphics-quality decision
+adds a `GraphicsSettings` input to `Build`/`Update`, six new knobs and a
+preset table, `RenderFrame.Graphics`, two new `RenderFactory` functions, and
+render-driven promotion gating on `DrawAgents` (`15` §15.14). None of this
+changes this task's dependency list or its module boundary.
 
 ## Writable paths
 
@@ -50,7 +56,7 @@ target and makes no framework choice of its own. Its own tests target
 `spec/02-determinism.md`, `spec/03-module-map.md`, `spec/07-conventions.md`,
 `spec/08-interfaces-core.md` §8.5, §8.11a, `spec/09-interfaces-flow.md` §9.1, §9.7, §9.7b,
 `spec/12-interfaces-airside.md` §12.4, §12.9, `spec/16-interfaces-host.md`
-§16.6, `spec/15-interfaces-render.md`
+§16.6, §16.10, `spec/15-interfaces-render.md` (all sections, including §15.14)
 
 ## Interface to implement
 
@@ -111,6 +117,7 @@ readonly struct RenderFrame {
   Tick                         Tick
   CameraView                   Camera
   IReadOnlyList<DrawPrimitive> Primitives    // valid until the next Build
+  GraphicsSettings             Graphics      // §15.14; what the backend applies (D10)
 }
 
 readonly struct RenderSources {
@@ -119,23 +126,36 @@ readonly struct RenderSources {
   IFlowSystem?    Flow
 }
 
-interface ISceneBuilder        { RenderFrame Build(in CameraView camera) }
-interface IPromotionController { void Update(in CameraView camera) }
+interface ISceneBuilder        { RenderFrame Build(in CameraView camera, in GraphicsSettings graphics) }        // D10
+interface IPromotionController { void Update(in CameraView camera, in GraphicsSettings graphics) }        // D10
 
 enum GameSpeed { X1 = 1, X2 = 2, X4 = 4 }          // the value is the multiplier; D4
 
 interface ITickPacer {
   uint32 Advance(int64 elapsedRealMicroseconds, bool paused, GameSpeed speed)   // ticks to Step this frame
 }
+
+enum GraphicsPreset { Low, Medium, High, Custom }   // saved by name, never by number (17 §17.4a)
+
+readonly struct GraphicsSettings {
+  GraphicsPreset Preset
+  bool   DrawAgents                 // render-driven promotion and agent dots (§15.5, §15.7)
+  int32  MaxDrawnAgentsPerNode      // 1 .. MAX_DRAWN_AGENTS_PER_NODE
+  int32  FrameRateCap               // 0 = uncapped, else 15 .. 240 frames per second
+  int32  ResolutionScalePercent     // 50 .. 100
+  bool   AntiAliasing
+}
 ```
 
-## Construction (`15` §15.9, Q-009)
+## Construction (`15` §15.9, §15.14, Q-009)
 
 ```
 RenderFactory.CreateLayoutLoader() -> IRenderLayoutLoader
 RenderFactory.CreateSceneBuilder(in RenderSources sources, in RenderLayout layout) -> ISceneBuilder
 RenderFactory.CreatePromotionController(in RenderSources sources, in RenderLayout layout) -> IPromotionController
 RenderFactory.CreatePacer() -> ITickPacer
+RenderFactory.GraphicsForPreset(GraphicsPreset preset) -> GraphicsSettings   // Custom throws ArgumentException
+RenderFactory.ValidateGraphics(in GraphicsSettings s) -> GraphicsSettings    // clamps every knob into range
 ```
 
 Stateless static methods only, following `08` §8.11a's factory rule. In a
@@ -198,13 +218,36 @@ Binding, copied from `spec/15-interfaces-render.md`, not paraphrased:
 - **Promotion controller** (§15.7): a `FlowNodeBox` is visible if its box
   intersects the camera's view rectangle (closed intervals — touching
   counts); desired-promoted if visible **and** `camera.ViewHeight <=
-  AGENT_ZOOM_THRESHOLD` (inclusive). First `Update`: call `SetPromoted` for
-  **every** `FlowNodeBox`, ascending `NodeId`. Every later `Update`: call
-  only for nodes whose desired state changed, ascending `NodeId`. A node not
-  in the layout is never promoted/demoted. `SetPromoted` is the controller's
-  only call that changes anything in the sim, made only between `Step`s,
-  and nothing read is fed back — this is what keeps promotion neutrality
-  from being broken from outside the sim.
+  AGENT_ZOOM_THRESHOLD` (inclusive) **and** `graphics.DrawAgents` (§15.14,
+  D10). With `DrawAgents` false, no node is desired promoted, so the
+  controller demotes every node it promoted and no agent views are derived.
+  First `Update`: call `SetPromoted` for **every** `FlowNodeBox`, ascending
+  `NodeId`. Every later `Update`: call only for nodes whose desired state
+  changed, ascending `NodeId`. A node not in the layout is never
+  promoted/demoted. `SetPromoted` is the controller's only call that changes
+  anything in the sim, made only between `Step`s, and nothing read is fed
+  back — this is what keeps promotion neutrality from being broken from
+  outside the sim.
+- **Graphics quality** (§15.14, D10/Q-034): `GraphicsSettings` is
+  presentation only. It never changes sim state, the tick rate, a hash, a
+  checkpoint or a command. `Build` and `Update` rebuild/promote against the
+  given `graphics` and rebuild when it changes, same as a camera or tick
+  change (§15.6). **Invariant, binding:** for any sim state, camera and
+  `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
+  layer — kind, layer, colour, geometry, source and order — is identical at
+  every setting. Only `Agent`-layer primitives (and which nodes are
+  promoted) may differ. `AgentsAt(node)` is truncated to
+  `graphics.MaxDrawnAgentsPerNode`, which never exceeds
+  `MAX_DRAWN_AGENTS_PER_NODE`. `ForPreset`/`Validate` implement the
+  preset table and clamp rules of `15` §15.14 exactly, including the
+  `Low`/`Medium`/`High` values there and the `FrameRateCap ≥ 15`,
+  `MaxDrawnAgentsPerNode ≥ 1` bounds. `High` reproduces this file's own
+  pre-D10 behaviour (`DrawAgents = true`, `MaxDrawnAgentsPerNode = 256`,
+  `FrameRateCap = 0`, `ResolutionScalePercent = 100`, `AntiAliasing = true`).
+  The scene layer reads only `DrawAgents` and `MaxDrawnAgentsPerNode`; the
+  other three knobs (`FrameRateCap`, `ResolutionScalePercent`,
+  `AntiAliasing`) pass through `RenderFrame.Graphics` unread, for the
+  backend (T-032) to apply.
 - **Tick pacer** (§15.8, amended by D4 — game speeds pause/1x/2x/4x):
   integer accumulator of **speed-scaled** microseconds, never saved.
   `paused`: returns 0, discards `elapsed`. Otherwise `acc += elapsed ×
@@ -255,7 +298,8 @@ fake-source setup for the budget test). Expect at least:
 - `test_scene_lane_pips_follow_lane_state_and_skip_non_queue_nodes`
 - `test_scene_primitive_order_is_stable`
 - `test_scene_omits_primitives_of_absent_modules`
-- `test_scene_rebuilds_only_when_tick_or_camera_changes`
+- `test_scene_rebuilds_only_when_tick_or_camera_changes` — now also covers
+  `GraphicsSettings` as a third rebuild trigger (§15.6, D10)
 - `test_scene_calls_only_listed_sim_members`
 - `test_promotion_first_update_sets_every_layout_node`
 - `test_promotion_calls_only_on_change_in_ascending_node_id`
@@ -273,7 +317,24 @@ fake-source setup for the budget test). Expect at least:
   checkpoints must match at every checkpoint tick. Also checks every
   `FlowNodeBox` against the running `sim.flow` fixture's node list.
 - `test_scene_assembly_has_no_engine_reference` — static
-- `test_scene_build_within_frame_budget_at_max_tier`
+- `test_scene_build_within_frame_budget_at_max_tier` — now measured at the
+  `High` preset, the most expensive (§15.11, D10; a lower preset never
+  costs more)
+- `test_graphics_presets_are_monotone_and_high_matches_phase1_behaviour`
+  (D10, §15.14)
+- `test_graphics_low_and_medium_match_the_preset_table` (Q-034, §15.14)
+- `test_graphics_settings_validate_clamps_every_knob`
+- `test_scene_agents_capped_by_graphics_setting`
+- `test_scene_rebuilds_when_graphics_settings_change`
+- `test_promotion_draw_agents_off_demotes_every_promoted_node`
+- `test_render_loop_is_outcome_neutral_across_graphics_changes` —
+  integration, as `test_render_loop_is_outcome_neutral_with_scripted_camera`,
+  with the graphics settings also switched between every preset and several
+  custom values at irregular frames. Checkpoints must be identical.
+- `test_scene_gameplay_primitives_identical_at_every_graphics_setting` —
+  the §15.14 invariant: builds a max-tier fake scene at each preset and at
+  custom extremes, asserts the non-`Agent` primitive lists are equal
+  element by element
 
 **Do not edit them.** If a test contradicts `spec/15-interfaces-render.md`,
 file an open question and stop.
@@ -284,10 +345,15 @@ file an open question and stop.
 p99 ≤ 4.0 ms per frame** (§15.11), measured per `03-module-map.md`'s
 protocol against fakes sized to max tier (3 runways, 60 stands all
 occupied, 100 tracked aircraft, 200 `FlowNodeBox`es, 16 promoted with 256
-agents each). No allocation in `Build`/`Update` after the first call — the
-primitive buffer is reused, which is why `RenderFrame.Primitives` is valid
-only until the next `Build`. This budget is separate from, and does not add
-to, the sim's own 6 ms/tick budget.
+agents each) **and the `High` preset** (D10 — the most expensive; a lower
+preset never costs more). No allocation in `Build`/`Update` after the first
+call — the primitive buffer is reused, which is why `RenderFrame.Primitives`
+is valid only until the next `Build`. This budget is separate from, and does
+not add to, the sim's own 6 ms/tick budget. On minimum spec (integrated
+graphics, no dedicated VRAM), the `Low` preset must hold the whole frame
+(sim share, scene layer, backend) at 16.7 ms / 60 fps at max tier — checked
+by manual measurement, not by this task's own CI budget test (§15.11,
+owner, Q-034).
 
 ## Done when
 
@@ -310,6 +376,17 @@ not release this task before all four have merged.
 The backend (`src/app/render/Unity/**`) is now taskable as **T-032**, since
 every `§15.13` HUMAN DECISION is made — do not write anything under
 `src/app/render/Unity/**` from this task regardless.
+
+**Graphics quality (D10/Q-034) does not change this task's dependency
+list.** It is additive scope inside the same module and directory this task
+already owns: six knobs, a preset table (`Low`/`Medium`/`High`, `Custom`),
+`Build`/`Update` taking a `GraphicsSettings`, and `RenderFactory.ForPreset`/
+`Validate`. The invariant in `15` §15.14 is binding: only `Agent`-layer
+primitives and promotion may vary with the setting; nothing else may, ever,
+including any later gameplay-relevant element added outside the `Agent`
+layer. `AGENT_ZOOM_THRESHOLD`, the 2.0/4.0 ms budget, and the `Low`/`Medium`
+values are all still LOW CONFIDENCE — build to the stated numbers; do not
+retune them as a worker judgement call.
 
 `AGENT_ZOOM_THRESHOLD = 120` and the 2.0/4.0 ms budget are both LOW
 CONFIDENCE, **accepted as provisional (HD, D8)** — build to the stated

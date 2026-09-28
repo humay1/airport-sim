@@ -694,13 +694,13 @@ namespace AirportSim.Sim.Core.Tests
             counting.Host.Step(1);
             idle.Host.Step(1);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             counting.Host.Step(599);
-            long withCommands = GC.GetAllocatedBytesForCurrentThread() - before;
+            long withCommands = Allocation.Since(start);
 
-            before = GC.GetAllocatedBytesForCurrentThread();
+            start = Allocation.Start();
             idle.Host.Step(599);
-            long withoutCommands = GC.GetAllocatedBytesForCurrentThread() - before;
+            long withoutCommands = Allocation.Since(start);
 
             Assert.Equal(599, counting.Handler.Applied);
             Assert.Equal(withoutCommands, withCommands);
