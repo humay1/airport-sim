@@ -2080,6 +2080,20 @@ Revision 4:  after the fourth PR #55 review (rejected at b9b0371):
                `FlowUnblocked`.
              - (4) A `FlowUnblocked`'s `Key` is the one the test remembered
                at the episode's `FlowBlocked`.
+Revision 5:  after the fifth PR #55 review (rejected at 9f37ffa):
+             - (1) The reference test pins where the script runs:
+               `sim.world` at 1, one scripted caller at 2, `sim.flow` at 4
+               (as `FlowRig`), and an optional recorder after it that
+               calls nothing. Every `Inject` and `Absorb` is made from the
+               caller's `Tick`, and `SetServersOpen` is a phase-1 command.
+               The reference applies each tick as commands, then calls,
+               then its own `Tick`. So `Absorb` never follows `sim.flow` in
+               a tick, and the `Key` rule always applies.
+             - (2) `test_inject_rejects_non_departing_direction` is pinned
+               in §9.7. It covers `Arriving` and `Transferring`, and
+               asserts "changes nothing" against a control run, including
+               the next id, so the `IIdAllocator` counter is not advanced.
+             - (3) A long line in "The reference" is rewrapped.
 Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
              Q-040 (Architect, from the review)
 Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache

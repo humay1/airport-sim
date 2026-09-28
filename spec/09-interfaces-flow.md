@@ -306,8 +306,10 @@ counter**, advanced exactly where §9.3 allocates: one per `Inject` and
 one per move, in movement order. Its ids are used only to order cohorts
 (FIFO, iteration, merge survivor). They are never compared with the
 system's ids. Because both sequences are monotone and allocated at the
-same points in the same order, the relative order is the same. Every one of its inputs is one that
-the test itself authors or reads from a public interface. Nothing comes
+same points in the same order, the relative order is the same.
+
+Every one of its inputs is one that the test itself authors or reads from
+a public interface. Nothing comes
 from `FlowGraph`'s members, which are internal (§9.11), or from
 `src/sim/flow`:
 - **The graph.** Node kinds, `server_count`, initial `servers_open` and
@@ -320,9 +322,22 @@ from `FlowGraph`'s members, which are internal (§9.11), or from
 - **The walk graph.** `OutEdges`, `EdgeTo`, `CanReachVia`, `PathVia` and
   `LengthMetres` come from `IWorldSystem`, over the test's walk-graph
   fixture.
-- **The script.** Every `Inject`, `Absorb` and `SetServersOpen` the test
-  makes is applied to the reference at the same tick and in the same
-  order.
+- **The script, and where it runs.** The build registers `sim.world` at
+  1, **one scripted caller at registry position 2**, and `sim.flow` at 4
+  (`08` §8.5), as `tests/sim/flow/FlowRig.cs` does. It may also register
+  an event recorder after `sim.flow`, which calls nothing. Every scripted
+  `Inject` and `Absorb` is made from the caller's own `Tick`, never between
+  `Step`s and never from a system after `sim.flow`. Every `SetServersOpen`
+  is submitted as a command and applied in phase 1 of its tick (§9.8).
+  So for tick `t`, the reference applies things in this order:
+  1. the `SetServersOpen` commands due at `t`, in command order;
+  2. the caller's `Inject` and `Absorb` calls for `t`, in call order;
+  3. its own `Tick` for `t`.
+  That is the system's order. It follows that an `Absorb` never runs
+  after `sim.flow`'s `Tick` in the same tick. A cohort refused at `t` is
+  still on its node after `t`, so the `Key` rule below always applies. An
+  `Absorb` at `t + 1` or later that removes it emits the `FlowUnblocked`,
+  whose `Key` was remembered after `t`.
 
 So the expected state after every tick is fully determined by §9.12, the
 fixture and the script. Two correct references agree. The fixture is
@@ -461,7 +476,19 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
      `ArgumentException`.
   So `Inject(Arriving, 0, a valid Source)` throws
   `ArgumentOutOfRangeException`. Checks 1 to 3 are the merged order, and 4
-  is appended. In `Absorb`, an unknown `sink` or one that
+  is appended.
+  Test (Q-040), owned by the Test Author of the fix task:
+  `test_inject_rejects_non_departing_direction`.
+  - **Cases.** One `Inject` with `Direction = Arriving` and one with
+    `Direction = Transferring`, each with a valid `Source` and
+    `count > 0`. Each throws `ArgumentException`.
+  - **"Changes nothing" is asserted.** After each throw, and before any
+    `Step`, the test checks `Population`, `CohortsAt` and
+    `PopulationForFlight` for every node and direction. It also checks the
+    `CohortId` returned by the next valid `Departing` `Inject`. All must
+    equal those of a control run that made the same valid calls without
+    the two rejected ones. So the `IIdAllocator` counter was not advanced.
+  In `Absorb`, an unknown `sink` or one that
   is not a `Sink` throws `ArgumentException`. An unknown `flight` is not an
   error, and it returns 0.
 - **`EnteredNodeAt` of an injected cohort** is `N`, the number of `Tick`
