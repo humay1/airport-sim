@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (blocked on T-037 merging and on T-010 merging first) |
+| Status | QUEUED (blocked on T-010 merging first) |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
-| Depends on | T-037 (PR #51, not yet merged), T-007 (merged) |
+| Depends on | T-037 (merged, PR #51, `7bb30b5`), T-007 (merged) |
 | Spec source | `spec/07-conventions.md` "Performance"; `spec/08-interfaces-core.md` §8.6 "Allocation" (Q-035) |
 | Blocked by | — |
 
@@ -88,8 +88,8 @@ how existing zero-allocation assertions are measured.
 ## Worker notes
 
 **Release order, binding:** do not release this task until both of its
-dependencies are actually merged — **T-037 (PR #51)**, not yet merged as of
-this task's filing, and **T-010**, not yet merged. T-010's worker branch
+dependencies are actually merged — **T-037 is now merged** (PR #51,
+`7bb30b5`); **T-010** is still not merged. T-010's worker branch
 (`worker/T-010-cohort-promotion-demotion`) and its Test Author's branch
 (`test-author/T-010-cohort-promotion-tests`) both carry T-010's own
 additions to `tests/sim/flow/**`, and the T-011 Test Author is concurrently
