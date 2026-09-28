@@ -190,7 +190,8 @@ namespace AirportSim.Sim.Flow.Tests
             // the injector's Inject and Absorb calls, sim.flow's Tick and event
             // dispatch. Each window starts after a full blocking collection, so
             // the thread holds no partly used allocation context that the
-            // runtime could retire mid-window and over-report (T-037).
+            // runtime could retire mid-window and over-report (T-037's
+            // Allocation meter, copied into FlowTestKit).
             StressDay s = StressDay.Create(Seed, 2);
             s.Rig.Step((uint)StressDay.Day);
 
@@ -203,7 +204,6 @@ namespace AirportSim.Sim.Flow.Tests
                 ulong at = s.Rig.Host.CurrentTick;
                 Assert.Equal(0UL, at % Hour);
                 s.Timed.AllocatedInTick = 0;
-                Allocation.Start();
                 s.Timed.MeterAllocation = true;
                 s.Rig.Step(1);
                 s.Timed.MeterAllocation = false;
@@ -228,27 +228,6 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.True(s.Boarded > 0, "nobody boarded");
             _output.WriteLine("allocated: update path between checkpoints " + windows + " bytes, sim.flow Tick at checkpoint ticks " + checkpointTicks + " bytes; first: " + first);
             Assert.True(windows == 0 && checkpointTicks == 0, "update path allocated " + windows + " bytes between checkpoints and sim.flow Tick " + checkpointTicks + " bytes at checkpoint ticks; first: " + first);
-        }
-    }
-
-    /// <summary>
-    /// The allocation meter of T-037 (tests/sim/core's, not yet merged; test
-    /// projects share no code): a full blocking collection before the baseline
-    /// read, so no partly used allocation context is retired mid-window.
-    /// </summary>
-    internal static class Allocation
-    {
-        public static long Start()
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-
-        public static long Since(long start)
-        {
-            return GC.GetAllocatedBytesForCurrentThread() - start;
         }
     }
 }

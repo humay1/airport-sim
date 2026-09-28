@@ -37,9 +37,11 @@ namespace AirportSim.Sim.Flow.Tests
         {
             if (MeterAllocation)
             {
-                long before = GC.GetAllocatedBytesForCurrentThread();
+                // The meter's collection runs inside the tick, right before
+                // sim.flow's Tick; it touches no sim state.
+                long metered = Allocation.Start();
                 _inner.Tick(ctx);
-                AllocatedInTick += GC.GetAllocatedBytesForCurrentThread() - before;
+                AllocatedInTick += Allocation.Since(metered);
                 return;
             }
 
