@@ -14,8 +14,11 @@ namespace AirportSim.Sim.Schedule
     {
         private const int MaxFixtureRowsPerDay = 99999;
 
-        private static readonly byte[] HeaderBytes = new UTF8Encoding(false).GetBytes(
-            "flight_ref,day,repeat_daily,movement,airline,aircraft_type,sched_hhmm,rotation_ref,min_turnaround_minutes,pax,pax_profile,hold_bag_permille,assist_permille,entry_node");
+        // A string is immutable (07-conventions.md L10); the header's expected bytes are
+        // recomputed from it locally in Load rather than cached in a static byte[], which
+        // would be mutable shared state (review finding 9).
+        private const string HeaderText =
+            "flight_ref,day,repeat_daily,movement,airline,aircraft_type,sched_hhmm,rotation_ref,min_turnaround_minutes,pax,pax_profile,hold_bag_permille,assist_permille,entry_node";
 
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
@@ -52,7 +55,8 @@ namespace AirportSim.Sim.Schedule
             // The mandatory final newline produces one trailing empty element; drop it.
             lines.RemoveAt(lines.Count - 1);
 
-            if (lines.Count == 0 || !BytesEqual(lines[0], HeaderBytes))
+            byte[] headerBytes = new UTF8Encoding(false).GetBytes(HeaderText);
+            if (lines.Count == 0 || !BytesEqual(lines[0], headerBytes))
             {
                 throw Fail(sourceName, 1, "the header must equal the fixed schema, byte for byte");
             }
@@ -108,15 +112,16 @@ namespace AirportSim.Sim.Schedule
 
                 airlineHashes[airlineHash] = row.AirlineCode;
 
+                // Checked immediately, at the row that first breaches the limit, rather than
+                // aggregated afterwards: the outcome must not depend on Dictionary enumeration
+                // order (02-determinism.md rule 5, review findings 3 and 4), and every load
+                // failure must name a line (§11.4).
                 perDayCount.TryGetValue(row.FirstDay, out int countSoFar);
-                perDayCount[row.FirstDay] = countSoFar + 1;
-            }
-
-            foreach (KeyValuePair<uint, int> kv in perDayCount)
-            {
-                if (kv.Value > MaxFixtureRowsPerDay)
+                countSoFar++;
+                perDayCount[row.FirstDay] = countSoFar;
+                if (countSoFar > MaxFixtureRowsPerDay)
                 {
-                    throw FailGeneral(sourceName, "day " + kv.Key.ToString(CultureInfo.InvariantCulture) + " has more than " + MaxFixtureRowsPerDay.ToString(CultureInfo.InvariantCulture) + " rows");
+                    throw Fail(sourceName, lineNumber, "day " + row.FirstDay.ToString(CultureInfo.InvariantCulture) + " has more than " + MaxFixtureRowsPerDay.ToString(CultureInfo.InvariantCulture) + " rows");
                 }
             }
 
@@ -498,11 +503,6 @@ namespace AirportSim.Sim.Schedule
         private static FormatException Fail(string sourceName, int line, string message)
         {
             return new FormatException(sourceName + ": line " + line.ToString(CultureInfo.InvariantCulture) + ": " + message);
-        }
-
-        private static FormatException FailGeneral(string sourceName, string message)
-        {
-            return new FormatException(sourceName + ": " + message);
         }
 
         private sealed class RowData

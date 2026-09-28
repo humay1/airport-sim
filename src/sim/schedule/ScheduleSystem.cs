@@ -28,20 +28,34 @@ namespace AirportSim.Sim.Schedule
 
         private readonly Dictionary<FlightId, FlightState> _byId = new Dictionary<FlightId, FlightState>();
 
-        // Published flight ordinals, per day, each kept sorted ascending. Because
-        // FlightId = day * FlightIdDayStride + ordinal + 1 and stride exceeds any
-        // day's row count, concatenating days 0..highestDay ascending, each day's
-        // ordinals ascending, is exactly ascending FlightId (§11.3, §11.7) even
-        // though publication order over time follows scheduled time, not ordinal.
-        private readonly Dictionary<uint, List<int>> _publishedOrdinalsByDay = new Dictionary<uint, List<int>>();
-        private int _publishedTotalCount;
+        // Every occurring row's ordinal for a materialised day, ascending, fixed once at
+        // that day's materialisation: the loop below visits rows in ascending RowOrdinal
+        // and Occurs() preserves order, so nothing here is ever sorted or shifted.
+        // Concatenating days 0..highestDay ascending, each day's ordinals ascending, is
+        // exactly ascending FlightId (§11.3, §11.7), because FlightIdDayStride exceeds any
+        // day's occurring row count. Publication itself only flips FlightState.Published —
+        // O(1), nothing inserted into a sorted container — and PublishedFlights/the hash
+        // walk filter this array by that flag at query time (review findings 5 and 6).
+        private readonly Dictionary<uint, int[]> _dayOrdinals = new Dictionary<uint, int[]>();
 
-        private readonly List<(ulong Tick, FlightId Id)> _departureIndex = new List<(ulong Tick, FlightId Id)>();
-        private readonly List<(ulong Tick, FlightId Id)> _arrivalIndex = new List<(ulong Tick, FlightId Id)>();
+        // Per-day movement indices, each sorted once over only that day's rows at
+        // materialisation (§11.9's "day boundary" allowance), never re-sorted afterwards.
+        // A day's ScheduledTicks all fall in [day * TICKS_PER_SIM_DAY, (day+1) *
+        // TICKS_PER_SIM_DAY), a range strictly below the next day's, so concatenating
+        // days ascending preserves the required ascending (ScheduledTick, FlightId) order
+        // without ever touching an earlier day's list again (review finding 5).
+        private readonly Dictionary<uint, List<(ulong Tick, FlightId Id)>> _departureByDay = new Dictionary<uint, List<(ulong Tick, FlightId Id)>>();
+        private readonly Dictionary<uint, List<(ulong Tick, FlightId Id)>> _arrivalByDay = new Dictionary<uint, List<(ulong Tick, FlightId Id)>>();
+
         private readonly Dictionary<ulong, List<FlightId>> _publishQueue = new Dictionary<ulong, List<FlightId>>();
-        private readonly Dictionary<ulong, List<InjectionEntry>> _injectionQueue = new Dictionary<ulong, List<InjectionEntry>>();
+
+        // Queued by due tick; each entry names the flight and the index of one of its
+        // precomputed InjectionEntry values, never a shared object (review finding 7).
+        private readonly Dictionary<ulong, List<(FlightId Flight, int EntryIndex)>> _injectionQueue =
+            new Dictionary<ulong, List<(FlightId Flight, int EntryIndex)>>();
 
         private uint _highestDay;
+        private int _publishedTotalCount;
 
         internal ScheduleSystem(in SystemServices services, in ScheduleTable table, IFlowSystem? flow)
         {
@@ -66,7 +80,10 @@ namespace AirportSim.Sim.Schedule
                 _curves[i] = profile.ShowUpCurve;
             }
 
-            MaterializeDay(0);
+            // Day 0 materialises here, before any TickContext exists (§11.9a construction),
+            // so no ISimClock is available yet; MaterializeDay falls back to the identical
+            // pure formula in that case only (see ScheduledTickOf).
+            MaterializeDay(0, null);
         }
 
         public SystemId Id => new SystemId(2);
@@ -90,11 +107,17 @@ namespace AirportSim.Sim.Schedule
             var result = new List<FlightId>(_publishedTotalCount);
             for (uint d = 0; d <= _highestDay; d++)
             {
-                if (_publishedOrdinalsByDay.TryGetValue(d, out List<int>? ordinals))
+                if (!_dayOrdinals.TryGetValue(d, out int[]? ordinals))
                 {
-                    for (int i = 0; i < ordinals.Count; i++)
+                    continue;
+                }
+
+                for (int i = 0; i < ordinals.Length; i++)
+                {
+                    FlightId id = FlightIdOf(d, ordinals[i]);
+                    if (_byId[id].Published)
                     {
-                        result.Add(new FlightId(((ulong)d * FlightIdDayStride) + (ulong)ordinals[i] + 1UL));
+                        result.Add(id);
                     }
                 }
             }
@@ -110,12 +133,24 @@ namespace AirportSim.Sim.Schedule
                 return result;
             }
 
-            List<(ulong Tick, FlightId Id)> index = kind == MovementKind.Arrival ? _arrivalIndex : _departureIndex;
-            int i = LowerBound(index, fromInclusive);
-            while (i < index.Count && index[i].Tick < toExclusive)
+            Dictionary<uint, List<(ulong Tick, FlightId Id)>> byDay = kind == MovementKind.Arrival ? _arrivalByDay : _departureByDay;
+            uint dayFrom = (uint)(fromInclusive / SimConstants.TICKS_PER_SIM_DAY);
+            ulong dayToInclusiveRaw = (toExclusive - 1UL) / SimConstants.TICKS_PER_SIM_DAY;
+            uint dayToInclusive = (uint)Math.Min(dayToInclusiveRaw, (ulong)_highestDay);
+
+            for (uint d = dayFrom; d <= dayToInclusive; d++)
             {
-                result.Add(index[i].Id);
-                i++;
+                if (!byDay.TryGetValue(d, out List<(ulong Tick, FlightId Id)>? dayList))
+                {
+                    continue;
+                }
+
+                int i = LowerBound(dayList, fromInclusive);
+                while (i < dayList.Count && dayList[i].Tick < toExclusive)
+                {
+                    result.Add(dayList[i].Id);
+                    i++;
+                }
             }
 
             return result;
@@ -141,10 +176,14 @@ namespace AirportSim.Sim.Schedule
             }
 
             int total = 0;
-            List<InjectionEntry> pending = state.Pending;
-            for (int i = 0; i < pending.Count; i++)
+            InjectionEntry[] injections = state.Injections;
+            bool[] drained = state.Drained;
+            for (int i = 0; i < injections.Length; i++)
             {
-                total += pending[i].Count;
+                if (!drained[i])
+                {
+                    total += injections[i].Count;
+                }
             }
 
             return total;
@@ -155,7 +194,7 @@ namespace AirportSim.Sim.Schedule
             ulong t = ctx.Tick;
             if (t % SimConstants.TICKS_PER_SIM_DAY == 0UL)
             {
-                MaterializeDay((uint)((t / SimConstants.TICKS_PER_SIM_DAY) + 1UL));
+                MaterializeDay((uint)((t / SimConstants.TICKS_PER_SIM_DAY) + 1UL), ctx.Clock);
             }
 
             if (_publishQueue.TryGetValue(t, out List<FlightId>? due))
@@ -165,8 +204,6 @@ namespace AirportSim.Sim.Schedule
                     FlightId id = due[i];
                     FlightState state = _byId[id];
                     state.Published = true;
-                    DecodeDayOrdinal(id, out uint pubDay, out int pubOrdinal);
-                    InsertSorted(_publishedOrdinalsByDay[pubDay], pubOrdinal);
                     _publishedTotalCount++;
 
                     FlightRecord r = state.Record;
@@ -189,21 +226,22 @@ namespace AirportSim.Sim.Schedule
                 _publishQueue.Remove(t);
             }
 
-            if (_injectionQueue.TryGetValue(t, out List<InjectionEntry>? dueInjections))
+            if (_injectionQueue.TryGetValue(t, out List<(FlightId Flight, int EntryIndex)>? dueInjections))
             {
                 for (int i = 0; i < dueInjections.Count; i++)
                 {
-                    InjectionEntry e = dueInjections[i];
-                    FlightState state = _byId[e.Flight];
+                    (FlightId flight, int entryIndex) = dueInjections[i];
+                    FlightState state = _byId[flight];
+                    InjectionEntry entry = state.Injections[entryIndex];
                     if (_flow != null)
                     {
-                        bool hasBag = e.ClassIndex >= 2;
-                        bool assist = (e.ClassIndex % 2) == 1;
-                        var key = new CohortKey(e.Flight, FlowDirection.Departing, state.Record.PaxProfile, hasBag, assist);
-                        _flow.Inject(in key, e.Count, state.Record.EntryNode);
+                        bool hasBag = entry.ClassIndex >= 2;
+                        bool assist = (entry.ClassIndex % 2) == 1;
+                        var key = new CohortKey(flight, FlowDirection.Departing, state.Record.PaxProfile, hasBag, assist);
+                        _flow.Inject(in key, entry.Count, state.Record.EntryNode);
                     }
 
-                    state.Pending.Remove(e);
+                    state.Drained[entryIndex] = true;
                 }
 
                 _injectionQueue.Remove(t);
@@ -219,15 +257,20 @@ namespace AirportSim.Sim.Schedule
 
             for (uint d = 0; d <= _highestDay; d++)
             {
-                if (!_publishedOrdinalsByDay.TryGetValue(d, out List<int>? ordinals))
+                if (!_dayOrdinals.TryGetValue(d, out int[]? ordinals))
                 {
                     continue;
                 }
 
-                for (int i = 0; i < ordinals.Count; i++)
+                for (int i = 0; i < ordinals.Length; i++)
                 {
-                    FlightId id = new FlightId(((ulong)d * FlightIdDayStride) + (ulong)ordinals[i] + 1UL);
-                    FlightRecord r = _byId[id].Record;
+                    FlightState state = _byId[FlightIdOf(d, ordinals[i])];
+                    if (!state.Published)
+                    {
+                        continue;
+                    }
+
+                    FlightRecord r = state.Record;
                     h.Feed(r.Id.Value);
                     h.Feed(r.PublishTick);
                     h.Feed(r.ScheduledTick);
@@ -237,15 +280,27 @@ namespace AirportSim.Sim.Schedule
             ulong pendingTotal = 0;
             for (uint d = 0; d <= _highestDay; d++)
             {
-                if (!_publishedOrdinalsByDay.TryGetValue(d, out List<int>? ordinals))
+                if (!_dayOrdinals.TryGetValue(d, out int[]? ordinals))
                 {
                     continue;
                 }
 
-                for (int i = 0; i < ordinals.Count; i++)
+                for (int i = 0; i < ordinals.Length; i++)
                 {
-                    FlightId id = new FlightId(((ulong)d * FlightIdDayStride) + (ulong)ordinals[i] + 1UL);
-                    pendingTotal += (ulong)_byId[id].Pending.Count;
+                    FlightState state = _byId[FlightIdOf(d, ordinals[i])];
+                    if (!state.Published)
+                    {
+                        continue;
+                    }
+
+                    bool[] drained = state.Drained;
+                    for (int k = 0; k < drained.Length; k++)
+                    {
+                        if (!drained[k])
+                        {
+                            pendingTotal++;
+                        }
+                    }
                 }
             }
 
@@ -253,18 +308,29 @@ namespace AirportSim.Sim.Schedule
 
             for (uint d = 0; d <= _highestDay; d++)
             {
-                if (!_publishedOrdinalsByDay.TryGetValue(d, out List<int>? ordinals))
+                if (!_dayOrdinals.TryGetValue(d, out int[]? ordinals))
                 {
                     continue;
                 }
 
-                for (int i = 0; i < ordinals.Count; i++)
+                for (int i = 0; i < ordinals.Length; i++)
                 {
-                    FlightId id = new FlightId(((ulong)d * FlightIdDayStride) + (ulong)ordinals[i] + 1UL);
-                    List<InjectionEntry> pending = _byId[id].Pending;
-                    for (int j = 0; j < pending.Count; j++)
+                    FlightState state = _byId[FlightIdOf(d, ordinals[i])];
+                    if (!state.Published)
                     {
-                        InjectionEntry e = pending[j];
+                        continue;
+                    }
+
+                    InjectionEntry[] injections = state.Injections;
+                    bool[] drained = state.Drained;
+                    for (int k = 0; k < injections.Length; k++)
+                    {
+                        if (drained[k])
+                        {
+                            continue;
+                        }
+
+                        InjectionEntry e = injections[k];
                         h.Feed(e.DueTick);
                         h.Feed((long)e.Count);
                         h.Feed((long)e.ClassIndex);
@@ -295,10 +361,17 @@ namespace AirportSim.Sim.Schedule
             return r.HasRotation ? _byId[r.Rotation].Record.ScheduledTick : TickUnscheduled;
         }
 
-        private void MaterializeDay(uint day)
+        private static FlightId FlightIdOf(uint day, int ordinal)
+        {
+            return new FlightId(((ulong)day * FlightIdDayStride) + (ulong)ordinal + 1UL);
+        }
+
+        private void MaterializeDay(uint day, ISimClock? clock)
         {
             IReadOnlyList<FlightTemplate> rows = _table.Rows;
-            int occurCount = 0;
+            var ordinals = new List<int>();
+            var departuresThisDay = new List<(ulong Tick, FlightId Id)>();
+            var arrivalsThisDay = new List<(ulong Tick, FlightId Id)>();
 
             for (int i = 0; i < rows.Count; i++)
             {
@@ -308,19 +381,17 @@ namespace AirportSim.Sim.Schedule
                     continue;
                 }
 
-                occurCount++;
+                ordinals.Add(row.RowOrdinal);
 
-                ulong id = ((ulong)day * FlightIdDayStride) + (ulong)row.RowOrdinal + 1UL;
-                var flightId = new FlightId(id);
-                ulong scheduledTick = ((ulong)day * SimConstants.TICKS_PER_SIM_DAY) + ((ulong)row.MinuteOfDay * SimConstants.TICKS_PER_SIM_MINUTE);
+                FlightId flightId = FlightIdOf(day, row.RowOrdinal);
+                ulong scheduledTick = ScheduledTickOf(clock, day, row.MinuteOfDay);
                 ulong publishTick = scheduledTick >= PlanPublishLeadTicks ? scheduledTick - PlanPublishLeadTicks : 0UL;
 
                 FlightId rotation;
                 bool hasRotation;
                 if (row.HasRotation)
                 {
-                    ulong otherId = ((ulong)day * FlightIdDayStride) + (ulong)row.RotationRowOrdinal + 1UL;
-                    rotation = new FlightId(otherId);
+                    rotation = FlightIdOf(day, row.RotationRowOrdinal);
                     hasRotation = true;
                 }
                 else
@@ -346,58 +417,48 @@ namespace AirportSim.Sim.Schedule
                     row.AssistPermille,
                     row.EntryNode);
 
-                var pending = new List<InjectionEntry>();
-                if (row.Kind == MovementKind.Departure && row.PaxCount > 0)
-                {
-                    ComputeInjections(flightId, scheduledTick, row.PaxCount, row.HoldBagPermille, row.AssistPermille, _curves[i], pending);
-                }
+                InjectionEntry[] injections = row.Kind == MovementKind.Departure && row.PaxCount > 0
+                    ? ComputeInjections(scheduledTick, row.PaxCount, row.HoldBagPermille, row.AssistPermille, _curves[i])
+                    : Array.Empty<InjectionEntry>();
 
-                var state = new FlightState(record, pending);
+                var state = new FlightState(record, injections);
                 _byId.Add(flightId, state);
 
                 AddToBucket(_publishQueue, publishTick, flightId);
-                for (int p = 0; p < pending.Count; p++)
+                for (int e = 0; e < injections.Length; e++)
                 {
-                    AddToBucket(_injectionQueue, pending[p].DueTick, pending[p]);
+                    AddToBucket(_injectionQueue, injections[e].DueTick, (flightId, e));
                 }
 
-                List<(ulong Tick, FlightId Id)> movementIndex = row.Kind == MovementKind.Arrival ? _arrivalIndex : _departureIndex;
-                movementIndex.Add((scheduledTick, flightId));
+                List<(ulong Tick, FlightId Id)> movementList = row.Kind == MovementKind.Arrival ? arrivalsThisDay : departuresThisDay;
+                movementList.Add((scheduledTick, flightId));
             }
 
-            _departureIndex.Sort(TickThenIdComparer);
-            _arrivalIndex.Sort(TickThenIdComparer);
+            departuresThisDay.Sort(TickThenIdComparer);
+            arrivalsThisDay.Sort(TickThenIdComparer);
+            _departureByDay[day] = departuresThisDay;
+            _arrivalByDay[day] = arrivalsThisDay;
 
-            _publishedOrdinalsByDay[day] = new List<int>(occurCount);
-
+            _dayOrdinals[day] = ordinals.ToArray();
             _highestDay = day;
         }
 
-        private static void DecodeDayOrdinal(FlightId id, out uint day, out int ordinal)
+        private static ulong ScheduledTickOf(ISimClock? clock, uint day, uint minuteOfDay)
         {
-            ulong zeroBased = id.Value - 1UL;
-            day = (uint)(zeroBased / FlightIdDayStride);
-            ordinal = (int)(zeroBased % FlightIdDayStride);
-        }
-
-        private static void InsertSorted(List<int> list, int value)
-        {
-            int lo = 0;
-            int hi = list.Count;
-            while (lo < hi)
+            // §11.4: "Converted via ISimClock.TickOfDayTime(day, (hh*60+mm)*60)". clock is
+            // ctx.Clock for every day materialised inside Tick. Day 0 materialises during
+            // construction (see the constructor's comment), before any TickContext exists,
+            // so it falls back to the identical pure formula (08 §8.2's TickOfDayTime is
+            // d * TICKS_PER_SIM_DAY + secondOfDay / SIM_SECONDS_PER_TICK, and ISimClock
+            // itself holds no mutable state, so this is an availability difference only,
+            // never a determinism one).
+            uint secondOfDay = minuteOfDay * 60U;
+            if (clock != null)
             {
-                int mid = (lo + hi) / 2;
-                if (list[mid] < value)
-                {
-                    lo = mid + 1;
-                }
-                else
-                {
-                    hi = mid;
-                }
+                return clock.TickOfDayTime(day, secondOfDay);
             }
 
-            list.Insert(lo, value);
+            return ((ulong)day * SimConstants.TICKS_PER_SIM_DAY) + (secondOfDay / (uint)SimConstants.SIM_SECONDS_PER_TICK);
         }
 
         private static bool Occurs(in FlightTemplate row, uint day)
@@ -436,14 +497,12 @@ namespace AirportSim.Sim.Schedule
             return lo;
         }
 
-        private static void ComputeInjections(
-            FlightId flight,
+        private static InjectionEntry[] ComputeInjections(
             ulong scheduledTick,
             int paxCount,
             int holdPermille,
             int assistPermille,
-            IReadOnlyList<ShowUpBucket> curve,
-            List<InjectionEntry> output)
+            IReadOnlyList<ShowUpBucket> curve)
         {
             int n = curve.Count;
             var bucketCounts = new int[n];
@@ -469,6 +528,7 @@ namespace AirportSim.Sim.Schedule
                 holdW * assistW,
             };
 
+            var output = new List<InjectionEntry>();
             for (int b = 0; b < n; b++)
             {
                 int bucketCount = bucketCounts[b];
@@ -497,10 +557,12 @@ namespace AirportSim.Sim.Schedule
                 {
                     if (classCounts[c] > 0)
                     {
-                        output.Add(new InjectionEntry(flight, c, classCounts[c], due));
+                        output.Add(new InjectionEntry(c, classCounts[c], due));
                     }
                 }
             }
+
+            return output.ToArray();
         }
 
         private static void DistributeRemainder(int[] counts, long[] remainders, long leftover)
@@ -530,30 +592,37 @@ namespace AirportSim.Sim.Schedule
 
         private sealed class FlightState
         {
-            public FlightState(FlightRecord record, List<InjectionEntry> pending)
+            public FlightState(FlightRecord record, InjectionEntry[] injections)
             {
                 Record = record;
-                Pending = pending;
+                Injections = injections;
+                Drained = new bool[injections.Length];
             }
 
             public FlightRecord Record { get; }
 
             public bool Published { get; set; }
 
-            public List<InjectionEntry> Pending { get; }
+            /// <summary>Fixed at materialisation, ascending (bucketIndex, classIndex); never resized.</summary>
+            public InjectionEntry[] Injections { get; }
+
+            /// <summary>Parallel to <see cref="Injections"/>; true once that entry has been drained.</summary>
+            public bool[] Drained { get; }
         }
 
-        private sealed class InjectionEntry
+        /// <summary>
+        /// One passenger-count entry, plain data (review finding 7): the queue that drains
+        /// it names its owning flight and its index into that flight's <see cref="FlightState.Injections"/>
+        /// array, never a reference to this value itself.
+        /// </summary>
+        private readonly struct InjectionEntry
         {
-            public InjectionEntry(FlightId flight, int classIndex, int count, ulong dueTick)
+            public InjectionEntry(int classIndex, int count, ulong dueTick)
             {
-                Flight = flight;
                 ClassIndex = classIndex;
                 Count = count;
                 DueTick = dueTick;
             }
-
-            public FlightId Flight { get; }
 
             public int ClassIndex { get; }
 
