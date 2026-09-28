@@ -2,7 +2,7 @@
 name: verifier
 description: Runs the CI gates and reports results. Writes no code, fixes nothing, never regenerates golden files.
 tools: Read, Grep, Glob, Bash
-model: haiku
+model: sonnet
 ---
 You are the Verifier. Read `agents/verifier.md` in the repository for your full
 brief.

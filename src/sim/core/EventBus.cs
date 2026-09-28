@@ -24,6 +24,13 @@ namespace AirportSim.Sim.Core
         internal void MarkBuilt()
         {
             _built = true;
+
+            // Q-035: `_order` never holds more than one tick's worth (BeginTick clears
+            // it, Publish enforces MAX_EVENTS_PER_TICK before adding), so reserving that
+            // capacity once, now that Subscribe can no longer run, means it is never
+            // grown again. Each Channel<T> reserves its own capacity the same way, at
+            // construction (Channel.cs) — construction always happens before Build.
+            _order.Capacity = SimConstants.MAX_EVENTS_PER_TICK;
         }
 
         internal void BeginTick(ulong tick)
@@ -67,10 +74,18 @@ namespace AirportSim.Sim.Core
             var id = new EventId(_tick, _nextSequence);
             _nextSequence++;
 
-            var envelope = new EventEnvelope(id, _tick, _currentSource, cause);
-            var channel = GetOrCreateChannel<T>();
-            int index = channel.Append(in envelope, in evt);
-            _order.Add((typeof(T), index));
+            // Q-035: the channel set closed at Build. A type with no subscriber has no
+            // channel, so it still consumes a Sequence and an EventId above, but is not
+            // queued — no handler could observe it, and creating storage for it here
+            // would allocate on an unpredictable first-publish tick.
+            if (_channels.TryGetValue(typeof(T), out IChannel? existing))
+            {
+                var envelope = new EventEnvelope(id, _tick, _currentSource, cause);
+                var channel = (Channel<T>)existing;
+                int index = channel.Append(in envelope, in evt);
+                _order.Add((typeof(T), index));
+            }
+
             return id;
         }
 

@@ -79,7 +79,8 @@ readonly struct PassengerCohort {
 
 `Count` is an integer. Passengers are never fractional; the fractional part of a
 service rate lives in `ServiceCredit`, never in a head count. A test asserts the
-total head count is conserved across every operation except `Source` and `Sink`.
+total head count is conserved across every operation except `Source` and `Sink`,
+and the missed-passenger removal in `Absorb` (§9.7).
 
 ---
 
@@ -89,7 +90,10 @@ A cohort exists because its members are interchangeable. Therefore:
 
 - Two cohorts **may merge** only if they are on the same node and their
   `CohortKey` compares equal in every field. Merge sums `Count`, takes the earlier
-  `EnteredNodeAt` and sums `ServiceCredit`.
+  `EnteredNodeAt` and sums `ServiceCredit`. On a `Corridor`, two cohorts
+  merge only if their `DueAt` is also equal, so a merge never moves a
+  release tick. Elsewhere the merged `DueAt` is the merged `EnteredNodeAt`,
+  as §9.12 has for every non-`Corridor` node (Q-033).
 - Merging is **mandatory** at end of update, not optional: without it, cohort
   count grows without bound over a day and the O(nodes) cost claim fails. This is
   a budget requirement, not tidiness.
@@ -130,6 +134,8 @@ readonly struct QueueConfig {
    left closed overnight discharges a burst the instant it opens, which is a
    visible absurdity and an attribution lie.
 
+Steps 1 to 5 are made exact in §9.12 (Q-032).
+
 `ServiceRatePerServer` comes from content (`04-data-schemas.md`) and is never
 hardcoded. Posture modifiers (`05-policy-system.md`, security posture) arrive as
 a multiplier through the policy effect path, not as a branch inside `sim.flow`.
@@ -144,7 +150,11 @@ service-standard KPI, and never fed back into the sim.
 
 - Every node has a capacity. Population above `CapacityStanding` does not vanish
   and does not stack invisibly: the upstream edge stops releasing into it, which
-  backs the pressure up the graph.
+  backs the pressure up the graph. Exactly (Q-032): at Phase 0/1 only a
+  `Queue` node has a capacity. It is **full** when its start-of-tick
+  population is `>= CapacityStanding`. `Source`, `Corridor`, `Hall`, `Gate`
+  and `Sink` nodes are never full. A `Hall` capacity is later scope, by
+  amendment.
 - Spillback is evaluated in a single pass in `NodeId` order using the population
   **at the start of the tick**. Using in-tick populations would make results
   depend on evaluation order in a way that a later refactor would silently change.
@@ -242,8 +252,57 @@ any `Gate` node, since gates are pooled (§9.6), into `sink`. It returns their
 count, and it reports everyone else of the flight as `PassengersMissedFlight`
 (§9.9). `sink` must be a `Sink` node; anything else throws.
 
+**Exact rules (Q-033).**
+
+- **Exceptions.** In `Inject`, an unknown `at` or one that is not a `Source`
+  throws `ArgumentException`, and `count <= 0` throws
+  `ArgumentOutOfRangeException`. In `Absorb`, an unknown `sink` or one that
+  is not a `Sink` throws `ArgumentException`. An unknown `flight` is not an
+  error, and it returns 0.
+- **`EnteredNodeAt` of an injected cohort** is `N`, the number of `Tick`
+  calls `sim.flow` has completed. Called during tick `t` by an earlier
+  system (`sim.schedule`, `sim.airside`), that is `t`. Called between ticks,
+  it is the next tick to run (`ISimHost.CurrentTick`). In both cases the
+  cohort leaves its `Source` no earlier than the tick after `N` (§9.12).
+- **`Absorb`, in this order.** It boards the flight's `Departing` cohorts on
+  every `Gate` node, which leave the simulation. The flight's other
+  `Departing` cohorts, on any non-`Gate` node, are the **missed** passengers.
+  For each missed cohort in an open blocking episode, in ascending
+  `CohortId`, it publishes `FlowUnblocked`. Then, if the missed count is
+  above 0, it publishes **one** `PassengersMissedFlight` for the flight
+  (never one per cohort), with `Count` = the missed total. Then it removes
+  the missed cohorts from the simulation and returns the boarded count.
+  `LastBlockedAt` is the node holding the most missed passengers, with
+  ties broken by ascending `NodeId`, which is §9.7a's `MostHeldAt` rule. So a
+  never-blocked cohort still names a real node.
+- **Outside a tick.** `Absorb` publishes through `services.Events` before
+  it changes any state. Outside phases 1–3, that first `Publish` throws
+  `InvalidOperationException` (`08` §8.6), and nothing has changed. An
+  `Absorb` with nothing to publish is not detected outside a tick. Callers
+  call it only from their own `Tick`. The envelope's `Source` is the
+  calling system, since that is whose code runs (`08` §8.6), while the
+  event's owner in `10` §10.6 stays `sim.flow`. `Inject` publishes nothing,
+  and it may be called between ticks, which tests use to seed a fixture.
+
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
+
+**Promotion rules (Q-033).**
+
+- **Every node is promotable.** `SetPromoted` or `AgentsAt` on an unknown
+  node throws `ArgumentException`. There is no other failure, and
+  promoting a promoted node, or demoting a demoted one, is a no-op.
+- **`AgentsAt(node)`** on a promoted node returns **exactly one view per
+  passenger**, so its count equals `Population(node)`. It is sorted by
+  `(Cohort, Index)`, and `Index` runs from 0 to `Count − 1` in each cohort.
+  On a node that is not promoted, it is empty.
+- **When.** `SetPromoted` may be called at any time, inside another
+  system's `Tick` included, because it changes no hashed state. Its only
+  production caller calls it between `Step`s (`15` §15.7).
+- **Allocation.** `SetPromoted` never allocates. `AgentsAt` allocates
+  nothing after warm-up. Its list is valid until the next `AgentsAt` or
+  `Tick` call, and its buffer grows only when a node's population exceeds
+  every earlier one.
 
 ### 9.7a Outstanding passengers (D6) — LOW CONFIDENCE
 
@@ -343,9 +402,11 @@ Full field lists in `10-events.md`.
 | `PassengersArrivedAtGate` | A cohort reaches its `Gate` node |
 | `PassengersMissedFlight` | Passengers still upstream at gate close |
 
-`PassengersMissedFlight` carries the node at which the cohort was last blocked, so
-`sim.delay` gets a real parent and never has to guess (`06-delay-attribution.md`
-rule 3).
+`PassengersMissedFlight` carries a real node, so `sim.delay` never has to
+guess (`06-delay-attribution.md` rule 3). That node is the one holding most
+of the missed passengers (§9.7 "Exact rules", Q-033). It replaces the earlier
+"the node at which the cohort was last blocked", which would have needed
+per-cohort history that `PassengerCohort` does not hold.
 
 ---
 
@@ -354,7 +415,11 @@ rule 3).
 Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 
 1. Node runtime state in ascending `NodeId`: `ServersOpen`, `ServiceCredit`,
-   population, blocked flag.
+   population, blocked flag, threshold flag. The blocked flag is true if and
+   only if a cohort on the node is in an open blocking episode. The threshold
+   flag is true between a `QueueThresholdExceeded` and its `Cleared`, and it
+   is always false on a non-`Queue` node (§9.12, Q-032). Each flag is fed as
+   a `bool`.
 2. Cohorts in ascending `CohortId`: every field of `PassengerCohort`.
 3. The `sim.flow` RNG stream states, excluding `flow.presentation`.
 
@@ -369,7 +434,10 @@ demands, stated so it is not discovered late:
   individuals anywhere in the update path is a review rejection.
 - Cohort count is bounded by mandatory merging (§9.3). The budget test asserts a
   ceiling on live cohorts as well as on time, because a passing time with an
-  unbounded cohort count only means the fixture was short.
+  unbounded cohort count only means the fixture was short. The ceiling's
+  value is **fixture sizing**, not balance and not a sim constant (Q-033).
+  The Test Author sets it per fixture, as for `11` §11.10, and states its
+  derivation in the test.
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
   pooled, index-stable structure; split and merge reuse slots.
 
@@ -387,9 +455,8 @@ FlowFactory.CreateSystem(in SystemServices services, in FlowGraph graph,
                          IWorldSystem world) -> IFlowSystem
 ```
 
-`FlowGraph` is **opaque outside `sim.flow`**. Its file format is the worker's
-choice, following the posture of `12-interfaces-airside.md` §12.13. It
-carries **node behaviour only**, over `sim.world`'s nodes (Q-012). For each
+`FlowGraph` is **opaque outside `sim.flow`**. Its file format is pinned
+below (Q-032). It carries **node behaviour only**, over `sim.world`'s nodes (Q-012). For each
 node that is its `NodeKind`, and for a `Queue` node its `ServerCount`,
 initial `ServersOpen`, and the `ContentId` of its queue profile. The profile
 holds the service rate, capacity, threshold, hysteresis and delay category
@@ -402,3 +469,164 @@ failure:
 - every `Source` can reach at least one `Gate`;
 - a `Gate` has at least one outbound edge to a `Sink`, and a `Sink` has no
   outbound edge.
+
+### File format (Q-032)
+
+Binding. It replaces the earlier "the worker's choice". The syntax is that
+of `18` §18.2 "File format": `08` §8.11's strict JSON subset, with the same
+rules, a hand-written parser inside `sim.flow`, and no package. The exact
+shape is:
+
+```
+{
+  "schema_version": 1,
+  "nodes": [
+    { "id": <node id>, "kind": "source" | "corridor" | "hall" | "gate" | "sink" },
+    { "id": <node id>, "kind": "queue", "server_count": <int32 ≥ 1>,
+      "servers_open": <int32, 0 ≤ v ≤ server_count>, "queue_profile": "<ContentId>" }
+  ]
+}
+```
+
+- A `queue` node has exactly those five keys. Every other kind has exactly
+  `id` and `kind`. An extra or missing key is a load failure.
+- `nodes` may be in any order. Node ids follow `18` §18.2's integer rule.
+- `queue_profile` names a `QueueProfileDefinition`. It is resolved in
+  `CreateSystem` through `services.Content`, not in `Load`.
+- The Phase 0 fixture over `tests/fixtures/world/phase0-landside.json` is the
+  Test Author's `tests/fixtures/flow/phase0-landside.flow.json`.
+
+**Failures.** `Load` throws `FormatException` for every syntax, shape, range
+or validation failure (`07` "Error handling"). The message starts with
+`sourceName` followed by `": "`. A syntax or shape failure contains
+`line <n>`. A validation failure contains the offending node id in decimal:
+
+- a world node without a definition, or a definition of an unknown node:
+  that node id;
+- a duplicate definition: that node id;
+- a `Source` that reaches no `Gate`: the `Source` id;
+- a `Gate` without a `Sink` successor, or a `Sink` with an outbound edge:
+  that node's id;
+- `servers_open > server_count`: the node id and the field.
+
+A `null` `sourceName` or `world` throws `ArgumentNullException`. In
+`CreateSystem`, an unresolved `queue_profile` throws `FormatException` whose
+message starts with `sim.flow: ` and contains the node id and the profile
+id.
+
+---
+
+## 9.12 Exact tick semantics (Q-032)
+
+Binding on the flow system's `Tick` at tick `t`. Where §9.4 to §9.6 read
+loosely, this section governs.
+
+**Order within `Tick`.**
+
+1. **Snapshot.** Record every node's population and every `Queue` node's
+   `PredictedWaitMinutes`, both from the state at the start of `Tick`. The
+   §9.5 fullness test and the §9.6 routing costs read only this snapshot.
+2. **Movement.** Nodes are processed in ascending `NodeId`. Only a cohort
+   with `EnteredNodeAt < t` is eligible to leave its node or to be served at
+   `t`, so **each passenger moves at most one node per tick**. A cohort that
+   arrives at node `m` during `t`, whether `m` is above or below its old
+   node, gets `EnteredNodeAt = t` and waits for `t + 1`. On a non-`Corridor`
+   node, `DueAt = EnteredNodeAt`.
+   - `Source` and `Hall`: every eligible cohort not at its destination tries
+     to leave, in ascending `CohortId`.
+   - `Corridor`: every cohort with `DueAt <= t` tries to leave, in ascending
+     `CohortId`.
+   - `Queue`: §9.4 with the exact arithmetic below. Eligible cohorts are
+     served in FIFO order `(EnteredNodeAt, CohortId)`, and service stops at
+     the first cohort whose target is full.
+   - `Gate` and `Sink`: nothing leaves (§9.6, `Absorb`).
+
+   To **leave**, the cohort, or its served part, takes the §9.6 route and
+   moves **whole** into the target node `m`, unless `m` is full in the
+   snapshot. There is no partial admission, so a node can end a tick above
+   its capacity by at most one tick's inflow. A refused cohort stays where
+   it is. A served part moves under a new `CohortId`, and the remainder
+   keeps its id (§9.3).
+3. **Merge** (§9.3), except that a cohort in an open blocking episode does
+   not merge. The survivor is the lowest `CohortId`.
+4. **Thresholds.** For each `Queue` node in ascending `NodeId`, compute
+   `PredictedWaitMinutes` from the post-merge state and apply the threshold
+   rule below.
+
+**Queue arithmetic** (§9.4 steps 1 to 5). All operations are `Fx`, which
+floors (`08` §8.3). The order of operations is fixed, so that
+`2.5 pax/min` gives exactly `0.25` per tick:
+
+- `capacityThisTick = Fx.Div(Fx.Mul(Fx.FromInt(ServersOpen × SIM_SECONDS_PER_TICK), rate), Fx.FromInt(60))`
+- `serverTick       = Fx.Div(Fx.Mul(Fx.FromInt(SIM_SECONDS_PER_TICK), rate), Fx.FromInt(60))`
+- `ServiceCredit += capacityThisTick`. Then `served = Fx.Floor(ServiceCredit)`
+  and `ServiceCredit -= Fx.FromInt(served)`.
+- Serve FIFO as above. Let `moved` be the number of passengers that actually
+  left.
+- **Cap.** If `moved < served`, the `served − moved` whole passengers of
+  credit are **discarded**, and then
+  `ServiceCredit = Fx.Min(ServiceCredit, serverTick)`. The shortfall can
+  come from too few eligible passengers or from a full target. Otherwise
+  there is no cap, which keeps a busy 2.5 pax/min lane at 2.5.
+- `PassengerCohort.ServiceCredit` is always zero at Phase 0/1. The credit
+  lives on the node (§9.10 item 1).
+
+**Predicted wait** (§9.4). For a `Queue` node,
+`capacityPerMinute = Fx.Mul(Fx.FromInt(ServersOpen), rate)` and
+`PredictedWaitMinutes = Fx.Div(Fx.FromInt(population), Fx.Max(capacityPerMinute, EPSILON))`,
+with `EPSILON = Fx.FromRatio(1, 1000)`. It is floored. For a population above
+2 147 483 with no open server, it overflows and throws (`08` §8.3). This is a
+fixture error. For any non-`Queue` node, it is `0`. An unknown node, passed to
+`Population` or `PredictedWaitMinutes`, throws `ArgumentException`.
+
+**Traversal and route cost** (§9.6).
+`traversalTicks(node, cohort) = max(1, Fx.Ceil(Fx.Div(Fx.FromInt(LengthMetres), Fx.Mul(walkSpeed, Fx.FromInt(SIM_SECONDS_PER_TICK)))))`.
+`Div` floors first, then `Ceil`. Only a `Corridor` applies it as a delay
+(`DueAt = EnteredNodeAt + traversalTicks`). In the route cost, every node on
+`PathVia(e, g)` of any kind, the destination `g` included, contributes its
+`traversalTicks`, which is at least 1, matching one node per tick. The cost
+is an `Fx`:
+`Σ Fx.FromInt(traversalTicks) + Σ Fx.Mul(snapshotWait, Fx.FromInt(TICKS_PER_SIM_MINUTE))`
+over those nodes, the waits being those of the `Queue` nodes. It is compared
+by `Raw`, with §9.6's tie-break.
+
+**Thresholds** (§9.9, `10` §10.3 rule 4). For each `Queue` node, with `T` =
+`ThresholdWaitMinutes`, `h` = `HysteresisMinutes` and `w` = the step-4 wait:
+
+- if the flag is clear and `w > T`, set it and emit `QueueThresholdExceeded`;
+- if the flag is set and `w < T − h`, clear it and emit `QueueThresholdCleared`.
+
+Each event carries `w` and the node's current `ServersOpen` and
+`ServerCount`. The flag starts clear. Strict inequalities on both sides mean
+a constant `w` never flaps, `h = 0` included.
+
+**Blocking episodes** (§9.5, `10` §10.3 rule 2).
+
+- A cohort's release is **refused** when its target is full. At the first
+  refusal, it emits `FlowBlocked { Cohort, Held = the node it is on,
+  BlockedBy = the target node }`. The target is the **immediate** next node,
+  never a node further downstream. A cohort waiting on a `Corridor` past its
+  `DueAt` has `Held` = that corridor.
+- While refused, it emits nothing further. If routing picks a different
+  target that is also full, it emits `FlowUnblocked` for the old pair, then
+  `FlowBlocked` for the new pair, both at that tick.
+- On release it emits `FlowUnblocked` with the same `Held` and `BlockedBy`,
+  at the release tick, before it moves.
+- A cohort removed while its episode is open (missed flight, §9.9) emits
+  `FlowUnblocked` first, at the same tick.
+
+**Event order within `Tick`.** First the movement-step events, in
+processing order: node by ascending `NodeId`, then the cohort order above,
+and for each cohort `FlowUnblocked`, then `FlowBlocked`, then
+`PassengersArrivedAtGate`. `PassengersArrivedAtGate` is emitted once per
+cohort that enters a `Gate`, with that cohort's count. Then the threshold
+events in ascending `NodeId`. `PassengersMissedFlight` comes from `Absorb`,
+not from `Tick`.
+
+> **LOW CONFIDENCE — Q-032 choices that shape behaviour.** `EPSILON` sets the
+> wait a closed lane shows (10 passengers read as 10 000 minutes). The cap of
+> one `serverTick` sets the largest burst after an idle spell. Unlimited
+> `Hall` capacity and head-of-line blocking in a `Queue` are also Architect
+> choices. None of them is a content balance value, but each is visible to
+> the player. Flagged for the owner.
+

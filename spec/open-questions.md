@@ -949,3 +949,244 @@ Answer:      `18` §18.3 and §18.2:
              `04`: a note that `Fx.Parse` flooring makes tiny positive values
              0.
 Status:      ANSWERED (spec/18-interfaces-world.md#183-routes)
+
+### Q-032 — `sim.flow`: graph file format and exact tick semantics
+Raised by:   T-007 Test Author (via coordinator) / T-007 (critical path)
+Blocking:    T-007, and T-008 behind it
+Question:    (A) The `FlowGraph` file format was "the worker's choice", but
+             `Load` is the only constructor. (B) When does the credit cap
+             apply, and at what value? (C) Can a cohort move twice in a
+             tick? (D) What are the non-`Queue` capacities, and is "above"
+             `>`? (E) What are the epsilon, rounding and non-`Queue` value
+             of the predicted wait? (F) How is `traversalTicks` rounded, and
+             does it apply to non-corridors in the route cost? (G) What are
+             the threshold comparisons and timing? (H) What are the
+             `FlowBlocked` fields and the event order?
+Why it matters: T-007's tests cannot be written, and T-007 blocks T-008.
+Answer:      `09` §9.11 "File format" and the new §9.12:
+             - (A) The JSON subset with `nodes[id, kind]`. Queue nodes add
+               `server_count`, `servers_open` and `queue_profile`. Failures
+               are `FormatException` with `sourceName: ` and the node id.
+             - (B) The cap applies only when `moved < served`. The unused
+               whole passengers are discarded, and the credit is capped at
+               `serverTick` = rate × 6 / 60.
+             - (C) No cohort moves twice: only `EnteredNodeAt < t` is
+               eligible, and an arriving cohort gets `EnteredNodeAt = t`.
+             - (D) Only `Queue` has a capacity, and it is full at
+               `>= CapacityStanding`, measured at the start of the tick.
+             - (E) `EPSILON = 1/1000`, floored,
+               `capacityPerMinute = ServersOpen × rate`, and 0 for a
+               non-`Queue` node.
+             - (F) `Div` floors, then `Ceil`, with a minimum of 1. Every
+               node on the path counts in the route cost.
+             - (G) Exceed when `w > T`, clear when `w < T − h`, evaluated
+               after movement and merge in ascending `NodeId`. The flag is
+               hashed.
+             - (H) `BlockedBy` is the immediate full target, and `Held` is
+               the node the cohort is on (the corridor itself, past
+               `DueAt`). The event order is pinned.
+             LOW CONFIDENCE for the owner: `EPSILON`, the cap value,
+             unlimited `Hall` capacity and head-of-line blocking.
+Status:      ANSWERED (spec/09-interfaces-flow.md#912-exact-tick-semantics-q-032)
+
+### Q-033 — `sim.flow` entry-point details; JSON string escapes
+Raised by:   T-007 Test Author and reviews (via coordinator) / T-007
+Blocking:    T-007 tests
+Question:    (1) Which exceptions do `Inject` and `Absorb` throw? (2) Is
+             `PassengersMissedFlight` one event per flight or per cohort,
+             and what is `LastBlockedAt` for a cohort never blocked? (3)
+             What is the `DueAt` of a merged corridor cohort? (4) What is the
+             `EnteredNodeAt` of an injected cohort? (5) What value does the
+             live-cohort ceiling take? (6) May `Absorb` run outside a tick?
+             (7) Which string escapes does the `08` §8.11 JSON subset allow?
+Why it matters: Each one is a test assertion, and three loaders must agree
+             on strings.
+Answer:      `09` §9.7 "Exact rules", §9.3, §9.9, §9.10 and `08` §8.11
+             "Strings":
+             - (1) A wrong or unknown node throws `ArgumentException`, and
+               `count <= 0` throws `ArgumentOutOfRangeException`. An
+               unknown flight in `Absorb` returns 0.
+             - (2) One event per flight, and only if the count is above 0.
+               `LastBlockedAt` is the node holding the most missed
+               passengers (the `MostHeldAt` rule). Missed cohorts are
+               removed.
+             - (3) Corridor cohorts merge only with an equal `DueAt`.
+             - (4) `N`, the number of flow `Tick` calls completed: `t`
+               during tick `t`, or `CurrentTick` between ticks.
+             - (5) Fixture sizing, set by the Test Author. It is not
+               balance.
+             - (6) `Absorb` publishes before it mutates, so outside a tick
+               `Publish` throws `InvalidOperationException` with no state
+               changed. `Inject` may be called between ticks.
+             - (7) JSON's eight escapes plus `\uXXXX`, which matches the
+               merged T-027 loader. Surrogate escapes, raw control
+               characters and invalid UTF-8 are load failures.
+             Added from the T-010 Test Author (`09` §9.7 "Promotion rules",
+             `19` §19.2):
+             - (8) `AgentsAt` gives exactly one view per passenger, so its
+               count equals `Population`.
+             - (9) An unknown node throws `ArgumentException`. Every node is
+               promotable.
+             - (10) `SetPromoted` is callable at any time, inside a `Tick`
+               too.
+             - (11) `SetPromoted` never allocates, and `AgentsAt` allocates
+               nothing after warm-up.
+             - (12) A separate harness task, not T-010, makes the
+               `Promotion` gate promote. It depends on T-010 and on the CLI
+               composition including `sim.flow`.
+Status:      ANSWERED (spec/09-interfaces-flow.md#97-module-interface)
+
+### Q-034 — Player-adjustable graphics quality (D10)
+Raised by:   owner, via coordinator, 2026-09-27
+Blocking:    no (T-020, T-029, T-031, T-032, T-033, T-034 are to be amended)
+Question:    The owner decided that "the final user should be able to
+             increase or decrease graphics so the game can also be run on a
+             low resource laptop". How do the presentation specs support
+             it?
+Why it matters: No presentation spec had a quality setting, a settings
+             control or a player preference.
+Answer:      `15` §15.14:
+             - `GraphicsPreset` (Low/Medium/High/Custom) and
+               `GraphicsSettings`, with six knobs: `DrawAgents`,
+               `MaxDrawnAgentsPerNode`, `FrameRateCap`,
+               `ResolutionScalePercent` and `AntiAliasing`, plus `Preset`.
+             - Structural bounds and monotonicity. `High` is today's Phase 1
+               behaviour.
+             - The settings are passed to `Build` and `Update`, and the
+               backend applies its knobs. `DrawAgents` gates only
+               render-driven promotion, which is outcome-neutral.
+             `17` §17.4a: a modal settings panel, which does not pause, plus
+             three new inputs and a player-preference text codec. `16`
+             §16.6: `IPreferenceStore`, written on change and read at
+             assembly, never in the bundle.
+             Owner addendum, 2026-09-27: graphics never affect gameplay or
+             difficulty. A binding invariant in `15` §15.14 and `17` §17.4a:
+             - every non-`Agent` primitive is identical at every setting;
+             - no knob touches time, pacing, input or click targets;
+             - scaling is presentation only.
+             It has tests on both sides.
+             HUMAN DECISIONS — owner, 2026-09-27, applied:
+             - the minimum GPU is integrated graphics with no dedicated
+               VRAM (`01`, the one authorised line; CPU and RAM
+               unchanged);
+             - `Low` holds the render target on it, and shared GPU memory
+               counts against the 8 GB (`15` §15.11, `16` §16.10);
+             - the settings panel pauses the sim while it is open (`17`
+               §17.4, §17.4a);
+             - the first-launch default is `Medium` (`15` §15.14).
+             The Architect proposed the `Low` and `Medium` values (`15`
+             §15.14) and a 2 GB process memory budget (`16` §16.10), both
+             LOW CONFIDENCE — owner may revise.
+Status:      ANSWERED (spec/15-interfaces-render.md#1514-graphics-quality--human-decision-owner-2026-09-27-d10)
+
+### Q-035 — `sim.core`'s `EventBus` allocates on the first publish of an event type
+Raised by:   worker / T-007, 2026-09-27. It was filed as "Q-034", which
+             collides with the graphics question, and was renumbered by the
+             coordinator.
+Blocking:    T-007 (`FlowBudgetTests.test_flow_budget_update_path_allocates_nothing`)
+Question:    `EventBus.Publish<T>` creates a `Channel<T>` the first time a
+             type with no subscriber is published. In `FlowBudgetTests.Loaded`
+             nothing subscribes to `sim.flow`'s events. The first
+             `QueueThresholdExceeded` comes at tick 1695, inside the
+             measured window (ticks 1201–1799), and allocates 368 bytes
+             there. `08` §8.6 did not say whether that is allowed. It
+             reproduces on `origin/main` without T-007's changes, and the
+             fix is outside `sim.flow`'s paths. Is this a `sim.core` defect,
+             or is the test's expectation wrong?
+Answer:      A `sim.core` defect, from a gap in `08` §8.6. The test is right:
+             `08` §8.5 and `07` "Performance" forbid allocation on the tick
+             path, and neither makes an exception for a first publish.
+             A module cannot pre-warm the bus, because `Publish` outside a
+             tick throws. So a first-publish allowance would push an
+             unfixable warm-up duty onto every module.
+             `08` §8.6 "Allocation" now states:
+             - after `Build`, the bus allocates nothing, from the first
+               tick, whatever was published before and whatever the
+               earlier per-tick peaks were;
+             - the channel set is fixed at `Build`, because subscription
+               closes there;
+             - a type with no subscriber stores nothing, but its `Publish`
+               still runs every check, consumes a `Sequence` and returns
+               its `EventId`;
+             - capacity for `MAX_EVENTS_PER_TICK` events is reserved at
+               `Build`.
+             Five new `sim.core` tests are named in §8.6. No outcome, hash
+             or golden changes.
+Status:      ANSWERED (spec/08-interfaces-core.md#86-event-bus)
+
+### Q-038 — `sim.schedule`: a show-up bucket due before its flight's publication
+Raised by:   Reviewer, PR #54 (T-008) finding 1, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    §11.6 computes injections at publication, and `PublishTick` is
+             one day before `ScheduledTick`. `minutes_before_std` is
+             unbounded in content, so two failures are possible on day
+             `d ≥ 2`:
+             - with `minutes_before_std > 1440 + minute-of-STD`, a bucket's
+               tick has already passed when the day is materialised, so
+               those passengers are never injected;
+             - between 1440 and that value, passengers are injected before
+               `FlightPlanPublished`.
+             Clamp, reject, or extend the horizon?
+Answer:      Reject at load, which is the narrowest option. The new constant
+             `MAX_SHOW_UP_MINUTES_BEFORE_STD = PLAN_PUBLISH_LEAD_TICKS /
+             TICKS_PER_SIM_MINUTE` (1440) bounds every bucket of every
+             referenced pax profile. The check is at `CreateSystem`, where
+             profiles resolve (§11.9a), with the existing `FormatException`
+             shape. With the bound, every injection tick is at or after
+             `PublishTick` (§11.6, stated as an inequality), so nothing is
+             queued for a past tick and conservation holds. The day-0
+             `clamp to 0` is unchanged and is the day-0 case of the same
+             inequality.
+             The early-injection case is closed **by tick**: no passenger
+             reaches `sim.flow` in an earlier tick than its flight's
+             `FlightPlanPublished`. On a **shared tick** (a bucket exactly
+             at the bound, or the day-0 clamp), `Inject` runs in phase 2
+             and handlers see the event in phase 3 (`08` §8.5, §8.6). So
+             `sim.flow` holds the cohort first. This is explicitly accepted
+             (§11.6): no Phase 0/1 consumer depends on the opposite order.
+             §11.6 also fixes the order of the calls inside
+             `sim.schedule`'s `Tick` (materialise, publish, inject), which
+             makes them deterministic, and states that this order is not
+             observable across modules.
+             Revision after the PR #57 review:
+             - the test is rewritten to be observable (recorder tick
+               against the fake flow's `Inject` tick). After round 2 it
+               pins exact values: `pax=10`, buckets 60/400 and 1440/600,
+               which split exactly as 4 + 6. It asserts all four
+               occurrences the run publishes (days 0 to 3), with their
+               ticks listed;
+             - §11.9a names the reported bucket and the order of failures.
+             Rejected alternatives:
+             - clamping to `PublishTick` would silently reshape an owner's
+               curve;
+             - extending the horizon would change `PLAN_PUBLISH_LEAD_TICKS`
+               and every publish tick.
+             Two new tests (§11.10).
+             The 1440-minute (24 h) bound is owner-confirmed 2026-09-28.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#expansion-to-injections)
+
+### Q-039 — `sim.schedule`: the `FlightId` stride invariant
+Raised by:   Reviewer, PR #54 (T-008) finding 2, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    `FlightId.Value = DayIndex × 100000 + RowOrdinal + 1`, and
+             `RowOrdinal` counts across the whole file. The loader limited
+             only rows per `day`, so 60000 + 60000 rows load, and two
+             flights on adjacent days collide. What does the spec
+             guarantee? Should the total be bounded, or the id redefined?
+Answer:      Bound the total. `MAX_FIXTURE_ROWS_PER_DAY` is replaced by
+             `MAX_FIXTURE_ROWS = FLIGHT_ID_DAY_STRIDE − 1` (99999) on the
+             file's total data rows. It is counted in file order, and the
+             failure names line `MAX_FIXTURE_ROWS + 2` (the first row over
+             the limit), with no dictionary walk. §11.3 now states what the
+             derivation guarantees for every loaded table, and nothing
+             stronger:
+             - ids are unique across all days;
+             - `Value / STRIDE = DayIndex`;
+             - `Value % STRIDE − 1 = RowOrdinal`;
+             - ascending `FlightId` equals ascending `(DayIndex,
+               RowOrdinal)`.
+             The id formula is unchanged, so no id or golden changes for
+             any fixture that loads today. Max tier is 800 daily movements
+             (`01`), far below the bound. Two new tests (§11.10). This also
+             settles PR #54 finding 3: the row-limit failure has a line.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#flight-id-derivation)

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN_PROGRESS (blocked on T-036 merging, for its budget test) |
 | Module | `sim.flow` |
 | Assigned role | worker |
-| Depends on | T-003, T-012, T-026 |
+| Depends on | T-003, T-012, T-026, T-036 |
 | Spec source | `spec/09-interfaces-flow.md` §9.1–§9.6, §9.10, §9.11 (answers, jointly with `18-interfaces-world.md`, Q-012) |
 | Blocked by | — |
 
@@ -215,3 +215,13 @@ where it is compiled changed.
 **LOW CONFIDENCE** (may cause visible passenger-choice oddities). Build to
 spec as written; do not substitute a proportional-split heuristic without a
 spec amendment.
+
+**Dependency added on T-036 (Q-035, this cycle):** the budget test asserting
+"no allocation in the update path" (§9.10) is unreachable while
+`sim.core`'s `IEventBus` itself allocates on `Publish` — this module's
+queue update publishes `QueueThresholdExceeded`/`Cleared`/`FlowBlocked`/
+`FlowUnblocked` every tick a threshold or blocking state changes, through
+the same bus. Q-035, the EventBus zero-allocation fix (`08` §8.6
+"Allocation"), is T-036, `src/sim/core/**` only. This needs no code change
+of this task's own — `sim.flow` already calls `Publish` the one specified
+way — only T-036 merged ahead of it.

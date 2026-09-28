@@ -15,7 +15,8 @@ so that a freshly spawned agent does not have to read all of `spec/`.
   incomplete.
 
 Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
-(delegated), 2026-09-23 (D1–D9), each reversible.
+(delegated), 2026-09-23 (D1–D9), each reversible; D10 = owner, 2026-09-27
+(graphics quality).
 
 ---
 
@@ -56,7 +57,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: **the sim targets `netstandard2.1` only, `LangVersion 9`, with zero
   engine references; tests and the harness are `net8.0` (HD, D1)**; 10 Hz at
   1x; 6 ms/tick at max tier; player actions enter only as commands;
-  promotion must be outcome-neutral; never per-agent A\*.
+  promotion must be outcome-neutral; never per-agent A\*; **minimum spec
+  4 cores, 8 GB RAM, integrated graphics with no dedicated VRAM (owner,
+  2026-09-27, Q-034)**.
 - LC: none.
 - Read if: any sim task (all of it).
 
@@ -133,7 +136,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: **`SIM_SECONDS_PER_TICK = 6`, so a day is 14 400 ticks, and goldens
   may be authored (HD, D2, §8.2)**; **`Fx` hand-rolls its 128-bit multiply,
   divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
-  handlers in registry order (§8.6); commands admitted only at ≥ 1 tick of
+  handlers in registry order (§8.6); **the bus allocates nothing after
+  `Build`, with no warm-up, and a type with no subscriber stores nothing
+  (§8.6, Q-035)**; commands admitted only at ≥ 1 tick of
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
@@ -163,9 +168,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   is a budget requirement (§9.3); **routing over `sim.world`'s walk graph:
   pooled `Gate` destinations, lowest traversal plus queue wait along
   `PathVia` (§9.6, Q-012)**; factory plus `IFlowGraphLoader`, where
-  `FlowGraph` is node behaviour only (§9.11).
+  `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
+  **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
-  blame rule (§9.7a); the `LaneState` shape (§9.7b).
+  blame rule (§9.7a); the `LaneState` shape (§9.7b); Q-032's `EPSILON`, credit cap, unlimited
+  `Hall` and head-of-line blocking (§9.12).
 - Read if: T-007, T-010, T-011, T-023; §9.7, §9.7a and §9.7b for callers.
 
 ### `10-events.md` — event catalogue
@@ -182,8 +189,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: flight records, derived `FlightId`, CSV fixture format, publication,
   show-up curve and injection.
 - Key: query-only; no RNG; fixture hash fed into the state hash; runs
-  identically with or without `sim.flow` (§11.6).
-- LC: none.
+  identically with or without `sim.flow` (§11.6); **show-up buckets are
+  bounded by the one-day publish lead, so no injection's tick is before
+  its publication's tick. On a shared tick, `sim.flow` has the cohort
+  before handlers see the plan, which is accepted (§11.6, §11.9a,
+  Q-038)**; **at most `MAX_FIXTURE_ROWS`
+  (99999) rows per file, which makes `FlightId` unique and decodable
+  (§11.3, §11.4, Q-039)**.
+- LC: none. The 1440-minute show-up bound is owner-confirmed 2026-09-28
+  (Q-038).
 - Read if: T-008; §11.3/§11.7 for consumers.
 
 ### `12-interfaces-airside.md` — `sim.airside`
@@ -229,10 +243,18 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   called between `Step`s; **pacer speeds pause, 1x, 2x, 4x (§15.8, HD, D4)**;
   the frame order moved to `16` §16.6 (D7); the scene layer targets
   `netstandard2.1` (§15.3, D1); all §15.13 decisions made; lane pips drawn
-  from `TryGetLaneState` (§15.5, Q-010).
+  from `TryGetLaneState` (§15.5, Q-010); **player graphics quality (§15.14,
+  D10): `GraphicsPreset` Low/Medium/High/Custom and six knobs, presentation
+  only, passed to `Build` and `Update`, applied by the backend; binding
+  invariant: every non-`Agent` primitive is identical at every setting, and
+  no knob touches time, input or click targets**; **`Low` holds 60 fps at
+  max tier on integrated graphics; the first-launch default is `Medium`
+  (owner, Q-034, §15.11, §15.14)**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
-  render rather than as a UI overlay (`CHANGELOG`, Q-010).
+  render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
+  revise (Q-034):** the `Low` and `Medium` values and the 1920 × 1080
+  measurement condition (§15.14); the backend's draw-call bound (§15.10).
 - Read if: T-020; the render backend task (§15.10).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
@@ -245,8 +267,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   checkpoint dump and the harness `checkpoints` subcommand (§16.8); exact
   bundle file names and the composition steps (§16.3, §16.4), using the
   Q-009 factories; content in the player comes from a copy of `data/`
-  through `HostFactory.LoadContent` (§16.3).
-- LC: the gate runs nightly on the real player (§16.9, proposed, not adopted).
+  through `HostFactory.LoadContent` (§16.3); the graphics preference is
+  read and written through `IPreferenceStore`, never in the bundle (§16.6,
+  D10).
+- LC: the gate runs nightly on the real player (§16.9, proposed, not adopted);
+  the 2 GB process memory budget, which counts shared GPU memory (§16.10,
+  Q-034).
 - Read if: the host tasks, the harness `checkpoints` subcommand, and the
   cross-runtime gate.
 
@@ -254,8 +280,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: pacing state, the lane click (hit test, then a request), screen-to-world
   mapping, the icon-only backend contract.
 - Key: starts unpaused at 1x; primary click = one more server, secondary = one
-  fewer; the topmost (highest `NodeId`) box wins; no text or panels at
-  Phase 1; the production lane sink computes `clamp(base ± 1)` from a
+  fewer; the topmost (highest `NodeId`) box wins; the only panel is the
+  graphics settings panel (§17.4a, D10: modal, pauses while open (owner,
+  Q-034), stored as a player preference); the production lane sink computes `clamp(base ± 1)` from a
   pending target or `TryGetLaneState`, and submits `SetServersOpen` for the
   next tick (§17.5, Q-010).
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
@@ -289,15 +316,18 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
-  running scope total (8, after Q-010 (5)).
+  running scope total (9, after D10).
 - Read if: you are the Planner (Impact lines list stale tasks), you are
   reviewing the Architect, or you need why a rule exists.
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-031 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Every question in the file from Q-002 on is answered
+  (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
-  balance values (`04`), and adoption of the cross-runtime gate (`16` §16.9).
+  balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
+  and review of the Q-034 LOW CONFIDENCE proposals: the `Low` and `Medium`
+  values (`15` §15.14) and the 2 GB memory budget (`16` §16.10).
 - Read if: before starting any task, check that your task is not blocked
   here.
