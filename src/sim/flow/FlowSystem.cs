@@ -56,6 +56,14 @@ namespace AirportSim.Sim.Flow
         private readonly List<int> _fifoScratch = new List<int>(InitialSlotCapacity);
         private readonly Comparison<int> _fifoComparer;
 
+        // Reused by Absorb's missed-passenger sweep to collect every missed slot
+        // across nodes before sorting by ascending CohortId (§9.7 "Exact rules"),
+        // so the FlowUnblocked publish order does not depend on NodeId iteration
+        // order or per-node list order (Absorb is not itself in the hot per-tick
+        // path, but this keeps the same no-allocation-once-grown discipline).
+        private readonly List<int> _missedScratch = new List<int>(InitialSlotCapacity);
+        private readonly Comparison<int> _cohortIdComparer;
+
         // Per-flight index for TryGetOutstanding (§9.7a, §9.10 "per-flight population
         // indexes"): derived, not hashed, kept in lock-step with every cohort mutation
         // that touches a Departing cohort on an included (non-Gate, non-Sink) node, so
@@ -140,6 +148,7 @@ namespace AirportSim.Sim.Flow
             _snapshotPopulation = new int[n];
             _snapshotWait = new Fx[n];
             _fifoComparer = CompareFifo;
+            _cohortIdComparer = CompareCohortId;
 
             for (int i = 0; i < n; i++)
             {
@@ -550,6 +559,12 @@ namespace AirportSim.Sim.Flow
 
             if (hasOutstanding)
             {
+                // §9.7 "Exact rules", in this order: FlowUnblocked for each missed
+                // cohort in an open blocking episode, in ascending CohortId across
+                // every node; then one PassengersMissedFlight; then the removal.
+                // Collecting first keeps the publish order independent of NodeId
+                // iteration order and of each node's own cohort-list order.
+                _missedScratch.Clear();
                 for (int i = 0; i < _nodeId.Length; i++)
                 {
                     if (_kind[i] == NodeKind.Gate)
@@ -558,17 +573,39 @@ namespace AirportSim.Sim.Flow
                     }
 
                     List<int> list = _cohortsOnNode[i];
-                    for (int idx = list.Count - 1; idx >= 0; idx--)
+                    for (int idx = 0; idx < list.Count; idx++)
                     {
                         int slot = list[idx];
                         if (_slots[slot].Key.Direction == FlowDirection.Departing && _slots[slot].Key.Flight.Equals(flight))
                         {
-                            RemoveCohortEntirely(slot, i);
+                            _missedScratch.Add(slot);
                         }
                     }
                 }
 
+                _missedScratch.Sort(_cohortIdComparer);
+
+                for (int k = 0; k < _missedScratch.Count; k++)
+                {
+                    int slot = _missedScratch[k];
+                    if (_slots[slot].Blocked)
+                    {
+                        int ordinal = _slots[slot].NodeOrdinal;
+                        _events.Publish(new FlowUnblocked(new CohortId(_slots[slot].Id), _nodeId[ordinal], _nodeId[_slots[slot].BlockedByOrdinal]), EventRef.None);
+                    }
+                }
+
                 _events.Publish(new PassengersMissedFlight(flight, outstanding.Count, outstanding.MostHeldAt), EventRef.None);
+
+                for (int k = 0; k < _missedScratch.Count; k++)
+                {
+                    int slot = _missedScratch[k];
+                    int ordinal = _slots[slot].NodeOrdinal;
+                    OutstandingRemove(ordinal, _slots[slot].Key, _slots[slot].Count);
+                    _cohortsOnNode[ordinal].Remove(slot);
+                    _slotByCohortId.Remove(_slots[slot].Id);
+                    FreeSlot(slot);
+                }
             }
 
             return boarded;
@@ -735,6 +772,8 @@ namespace AirportSim.Sim.Flow
             int c = _slots[a].EnteredNodeAt.CompareTo(_slots[b].EnteredNodeAt);
             return c != 0 ? c : _slots[a].Id.CompareTo(_slots[b].Id);
         }
+
+        private int CompareCohortId(int a, int b) => _slots[a].Id.CompareTo(_slots[b].Id);
 
         /// <summary>
         /// Routes, checks spillback and moves <paramref name="amount"/> passengers out
