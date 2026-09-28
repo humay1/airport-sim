@@ -59,6 +59,19 @@ so the fix needs its own task: **T-037** (`tests/sim/core/**`,
 `tests/sim/world/**` only, depends on T-036 merged), a shared
 `Allocation.Start()`/`Since()` meter that forces a full GC before the
 baseline read. Assertions stay exactly `0`, no tolerance. See the T-037 row.
+T-037 (PR #51) is **not yet merged** as of this cycle.
+
+**T-038, this cycle:** `tests/sim/flow/**` (arrived with T-007, merged)
+carries three of its own zero-allocation assertions
+(`BoardingTests.cs`/`FlowBudgetTests.cs`/`OutstandingCostTests.cs`) reading
+`GC.GetAllocatedBytesForCurrentThread` directly, outside T-037's writable
+paths, so they get the same flake and their own task, **T-038**
+(`tests/sim/flow/**` only, depends on T-037 and T-007). **Release order,
+binding:** not before T-037 merges, and not before **T-010** merges either
+— T-010's worker and Test Author branches, and the T-011 Test Author's
+branch, are all currently writing `tests/sim/flow/**`, the same directory
+this task writes; releasing T-038 first risks clobbering or conflicting
+with their tests. See the T-038 row and its own worker notes.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
@@ -123,7 +136,8 @@ to wave through a failing `determinism` check.
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 | T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
-| T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | IN_PROGRESS (PR to follow) |
+| T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | IN_PROGRESS (PR #51, not yet merged) |
+| T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | QUEUED (blocked on T-037 merging and on T-010 merging first) |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -213,6 +227,11 @@ direct `Depends` edge. Order:
 12. **T-010, T-011** — releasable once T-007 merges, in `src/sim/flow/**`
     sequence after T-007 (and, since T-023 also lands in that directory,
     serialised against it too — see Phase 1 below).
+12a. **T-038** (`tests/sim/flow/**` only, the flow flake fix) — after
+    **both** T-037 and T-010 merge. Shares `tests/sim/flow/**` with T-010's
+    and T-011's Test Author branches, currently open — release only once
+    T-010 has actually merged, not merely once it is `QUEUED`/`IN_PROGRESS`,
+    to avoid conflicting with tests those branches are still writing.
 13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
     shared with T-006/T-030/T-014 — do not release concurrently with any of
     them.
