@@ -1183,9 +1183,9 @@ namespace AirportSim.Sim.Core.Tests
             // (ToDisplayString is excluded: it returns a new string by definition.)
             Fx[] xs = BudgetInputs(0x416C6C6F63467801UL, 256);
             long warm = ExerciseAllOperations(xs, 4);
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             long acc = ExerciseAllOperations(xs, 100);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            long allocated = Allocation.Since(start);
             Assert.Equal(0L, allocated);
             GC.KeepAlive(warm + acc);
         }
@@ -1202,13 +1202,13 @@ namespace AirportSim.Sim.Core.Tests
             {
                 warm += Fx.Parse(inputs[i % inputs.Length]).Raw;
             }
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long start = Allocation.Start();
             long acc = 0;
             for (int i = 0; i < 10_000; i++)
             {
                 acc += Fx.Parse(inputs[i % inputs.Length]).Raw;
             }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            long allocated = Allocation.Since(start);
             Assert.Equal(0L, allocated);
             GC.KeepAlive(warm + acc);
         }
