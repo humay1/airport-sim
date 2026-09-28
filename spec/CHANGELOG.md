@@ -1954,6 +1954,180 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              added.
 Signed off:  not required. `01` and `02` are untouched.
 
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.6 destinations, §9.7 `Inject`, §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037, Q-040: routing-cache rules, gate count in `sim.flow` fixtures, `Departing`-only cohorts
+Reason:      T-011's black-box scaling runs show routing cost linear in the
+             number of pooled gates (p99 of 9.9 ms at 96 gates), with the
+             worst ticks after show-up injections. `09` allowed a cache but
+             never said what it must preserve. It also left open whether
+             `18` §18.5's single `Gate` bound `sim.flow` stress fixtures.
+             - **Q-036:** six binding rules for an optional cache (§9.6):
+               - observably identical: the same per-pair cost `Raw` and
+                 the same tie-break, with per-node terms that are each
+                 node's own §9.12 value;
+               - a static part from three named sources that may live for
+                 the run;
+               - a wait-dependent part memoised within one tick only;
+               - not hashed, not saved, rebuilt on restore;
+               - no allocation;
+               - no other inputs.
+               It also names the required oracle test,
+               `test_flow_routing_cache_matches_uncached_reference`, with
+               mandatory cases, owned by the Test Author of whichever
+               `sim.flow` task adds the cache.
+             - **Q-037:** the single `Gate` binds the shared file
+               `phase0-landside.json` and fixtures that load it.
+               `sim.flow`-local stress and budget fixtures build their own
+               graph and may pool several gates, stating the count and its
+               derivation (§9.10, §18.5). §18.6's list of users is
+               corrected.
+Revision:    after the PR #55 review (rejected at 9741b6d), four findings
+             were fixed:
+             - (1) §18.6 no longer lists T-011's stress fixture as a user
+               of the shared file. The single-gate scope is now "the file
+               and fixtures that load it", in §18.5, §18.6, §9.10 and
+               Q-037.
+             - (2) Rule 1 no longer forbids reordering or factoring on a
+               false premise. `Fx.Add` and integer-multiple `Mul` are exact
+               and every term is non-negative (`08` §8.3), so the grouping
+               cannot change `Raw` or the overflow condition. The real
+               hazards are named instead: per-node `Ceil` in
+               `traversalTicks` and per-node `Div` in the predicted wait.
+             - (3) Rule 2 names its three sources: `IWorldSystem`'s
+               load-time answers, the `FlowGraph` node behaviour, and the
+               pax profiles' walk speeds. Rule 4 rebuilds from exactly
+               those.
+             - (4) The oracle test now requires these cases:
+               - distinct walk speeds released from one node in one tick,
+                 choosing different edges;
+               - exact-cost gate and edge ties;
+               - lane changes;
+               - a blocked re-route;
+               - a show-up spike;
+               - a restart.
+               Rule 3 explains why differing destination sets cannot occur
+               at Phase 0/1: the effective set is filtered by
+               `CanReachVia` from the current node. It also binds the
+               amendment that makes them possible to extend the key and the
+               test. The restart case says what it proves: until
+               `sim.save`, replay shows reproducibility only (finding 5).
+Revision 2:  after the second PR #55 review (rejected at 2dab56a):
+             - (1) Rule 3's claim that cohorts on one node cannot differ in
+               destination set was false. `Inject` accepts any
+               `FlowDirection` (§9.7). Rule 3 now fixes the key itself: an
+               entry serves a cohort only for the same node, walk speed and
+               every cohort field that determines the destination set,
+               which is `Key.Direction` at Phase 0/1. The allowed forms are
+               `(node, Direction, walk speed)`, or `(node, walk speed)`
+               used for `Departing` cohorts only. A `(node, walk speed)`
+               memo serving every direction is a review rejection. The
+               oracle test gains a Direction case: a `Departing` and a
+               non-`Departing` cohort on one node in one tick, in both
+               `CohortId` orders. How non-`Departing` cohorts are routed is
+               filed as Q-040 (OPEN), and the cache rules do not depend on
+               its answer.
+             - (2) The assertion now covers every cohort that attempts
+               release, not only those that leave. A refused cohort's
+               target is checked through `BlockedBy`, and a `Queue`'s
+               served count through the oracle's FIFO service. The restart
+               paragraph no longer overclaims: the per-tick assertion
+               covers scripted states, and review covers the rest until
+               the restore arm exists.
+             - (3) The test's owner is "the Test Author of whichever
+               `sim.flow` task adds the cache" everywhere.
+             - Notes tidied:
+               - the edge-tie "file order" clause is dropped, because
+                 `18` §18.3 returns edges in ascending id;
+               - the gate tie now puts the lower-id gate behind the
+                 higher `EdgeId`;
+               - rule 2 lists all of `IWorldSystem`'s load-time answers.
+Revision 3:  after the third PR #55 review (rejected at ba17fda):
+             - (1)/(3) **Q-040 is answered (a).** At Phase 0/1, `Inject`
+               rejects `key.Direction ≠ Departing` (§9.6, §9.7), because
+               the spec defines no destinations for other directions. Rule
+               3's key is therefore `(node, walk speed)`. The Direction case
+               and its comparison run are removed, which leaves no
+               undefined oracle step.
+             - (2)/(4) The oracle is now a lockstep, uncached **reference
+               model of §9.12's whole tick**, carrying its own credit,
+               cohorts, episodes and flags from tick 0. Every input is
+               named with its source: the flow-graph JSON the test writes,
+               the content it builds, `IWorldSystem`, and the script.
+               Nothing comes from `FlowGraph` internals or `ServiceCredit`.
+               It compares:
+               - per-node, per-`CohortKey` head counts;
+               - `Population` and `PredictedWaitMinutes`;
+               - `(kind, Held, BlockedBy, Key)` event multisets.
+               It does not compare `CohortId`s, which settles the "served
+               part" note.
+             - Notes fixed:
+               - the "differing-set case" wording;
+               - the restore-arm sentence is moved out of the Review
+                 bullet.
+Revision 4:  after the fourth PR #55 review (rejected at b9b0371):
+             - (1) §9.3 and §9.12 now say that **every move takes a new
+               `CohortId`**: a whole cohort as well as a served part,
+               allocated in movement order. That fixes the relative id
+               order of same-tick arrivals, and so the `Queue` FIFO
+               tie-break. It is the merged behaviour (`MoveCohortPortion`
+               always allocates), so no code change follows. The reference
+               keeps its own id counter, advanced at the same points, and
+               uses it only for ordering.
+             - (2) §9.7 `Inject` gives a total check order: unknown `at`,
+               not a `Source`, `count <= 0`, then direction. The first
+               three are the merged order.
+             - (3) The reference's scope names §9.7's `Inject` and
+               `Absorb`, including boarding, missed removal and
+               `FlowUnblocked`.
+             - (4) A `FlowUnblocked`'s `Key` is the one the test remembered
+               at the episode's `FlowBlocked`.
+Revision 5:  after the fifth PR #55 review (rejected at 9f37ffa):
+             - (1) The reference test pins where the script runs:
+               `sim.world` at 1, one scripted caller at 2, `sim.flow` at 4
+               (as `FlowRig`), and an optional recorder after it that
+               calls nothing. Every `Inject` and `Absorb` is made from the
+               caller's `Tick`, and `SetServersOpen` is a phase-1 command.
+               The reference applies each tick as commands, then calls,
+               then its own `Tick`. So `Absorb` never follows `sim.flow` in
+               a tick, and the `Key` rule always applies.
+             - (2) `test_inject_rejects_non_departing_direction` is pinned
+               in §9.7. It covers `Arriving` and `Transferring`, and
+               asserts "changes nothing" against a control run, including
+               the next id, so the `IIdAllocator` counter is not advanced.
+             - (3) A long line in "The reference" is rewrapped.
+Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
+             Q-040 (Architect, from the review)
+Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache
+             rule. **But merged T-007 code does not conform to Q-040:**
+             - `Inject` accepts every `FlowDirection`;
+             - `AttemptRelease` routes every cohort to the pooled gates.
+             The Planner needs a small `sim.flow` fix task:
+             - writable paths `src/sim/flow/**`;
+             - `Inject` throws `ArgumentException` for `key.Direction ≠
+               Departing`;
+             - Test Author test `test_inject_rejects_non_departing_direction`;
+             - no other merged test injects a non-`Departing` cohort, and
+               `FlowSystemTests.cs:52` only queries.
+             PR #56 (T-010) adds a per-tick cache keyed by (node, walk
+             speed). That is the Phase 0/1 key under rule 3. #56 must also
+             meet the other rules and carry the reference-model test.
+             T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
+             performance task:
+             - writable paths `src/sim/flow/**`;
+             - depends on T-010 merged;
+             - released only on a failing budget measurement (the 90k
+               max-tier fixture decides, owner, 2026-09-28);
+             - done condition: the existing tests plus the oracle test;
+             - reviewed by `reviewer-core`, since routing is
+               determinism-critical.
+             No scope added.
+Signed off:  owner, 2026-09-28: go-ahead for both drafts. Gate assignment
+             is not brought forward.
+LOW CONFIDENCE — owner may revise: the recommended 60 pooled `Gate` nodes
+             for the 90k max-tier fixture, one per max-tier stand
+             (open-questions Q-037). It is a recommendation, not a spec
+             rule. The count is the Test Author's, with the derivation
+             stated.
+
 ## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.7, §11.9, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
 Reason:      The PR #54 (T-008) review found two gaps.
              - **Q-038:** an unbounded `minutes_before_std` can put an
