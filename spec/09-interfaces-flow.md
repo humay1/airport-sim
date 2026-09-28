@@ -101,6 +101,20 @@ A cohort exists because its members are interchangeable. Therefore:
   remainder keeps the original `CohortId`; the moving part gets a new one. Keeping
   the id on the remainder means a `PassengerRef` into a waiting cohort stays valid
   for the delay tree.
+- **Every move takes a new id (Q-036).** Whenever passengers move from one
+  node to another, the moving group gets a **new** `CohortId` from
+  `IIdAllocator`. That covers a part, a whole cohort leaving a `Source`,
+  `Hall` or `Corridor`, and a `Queue` serving a cohort's entire count. A
+  whole move leaves no remainder, so the old id ceases to exist. New ids
+  are allocated in the order the moves happen in §9.12's movement step:
+  - nodes in ascending `NodeId`;
+  - within a node, the order that step gives for its kind (ascending
+    `CohortId`, or `Queue` FIFO order).
+  Ids are monotone per owner (`08` §8.4, Q-017). So cohorts entering one
+  node in the same tick are ordered by that move order, and so is their
+  `Queue` FIFO position `(EnteredNodeAt, CohortId)`. `Inject` also takes
+  one new id per call, in call order. Merging allocates nothing: the
+  survivor is the lowest id (§9.12 step 3).
 - Iteration over cohorts is **always** in ascending `CohortId` order
   (`02-determinism.md` rule 5). Iteration over nodes is in ascending `NodeId`.
 
@@ -280,10 +294,19 @@ Required test, when a cache is added. Owner: the Test Author of whichever
 `test_flow_routing_cache_matches_uncached_reference`.
 
 **The reference.** The test contains a **reference model**, a lockstep,
-uncached implementation of §9.12's whole `Tick` (snapshot, movement, merge,
-thresholds), and of this section's routing rule, written from this spec.
+uncached implementation written from this spec. It covers:
+- §9.12's whole `Tick`: snapshot, movement, merge and thresholds;
+- this section's routing rule;
+- §9.3's id rule;
+- §9.7's `Inject` and `Absorb`, including boarding, the missed-cohort
+  removal and its `FlowUnblocked` events.
 It carries its own state from tick 0: cohorts, node `ServiceCredit`,
-blocking episodes and threshold flags. Every one of its inputs is one that
+blocking episodes and threshold flags. It also keeps its own **id
+counter**, advanced exactly where §9.3 allocates: one per `Inject` and
+one per move, in movement order. Its ids are used only to order cohorts
+(FIFO, iteration, merge survivor). They are never compared with the
+system's ids. Because both sequences are monotone and allocated at the
+same points in the same order, the relative order is the same. Every one of its inputs is one that
 the test itself authors or reads from a public interface. Nothing comes
 from `FlowGraph`'s members, which are internal (§9.11), or from
 `src/sim/flow`:
@@ -315,7 +338,15 @@ the system with the reference. It uses only `IFlowSystem` queries between
 - `Population` for every node, and `PredictedWaitMinutes` by `Raw` for
   every `Queue` node;
 - the tick's `FlowBlocked` and `FlowUnblocked` events, as a multiset of
-  `(event kind, Held, BlockedBy, the cohort's Key)`.
+  `(event kind, Held, BlockedBy, the cohort's Key)`. The test gets the
+  `Key` like this:
+  - for a `FlowBlocked`, from `TryGetCohort(event.Cohort)` after the tick.
+    A refused cohort stays on its node, and a cohort in an open episode
+    does not merge (§9.12);
+  - for a `FlowUnblocked`, from the `Key` it remembered for that `Cohort`
+    at the episode's `FlowBlocked`. By then the cohort may have moved
+    under a new id, or been removed by `Absorb`.
+  The reference knows its own keys directly.
 `CohortId`s are not compared. The per-key head count on each node is what
 a wrong route changes, whether it ends in a move, a refusal or a different
 merge. A refusal the reference does not make, or a stale target, shows up
@@ -421,11 +452,16 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
 
 **Exact rules (Q-033).**
 
-- **Exceptions.** In `Inject`, an unknown `at` or one that is not a `Source`
-  throws `ArgumentException`, and so does `key.Direction ≠ Departing` at
-  Phase 0/1 (Q-040, §9.6). The checks run in that order, and nothing
-  changes on a throw. `count <= 0` throws
-  `ArgumentOutOfRangeException`. In `Absorb`, an unknown `sink` or one that
+- **Exceptions.** `Inject` checks in this order, throws at the first
+  failure, and changes nothing on a throw:
+  1. an unknown `at`: `ArgumentException`;
+  2. an `at` that is not a `Source`: `ArgumentException`;
+  3. `count <= 0`: `ArgumentOutOfRangeException`;
+  4. `key.Direction ≠ Departing`, at Phase 0/1 (Q-040, §9.6):
+     `ArgumentException`.
+  So `Inject(Arriving, 0, a valid Source)` throws
+  `ArgumentOutOfRangeException`. Checks 1 to 3 are the merged order, and 4
+  is appended. In `Absorb`, an unknown `sink` or one that
   is not a `Sink` throws `ArgumentException`. An unknown `flight` is not an
   error, and it returns 0.
 - **`EnteredNodeAt` of an injected cohort** is `N`, the number of `Tick`
@@ -722,8 +758,9 @@ loosely, this section governs.
    moves **whole** into the target node `m`, unless `m` is full in the
    snapshot. There is no partial admission, so a node can end a tick above
    its capacity by at most one tick's inflow. A refused cohort stays where
-   it is. A served part moves under a new `CohortId`, and the remainder
-   keeps its id (§9.3).
+   it is. Every group that moves, whether a whole cohort or a served part,
+   moves under a **new** `CohortId`, allocated in movement order. A
+   remainder keeps its id (§9.3 "Every move takes a new id").
 3. **Merge** (§9.3), except that a cohort in an open blocking episode does
    not merge. The survivor is the lowest `CohortId`.
 4. **Thresholds.** For each `Queue` node in ascending `NodeId`, compute

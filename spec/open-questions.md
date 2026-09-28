@@ -1158,7 +1158,9 @@ Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
              - `Population` and `PredictedWaitMinutes`;
              - the multiset of `FlowBlocked`/`FlowUnblocked` as
                `(kind, Held, BlockedBy, Key)`.
-             No `CohortId`s are compared. The script must include each of
+             No `CohortId`s are compared. The reference's own id order
+             follows §9.3's rule that every move takes a new id. The script
+             must include each of
              these, so a cache wrong in that way fails:
              - distinct walk speeds released from one node in one tick,
                choosing different edges;
@@ -1249,6 +1251,7 @@ Answer:      **(a).** This is what the spec already implies. §9.6 defines
              every direction, and `AttemptRelease` routes every cohort to
              the pooled gates whatever its direction. A `sim.flow` fix task
              is needed: `Inject` throws `ArgumentException` for
-             `key.Direction ≠ Departing`, with the Test Author's test
+             `key.Direction ≠ Departing`, as the fourth check after the
+             merged three (§9.7), with the Test Author's test
              `test_inject_rejects_non_departing_direction`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)

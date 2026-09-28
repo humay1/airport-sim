@@ -2063,6 +2063,23 @@ Revision 3:  after the third PR #55 review (rejected at ba17fda):
                - the "differing-set case" wording;
                - the restore-arm sentence is moved out of the Review
                  bullet.
+Revision 4:  after the fourth PR #55 review (rejected at b9b0371):
+             - (1) §9.3 and §9.12 now say that **every move takes a new
+               `CohortId`**: a whole cohort as well as a served part,
+               allocated in movement order. That fixes the relative id
+               order of same-tick arrivals, and so the `Queue` FIFO
+               tie-break. It is the merged behaviour (`MoveCohortPortion`
+               always allocates), so no code change follows. The reference
+               keeps its own id counter, advanced at the same points, and
+               uses it only for ordering.
+             - (2) §9.7 `Inject` gives a total check order: unknown `at`,
+               not a `Source`, `count <= 0`, then direction. The first
+               three are the merged order.
+             - (3) The reference's scope names §9.7's `Inject` and
+               `Absorb`, including boarding, missed removal and
+               `FlowUnblocked`.
+             - (4) A `FlowUnblocked`'s `Key` is the one the test remembered
+               at the episode's `FlowBlocked`.
 Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
              Q-040 (Architect, from the review)
 Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache
