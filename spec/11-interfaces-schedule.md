@@ -414,12 +414,19 @@ Budget: **0.10 ms/tick at max tier** (`03-module-map.md`). It is measured
 with `03`'s statistic, "How a budget is measured": mean ≤ 0.10 ms **and**
 p99 ≤ 0.20 ms over the ticks of one full sim-day. A mean alone, or a mean
 over several days, does not satisfy it (Q-031). Per-tick work is
-O(flights published this tick + injections due this tick) and nothing else. A
-scan over the whole flight table inside `Tick` is a review rejection: both
-publication and injection are due-ordered queues, built once at load and at day
-materialisation. No allocation in the update path (`07-conventions.md`); day
-materialisation for a `repeat_daily` fixture happens off the injection path, at
-the day boundary, and may allocate.
+O(flights published this tick + injections queued or due this tick) and
+nothing else. A scan over the whole flight table inside `Tick` is a review
+rejection. The two queues are built at different times (Q-038):
+- **Publication queue.** It is due-ordered by `PublishTick`, built at load
+  and extended at each day's materialisation.
+- **Injection queue.** It is due-ordered by injection tick. Its storage for
+  a day's occurrences is reserved when that day is materialised, sized from
+  their buckets and classes. Its **entries** are written at publication
+  (§11.6 step 2), in O(1) each, into that reserved storage.
+No allocation in the update path (`07-conventions.md`). Day materialisation
+for a `repeat_daily` fixture happens at the day boundary, before any
+publication on that tick (§11.9), and may allocate. Publication and
+injection never do.
 
 ---
 
@@ -478,7 +485,30 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_loader_rejects_reordered_header_with_line_number`
 - `test_flight_ids_are_independent_of_row_order`
 - `test_show_up_split_conserves_head_count`
-- `test_profile_with_show_up_beyond_publish_lead_fails_load` (Q-038)
+- `test_profile_with_show_up_beyond_publish_lead_fails_load` (Q-038). Every
+  case calls `CreateSystem` over a loaded table and test-built content.
+  "Fails" means it throws `FormatException` whose message starts with
+  `sim.schedule: ` and contains the listed parts (§11.9a). In every
+  multi-row case the rows appear in the file in **descending**
+  `flight_ref`, so file order and table order differ.
+  - **(a) The bound is inclusive.** A curve of `[ {1440, 1000} ]` loads. A
+    curve of `[ {1441, 1000} ]` fails, and the message contains the row's
+    `flight_ref`, `pax_profile`, the profile id and `1441`.
+  - **(b) `pax` does not matter.** The same 1441 profile on a `D` row with
+    `pax=0` and no `entry_node` fails the same way.
+  - **(c) The first offending bucket is named.** A curve of
+    `[ {60, 500}, {1500, 300}, {2000, 200} ]` fails. The message contains
+    `1500` and does not contain `2000`.
+  - **(d) The failure order.** Rows `R1` and `R2`, where `R1 < R2` by
+    ordinal `flight_ref`:
+    - `R1` has the 1441 profile and `R2` has an unresolved `aircraft_type`:
+      the failure names `R1` and `1441`;
+    - `R1` has an unresolved `aircraft_type` and `R2` has the 1441
+      profile: the failure names `R1` and the column `aircraft_type`;
+    - one row with an unresolved `aircraft_type` **and** the 1441 profile:
+      the failure names the column `aircraft_type`;
+    - one row whose `pax_profile` does not resolve: the failure names the
+      column `pax_profile` and the unresolved id. The bound is not reached.
 - `test_injection_tick_never_before_publication_tick_on_any_day` (Q-038).
   - **Fixture, exact values.** One `D` row with `day=0`, `repeat_daily=1`,
     `sched_hhmm=00:00`, `pax=10`, `hold_bag_permille=0`,
@@ -512,8 +542,9 @@ Done-condition tests this spec expects to exist, phrased per
     - day 1: `(14400; 0; 13800)`.
     - day 2: `(28800; 14400; 28200)`. Tick 14400 also materialises day 2.
     - day 3: `(43200; 28800; 42600)`. Tick 28800 also materialises day 3.
-    Days 2 and 3 are the 00:00 edge, where materialisation, publication and
-    injection all fall on `(d − 1) · 14400`.
+    Days 1, 2 and 3 are all the 00:00 edge, where materialisation,
+    publication and the 1440-bucket injection fall on `(d − 1) · 14400`.
+    For day 1 that is tick 0, which also carries day 0's publication.
   - The test does **not** assert an order between the recorder's event and
     the `Inject` within a shared tick. That order is the accepted
     cross-module one of §11.6.

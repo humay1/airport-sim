@@ -1954,7 +1954,7 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              added.
 Signed off:  not required. `01` and `02` are untouched.
 
-## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
+## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.7, §11.9, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
 Reason:      The PR #54 (T-008) review found two gaps.
              - **Q-038:** an unbounded `minutes_before_std` can put an
                injection before its flight's publication, or before its
@@ -2024,5 +2024,21 @@ Revision 2:  after the second PR #57 review (rejected at 90cc883):
              - §11.9a is rewrapped.
              The red CI was the `WorldBudgetTests` timing flake, unrelated
              to this diff, and was rerun by the coordinator.
+Revision 3:  after the third PR #57 review (rejected at f16c2f7):
+             - `test_profile_with_show_up_beyond_publish_lead_fails_load`
+               is pinned, with one case per §11.9a rule:
+               - (a) 1440 loads, 1441 fails;
+               - (b) `pax=0` still fails;
+               - (c) the curve `[60/500, 1500/300, 2000/200]` names 1500,
+                 not 2000;
+               - (d) the failure order, over two rows, both ways, and
+                 within one row.
+               Multi-row files list rows in descending `flight_ref`;
+             - §11.9 Budget now separates the publication queue (built at
+               load and materialisation) from the injection queue
+               (storage reserved at materialisation, entries written at
+               publication), matching §11.6 step 2;
+             - §11.10 says day 1 is also the 00:00 edge (tick 0);
+             - this header lists §11.7 and §11.9.
 Signed off:  not required. `01` and `02` are untouched. The 1440-minute
              show-up bound (Q-038) is owner-confirmed 2026-09-28.
