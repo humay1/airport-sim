@@ -23,6 +23,8 @@ namespace AirportSim.Sim.Schedule.Tests
         public const ulong TicksPerMinute = 10UL;
         public const ulong PublishLead = 14400UL;
         public const ulong DayStride = 100000UL;
+        public const int MaxFixtureRows = 99999;
+        public const uint MaxShowUpMinutes = 1440U;
         public const ulong TickUnscheduled = ulong.MaxValue;
         public const ushort ScheduleSystemId = 2;
         public const ushort FlowSystemId = 4;
@@ -69,6 +71,18 @@ namespace AirportSim.Sim.Schedule.Tests
 
         public static IContentIndex Index()
         {
+            return Index(Array.Empty<(string Id, (uint Minutes, uint Share)[] Curve)>());
+        }
+
+        /// <summary>The suite's content plus test-built pax profiles, each id with its curve.</summary>
+        public static IContentIndex Index(params (string Id, (uint Minutes, uint Share)[] Curve)[] extraProfiles)
+        {
+            var curves = new List<KeyValuePair<string, (uint Minutes, uint Share)[]>>(Curves);
+            foreach ((string id, (uint Minutes, uint Share)[] curve) in extraProfiles)
+            {
+                curves.Add(new KeyValuePair<string, (uint Minutes, uint Share)[]>(id, curve));
+            }
+
             var defs = new List<IContentDefinition>();
             defs.Add(new SizeCategoryDefinition(new ContentId("size_c"), 3));
             foreach (string id in AircraftIds)
@@ -76,7 +90,7 @@ namespace AirportSim.Sim.Schedule.Tests
                 defs.Add(new AircraftDefinition(new ContentId(id), new ContentId("size_c")));
             }
 
-            foreach (KeyValuePair<string, (uint Minutes, uint Share)[]> kv in Curves)
+            foreach (KeyValuePair<string, (uint Minutes, uint Share)[]> kv in curves)
             {
                 var buckets = new List<ShowUpBucket>();
                 foreach ((uint m, uint s) in kv.Value)
@@ -659,14 +673,24 @@ namespace AirportSim.Sim.Schedule.Tests
     {
         public readonly List<RecordedEvent> Events = new List<RecordedEvent>();
 
+        /// <summary>ctx.Tick of the handler call that received Events[i].</summary>
+        public readonly List<ulong> HandledTicks = new List<ulong>();
+
         public EventLog(IEventBus bus, ushort subscriber)
         {
             var id = new SystemId(subscriber);
             List<RecordedEvent> events = Events;
+            List<ulong> handled = HandledTicks;
             bus.Subscribe<FlightPlanPublished>(id, (in EventEnvelope env, in FlightPlanPublished evt, in TickContext ctx) =>
-                events.Add(new RecordedEvent(true, env, evt, default)));
+            {
+                events.Add(new RecordedEvent(true, env, evt, default));
+                handled.Add(ctx.Tick);
+            });
             bus.Subscribe<FlightMilestoneReached>(id, (in EventEnvelope env, in FlightMilestoneReached evt, in TickContext ctx) =>
-                events.Add(new RecordedEvent(false, env, default, evt)));
+            {
+                events.Add(new RecordedEvent(false, env, default, evt));
+                handled.Add(ctx.Tick);
+            });
         }
 
         public List<string> Trace()
@@ -820,9 +844,9 @@ namespace AirportSim.Sim.Schedule.Tests
         public readonly RecordingFlow? Flow;
         public readonly EventLog? Events;
 
-        public HostRig(byte[] csv, string source = Fixture.SourceName, bool withFlow = false, bool record = true, ulong seed = 0x5EED_0008UL)
+        public HostRig(byte[] csv, string source = Fixture.SourceName, bool withFlow = false, bool record = true, ulong seed = 0x5EED_0008UL, IContentIndex? content = null)
         {
-            ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, ScheduleContent.Index(), Sink, new NullLog()));
+            ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, content ?? ScheduleContent.Index(), Sink, new NullLog()));
             Table = ScheduleFactory.CreateLoader().Load(csv, source);
             Flow = withFlow ? new RecordingFlow() : null;
             Schedule = ScheduleFactory.CreateSystem(b.Services, Table, Flow);

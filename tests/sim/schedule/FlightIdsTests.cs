@@ -118,6 +118,69 @@ namespace AirportSim.Sim.Schedule.Tests
         }
 
         [Fact]
+        public void test_flight_ids_unique_and_decodable_at_max_fixture_rows()
+        {
+            // Q-039, 11 §11.10: MAX_FIXTURE_ROWS arrivals on day 1, repeating,
+            // written in descending flight_ref. Row ordinal o is minute
+            // o % 1440, so no minute holds more than 70 rows.
+            int n = SchedConst.MaxFixtureRows;
+            var sb = new System.Text.StringBuilder();
+            sb.Append(Csv.Header).Append('\n');
+            for (int o = n - 1; o >= 0; o--)
+            {
+                int minute = o % 1440;
+                sb.Append('F').Append(o.ToString("D5", System.Globalization.CultureInfo.InvariantCulture))
+                  .Append(",1,1,A,NVA,a320,")
+                  .Append((minute / 60).ToString("D2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+                  .Append((minute % 60).ToString("D2", System.Globalization.CultureInfo.InvariantCulture))
+                  .Append(",,35,0,business,0,0,\n");
+            }
+
+            var rig = new HostRig(Csv.Utf8(sb.ToString()), "max_rows.csv", record: false);
+            rig.RunTo(3UL * SchedConst.TicksPerDay);
+
+            IReadOnlyList<FlightId> published = rig.Schedule.PublishedFlights();
+            Assert.Equal(3 * n, published.Count);
+            int k = 0;
+            for (ulong day = 1; day <= 3; day++)
+            {
+                for (ulong ordinal = 0; ordinal < (ulong)n; ordinal++, k++)
+                {
+                    ulong expected = (day * SchedConst.DayStride) + ordinal + 1UL;
+                    ulong id = published[k].Value;
+                    if (id != expected)
+                    {
+                        Assert.Fail("PublishedFlights()[" + k + "] is " + id + ", expected " + expected + " (day " + day + ", ordinal " + ordinal + ")");
+                    }
+
+                    // Decode, and check against the record the id names.
+                    Assert.Equal(day, id / SchedConst.DayStride);
+                    Assert.Equal(ordinal, (id % SchedConst.DayStride) - 1UL);
+                    if (ordinal % 997UL == 0UL || ordinal == (ulong)n - 1UL)
+                    {
+                        FlightRecord r = rig.Flight(id);
+                        Assert.Equal((uint)day, r.DayIndex);
+                        Assert.Equal((day * SchedConst.TicksPerDay) + ((ordinal % 1440UL) * SchedConst.TicksPerMinute), r.ScheduledTick);
+                    }
+                }
+            }
+
+            // The day seam: the last ordinal of day d and ordinal 0 of day d + 1.
+            for (ulong day = 1; day <= 2; day++)
+            {
+                var last = new FlightId((day * SchedConst.DayStride) + (ulong)n);
+                var first = new FlightId(((day + 1UL) * SchedConst.DayStride) + 1UL);
+                Assert.NotEqual(last.Value, first.Value);
+                FlightRecord a = rig.Flight(last.Value);
+                FlightRecord b = rig.Flight(first.Value);
+                Assert.Equal((uint)day, a.DayIndex);
+                Assert.Equal((uint)(day + 1UL), b.DayIndex);
+                Assert.Equal((day * SchedConst.TicksPerDay) + (((ulong)(n - 1) % 1440UL) * SchedConst.TicksPerMinute), a.ScheduledTick);
+                Assert.Equal((day + 1UL) * SchedConst.TicksPerDay, b.ScheduledTick);
+            }
+        }
+
+        [Fact]
         public void test_flight_ids_unknown_id_is_not_found()
         {
             var rig = new HostRig(Fixture.Bytes(), record: false);
