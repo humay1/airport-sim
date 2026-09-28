@@ -74,6 +74,23 @@ writing `tests/sim/flow/**`, the same directory this task writes.
 Releasing T-038 before T-010 actually merges risks clobbering or
 conflicting with their tests. See the T-038 row and its own worker notes.
 
+**T-011, this cycle:** its Test Author's PR (`test-author/T-011-stress-30k-
+tests`, `a885923`, `tests/sim/flow/StressDay.cs`/`FlowStressBudgetTests.cs`)
+hit the same path-guard failure PR #49 hit — a `test-author/T-011-*` branch
+is checked against T-011's own writable paths, which were `src/sim/flow/**`
+only, so `tests/sim/flow/**` is added back to T-011's writable paths
+(`ci/check-paths.sh`'s `protected_for_role` already blocks a *worker* from
+`tests/`, so this does not reopen Q-021). T-011's "Spec source" line was
+also wrong: `spec/00-overview.md` carries no kill-gate text at all — the
+kill-gate framing is this file's own "Phase 0 — feasibility spike (the kill
+gate)" heading and **Gate:** note below, not a spec section; T-011's task
+file is corrected to cite `tasks/queue.md`, not `00-overview.md`. The tests
+pass the budget against `main` today (mean `0.50`–`0.63` ms, p99
+`2.60`–`3.26` ms against `2.5`/`5.0`, `0` bytes allocated, peak `252` live
+cohorts), but merge only after **T-010** merges, same reasoning as T-038 —
+`tests/sim/flow/**` is shared with T-010's still-open branches. A worker is
+needed only if the budget fails once T-010's code lands.
+
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
 Q-016 (what counts as "green" before T-006 merges) is now a **HUMAN
@@ -132,7 +149,7 @@ to wave through a failing `determinism` check.
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (all dependencies now merged — releasable) |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED (tests being authored) |
-| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
+| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | TESTS_AUTHORED (`test-author/T-011-stress-30k-tests`, blocked on T-010 merging) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
@@ -228,7 +245,13 @@ direct `Depends` edge. Order:
     with a still-open T-006).
 12. **T-010, T-011** — releasable once T-007 merges, in `src/sim/flow/**`
     sequence after T-007 (and, since T-023 also lands in that directory,
-    serialised against it too — see Phase 1 below).
+    serialised against it too — see Phase 1 below). **T-011's Test
+    Author's tests are done and green against `main`** (see the T-011 note
+    above), **but that PR does not merge before T-010** — both write
+    `tests/sim/flow/**`, and T-010 is still open. T-011's own writable
+    paths now include `tests/sim/flow/**` (Q-021's worker restriction is
+    unaffected; see T-011's task file), so its Test Author's branch can
+    pass the path guard, the same fix T-038 needed for T-036/T-037.
 12a. **T-038** (`tests/sim/flow/**` only, the flow flake fix) — **T-037 has
     merged** (PR #51, `7bb30b5`); still waiting on **T-010**. Shares
     `tests/sim/flow/**` with T-010's and T-011's Test Author branches,
