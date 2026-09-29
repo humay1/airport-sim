@@ -111,6 +111,30 @@ the Test Author and the Verifier:
   across the day's ticks. The mean protects the frame; the p99 catches the peak
   that only shows up at the 07:00 bank, which is exactly when the player is
   watching.
+- **Window (Q-044).** The samples are exactly `TICKS_PER_SIM_DAY` (14 400)
+  consecutive ticks of one sim-day, one sample per tick. No shorter window
+  satisfies a budget. Warm-up ticks before the window are allowed and are
+  not sampled. A test that measures several days applies the statistic to
+  each day's window on its own, never to their union (`11` §11.9, Q-031).
+  Each module has at least one `Budget` test that conforms. Other `Budget`
+  tests over shorter windows may exist as extra checks, but they do not
+  satisfy the budget, and each says so in its doc comment.
+- **Arithmetic (Q-045).** Binding on every xUnit budget test. A sample is
+  the `long` difference of `Stopwatch.GetTimestamp()` values around one
+  tick's measured work (`07` L11), with no conversion and no flooring. With
+  `n` samples, a sum `S`, a budget `B` in whole microseconds and
+  `f = Stopwatch.Frequency`:
+  - the mean passes if `S × 1 000 000 ≤ B × f × n`;
+  - p99 is the **nearest-rank** value: sort the samples ascending and take
+    0-based index `(99 × n + 99) / 100 − 1` in integer division, which is
+    `⌈0.99 × n⌉ − 1`. It passes if `p99 × 1 000 000 ≤ 2 × B × f`;
+  - an exact integer rescaling of either comparison is the same comparison.
+    For example, `S × 10 000 ≤ 25 × f × n` is the mean test for
+    `B = 2 500`. Products must not overflow at the test's `n` and `f`, so
+    use `Int128` or show the bound.
+  `19` §19.4's harness gate uses the same index. It floors each sample to
+  whole microseconds, because it reports microseconds. Nothing else
+  differs.
 - **Measured:** the module's `Tick` only, excluding fixture setup and excluding
   the checkpoint phase, which is billed separately above.
 - **Allocation:** zero bytes allocated in the update path, asserted as well as

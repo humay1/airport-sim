@@ -2363,3 +2363,26 @@ Impact:      - **No merged `src/` changes.** `sim.flow`, `sim.schedule`
              under T-009's "Done when".
 Signed off:  not required (architecture). Owner review requested on the
              LOW CONFIDENCE item.
+
+## 2026-09-29 — spec/03 "How a budget is measured" (Window, Arithmetic bullets); INDEX; open-questions — Q-044, Q-045: budget window and p99 definition
+Reason:      While filing T-041, the Planner found that `03` fixes neither
+             the sample window for a module budget test nor how p99 is
+             computed.
+             - **Q-044:** exactly one sim-day of 14 400 per-tick samples;
+               warm-up allowed; days judged separately. This generalises
+               `11` §11.9's rule (Q-031). Shorter `Budget` tests may stay,
+               but only as labelled extra checks.
+             - **Q-045:** raw `Stopwatch` samples, nearest-rank p99 at
+               index `(99n + 99) / 100 − 1`, and exact integer comparisons.
+               This is the rule `19` §19.4 already uses, apart from its µs
+               flooring for output.
+Raised by:   Q-044, Q-045 (Planner, T-041, via coordinator)
+Impact:      - `WorldBudgetTests` goes to a full day (T-041, already
+               filed).
+             - `FlowBudgetTests` (a one-hour mean) needs a doc-comment edit
+               marking it an extra check.
+             - `sim.core` `BudgetTests` (a day total, no p99) is flagged to
+               the Planner to assess.
+             - Schedule, promotion and stress budget tests already conform.
+             - No `src/` change, and no scope added.
+Signed off:  not required (measurement protocol, not balance).
