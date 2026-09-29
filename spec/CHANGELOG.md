@@ -2297,3 +2297,69 @@ Revision 2:  after the second PR #61 review (rejected at 623e5fe):
                line does.
 Signed off:  owner, 2026-09-29 (the category, where it runs, and the
              pre-merge requirement). The thresholds are the Architect's.
+
+## 2026-09-29 — spec/19 intro, §19.2, §19.2a (new), §19.4, §19.6 (new); 08 §8.5; 09 §9.10; INDEX; open-questions — Q-041, Q-042, Q-043: T-009's test location, the Phase 0 CLI composition, the boarding stand-in
+Reason:      T-009's Test Author raised three questions.
+             - **Q-041:** the task file put the tests in
+               `tests/sim/core`, which `07` L3 cannot compile against the
+               factories or `HarnessGates`. `tests/tools/simharness` is
+               confirmed.
+             - **Q-042:** §19.2 deferred the CLI composition to "the first
+               composing task" but never specified it. §19.2a now pins
+               one Phase 0 composition for every subcommand:
+               - four Test Author fixtures, one of them a new content
+                 fixture read through a manifest, never `data/`;
+               - how the harness finds them (the `AirportSim.sln` root,
+                 Q-031);
+               - when loading happens, and that its failures are exit 3;
+               - construction and registration order.
+               T-006's CLI tests replace their empty-composition hashes
+               with the Test Author kit's `FinalHash`. §19.2's promise
+               that exit codes 1 and 3 become reachable through the CLI is
+               withdrawn.
+             - **Q-043:** confirmed that nothing calls `Absorb` at Phase
+               0, so the `Gate` grows by about 400 cohorts a sim-day, and
+               the merged pairwise merge makes that quadratic. A
+               harness-internal boarding stand-in at registry position 3
+               calls `Absorb` at each departure's STD, hashes 0, and is
+               removed when `sim.airside` joins. `08` §8.5 names it as the
+               only non-test probe. `09` §9.10 states that `Absorb` bounds
+               the keys.
+Raised by:   Q-041, Q-042, Q-043 (Test Author, T-009, via coordinator)
+Impact:      - **No merged `src/` changes.** `sim.flow`, `sim.schedule`
+               and `sim.world` are untouched.
+             - **Merged tests change**, all of them T-006's CLI tests in
+               `tests/tools/simharness/HarnessCliTests.cs`. Seven expected
+               hashes move from the empty composition to the Phase 0 kit
+               composition, the equivalence test switches to the kit, and
+               one budget test is renamed (§19.6). The T-009 Test Author
+               makes these edits in the T-009 test branch, and they merge
+               with the T-009 worker's harness change (`07` L9). CI's
+               `determinism`, `saveload` and `promotion` hashes all change
+               when T-009 merges. That is expected, and no golden is
+               checked in `ci/`.
+             - **T-009 test branch** (`f531ca7`): the content moves from
+               C# into `tests/fixtures/harness/`; the kit gains the probe
+               at position 3; the "nothing absorbs" load check becomes the
+               §19.6 conservation, `Absorb` and cohort-ceiling checks.
+             - **T-009 worker** (`tools/SimHarness/**`): adds the three
+               `ProjectReference`s, the fixture locator, the manifest
+               content source, the composition and the stand-in.
+             - **Planner:** correct `tasks/T-009-100-day-run.md` (tests
+               path, writable paths `tests/tools/simharness/**` and
+               `tests/fixtures/harness/**`, readable specs, and the
+               stand-in in its description), per Q-041.
+             - **Scope:** none added. The stand-in is a harness test
+               driver for an existing `12` §12.7 call, not a game system.
+             **LOW CONFIDENCE — owner review first (Q-043).** It is the
+             Architect's reading that the choice of `Absorb` caller is
+             architecture, and that the kill gate's scope is unchanged:
+             the same modules, fixtures, 100 days and 60 s. If the owner
+             disagrees, the remaining options (shorten the gate, relax the
+             budget, or wait for `sim.airside`) are the owner's.
+             **For the owner, not decided:** 60 s for 1 440 000 ticks is
+             about 41.7 µs a tick, about 1/144 of `01`'s 6 ms tick. It is
+             unmeasured with the stand-in. A miss escalates to the owner
+             under T-009's "Done when".
+Signed off:  not required (architecture). Owner review requested on the
+             LOW CONFIDENCE item.

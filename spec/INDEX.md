@@ -182,7 +182,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   speed)` at Phase 0/1, and with a required reference-model test (§9.6,
   Q-036)**; **only `Departing` cohorts at Phase 0/1: `Inject` rejects
   other directions (§9.6, §9.7, Q-040)**; **gate count in `sim.flow`-local fixtures is
-  fixture sizing (§9.10, Q-037)**; factory plus `IFlowGraphLoader`, where
+  fixture sizing (§9.10, Q-037)**; **`Absorb` bounds the keys, so a run
+  meant to measure cost includes an `Absorb` caller (§9.10, Q-043)**;
+  factory plus `IFlowGraphLoader`, where
   `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
   **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
@@ -319,13 +321,21 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 ### `19-interfaces-harness.md` — `tools.simharness` CI gates (new, Q-025–Q-027)
 - Owns: the public surface of the harness (`HarnessCli`, `HarnessGates`,
   `SimComposer`, `GateResult`), the NoOp command script, the run comparison,
-  exit codes 0/1/2/3, the one-line stdout, `budget --tier max`.
+  exit codes 0/1/2/3, the one-line stdout, `budget --tier max`; the Phase 0
+  CLI composition and its boarding stand-in (§19.2a); the T-009 tests
+  (§19.6).
 - Key: harness tests run in process from `tests/tools/simharness` (`07`
-  L1/L3); the divergence seam is an injected composer, with no CLI flag;
+  L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
+  an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
-  `promotion` passes vacuously until T-010; the CLI composition registers no
-  systems until a task amends it.
-- LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
+  `promotion` passes vacuously until T-010; **every CLI subcommand uses one
+  Phase 0 composition over four Test Author fixtures, found from the
+  `AirportSim.sln` root, with content from a manifest and never from
+  `data/` (§19.2a, Q-042)**; **a harness-internal stand-in at registry
+  position 3 calls `Absorb` for each departure at `STD`, hashes 0, and is
+  removed when `sim.airside` joins (§19.2a, Q-043)**.
+- LC: the `budget` load before a max-tier fixture exists (§19.4); the
+  boarding stand-in as the kill gate's reading at Phase 0 (Q-043). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
   `sim.save` (§19.5).
 - Read if: T-006, T-009, T-030; the Test Author for the harness.

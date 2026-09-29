@@ -2,7 +2,8 @@
 
 Pins the harness subcommands that `ci/run-checks.sh` invokes, their exit
 codes and output, and the public surface that the harness's own test project
-compiles against. It answers `open-questions.md` Q-025, Q-026 and Q-027.
+compiles against. It answers `open-questions.md` Q-025, Q-026 and Q-027,
+and, for T-009's Phase 0 composition, Q-041 to Q-043.
 Notation is as in `08-interfaces-core.md`. Where this file appears to
 contradict `01-architecture.md` or `02-determinism.md`, those win and it is a
 spec bug. `ci/**` is the human owner's. This file describes what the harness
@@ -10,7 +11,9 @@ does when it is invoked the way `ci/run-checks.sh` already invokes it, and it
 never asks for a change there.
 
 Reading order for a harness worker: `01`, `02`, `07`, `08` §8.5, §8.5a,
-§8.7, §8.9 and §8.11a, then this file. The `checkpoints` subcommand is
+§8.7, §8.9 and §8.11a, then this file. For §19.2a, also `09` §9.7 and
+§9.11, `11` §11.7 and §11.9, `12` §12.3 and §12.7, and `18`. The
+`checkpoints` subcommand is
 `16` §16.8, and nothing here changes it.
 
 ---
@@ -101,21 +104,119 @@ If every checkpoint agrees but the final hashes differ: `final`.
   only. The harness task depends on T-010 and on the CLI composition
   including `sim.flow`, and the Planner creates it (Q-033). Until then, a
   harness that stubs the comparison is wrong.
-- **The CLI composition.** For CLI runs, `content` is
-  `ContentIndexFactory.Create` of an empty list, and the composer registers
-  **no systems**. The task that first puts a module into the harness
-  amends this line with that module's composition (T-009 is expected to be
-  first). At T-006, the gates therefore prove the loop, the queue and the
-  core section only.
+- **The CLI composition.** Every CLI run, of every subcommand in §19.3,
+  uses the Phase 0 composition of §19.2a (Q-042, from T-009). It replaces
+  T-006's empty composition, which no CLI form selects any more. The empty
+  composition stays reachable only through `HarnessGates` with a composer
+  that registers nothing, as the gate tests already use it. No option,
+  flag or environment variable selects a composition.
 - **Untested by design (Q-029).** `at=world` and `at=count` cannot be
   reached. Runs of one gate step the same ticks at the same checkpoint
   cadence, so their counts match. A world hash is a function of the tick,
   `CoreHash` and `SystemHashes`, so it cannot differ while those agree. Both
-  stay in the grammar as defensive reports. With the empty CLI composition,
-  exit codes 1 and 3 cannot be reached through `HarnessCli.Run` either. The
+  stay in the grammar as defensive reports. Exit codes 1 and 3 cannot be
+  reached by a test through `HarnessCli.Run` either (Q-042). Code 1 needs a
+  nondeterministic composition, and the Phase 0 composition is
+  deterministic. Code 3 needs a missing or invalid repository fixture, which
+  an in-process test cannot arrange without writing repository files. The
   divergence seam (§19.1) proves failure through `HarnessGates` instead, and
-  no CLI seam is added. The task that first amends the CLI composition makes
-  them reachable, and its tests cover them.
+  no CLI seam is added. T-006's earlier statement that the first composing
+  task makes them reachable is withdrawn.
+
+## 19.2a The Phase 0 CLI composition (Q-042, Q-043)
+
+Binding on T-009 and on every later harness task until an amendment
+changes it. It composes `sim.world`, `sim.schedule` and `sim.flow` over
+the Phase 0 fixtures, plus a harness-internal **boarding stand-in** in
+`sim.airside`'s empty registry slot.
+
+**Inputs.** Four fixtures, all written by the Test Author (`07` L8). The
+harness reads nothing else, and never reads `data/`.
+
+| Input | Repository path | Loaded with | `sourceName` |
+|---|---|---|---|
+| content | manifest `tests/fixtures/harness/phase0-content.files`, files under `tests/fixtures/harness/phase0-content/` | `ContentLoaderFactory.Create().Load(source)`, then `ContentIndexFactory.Create` of the result (`08` §8.11) | none |
+| walk graph | `tests/fixtures/world/phase0-landside.json` | `WorldFactory.CreateGraphLoader().Load` (`18`) | `phase0-landside.json` |
+| flow graph | `tests/fixtures/flow/phase0-landside.flow.json` | `FlowFactory.CreateGraphLoader().Load(…, world)` (`09` §9.11) | `phase0-landside.flow.json` |
+| schedule | `tests/fixtures/schedule/phase0-200.csv` | `ScheduleFactory.CreateLoader().Load` (`11` §11.9a) | `phase0-200.csv` |
+
+- **Locating them.** The `07` "Fixture location" rule (Q-031), applied to
+  the harness: walk up from `AppContext.BaseDirectory` to the nearest
+  ancestor directory that contains a file named `AirportSim.sln`, then join
+  the repository-relative path. The current working directory, environment
+  variables and flags are never used.
+- **When.** After the arguments parse, and before any run. A usage error
+  (exit 2) is decided before any file is read. Then every fixture file is
+  read once, and the content is loaded once, into one `IContentIndex` that
+  every run of the invocation uses. Each of these is a harness error, exit
+  3 with stdout empty (§19.3): not finding the root, failing to read a
+  file, a malformed manifest, and any load or validation failure.
+- **The content manifest.** `phase0-content.files` is UTF-8 without a BOM.
+  Each line is one path relative to `phase0-content/`, `/`-separated, and
+  ends in LF. It has no empty line and no duplicate. The harness's
+  `IContentSource` returns exactly those lines from `Files()`, and those
+  files' bytes from `ReadAll`. This is the T-027 `valid.files` convention:
+  the content never depends on directory enumeration or on stray files.
+- **The content.** It holds only the definitions the other three fixtures
+  reference: the schedule's `aircraft_type` and `pax_profile` ids, the
+  size categories those aircraft name, and the flow graph's
+  `queue_profile` ids. Its values are **fixture sizing** (`09` §9.10, `11`
+  §11.10), not balance. The Test Author chooses them so that the security
+  queues drain between banks over 100 days, and states the derivation in
+  the kill-gate test kit (§19.6).
+
+**The composer.** Every call parses the walk-graph, flow-graph and
+schedule bytes afresh and constructs fresh systems, as §19.1 requires of
+every run. It constructs in dependency order (`08` §8.11a):
+
+1. `world = WorldFactory.CreateSystem(services, walkGraph)`;
+2. `flow = FlowFactory.CreateSystem(services, flowGraph, world)`;
+3. `schedule = ScheduleFactory.CreateSystem(services, table, flow)`;
+4. the boarding stand-in, over `schedule` and `flow`.
+
+It registers in registry order (`08` §8.5): `world` (1), `schedule` (2),
+the stand-in (3), `flow` (4), and nothing else. So every checkpoint's
+`SystemHashes` has exactly four entries, in that order.
+
+**The boarding stand-in (Q-043).** A harness-internal `ISimSystem` with
+`Id = SystemId(3)`. `Name` is a free diagnostic label. It stands in for
+exactly one `sim.airside` behaviour: the departure's `Absorb` call at the
+doors-close point (`12` §12.7), taken at that point's planned tick, `STD`
+(`12` §12.3: `DoorsClosed.PlannedTick = STD`). It models no boarding hold,
+no stand and no milestone.
+
+- **Its `Tick` at tick `t`:**
+  1. if `t % TICKS_PER_SIM_DAY == 0`, it replaces its day list with
+     `schedule.MovementsBetween(t, t + TICKS_PER_SIM_DAY,
+     MovementKind.Departure)`. Day `t / TICKS_PER_SIM_DAY` is always
+     materialised by then (`11` §11.9), and the list is in ascending
+     `ScheduledTick`, then `FlightId` (`11` §11.7);
+  2. for each flight in the day list whose `ScheduledTick` equals `t`, in
+     list order, it calls `flow.Absorb(PHASE0_DEPARTURE_SINK, flight)` and
+     discards the return value.
+  So every departure whose `STD` falls inside the run is absorbed exactly
+  once, at `STD`. `sim.schedule` (2) ticks before it, so a passenger
+  injected at `STD` is already in `sim.flow`, and is reported missed.
+- **`PHASE0_DEPARTURE_SINK = NodeId(9)`**, the only `Sink` node of
+  `tests/fixtures/flow/phase0-landside.flow.json`. It is a harness-internal
+  constant. If that fixture's `Sink` changes, this line is amended in the
+  same change. A wrong value throws in `Absorb` (`09` §9.7), which is exit
+  3.
+- **Events.** It publishes nothing itself, and it subscribes to nothing.
+  `Absorb` publishes `sim.flow`'s events, with the stand-in as the
+  envelope's `Source` (`09` §9.7 "Outside a tick"). It never emits a
+  `sim.airside` event (`10` §10.3).
+- **State.** `ComputeStateHash()` returns `0`. Its day list is a function of
+  the tick and of `sim.schedule`'s hashed state, so, like `09` §9.10's
+  derived state, it is not hashed. It consumes no RNG, and it allocates
+  only in step 1.
+- **Scope.** It exists only in this composition. The amendment that adds
+  `sim.airside` to the harness removes it in the same change. No
+  production composition (`16`) registers it. `08` §8.5's probe-system
+  allowance covers it.
+
+**`budget --tier max`** times the first sim-day of this composition
+(§19.4).
 
 ## 19.3 The command line (Q-026)
 
@@ -189,10 +290,13 @@ stay in each module's own tests (`03`, "How a budget is measured"). The
 harness does not re-assert them.
 
 > **LOW CONFIDENCE — the load.** `03` names a max-tier fixture, and the harness
-> has none until modules are composed into it. Until then, `budget --tier max`
-> times the CLI composition, which at T-006 is core alone, and the task that
-> amends the CLI composition (§19.2) brings the load with it. The measurement
-> is on the CI agent, with no scaling factor applied.
+> has none. Until one is specified, `budget --tier max` times the CLI
+> composition. From T-009 (Q-042) that is the first sim-day of the Phase 0
+> composition (§19.2a): 200 movements and about 20 000 departing passengers,
+> well below max tier (`01`). So a PASS here says little about max tier. The
+> max-tier load arrives with the max-tier fixture, by amendment. Fixture
+> loading is not timed, since only `Step(1)` calls are. The measurement is on
+> the CI agent, with no scaling factor applied.
 
 ## 19.5 Save/load before `sim.save` — HUMAN DECISION (Q-027)
 
@@ -217,3 +321,59 @@ What the owner weighed:
 - Rejected: defer `determinism_save_load` until `sim.save`. That
   contradicts `02` "no temporarily disabled" and would need an edit to `02`
   and to `ci/`, both human-only.
+
+## 19.6 Tests of the Phase 0 composition and the kill gate (Q-041 to Q-043)
+
+Binding on T-009's Test Author.
+
+- **Location (Q-041).** Every T-009 test, the kill-gate tests included, is
+  in `tests/tools/simharness/`. `07` L3 lets `tests/sim/core` reference
+  only `src/sim/core`, so that project cannot see the three factories or
+  `HarnessGates`. The harness test project sees `sim.world`, `sim.schedule`
+  and `sim.flow` through the harness's own references, which T-009 adds
+  (`07` L8).
+- **The kit composition.** A test that needs the Phase 0 systems
+  themselves builds its own composer from the same four fixtures, exactly
+  as §19.2a does. It uses the same construction and registration order. It
+  loads the content with `ContentLoaderFactory`, through the test's own
+  `IContentSource` over the manifest. At position 3 it registers a probe
+  system (`08` §8.5) that behaves as the stand-in and whose
+  `ComputeStateHash()` returns `0`. It registers nothing else, so its
+  hashes equal the CLI's. The probe may call `sim.flow` and `sim.schedule`
+  queries and record what they return, since queries change no hashed
+  state.
+- **The equivalence test.** `test_harness_cli_hash_only_matches_final_hash_gate`
+  compares `determinism --days 1 --seed 99 --hash-only` with
+  `HarnessGates.FinalHash` of the kit content and the kit composer, seed
+  99, 14 400 ticks, in place of the empty composition. It ties the kit to
+  the CLI, so a kill-gate test built on the kit measures the CLI
+  composition.
+- **T-006's other CLI tests** in `HarnessCliTests.cs`. Every expected hash
+  that they compute with `EmptyCompositionFinalHash(n)` becomes
+  `HarnessGates.FinalHash(kit content, kit composer, seed, n)`, with the
+  invocation's own seed and tick count, where `saveload` and `promotion` use
+  seed 12345 (§19.3). A literal golden may be added beside it, but is not
+  required. `test_harness_cli_budget_core_only_day_passes` is renamed
+  `test_harness_cli_budget_phase0_day_passes`, with its assertions
+  unchanged. No other CLI test changes. `HarnessGatesTests.cs` and
+  `EmptyCompositionFinalHash` are unchanged, since they test the gates with
+  their own composers.
+- **The kill-gate tests.**
+  - (a) One run of 1 440 000 ticks with seed 12345, through
+    `HarnessGates.FinalHash` with the kit, completes in under 60 s of wall
+    clock, measured per `07` L11.
+  - (b) `HarnessGates.SameProcess` with the kit, the same seed and ticks,
+    passes, with `checkpoints=2400`.
+
+  Both are Slow by `07` L11a rule (a). After the run, a load check replaces
+  the assumption that nothing absorbs:
+  - `PublishedFlights()` holds 101 × 200 flights;
+  - the head count is conserved. The passengers injected equal the
+    population on all nodes at the end, plus
+    `PopulationForFlight(flight, Departing)` summed over the probe's
+    `Absorb` calls, each read just before its call;
+  - the sum of the `Absorb` return values is above 0;
+  - the live cohorts at the end, `CohortsAt(node).Count` summed over all
+    nodes, are at most a ceiling that the Test Author sets and derives in
+    the test (`09` §9.10). This is the check that catches a `Gate` growing
+    without bound.

@@ -670,6 +670,15 @@ demands, stated so it is not discovered late:
   value is **fixture sizing**, not balance and not a sim constant (Q-033).
   The Test Author sets it per fixture, as for `11` §11.10, and states its
   derivation in the test.
+- **Merging bounds cohorts per key, and `Absorb` bounds the keys (Q-043).**
+  A `Gate` keeps its cohorts until `Absorb` (§9.6), so a composition in
+  which nothing calls `Absorb` accumulates every departed flight's keys
+  there without bound. Its per-tick cost then grows with the run, and a
+  merge step that compares a node's cohorts pairwise, as the merged code's
+  does, grows quadratically. No `sim.flow` rule changes. Every run longer than a day
+  that is meant to measure cost includes an `Absorb` caller:
+  `sim.airside` (`12` §12.7), a test's driver (T-011's `StressDay`), or the
+  harness's boarding stand-in (`19` §19.2a).
 - **Gate count is fixture sizing too (Q-037).** A `sim.flow`-local stress
   or budget fixture builds its own walk graph and does not load
   `tests/fixtures/world/phase0-landside.json`. It may declare several
