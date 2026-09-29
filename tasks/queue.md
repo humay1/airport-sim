@@ -43,10 +43,64 @@ applied this cycle:** `08` §8.6 "Allocation" binds `IEventBus` to allocate
 nothing after `Build`. T-007's own budget test (no allocation in the update
 path) was unreachable while the bus it publishes through allocated, so a
 new task, **T-036** (`sim.core`, `src/sim/core/EventBus.cs`/`Channel.cs`
-only, depends on T-001, five named tests, `TESTS_AUTHORED` on
-`test-author/T-036-eventbus-zero-alloc-tests`), closes the gap. T-007 now
-depends on T-036 as well, with no code change of its own. See the T-036 row
-and its release-order entry, and the Phase 0 status corrections below.
+only, depends on T-001, five named tests), closed the gap. T-007 depended
+on T-036 as well, with no code change of its own. **Both are now MERGED**
+(T-036 PR #47, T-007 PR #48) — status correction, this cycle; the previous
+rows here were stale. See the T-036/T-007 rows and the release-order entry
+below.
+
+**Q-035 flake fix, this cycle:** T-036's own zero-allocation tests (and the
+pre-existing `BudgetTests`/`RandomServiceTests`) flaked under `GC.GetAlloc-
+atedBytesForCurrentThread` — a spurious non-zero delta when the runtime
+retires a partly used allocation context mid-window, not a real allocation.
+The CI path guard scopes a `test-author/T-036-*` branch to T-036's own
+writable paths (`src/sim/core/EventBus.cs`/`Channel.cs` only, no `tests/`),
+so the fix needs its own task: **T-037** (`tests/sim/core/**`,
+`tests/sim/world/**` only, depends on T-036 merged), a shared
+`Allocation.Start()`/`Since()` meter that forces a full GC before the
+baseline read. Assertions stay exactly `0`, no tolerance. See the T-037 row.
+**T-037 is now MERGED** (PR #51, `7bb30b5`) — status correction, this
+cycle; the previous "not yet merged" text here was stale.
+
+**T-038, this cycle:** `tests/sim/flow/**` (arrived with T-007, merged)
+carries three of its own zero-allocation assertions
+(`BoardingTests.cs`/`FlowBudgetTests.cs`/`OutstandingCostTests.cs`) reading
+`GC.GetAllocatedBytesForCurrentThread` directly, outside T-037's writable
+paths, so they get the same flake and their own task, **T-038**
+(`tests/sim/flow/**` only, depends on T-037 and T-007). **Release order,
+binding:** T-037 has merged; **T-010 has not** — T-010's worker and Test
+Author branches, and the T-011 Test Author's branch, are all currently
+writing `tests/sim/flow/**`, the same directory this task writes.
+Releasing T-038 before T-010 actually merges risks clobbering or
+conflicting with their tests. See the T-038 row and its own worker notes.
+
+**T-011, this cycle:** its Test Author's PR (`test-author/T-011-stress-30k-
+tests`, `a885923`, `tests/sim/flow/StressDay.cs`/`FlowStressBudgetTests.cs`)
+hit the same path-guard failure PR #49 hit — a `test-author/T-011-*` branch
+is checked against T-011's own writable paths, which were `src/sim/flow/**`
+only, so `tests/sim/flow/**` is added back to T-011's writable paths
+(`ci/check-paths.sh`'s `protected_for_role` already blocks a *worker* from
+`tests/`, so this does not reopen Q-021). T-011's "Spec source" line was
+also wrong: `spec/00-overview.md` carries no kill-gate text at all — the
+kill-gate framing is this file's own "Phase 0 — feasibility spike (the kill
+gate)" heading and **Gate:** note below, not a spec section; T-011's task
+file is corrected to cite `tasks/queue.md`, not `00-overview.md`. The tests
+pass the budget against `main` today (mean `0.50`–`0.63` ms, p99
+`2.60`–`3.26` ms against `2.5`/`5.0`, `0` bytes allocated, peak `252` live
+cohorts), but merge only after **T-010** merges, same reasoning as T-038 —
+`tests/sim/flow/**` is shared with T-010's still-open branches. A worker is
+needed only if the budget fails once T-010's code lands.
+
+**Q-040 (a), this cycle, spec PR #55 (merged, `3a6ba7c`):** at Phase 0/1
+there are no arriving or transferring passengers, so `Inject` must reject
+`key.Direction ≠ Departing` as `09` §9.7's check 4, appended after
+unknown-`at`/not-a-`Source`/`count<=0`. Merged T-007 code
+(`src/sim/flow/FlowSystem.cs` `Inject`) implements only the first three
+checks. New task **T-039** (`src/sim/flow/**` only, depends on **T-010**,
+PR #56, open) closes the gap; the Test Author's own test is
+`test_inject_rejects_non_departing_direction` (`09` §9.7). **T-039 must not
+release before T-010 merges** — T-010's own PR also edits
+`FlowSystem.cs`. See the T-039 row and its release-order entry.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
 `architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
@@ -102,15 +156,18 @@ to wave through a failing `determinism` check.
 | T-004 | State hashing + checkpoint reporting | sim.core | T-001, T-003 | MERGED |
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
-| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | IN_PROGRESS (blocked on T-036 merging, for its budget test) |
-| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (blocked on T-007 merging) |
+| T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | MERGED (PR #48) |
+| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (all dependencies now merged — releasable) |
 | T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED (tests being authored) |
-| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | QUEUED |
+| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | TESTS_AUTHORED (`test-author/T-011-stress-30k-tests`, blocked on T-010 merging) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
-| T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | TESTS_AUTHORED (`test-author/T-036-eventbus-zero-alloc-tests`) |
+| T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
+| T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | MERGED (PR #51, `7bb30b5`) |
+| T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | QUEUED (blocked on T-010 merging) |
+| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | QUEUED (blocked on T-010 merging) |
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -156,16 +213,22 @@ direct `Depends` edge. Order:
    serialises against any other open `sim.core` task by the same shared-path
    rule as T-002/T-004/T-005/T-026/T-027, but depends on none of them
    directly. **T-036 must merge before T-007** — its budget test needs a
-   non-allocating bus to publish through (see the Q-035 note above).
-8. **T-007** — after T-003, T-012, T-026 **and now T-036** all merge
-   (`Depends on` amended, above: `CohortKey.PaxProfile` is `ContentId`, a
-   T-026 type, in addition to the `NodeId`/`EdgeId` it already picks up
-   transitively through T-012; and its own budget test needs T-036's fix,
-   Q-035). Different module directory (`src/sim/flow/**`), so it may run
+   non-allocating bus to publish through (see the Q-035 note above). **T-036
+   is now MERGED** (PR #47, status correction this cycle).
+7b. **T-037** (`tests/sim/core/**`, `tests/sim/world/**` only — the flaky
+   zero-allocation measurement fix) — after T-036 merges; touches only
+   `tests/`, so it does not serialise against any `sim.core` `src/` task.
+   Assigned to a Test Author, not a worker. **T-037 is now MERGED** (PR #51,
+   `7bb30b5`, status correction this cycle). T-038 (Phase 1, `sim.flow`
+   tests) depends on it — see 12a below.
+8. **T-007** — after T-003, T-012, T-026 **and T-036** all merge (`Depends
+   on` amended, above: `CohortKey.PaxProfile` is `ContentId`, a T-026 type,
+   in addition to the `NodeId`/`EdgeId` it already picks up transitively
+   through T-012; and its own budget test needed T-036's fix, Q-035).
+   Different module directory (`src/sim/flow/**`), so it may run
    **concurrently** with any still-open `sim.core` task once its own
-   dependencies are met. **T-007 is now `IN_PROGRESS`** (status correction,
-   this cycle — the previous `QUEUED` row was stale), blocked on T-036
-   merging, not on any spec gap of its own.
+   dependencies are met. **T-007 is now MERGED** (PR #48, status correction
+   this cycle — the previous `IN_PROGRESS` row was stale).
 9. **T-006** — after T-004 merges.
 10. **T-008** — after T-001, T-003, T-026 **and now T-007** all merge
     (`Depends on` amended, above: `FlightRecord.MinTurnaround` is
@@ -194,7 +257,24 @@ direct `Depends` edge. Order:
     with a still-open T-006).
 12. **T-010, T-011** — releasable once T-007 merges, in `src/sim/flow/**`
     sequence after T-007 (and, since T-023 also lands in that directory,
-    serialised against it too — see Phase 1 below).
+    serialised against it too — see Phase 1 below). **T-011's Test
+    Author's tests are done and green against `main`** (see the T-011 note
+    above), **but that PR does not merge before T-010** — both write
+    `tests/sim/flow/**`, and T-010 is still open. T-011's own writable
+    paths now include `tests/sim/flow/**` (Q-021's worker restriction is
+    unaffected; see T-011's task file), so its Test Author's branch can
+    pass the path guard, the same fix T-038 needed for T-036/T-037.
+12a. **T-038** (`tests/sim/flow/**` only, the flow flake fix) — **T-037 has
+    merged** (PR #51, `7bb30b5`); still waiting on **T-010**. Shares
+    `tests/sim/flow/**` with T-010's and T-011's Test Author branches,
+    currently open — release only once T-010 has actually merged, not
+    merely once it is `QUEUED`/`IN_PROGRESS`, to avoid conflicting with
+    tests those branches are still writing.
+12b. **T-039** (`src/sim/flow/**` only, the `Inject` direction-rejection
+    fix, Q-040) — after **T-010** merges (PR #56, open as of this cycle,
+    also edits `src/sim/flow/FlowSystem.cs`). Release only once T-010 has
+    actually merged, same reasoning as T-038/12a, to avoid a conflicting
+    edit to the same file.
 13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
     shared with T-006/T-030/T-014 — do not release concurrently with any of
     them.

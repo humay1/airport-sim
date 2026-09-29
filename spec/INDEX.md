@@ -167,7 +167,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   handler's `Validate`/`Apply` rules (§9.8); mandatory merging
   is a budget requirement (§9.3); **routing over `sim.world`'s walk graph:
   pooled `Gate` destinations, lowest traversal plus queue wait along
-  `PathVia` (§9.6, Q-012)**; factory plus `IFlowGraphLoader`, where
+  `PathVia` (§9.6, Q-012)**; **an optional routing cache under six binding
+  rules, observably identical to the uncached rule, keyed by `(node, walk
+  speed)` at Phase 0/1, and with a required reference-model test (§9.6,
+  Q-036)**; **only `Departing` cohorts at Phase 0/1: `Inject` rejects
+  other directions (§9.6, §9.7, Q-040)**; **gate count in `sim.flow`-local fixtures is
+  fixture sizing (§9.10, Q-037)**; factory plus `IFlowGraphLoader`, where
   `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
   **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
@@ -189,8 +194,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: flight records, derived `FlightId`, CSV fixture format, publication,
   show-up curve and injection.
 - Key: query-only; no RNG; fixture hash fed into the state hash; runs
-  identically with or without `sim.flow` (§11.6).
-- LC: none.
+  identically with or without `sim.flow` (§11.6); **show-up buckets are
+  bounded by the one-day publish lead, so no injection's tick is before
+  its publication's tick. On a shared tick, `sim.flow` has the cohort
+  before handlers see the plan, which is accepted (§11.6, §11.9a,
+  Q-038)**; **at most `MAX_FIXTURE_ROWS`
+  (99999) rows per file, which makes `FlightId` unique and decodable
+  (§11.3, §11.4, Q-039)**.
+- LC: none. The 1440-minute show-up bound is owner-confirmed 2026-09-28
+  (Q-038).
 - Read if: T-008; §11.3/§11.7 for consumers.
 
 ### `12-interfaces-airside.md` — `sim.airside`
@@ -288,7 +300,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   path, ties by edge sequence); no runtime state; the hash is the fixture
   hash; registry 1; **the file is the `08` §8.11 JSON subset (`nodes`, `edges`),
   and a load failure is `FormatException` (Q-030)**. **Gate assignment is deferred to the owner**, and Phase 0/1
-  pools gates in one lounge (§18.5). Construction, grid and flow fields are
+  pools gates in one lounge in the shared fixture, while `sim.flow`-local
+  fixtures may pool several (§18.5, Q-037). Construction, grid and flow fields are
   deferred.
 - LC: none marked; the gate-pooling stopgap is flagged in `CHANGELOG.md`.
 - Read if: the `sim.world` task; `sim.flow` (§18.2, §18.3, §18.5).
@@ -315,11 +328,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Q-002 to Q-035 are answered (Q-016 by the owner: `--fast`
+- Open now: none. Every question in the file from Q-002 on is answered
+  (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
   balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
   and review of the Q-034 LOW CONFIDENCE proposals: the `Low` and `Medium`
-  values (`15` §15.14) and the 2 GB memory budget (`16` §16.10).
+  values (`15` §15.14) and the 2 GB memory budget (`16` §16.10); and the
+  Q-037 recommendation of 60 pooled `Gate` nodes for the 90k max-tier
+  `sim.flow` fixture.
 - Read if: before starting any task, check that your task is not blocked
   here.

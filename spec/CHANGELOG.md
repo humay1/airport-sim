@@ -1953,3 +1953,266 @@ Impact:      **Merged `sim.core` diverges.** `src/sim/core/EventBus.cs` and
              implementer can share it if that figure matters. No scope
              added.
 Signed off:  not required. `01` and `02` are untouched.
+
+## 2026-09-28 — spec/09 §9.6 "Routing cache" (new), §9.6 destinations, §9.7 `Inject`, §9.10; 18 §18.5, §18.6; INDEX; open-questions — Q-036, Q-037, Q-040: routing-cache rules, gate count in `sim.flow` fixtures, `Departing`-only cohorts
+Reason:      T-011's black-box scaling runs show routing cost linear in the
+             number of pooled gates (p99 of 9.9 ms at 96 gates), with the
+             worst ticks after show-up injections. `09` allowed a cache but
+             never said what it must preserve. It also left open whether
+             `18` §18.5's single `Gate` bound `sim.flow` stress fixtures.
+             - **Q-036:** six binding rules for an optional cache (§9.6):
+               - observably identical: the same per-pair cost `Raw` and
+                 the same tie-break, with per-node terms that are each
+                 node's own §9.12 value;
+               - a static part from three named sources that may live for
+                 the run;
+               - a wait-dependent part memoised within one tick only;
+               - not hashed, not saved, rebuilt on restore;
+               - no allocation;
+               - no other inputs.
+               It also names the required oracle test,
+               `test_flow_routing_cache_matches_uncached_reference`, with
+               mandatory cases, owned by the Test Author of whichever
+               `sim.flow` task adds the cache.
+             - **Q-037:** the single `Gate` binds the shared file
+               `phase0-landside.json` and fixtures that load it.
+               `sim.flow`-local stress and budget fixtures build their own
+               graph and may pool several gates, stating the count and its
+               derivation (§9.10, §18.5). §18.6's list of users is
+               corrected.
+Revision:    after the PR #55 review (rejected at 9741b6d), four findings
+             were fixed:
+             - (1) §18.6 no longer lists T-011's stress fixture as a user
+               of the shared file. The single-gate scope is now "the file
+               and fixtures that load it", in §18.5, §18.6, §9.10 and
+               Q-037.
+             - (2) Rule 1 no longer forbids reordering or factoring on a
+               false premise. `Fx.Add` and integer-multiple `Mul` are exact
+               and every term is non-negative (`08` §8.3), so the grouping
+               cannot change `Raw` or the overflow condition. The real
+               hazards are named instead: per-node `Ceil` in
+               `traversalTicks` and per-node `Div` in the predicted wait.
+             - (3) Rule 2 names its three sources: `IWorldSystem`'s
+               load-time answers, the `FlowGraph` node behaviour, and the
+               pax profiles' walk speeds. Rule 4 rebuilds from exactly
+               those.
+             - (4) The oracle test now requires these cases:
+               - distinct walk speeds released from one node in one tick,
+                 choosing different edges;
+               - exact-cost gate and edge ties;
+               - lane changes;
+               - a blocked re-route;
+               - a show-up spike;
+               - a restart.
+               Rule 3 explains why differing destination sets cannot occur
+               at Phase 0/1: the effective set is filtered by
+               `CanReachVia` from the current node. It also binds the
+               amendment that makes them possible to extend the key and the
+               test. The restart case says what it proves: until
+               `sim.save`, replay shows reproducibility only (finding 5).
+Revision 2:  after the second PR #55 review (rejected at 2dab56a):
+             - (1) Rule 3's claim that cohorts on one node cannot differ in
+               destination set was false. `Inject` accepts any
+               `FlowDirection` (§9.7). Rule 3 now fixes the key itself: an
+               entry serves a cohort only for the same node, walk speed and
+               every cohort field that determines the destination set,
+               which is `Key.Direction` at Phase 0/1. The allowed forms are
+               `(node, Direction, walk speed)`, or `(node, walk speed)`
+               used for `Departing` cohorts only. A `(node, walk speed)`
+               memo serving every direction is a review rejection. The
+               oracle test gains a Direction case: a `Departing` and a
+               non-`Departing` cohort on one node in one tick, in both
+               `CohortId` orders. How non-`Departing` cohorts are routed is
+               filed as Q-040 (OPEN), and the cache rules do not depend on
+               its answer.
+             - (2) The assertion now covers every cohort that attempts
+               release, not only those that leave. A refused cohort's
+               target is checked through `BlockedBy`, and a `Queue`'s
+               served count through the oracle's FIFO service. The restart
+               paragraph no longer overclaims: the per-tick assertion
+               covers scripted states, and review covers the rest until
+               the restore arm exists.
+             - (3) The test's owner is "the Test Author of whichever
+               `sim.flow` task adds the cache" everywhere.
+             - Notes tidied:
+               - the edge-tie "file order" clause is dropped, because
+                 `18` §18.3 returns edges in ascending id;
+               - the gate tie now puts the lower-id gate behind the
+                 higher `EdgeId`;
+               - rule 2 lists all of `IWorldSystem`'s load-time answers.
+Revision 3:  after the third PR #55 review (rejected at ba17fda):
+             - (1)/(3) **Q-040 is answered (a).** At Phase 0/1, `Inject`
+               rejects `key.Direction ≠ Departing` (§9.6, §9.7), because
+               the spec defines no destinations for other directions. Rule
+               3's key is therefore `(node, walk speed)`. The Direction case
+               and its comparison run are removed, which leaves no
+               undefined oracle step.
+             - (2)/(4) The oracle is now a lockstep, uncached **reference
+               model of §9.12's whole tick**, carrying its own credit,
+               cohorts, episodes and flags from tick 0. Every input is
+               named with its source: the flow-graph JSON the test writes,
+               the content it builds, `IWorldSystem`, and the script.
+               Nothing comes from `FlowGraph` internals or `ServiceCredit`.
+               It compares:
+               - per-node, per-`CohortKey` head counts;
+               - `Population` and `PredictedWaitMinutes`;
+               - `(kind, Held, BlockedBy, Key)` event multisets.
+               It does not compare `CohortId`s, which settles the "served
+               part" note.
+             - Notes fixed:
+               - the "differing-set case" wording;
+               - the restore-arm sentence is moved out of the Review
+                 bullet.
+Revision 4:  after the fourth PR #55 review (rejected at b9b0371):
+             - (1) §9.3 and §9.12 now say that **every move takes a new
+               `CohortId`**: a whole cohort as well as a served part,
+               allocated in movement order. That fixes the relative id
+               order of same-tick arrivals, and so the `Queue` FIFO
+               tie-break. It is the merged behaviour (`MoveCohortPortion`
+               always allocates), so no code change follows. The reference
+               keeps its own id counter, advanced at the same points, and
+               uses it only for ordering.
+             - (2) §9.7 `Inject` gives a total check order: unknown `at`,
+               not a `Source`, `count <= 0`, then direction. The first
+               three are the merged order.
+             - (3) The reference's scope names §9.7's `Inject` and
+               `Absorb`, including boarding, missed removal and
+               `FlowUnblocked`.
+             - (4) A `FlowUnblocked`'s `Key` is the one the test remembered
+               at the episode's `FlowBlocked`.
+Revision 5:  after the fifth PR #55 review (rejected at 9f37ffa):
+             - (1) The reference test pins where the script runs:
+               `sim.world` at 1, one scripted caller at 2, `sim.flow` at 4
+               (as `FlowRig`), and an optional recorder after it that
+               calls nothing. Every `Inject` and `Absorb` is made from the
+               caller's `Tick`, and `SetServersOpen` is a phase-1 command.
+               The reference applies each tick as commands, then calls,
+               then its own `Tick`. So `Absorb` never follows `sim.flow` in
+               a tick, and the `Key` rule always applies.
+             - (2) `test_inject_rejects_non_departing_direction` is pinned
+               in §9.7. It covers `Arriving` and `Transferring`, and
+               asserts "changes nothing" against a control run, including
+               the next id, so the `IIdAllocator` counter is not advanced.
+             - (3) A long line in "The reference" is rewrapped.
+Raised by:   Q-036 (Test Author / T-011, via coordinator), Q-037 (Architect),
+             Q-040 (Architect, from the review)
+Impact:      `main` has no cache in `src/sim/flow`, so it violates no cache
+             rule. **But merged T-007 code does not conform to Q-040:**
+             - `Inject` accepts every `FlowDirection`;
+             - `AttemptRelease` routes every cohort to the pooled gates.
+             The Planner needs a small `sim.flow` fix task:
+             - writable paths `src/sim/flow/**`;
+             - `Inject` throws `ArgumentException` for `key.Direction ≠
+               Departing`;
+             - Test Author test `test_inject_rejects_non_departing_direction`;
+             - no other merged test injects a non-`Departing` cohort, and
+               `FlowSystemTests.cs:52` only queries.
+             PR #56 (T-010) adds a per-tick cache keyed by (node, walk
+             speed). That is the Phase 0/1 key under rule 3. #56 must also
+             meet the other rules and carry the reference-model test.
+             T-011's 24-gate `StressDay` conforms to Q-037. For the Planner: a future `sim.flow`
+             performance task:
+             - writable paths `src/sim/flow/**`;
+             - depends on T-010 merged;
+             - released only on a failing budget measurement (the 90k
+               max-tier fixture decides, owner, 2026-09-28);
+             - done condition: the existing tests plus the oracle test;
+             - reviewed by `reviewer-core`, since routing is
+               determinism-critical.
+             No scope added.
+Signed off:  owner, 2026-09-28: go-ahead for both drafts. Gate assignment
+             is not brought forward.
+LOW CONFIDENCE — owner may revise: the recommended 60 pooled `Gate` nodes
+             for the 90k max-tier fixture, one per max-tier stand
+             (open-questions Q-037). It is a recommendation, not a spec
+             rule. The count is the Test Author's, with the derivation
+             stated.
+
+## 2026-09-28 — spec/11 §11.2, §11.3, §11.4, §11.6, §11.7, §11.9, §11.9a, §11.10; INDEX; open-questions — Q-038, Q-039: show-up bound, order within `Tick`, `FlightId` bound
+Reason:      The PR #54 (T-008) review found two gaps.
+             - **Q-038:** an unbounded `minutes_before_std` can put an
+               injection before its flight's publication, or before its
+               day is materialised. Those passengers are then lost, or
+               injected before `FlightPlanPublished`. The fix:
+               - `MAX_SHOW_UP_MINUTES_BEFORE_STD` (1440, derived from the
+                 publish lead) is checked at `CreateSystem`, which makes
+                 injection tick ≥ `PublishTick` hold on every day;
+               - a fixed order for `sim.schedule`'s calls within `Tick`:
+                 materialise, then publish, then inject;
+               - a statement of what is observable: injection tick ≥
+                 publication tick. On a shared tick, `sim.flow` holds the
+                 cohort (phase 2) before handlers see
+                 `FlightPlanPublished` (phase 3). That order is explicitly
+                 accepted.
+             - **Q-039:** `RowOrdinal` indexes the whole file, but only rows
+               per day were bounded, so `FlightId`s could collide across
+               days. The fix: `MAX_FIXTURE_ROWS` (99999) on total rows, a
+               line-numbered failure, and a statement of exactly what the
+               derivation guarantees.
+Raised by:   Q-038, Q-039 (Reviewer, PR #54, via coordinator)
+Impact:      `sim.schedule` is not merged, so nothing breaks. For T-008
+             (PR #54):
+             - rename `MAX_FIXTURE_ROWS_PER_DAY` to `MAX_FIXTURE_ROWS` and
+               make it a total-row check with the line number (this also
+               clears review findings 3 and 4);
+             - add the show-up bound check at `CreateSystem`;
+             - compute injections at publication, per the Tick order,
+               rather than at materialisation (finding 1).
+             For the T-008 Test Author, four new tests (§11.10). Every
+             fixture that loads today keeps its ids and hashes.
+             `minutes_before_std` values, checked on `main` and on
+             `test-author/T-008-schedule-loader-tests`:
+             - `data/pax_profiles` peaks at 180;
+             - the T-008 `ScheduleTestKit` curves peak at 180;
+             - `tests/fixtures/content` peaks at 120;
+             - `sim.core`'s content-loader tests go well past the bound:
+               `LoaderTests.cs` line 191 loads 4294967295, and lines 259
+               and 401 are parameterised. They test the `sim.core` loader
+               alone and never reach `sim.schedule`'s `CreateSystem`, where
+               the bound is checked, so they are unaffected.
+             No scope added.
+Revision:    after the PR #57 review (rejected at 18f5960):
+             - §11.6's "publication precedes injection" claim is replaced
+               by the observable guarantee and the explicitly accepted
+               shared-tick order;
+             - the Q-038 test is made observable and covers days 0, 1 and
+               2 at 00:00;
+             - this Impact statement is corrected;
+             - §11.9a names the reported bucket (the first over the bound)
+               and the order of failures (row order, then `aircraft_type`,
+               then `pax_profile`, then the bound);
+             - the Q-039 test has a concrete shape (99 999 `A` rows on day
+               1, at most 70 per minute, days 1 to 3), with the day-0
+               event-limit trap stated.
+Revision 2:  after the second PR #57 review (rejected at 90cc883):
+             - the Q-038 test fixture is pinned: `pax=10`, both permille
+               values 0, curve `[60/400, 1440/600]`. That gives 4 + 6 with
+               no remainder, so the 1440-minute bucket always injects 6;
+             - the run's four published occurrences (days 0 to 3) are all
+               asserted, with each one's publish tick and both injection
+               ticks listed. The latest is 42600, inside the run;
+             - §11.7's registry sentence is reworded to match §11.6's
+               phase-3 statement;
+             - the INDEX line is reworded to stay true whichever of #55 and
+               #57 merges first;
+             - §11.9a is rewrapped.
+             The red CI was the `WorldBudgetTests` timing flake, unrelated
+             to this diff, and was rerun by the coordinator.
+Revision 3:  after the third PR #57 review (rejected at f16c2f7):
+             - `test_profile_with_show_up_beyond_publish_lead_fails_load`
+               is pinned, with one case per §11.9a rule:
+               - (a) 1440 loads, 1441 fails;
+               - (b) `pax=0` still fails;
+               - (c) the curve `[60/500, 1500/300, 2000/200]` names 1500,
+                 not 2000;
+               - (d) the failure order, over two rows, both ways, and
+                 within one row.
+               Multi-row files list rows in descending `flight_ref`;
+             - §11.9 Budget now separates the publication queue (built at
+               load and materialisation) from the injection queue
+               (storage reserved at materialisation, entries written at
+               publication), matching §11.6 step 2;
+             - §11.10 says day 1 is also the 00:00 edge (tick 0);
+             - this header lists §11.7 and §11.9.
+Signed off:  not required. `01` and `02` are untouched. The 1440-minute
+             show-up bound (Q-038) is owner-confirmed 2026-09-28.
