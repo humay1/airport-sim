@@ -2216,3 +2216,84 @@ Revision 3:  after the third PR #57 review (rejected at f16c2f7):
              - this header lists §11.7 and §11.9.
 Signed off:  not required. `01` and `02` are untouched. The 1440-minute
              show-up bound (Q-038) is owner-confirmed 2026-09-28.
+
+## 2026-09-29 — spec/07 L11a (new); INDEX — the Slow test category
+Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
+             `Slow` category. PR push runs skip them. A green pre-merge Slow
+             run is required for every PR except one that changes only
+             `spec/`, `tasks/`, `agents/` or other docs that cannot affect
+             a build or test outcome. The run is on the PR's head, which
+             must contain the current `main`, and a failure blocks the
+             merge (owner, 2026-09-29, answering the Architect's
+             done-means-green question). They also run on every push to
+             `main` and nightly, next to the soak. L11a records the
+             convention:
+             - the trait `[Trait("Category", "Slow")]`, on a test method,
+               which may be combined with `Budget`. A `[Theory]` counts
+               summed over its rows;
+             - the rule for when a test must be Slow: (a) it steps more than
+               144 000 ticks in total, which is exact and machine-free; or
+               (b) time, judged only on the latest CI duration: the PR's
+               test job for an untagged test, the Slow run for a tagged
+               one. An untagged test over 5 s must be tagged before its
+               PR merges. A tagged test stays tagged at 2.5 s or more,
+               whatever caused the change. Under 2.5 s the tag is removed
+               by the next Test Author change to that test, which is not a
+               merge blocker. With no CI measurement of a test, rule (b) is
+               judged on nothing and only rule (a) applies; an author's own
+               run only prompts the tag on a new test. The owner's CI
+               wiring must report each test's duration in its run log;
+             - that a `Budget` or gate test may also be Slow, and that its
+               failure blocks the merge through the pre-merge run. It is
+               never fixed by retagging;
+             - that Slow changes no `ci/run-checks.sh` harness gate,
+               including `tools/SimHarness budget`;
+             - that T-009 is Slow by rule (a).
+             The thresholds are the Architect's. 10 sim-days matches `02`'s
+             `determinism_same_process` size. 5 s sits in a measured gap:
+             in a `Release` run of `main` at `4c3d900` on the owner's
+             laptop, 1223 tests took 103 s summed. The six slowest took
+             33.9, 10.2, 7.6, 7.5, 7.2 and 6.1 s, the next 3.4 s and
+             below, so 5 s catches exactly those six, about 72 of the
+             103 s.
+Raised by:   owner, via coordinator
+Impact:      T-009's Test Author tags its 100-day test `Slow`. A search of
+             merged `tests/` found no test that steps more than about two
+             sim-days, so none meets rule (a). The owner's laptop run is
+             not authoritative, but it prompts tagging these six merged
+             tests now, and CI's measurements decide afterwards. A Test
+             Author task must add the trait, because workers never edit
+             tests:
+             - `PromotionBudgetTests.test_promotion_budget_one_day_with_every_node_promoted`;
+             - `FlowHeadlessDayTests.test_flow_headless_day_keeps_every_invariant`;
+             - `FlowStressBudgetTests.test_flow_stress_30k_day_update_path_allocates_nothing`;
+             - `ScheduleHashTests.test_schedule_hash_identical_with_and_without_flow_registered`;
+             - `RoutingCacheTests.test_flow_routing_cache_matches_uncached_reference`;
+             - `FlowStressBudgetTests.test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts`.
+             Four of them are budget, stress or kill-gate tests, including
+             T-011's. Their regressions still block merges, through the
+             pre-merge Slow run. The CI filter and the manually triggered
+             pre-merge workflow are the owner's (`ci/`, `.github/`). For
+             the Integrator: before merging any PR that is not docs-only,
+             confirm a green Slow run on its head commit, and that the head
+             contains the current `main`. No scope added.
+Revision:    after the PR #61 review (rejected at ae76983):
+             - rule (b) now has one authoritative measurement, CI;
+             - the untag rule reads the same in L11a, this entry and
+               INDEX, and is judged on the latest CI measurement whatever
+               the cause;
+             - "a test" is a method, with a `[Theory]` summed over its
+               rows;
+             - the pre-merge scope is every PR that is not docs-only, on a
+               head that contains the current `main`. The earlier
+               "`src/` or `tests/`" scope was a relay error.
+Revision 2:  after the second PR #61 review (rejected at 623e5fe):
+             - per-test duration reporting in CI run logs is named as a
+               required part of the owner's wiring;
+             - until a CI run reports a test's duration, rule (b) is judged
+               on nothing, and only rule (a) applies;
+             - the hysteresis wording is exact: a measurement between
+               2.5 s and 5 s never changes the tag, and only crossing a
+               line does.
+Signed off:  owner, 2026-09-29 (the category, where it runs, and the
+             pre-merge requirement). The thresholds are the Architect's.
