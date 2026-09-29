@@ -1494,19 +1494,17 @@ Answer:      **(a)**, specified in `19` §19.2a and tested per §19.6. The
              code changes, so no merged work is invalidated. The
              `KillGateKit` load check "every injected passenger is still
              on a node" becomes the conservation check of §19.6.
-             **LOW CONFIDENCE — owner review first.** This is the
-             Architect's reading that the choice of `Absorb` caller is
-             architecture, and that the gate's scope stays the same. If
-             the owner reads a Phase 0 stand-in as changing what the kill
-             gate measures, the remaining options are (d), which is the
-             owner's decision.
+             **HUMAN DECISION — owner, 2026-09-29: accepted.** The
+             boarding stand-in, decision (a), is a valid reading of the
+             kill gate. The gate's scope is unchanged. (The Architect had
+             marked this LOW CONFIDENCE, and the owner confirmed it.)
              **Not decided, and flagged for the owner:** 60 s over
              1 440 000 ticks is about 41.7 µs a tick for the whole
              composition, about 1/144 of `01`'s 6 ms whole-sim tick. It
              is unmeasured with the stand-in. If T-009's worker cannot
              meet it, that is the task's "escalate to the human owner"
              path, not an agent decision to relax it.
-Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043), LOW CONFIDENCE
+Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043); stand-in owner-confirmed 2026-09-29
 
 ### Q-044 — Budget tests: may a module test sample fewer ticks than one sim-day?
 Raised by:   Planner, filing T-041 (the `WorldBudgetTests` fix), via coordinator, 2026-09-29

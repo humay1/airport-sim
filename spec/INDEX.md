@@ -336,10 +336,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `data/` (§19.2a, Q-042)**; **a harness-internal stand-in at registry
   position 3 calls `Absorb` for each departure at `STD`, hashes 0, and is
   removed when `sim.airside` joins (§19.2a, Q-043)**.
-- LC: the `budget` load before a max-tier fixture exists (§19.4); the
-  boarding stand-in as the kill gate's reading at Phase 0 (Q-043). **HD
+- LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
-  `sim.save` (§19.5).
+  `sim.save` (§19.5). **HD (owner, 2026-09-29):** the boarding stand-in is
+  a valid reading of the kill gate (§19.2a, Q-043).
 - Read if: T-006, T-009, T-030; the Test Author for the harness.
 
 ### `CHANGELOG.md`

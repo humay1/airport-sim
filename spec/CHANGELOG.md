@@ -2351,18 +2351,17 @@ Impact:      - **No merged `src/` changes.** `sim.flow`, `sim.schedule`
                stand-in in its description), per Q-041.
              - **Scope:** none added. The stand-in is a harness test
                driver for an existing `12` §12.7 call, not a game system.
-             **LOW CONFIDENCE — owner review first (Q-043).** It is the
-             Architect's reading that the choice of `Absorb` caller is
-             architecture, and that the kill gate's scope is unchanged:
-             the same modules, fixtures, 100 days and 60 s. If the owner
-             disagrees, the remaining options (shorten the gate, relax the
-             budget, or wait for `sim.airside`) are the owner's.
+             **HUMAN DECISION — owner, 2026-09-29 (Q-043): accepted.** The
+             boarding stand-in is a valid reading of the kill gate. The
+             gate's scope is unchanged: the same modules, fixtures, 100
+             days and 60 s. The Architect had first marked this LOW
+             CONFIDENCE.
              **For the owner, not decided:** 60 s for 1 440 000 ticks is
              about 41.7 µs a tick, about 1/144 of `01`'s 6 ms tick. It is
              unmeasured with the stand-in. A miss escalates to the owner
              under T-009's "Done when".
-Signed off:  not required (architecture). Owner review requested on the
-             LOW CONFIDENCE item.
+Signed off:  owner, 2026-09-29 (the Q-043 boarding stand-in). The rest is
+             architecture and needs no sign-off.
 
 ## 2026-09-29 — spec/03 "How a budget is measured" (Window, Arithmetic bullets); INDEX; open-questions — Q-044, Q-045: budget window and p99 definition
 Reason:      While filing T-041, the Planner found that `03` fixes neither
