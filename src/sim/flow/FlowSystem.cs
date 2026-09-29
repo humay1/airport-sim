@@ -56,6 +56,32 @@ namespace AirportSim.Sim.Flow
         private readonly List<int> _fifoScratch = new List<int>(InitialSlotCapacity);
         private readonly Comparison<int> _fifoComparer;
 
+        // Routing cache (§9.6 "Routing cache", Q-036): the wait-dependent per-tick
+        // memo of rule 3, keyed exactly as rule 3 states — "the same node, the same
+        // walk speed, and the same value of every cohort field that determines the
+        // destination set", which at Phase 0/1 is no field at all (only `Departing`
+        // cohorts exist, Q-040, and a Departing cohort's destination set depends
+        // only on the releasing node), so `(node, walk speed)` is the whole key.
+        // `ComputeRoute`'s own parameter list is exactly `(fromOrdinal, walkSpeed)`,
+        // so the memo cannot omit an input the function itself does not take.
+        //
+        // Rule 5 requires the memo to be "preallocated and reset each tick, never
+        // grown", which a Dictionary sized by guesswork cannot promise once the
+        // graph or the profile mix grows. Rule 2 lists "the loaded pax profiles'
+        // walk_speed_mps" as one of the three sources a *static* table may be
+        // built from once, at construction — so the distinct walk speeds are
+        // enumerated once here, from content, and every possible (node, walk
+        // speed) cell is preallocated as a flat array of exactly
+        // nodeCount * distinctWalkSpeedCount slots. A walk speed WalkSpeedOf falls
+        // back to that was never resolved from a loaded PaxProfile has no cell and
+        // is simply never cached: a permanent miss, not a resize.
+        private readonly Dictionary<long, int> _walkSpeedIndex;
+        private readonly int _walkSpeedCount;
+        private readonly bool[] _routeCacheValid;
+        private readonly bool[] _routeCacheFound;
+        private readonly EdgeId[] _routeCacheEdge;
+        private readonly NodeId[] _routeCacheTarget;
+
         // Reused by Absorb's missed-passenger sweep to collect every missed slot
         // across nodes before sorting by ascending CohortId (§9.7 "Exact rules"),
         // so the FlowUnblocked publish order does not depend on NodeId iteration
@@ -180,6 +206,31 @@ namespace AirportSim.Sim.Flow
                 }
             }
 
+            // Route cache (§9.6 "Routing cache", rule 2, Q-036): the distinct walk
+            // speeds are a static, construction-time source, enumerated here once
+            // so the per-tick memo below can be sized exactly, with no risk of
+            // growing later (rule 5).
+            _walkSpeedIndex = new Dictionary<long, int>();
+            IReadOnlyList<ContentId> paxProfiles = _content.AllOf(ContentKind.PaxProfile);
+            for (int i = 0; i < paxProfiles.Count; i++)
+            {
+                if (_content.TryGet(paxProfiles[i], out PaxProfileDefinition profileDef))
+                {
+                    long raw = profileDef.WalkSpeedMps.Raw;
+                    if (!_walkSpeedIndex.ContainsKey(raw))
+                    {
+                        _walkSpeedIndex[raw] = _walkSpeedIndex.Count;
+                    }
+                }
+            }
+
+            _walkSpeedCount = _walkSpeedIndex.Count;
+            int cacheSlots = n * _walkSpeedCount;
+            _routeCacheValid = new bool[cacheSlots];
+            _routeCacheFound = new bool[cacheSlots];
+            _routeCacheEdge = new EdgeId[cacheSlots];
+            _routeCacheTarget = new NodeId[cacheSlots];
+
             for (int i = 0; i < InitialFlightCapacity; i++)
             {
                 _outstandingPool.Push(new FlightOutstanding(n));
@@ -220,6 +271,12 @@ namespace AirportSim.Sim.Flow
                 _snapshotPopulation[i] = ComputeLivePopulation(i);
                 _snapshotWait[i] = _kind[i] == NodeKind.Queue ? ComputeWait(i, _snapshotPopulation[i]) : Fx.Zero;
             }
+
+            // The snapshot above is what §9.6 routing costs read; a route decision
+            // computed against it stays valid for the rest of this tick (§9.12).
+            // Rule 5's "preallocated and reset each tick": only the validity flags
+            // are cleared, never the arrays themselves.
+            Array.Clear(_routeCacheValid, 0, _routeCacheValid.Length);
 
             for (int i = 0; i < n; i++)
             {
@@ -613,15 +670,14 @@ namespace AirportSim.Sim.Flow
 
         public void SetPromoted(NodeId node, bool promoted)
         {
-            if (_ordinalByNodeValue.TryGetValue(node.Value, out int ordinal))
-            {
-                _promoted[ordinal] = promoted;
-            }
+            int ordinal = RequireOrdinal(node, nameof(node));
+            _promoted[ordinal] = promoted;
         }
 
         public IReadOnlyList<AgentView> AgentsAt(NodeId node)
         {
-            if (!_ordinalByNodeValue.TryGetValue(node.Value, out int ordinal) || !_promoted[ordinal])
+            int ordinal = RequireOrdinal(node, nameof(node));
+            if (!_promoted[ordinal])
             {
                 _agentViewBuffer.Length = 0;
                 return _agentViewBuffer;
@@ -942,6 +998,32 @@ namespace AirportSim.Sim.Flow
         // -------------------------------------------------------------- routing (§9.6, §9.12)
 
         private bool TryRoute(int fromOrdinal, Fx walkSpeed, out EdgeId bestEdge, out NodeId bestTarget)
+        {
+            if (_walkSpeedCount > 0 && _walkSpeedIndex.TryGetValue(walkSpeed.Raw, out int walkSpeedOrdinal))
+            {
+                int cacheIndex = (fromOrdinal * _walkSpeedCount) + walkSpeedOrdinal;
+                if (_routeCacheValid[cacheIndex])
+                {
+                    bestEdge = _routeCacheEdge[cacheIndex];
+                    bestTarget = _routeCacheTarget[cacheIndex];
+                    return _routeCacheFound[cacheIndex];
+                }
+
+                bool computed = ComputeRoute(fromOrdinal, walkSpeed, out bestEdge, out bestTarget);
+                _routeCacheValid[cacheIndex] = true;
+                _routeCacheFound[cacheIndex] = computed;
+                _routeCacheEdge[cacheIndex] = bestEdge;
+                _routeCacheTarget[cacheIndex] = bestTarget;
+                return computed;
+            }
+
+            // A walk speed that was never resolved from a loaded PaxProfile (§9.6
+            // rule 2's static source) has no cell in the memo: compute directly,
+            // never caching it, rather than growing the memo to fit it (rule 5).
+            return ComputeRoute(fromOrdinal, walkSpeed, out bestEdge, out bestTarget);
+        }
+
+        private bool ComputeRoute(int fromOrdinal, Fx walkSpeed, out EdgeId bestEdge, out NodeId bestTarget)
         {
             NodeId from = _nodeId[fromOrdinal];
             IReadOnlyList<EdgeId> outs = _world.OutEdges(from);
