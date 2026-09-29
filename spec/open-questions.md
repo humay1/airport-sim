@@ -1113,3 +1113,222 @@ Answer:      A `sim.core` defect, from a gap in `08` §8.6. The test is right:
              Five new `sim.core` tests are named in §8.6. No outcome, hash
              or golden changes.
 Status:      ANSWERED (spec/08-interfaces-core.md#86-event-bus)
+
+### Q-036 — `sim.flow` routing cache: what a cache may and may not do
+Raised by:   Test Author / T-011, via coordinator, 2026-09-28
+Blocking:    no. T-011 passes: mean 0.50 ms and p99 2.60 ms against 2.5 and
+             5.0 ms.
+Question:    T-011's black-box runs show routing cost growing linearly with
+             the number of pooled gates: p99 of 5.0 ms at 48 gates and
+             9.9 ms at 96. The worst ticks follow show-up injections.
+             `09` §9.6 says the budget test shows whether routing needs
+             caching, and §9.10 says a cached result is not hashed. Neither
+             says what a cache must preserve. Without that, a subtly wrong
+             cache passes the time budget and silently changes routing.
+Answer:      `09` §9.6 "Routing cache". A cache is optional, added only
+             against a failing measurement, under six binding rules:
+             - (1) observably identical to the uncached rule: the same
+               cost `Raw` per pair and the same tie-break. Grouping the
+               sums is free, since `Fx` addition and integer-multiple
+               `Mul` are exact. The per-node `traversalTicks` and snapshot
+               waits must each be that node's own §9.12 value;
+             - (2) the static part may live for the run, and depends only
+               on `IWorldSystem`'s load-time answers, the `FlowGraph`
+               node kinds and the pax profiles' walk speeds;
+             - (3) the wait-dependent part is memoised within one tick
+               only. An entry serves a cohort only for the same node, the
+               same walk speed and every cohort field that determines the
+               destination set. At Phase 0/1 that is no field, because
+               only `Departing` cohorts exist (Q-040), so the key is
+               `(node, walk speed)`. The amendment that widens what
+               determines the set must extend the key and the test;
+             - (4) it is not hashed or saved, and is rebuilt from rule 2's
+               sources on restore/replay with the same routes;
+             - (5) no allocation in the update path;
+             - (6) no dependence on promotion, presentation, iteration
+               order or fill order.
+             Required test when a cache is added, owned by the Test Author
+             of whichever `sim.flow` task adds it:
+             `test_flow_routing_cache_matches_uncached_reference`. It
+             runs a lockstep, uncached reference model of §9.12's whole
+             tick. Every input comes from the fixture, content and script
+             the test authors, or from `IWorldSystem`. After every tick it
+             compares:
+             - the per-node, per-`CohortKey` head counts;
+             - `Population` and `PredictedWaitMinutes`;
+             - the multiset of `FlowBlocked`/`FlowUnblocked` as
+               `(kind, Held, BlockedBy, Key)`.
+             No `CohortId`s are compared. The reference's own id order
+             follows §9.3's rule that every move takes a new id. The script
+             must include each of
+             these, so a cache wrong in that way fails:
+             - distinct walk speeds released from one node in one tick,
+               choosing different edges;
+             - an exact-cost gate tie (NodeId, with the lower id only via
+               the higher `EdgeId`) and an edge tie (EdgeId);
+             - lane changes that flip the choice;
+             - a blocked cohort re-routed;
+             - a show-up spike;
+             - a restart. Until `sim.save` exists this is replay from
+               seed, which proves reproducibility only, not fill-order
+               independence.
+             HUMAN DECISION — owner, 2026-09-28: gate assignment is not
+             brought forward, and the 90k max-tier measurement decides
+             whether the performance task is released.
+Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
+
+### Q-037 — Does `18` §18.5's single pooled `Gate` bind `sim.flow` stress fixtures?
+Raised by:   Architect, from the Q-036 assessment, 2026-09-28
+Blocking:    no. It affects the T-011 test branch
+             (`test-author/T-011-stress-30k-tests`, whose `StressDay` has 24
+             gates) and the future 90k max-tier fixture.
+Question:    `18` §18.5 said "Phase 0/1 fixtures declare **one** `Gate`
+             node". `StressDay` declares 24 pooled `Gate` nodes. Does the
+             single-gate rule bind only the shared world fixture (§18.6),
+             or every `sim.flow` fixture?
+Answer:      Architect's authority: this is fixture sizing (Q-033), not
+             balance or scope. The single `Gate` binds the shared file
+             `tests/fixtures/world/phase0-landside.json` (`18` §18.6) and
+             every fixture that loads it. A `sim.flow`-local stress or
+             budget fixture builds its own walk graph and does not load
+             that file. It may declare several pooled `Gate` nodes, and
+             states the count and its derivation in the test (`09` §9.10,
+             `18` §18.5). `18` §18.6's list of users is corrected to match.
+             T-011's `StressDay` builds its own graph, so it is not one of
+             them, and its 24 gates conform. T-011's other tests that load
+             the shared file keep its single `Gate`. Nothing merged
+             changes.
+             Recommendation for the owner, not decided: the 90k max-tier
+             fixture should pool **60** `Gate` nodes, one per max-tier
+             stand (`01`). The owner said this measurement decides, and
+             until gate assignment arrives, pooling over every gate is the
+             cost Phase 1 content will actually pay. One gate would measure
+             a cost the game does not have. Setting the count stays the
+             Test Author's, with the derivation stated. **LOW CONFIDENCE —
+             owner may revise.**
+Status:      ANSWERED (spec/09-interfaces-flow.md#910-state-hashing-and-budget); recommendation for the owner
+
+### Q-038 — `sim.schedule`: a show-up bucket due before its flight's publication
+Raised by:   Reviewer, PR #54 (T-008) finding 1, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    §11.6 computes injections at publication, and `PublishTick` is
+             one day before `ScheduledTick`. `minutes_before_std` is
+             unbounded in content, so two failures are possible on day
+             `d ≥ 2`:
+             - with `minutes_before_std > 1440 + minute-of-STD`, a bucket's
+               tick has already passed when the day is materialised, so
+               those passengers are never injected;
+             - between 1440 and that value, passengers are injected before
+               `FlightPlanPublished`.
+             Clamp, reject, or extend the horizon?
+Answer:      Reject at load, which is the narrowest option. The new constant
+             `MAX_SHOW_UP_MINUTES_BEFORE_STD = PLAN_PUBLISH_LEAD_TICKS /
+             TICKS_PER_SIM_MINUTE` (1440) bounds every bucket of every
+             referenced pax profile. The check is at `CreateSystem`, where
+             profiles resolve (§11.9a), with the existing `FormatException`
+             shape. With the bound, every injection tick is at or after
+             `PublishTick` (§11.6, stated as an inequality), so nothing is
+             queued for a past tick and conservation holds. The day-0
+             `clamp to 0` is unchanged and is the day-0 case of the same
+             inequality.
+             The early-injection case is closed **by tick**: no passenger
+             reaches `sim.flow` in an earlier tick than its flight's
+             `FlightPlanPublished`. On a **shared tick** (a bucket exactly
+             at the bound, or the day-0 clamp), `Inject` runs in phase 2
+             and handlers see the event in phase 3 (`08` §8.5, §8.6). So
+             `sim.flow` holds the cohort first. This is explicitly accepted
+             (§11.6): no Phase 0/1 consumer depends on the opposite order.
+             §11.6 also fixes the order of the calls inside
+             `sim.schedule`'s `Tick` (materialise, publish, inject), which
+             makes them deterministic, and states that this order is not
+             observable across modules.
+             Revision after the PR #57 review:
+             - the test is rewritten to be observable (recorder tick
+               against the fake flow's `Inject` tick). After round 2 it
+               pins exact values: `pax=10`, buckets 60/400 and 1440/600,
+               which split exactly as 4 + 6. It asserts all four
+               occurrences the run publishes (days 0 to 3), with their
+               ticks listed;
+             - §11.9a names the reported bucket and the order of failures.
+             Rejected alternatives:
+             - clamping to `PublishTick` would silently reshape an owner's
+               curve;
+             - extending the horizon would change `PLAN_PUBLISH_LEAD_TICKS`
+               and every publish tick.
+             Two new tests (§11.10).
+             The 1440-minute (24 h) bound is owner-confirmed 2026-09-28.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#expansion-to-injections)
+
+### Q-039 — `sim.schedule`: the `FlightId` stride invariant
+Raised by:   Reviewer, PR #54 (T-008) finding 2, via coordinator, 2026-09-28
+Blocking:    T-008
+Question:    `FlightId.Value = DayIndex × 100000 + RowOrdinal + 1`, and
+             `RowOrdinal` counts across the whole file. The loader limited
+             only rows per `day`, so 60000 + 60000 rows load, and two
+             flights on adjacent days collide. What does the spec
+             guarantee? Should the total be bounded, or the id redefined?
+Answer:      Bound the total. `MAX_FIXTURE_ROWS_PER_DAY` is replaced by
+             `MAX_FIXTURE_ROWS = FLIGHT_ID_DAY_STRIDE − 1` (99999) on the
+             file's total data rows. It is counted in file order, and the
+             failure names line `MAX_FIXTURE_ROWS + 2` (the first row over
+             the limit), with no dictionary walk. §11.3 now states what the
+             derivation guarantees for every loaded table, and nothing
+             stronger:
+             - ids are unique across all days;
+             - `Value / STRIDE = DayIndex`;
+             - `Value % STRIDE − 1 = RowOrdinal`;
+             - ascending `FlightId` equals ascending `(DayIndex,
+               RowOrdinal)`.
+             The id formula is unchanged, so no id or golden changes for
+             any fixture that loads today. Max tier is 800 daily movements
+             (`01`), far below the bound. Two new tests (§11.10). This also
+             settles PR #54 finding 3: the row-limit failure has a line.
+Status:      ANSWERED (spec/11-interfaces-schedule.md#flight-id-derivation)
+
+### Q-040 — `sim.flow`: how is a non-`Departing` cohort routed at Phase 0/1?
+Raised by:   Architect, from the PR #55 review (finding 1), 2026-09-28
+Blocking:    no production work. No Phase 0/1 production caller injects a
+             non-`Departing` cohort: `11` §11.1 and `12` "Arriving
+             passengers" have a pax count of zero. It was needed to make the
+             Q-036 rules and test well-defined, and is answered in PR #55.
+Question:    `Inject` (§9.7) accepts any `FlowDirection`, and tests may seed
+             fixtures through it. But §9.6 "Destinations" defines a set only
+             for `Departing` cohorts, so the uncached routing rule has no
+             pairs for an `Arriving` or `Transferring` cohort on a `Source`
+             or `Hall`. Does such a cohort stay put, go to a `Sink`, or is
+             it rejected at `Inject`?
+Options:     - (a) `Inject` with `Direction ≠ Departing` throws
+               `ArgumentException` at Phase 0/1. This is the narrowest
+               option, but it changes merged T-007 behaviour and may break
+               merged tests that seed other directions, so that must be
+               checked first.
+             - (b) An empty pair set means the cohort stays on its node.
+               That is additive and needs no merged change.
+             - (c) Destinations for `Arriving` cohorts (a `Sink`). That is
+               new behaviour and scope.
+Answer:      **(a).** This is what the spec already implies. §9.6 defines
+             destinations only for `Departing` cohorts, and Phase 0/1 has
+             no arriving or transferring passengers (`11` §11.1, `12`). So a
+             non-`Departing` cohort is a state the spec never gave a
+             meaning. Rejecting it at `Inject` is the narrowest rule, and it
+             removes the direction question from the Q-036 cache key and
+             test. The checks:
+             - on `main` and every open test-author or worker branch, the
+               only non-`Departing` use is the query
+               `PopulationForFlight(…, FlowDirection.Arriving)` in
+               `FlowSystemTests.cs:52`, which stays valid, because queries
+               still accept every direction;
+             - (b) was rejected. It would keep an undefined state alive and
+               make the route cache depend on direction;
+             - (c) is scope, and waits for arriving passengers, which is
+               the owner's call.
+             `09` §9.6 "Only `Departing` cohorts exist at Phase 0/1" and
+             §9.7 "Exceptions" now state it.
+             **The merged T-007 code does not conform.** `Inject` accepts
+             every direction, and `AttemptRelease` routes every cohort to
+             the pooled gates whatever its direction. A `sim.flow` fix task
+             is needed: `Inject` throws `ArgumentException` for
+             `key.Direction ≠ Departing`, as the fourth check after the
+             merged three (§9.7), with the Test Author's test
+             `test_inject_rejects_non_departing_direction`.
+Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
