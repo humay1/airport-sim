@@ -294,11 +294,16 @@ uses `Budget`. A test may carry both traits.
       change to the test, to `src/`, or to CI), rule (b) no longer holds.
       The tag is then removed by the next Test Author change to that test.
       Removing it is not a merge blocker. Between 2.5 s and 5 s a test
-      keeps whatever state it has, so wobble near either line never
-      flips it;
-    - a **new** test has no measurement yet. Its Test Author tags it if
-      their own `Release` run is over 5 s. That run is only a prompt, and
-      from the first CI measurement on, the two bullets above decide.
+      keeps whatever state it has. A measurement in that band never
+      changes the tag, and only crossing 5 s (untagged) or 2.5 s (tagged)
+      does;
+    - **with no CI measurement, rule (b) is judged on nothing.** Until a
+      CI run of that test has reported its duration, only rule (a)
+      applies. That covers a new test, and every test before CI reports
+      per-test durations at all (below). The one exception is a prompt,
+      not a rule: a Test Author tags a new test if their own `Release`
+      run is over 5 s. From the first CI measurement on, the two bullets
+      above decide.
     The 5 s line sits in a measured gap. In a `Release` run of `main` at
     `4c3d900` on the owner's laptop, the slowest tests took 33.9, 10.2,
     7.6, 7.5, 7.2 and 6.1 s, and the next 3.4, 2.7 and 2.5 s. That run is
@@ -318,8 +323,12 @@ uses `Budget`. A test may carry both traits.
     means green" covers Slow tests, T-009's kill-gate test included.
   - They also run on every push to `main` and nightly, next to
     `soak_500_days`.
-  - How the pre-merge run is triggered, and the workflow files, are the
-    owner's CI wiring (`ci/`, `.github/`) and are not specified here.
+  - The owner's CI wiring (`ci/`, `.github/`) must provide:
+    - each CI run that executes xUnit tests **reports every test's
+      duration in its run log**, which is rule (b)'s only source;
+    - the pre-merge Slow run.
+    How the wiring does this, which jobs run which tests, and how the
+    pre-merge run is triggered are not specified here.
 - **What Slow does not change.** It only chooses which xUnit tests a run
   includes. The gates in `ci/run-checks.sh` are harness runs, not xUnit
   tests, and no trait affects them. That covers `02`'s determinism gates

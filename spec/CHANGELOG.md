@@ -2239,8 +2239,10 @@ Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
                PR merges. A tagged test stays tagged at 2.5 s or more,
                whatever caused the change. Under 2.5 s the tag is removed
                by the next Test Author change to that test, which is not a
-               merge blocker. An author's own run only prompts the tag on
-               a new test;
+               merge blocker. With no CI measurement of a test, rule (b) is
+               judged on nothing and only rule (a) applies; an author's own
+               run only prompts the tag on a new test. The owner's CI
+               wiring must report each test's duration in its run log;
              - that a `Budget` or gate test may also be Slow, and that its
                failure blocks the merge through the pre-merge run. It is
                never fixed by retagging;
@@ -2285,5 +2287,13 @@ Revision:    after the PR #61 review (rejected at ae76983):
              - the pre-merge scope is every PR that is not docs-only, on a
                head that contains the current `main`. The earlier
                "`src/` or `tests/`" scope was a relay error.
+Revision 2:  after the second PR #61 review (rejected at 623e5fe):
+             - per-test duration reporting in CI run logs is named as a
+               required part of the owner's wiring;
+             - until a CI run reports a test's duration, rule (b) is judged
+               on nothing, and only rule (a) applies;
+             - the hysteresis wording is exact: a measurement between
+               2.5 s and 5 s never changes the tag, and only crossing a
+               line does.
 Signed off:  owner, 2026-09-29 (the category, where it runs, and the
              pre-merge requirement). The thresholds are the Architect's.

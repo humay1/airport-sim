@@ -128,7 +128,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   exception types; **Slow tests (L11a, owner, 2026-09-29):
   `[Trait("Category", "Slow")]` on a test method, with a `[Theory]`'s rows
   summed. A test is Slow when it steps more than 144 000 ticks, or when its
-  latest CI duration is over 5 s. Once tagged it stays tagged while CI
+  latest CI-reported duration is over 5 s. With no CI measurement, only the
+  tick rule applies. Once tagged it stays tagged while CI
   shows 2.5 s or more, whatever the cause of a change, and below that the
   tag is removed by the next Test Author change. A `Budget` test may also
   be Slow. PR push runs skip them. A green pre-merge Slow run, on a head
