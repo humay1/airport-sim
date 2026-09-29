@@ -126,12 +126,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
-  `[Trait("Category", "Slow")]` when a test steps more than 144 000 ticks
-  or any Release run reports it over 5 s (it is untagged only below
-  2.5 s). A `Budget` test may also be Slow. PR push runs skip them, a
-  green pre-merge Slow run on the PR head is required for any PR touching
-  `src/` or `tests/`, and they also run on `main` and nightly. The harness
-  gates are unaffected**.
+  `[Trait("Category", "Slow")]` on a test method, with a `[Theory]`'s rows
+  summed. A test is Slow when it steps more than 144 000 ticks, or when its
+  latest CI duration is over 5 s. Once tagged it stays tagged while CI
+  shows 2.5 s or more, whatever the cause of a change, and below that the
+  tag is removed by the next Test Author change. A `Budget` test may also
+  be Slow. PR push runs skip them. A green pre-merge Slow run, on a head
+  that contains the current `main`, is required for every PR except
+  docs-only ones. They also run on `main` and nightly. The harness gates
+  are unaffected**.
 - LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
 

@@ -269,32 +269,53 @@ permits. The authoritative budget measurement is still
 xUnit test carries `[Trait("Category", "Slow")]`, in the same way L11
 uses `Budget`. A test may carry both traits.
 
+- **What "a test" is.** A test is one test **method**, which is where the
+  trait goes. For a `[Theory]`, the counts and durations below are
+  **summed over all its data rows**.
 - **When a test must be Slow.** A test must be Slow if either rule holds:
   - **(a) Work.** It steps **more than 144 000 ticks** in total (10
-    sim-days) across all the hosts it runs. This rule is exact and does
-    not depend on the machine. A test of exactly 10 sim-days, the size
-    of `02`'s `determinism_same_process`, is not Slow by it.
-  - **(b) Time.** In **any** `Release` run, on CI or on the author's
-    machine, xUnit reports its duration **over 5 s**. This limit depends
-    on the machine, so it has hysteresis instead of a single edge:
-    - a test goes Slow the first time any run reports it over 5 s. A
-      test without the trait seen over 5 s is a review finding: tag it,
-      and never weaken the test to dodge the tag;
-    - the tag comes off only when a change to the test brings it under
-      **2.5 s** in a `Release` run on CI. A run-to-run wobble near 5 s
-      therefore never flips it.
-    The 5 s line sits in a measured gap. On `main` at `4c3d900`, in
-    `Release`, the slowest tests were 33.9, 10.2, 7.6, 7.5, 7.2 and 6.1 s,
-    and the next were 3.4, 2.7 and 2.5 s.
-  - Nothing else makes a test Slow. A test that meets neither rule must
-    not be tagged, so the PR suite keeps its coverage.
+    sim-days), across all its data rows and all the hosts it runs. This
+    rule is exact and does not depend on the machine. A test of exactly 10
+    sim-days, the size of `02`'s `determinism_same_process`, is not Slow
+    by it.
+  - **(b) Time.** This rule has **one authoritative measurement**: the
+    duration xUnit reports for the test in CI, summed over its rows, as
+    the CI job runs it (its build configuration and parallelism,
+    unadjusted). An untagged test is measured in the PR's normal test job,
+    and a tagged test in the Slow run. No other run counts: not the
+    author's, a reviewer's, the owner's, a `Debug` run, or a loaded
+    machine. The limit depends on the machine, so it has hysteresis. Rule
+    (b) is judged on the **latest** authoritative measurement:
+    - an **untagged** test whose latest measurement is **over 5 s** must
+      be tagged. The PR that produces that measurement is not mergeable
+      until it is. The test is never weakened to dodge the tag;
+    - a **tagged** test stays tagged while its latest measurement is
+      **2.5 s or more**. Once it is **under 2.5 s**, for any reason (a
+      change to the test, to `src/`, or to CI), rule (b) no longer holds.
+      The tag is then removed by the next Test Author change to that test.
+      Removing it is not a merge blocker. Between 2.5 s and 5 s a test
+      keeps whatever state it has, so wobble near either line never
+      flips it;
+    - a **new** test has no measurement yet. Its Test Author tags it if
+      their own `Release` run is over 5 s. That run is only a prompt, and
+      from the first CI measurement on, the two bullets above decide.
+    The 5 s line sits in a measured gap. In a `Release` run of `main` at
+    `4c3d900` on the owner's laptop, the slowest tests took 33.9, 10.2,
+    7.6, 7.5, 7.2 and 6.1 s, and the next 3.4, 2.7 and 2.5 s. That run is
+    not authoritative. It is the prompt for tagging those six, and CI
+    decides afterwards.
+  - Nothing else makes a test Slow. A test for which neither rule holds
+    carries no tag, subject to the removal timing above, so the PR suite
+    keeps its coverage.
 - **Where Slow tests run** (HUMAN DECISION — owner, 2026-09-29):
   - **PR push runs skip them.**
-  - **A pre-merge Slow run is required** for any PR that touches `src/`
-    or `tests/`. It is a run of the Slow tests on the PR's head commit.
-    If it fails, or is missing for that head, the PR does not merge,
-    just as a failing `02` gate blocks a merge. So "done means green"
-    covers Slow tests, T-009's kill-gate test included.
+  - **A pre-merge Slow run is required for every PR**, except one that
+    changes only `spec/`, `tasks/`, `agents/`, or other documentation that
+    cannot affect a build or a test outcome. The run is on the PR's head
+    commit, and that head must already contain the current `main`. If the
+    run fails, is missing, or ran on a head that is behind `main`, the PR
+    does not merge, just as a failing `02` gate blocks a merge. So "done
+    means green" covers Slow tests, T-009's kill-gate test included.
   - They also run on every push to `main` and nightly, next to
     `soak_500_days`.
   - How the pre-merge run is triggered, and the workflow files, are the
@@ -306,9 +327,10 @@ uses `Budget`. A test may carry both traits.
   measurement (L11, `03` "How a budget is measured").
 - **A `Budget` test may also be Slow**, and a stress or gate test such as
   T-011's may too. It is still a budget assertion, and its failure blocks
-  the merge through the pre-merge Slow run. A Slow failure that first
-  appears on `main` or nightly is a broken `main`, to be fixed. It is
-  never retagged or skipped to get green.
+  the merge through the pre-merge Slow run. A Slow failure that still
+  first appears on `main` or nightly, for example a flaky one, means
+  `main` is broken and must be fixed. It is never retagged or skipped to
+  get green.
 - **T-009** (the 100-sim-day kill gate, `tasks/T-009-100-day-run.md`)
   steps 1 440 000 ticks per run, so it is Slow by rule (a). Its Test
   Author tags it from the start.
