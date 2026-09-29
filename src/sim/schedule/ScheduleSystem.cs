@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using AirportSim.Sim.Core;
 using AirportSim.Sim.Flow;
 
@@ -14,6 +15,12 @@ namespace AirportSim.Sim.Schedule
         private const ulong PlanPublishLeadTicks = SimConstants.TICKS_PER_SIM_DAY;
         private const ulong FlightIdDayStride = 100000UL;
         private const ulong TickUnscheduled = ulong.MaxValue;
+
+        // 11-interfaces-schedule.md §11.2 (Q-038): PLAN_PUBLISH_LEAD_TICKS / TICKS_PER_SIM_MINUTE.
+        // The largest minutes_before_std a referenced pax profile may use; it is what makes
+        // "no injection is ever due before its flight's publication" (§11.6) true by
+        // construction, so it is asserted once, at construction, rather than guarded per tick.
+        private const uint MaxShowUpMinutesBeforeStd = (uint)(SimConstants.TICKS_PER_SIM_DAY / SimConstants.TICKS_PER_SIM_MINUTE);
 
         private static readonly Comparison<(ulong Tick, FlightId Id)> TickThenIdComparer =
             (a, b) =>
@@ -77,7 +84,20 @@ namespace AirportSim.Sim.Schedule
                     throw ResolutionFailure(row.FlightRef, "pax_profile", row.PaxProfile.Value);
                 }
 
-                _curves[i] = profile.ShowUpCurve;
+                // §11.9a "Show-up bound" (Q-038): checked after both resolutions, in table
+                // order, so a resolution miss anywhere earlier always wins over a bound
+                // failure. Buckets are strictly ascending (§11.6), so the first one over the
+                // bound is the smallest offending value.
+                IReadOnlyList<ShowUpBucket> curve = profile.ShowUpCurve;
+                for (int b = 0; b < curve.Count; b++)
+                {
+                    if (curve[b].MinutesBeforeStd > MaxShowUpMinutesBeforeStd)
+                    {
+                        throw ShowUpBoundFailure(row.FlightRef, row.PaxProfile.Value, curve[b].MinutesBeforeStd);
+                    }
+                }
+
+                _curves[i] = curve;
             }
 
             // Day 0 materialises here, before any TickContext exists (§11.9a construction),
@@ -588,6 +608,14 @@ namespace AirportSim.Sim.Schedule
         {
             return new FormatException(
                 "sim.schedule: flight_ref " + flightRef + ": " + column + " '" + id + "' does not resolve to a definition of the expected kind");
+        }
+
+        private static FormatException ShowUpBoundFailure(string flightRef, string profileId, uint minutesBeforeStd)
+        {
+            return new FormatException(
+                "sim.schedule: flight_ref " + flightRef + ": pax_profile '" + profileId + "' has a show-up bucket with minutes_before_std "
+                + minutesBeforeStd.ToString(CultureInfo.InvariantCulture) + ", exceeding MAX_SHOW_UP_MINUTES_BEFORE_STD ("
+                + MaxShowUpMinutesBeforeStd.ToString(CultureInfo.InvariantCulture) + ")");
         }
 
         private sealed class FlightState

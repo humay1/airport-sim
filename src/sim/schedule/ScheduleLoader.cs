@@ -12,7 +12,8 @@ namespace AirportSim.Sim.Schedule
     /// </summary>
     internal sealed class ScheduleLoader : IScheduleLoader
     {
-        private const int MaxFixtureRowsPerDay = 99999;
+        // 11-interfaces-schedule.md §11.2: FLIGHT_ID_DAY_STRIDE - 1 (Q-039).
+        private const int MaxFixtureRows = 99999;
 
         // A string is immutable (07-conventions.md L10); the header's expected bytes are
         // recomputed from it locally in Load rather than cached in a static byte[], which
@@ -64,7 +65,6 @@ namespace AirportSim.Sim.Schedule
             var rows = new List<RowData>();
             var byRef = new Dictionary<string, RowData>(StringComparer.Ordinal);
             var airlineHashes = new Dictionary<uint, string>();
-            var perDayCount = new Dictionary<uint, int>();
 
             for (int i = 1; i < lines.Count; i++)
             {
@@ -112,16 +112,14 @@ namespace AirportSim.Sim.Schedule
 
                 airlineHashes[airlineHash] = row.AirlineCode;
 
-                // Checked immediately, at the row that first breaches the limit, rather than
-                // aggregated afterwards: the outcome must not depend on Dictionary enumeration
-                // order (02-determinism.md rule 5, review findings 3 and 4), and every load
-                // failure must name a line (§11.4).
-                perDayCount.TryGetValue(row.FirstDay, out int countSoFar);
-                countSoFar++;
-                perDayCount[row.FirstDay] = countSoFar;
-                if (countSoFar > MaxFixtureRowsPerDay)
+                // Q-039: the bound (MAX_FIXTURE_ROWS, 11 §11.2) is on the file's total data
+                // row count, not per day — RowOrdinal indexes the whole file (§11.3), so
+                // that is what keeps it under FLIGHT_ID_DAY_STRIDE. Checked immediately, at
+                // the row that first breaches it, so the failure names a line (§11.4) and
+                // does not depend on any aggregation afterwards (02-determinism.md rule 5).
+                if (rows.Count > MaxFixtureRows)
                 {
-                    throw Fail(sourceName, lineNumber, "day " + row.FirstDay.ToString(CultureInfo.InvariantCulture) + " has more than " + MaxFixtureRowsPerDay.ToString(CultureInfo.InvariantCulture) + " rows");
+                    throw Fail(sourceName, lineNumber, "the file has more than " + MaxFixtureRows.ToString(CultureInfo.InvariantCulture) + " data rows (MAX_FIXTURE_ROWS)");
                 }
             }
 
