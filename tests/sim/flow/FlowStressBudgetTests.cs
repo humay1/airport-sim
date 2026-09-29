@@ -82,6 +82,7 @@ namespace AirportSim.Sim.Flow.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")]
         public void test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts()
         {
             AssertFixtureShape();
@@ -179,6 +180,7 @@ namespace AirportSim.Sim.Flow.Tests
         }
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_flow_stress_30k_day_update_path_allocates_nothing()
         {
             // 03 "How a budget is measured": zero bytes allocated in the update

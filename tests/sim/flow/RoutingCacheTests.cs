@@ -449,6 +449,7 @@ namespace AirportSim.Sim.Flow.Tests
         }
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_flow_routing_cache_matches_uncached_reference()
         {
             ulong day = SimConstants.TICKS_PER_SIM_DAY;

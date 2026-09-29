@@ -20,6 +20,7 @@ namespace AirportSim.Sim.Flow.Tests
         // 2.5 ms = Frequency * 25 / 10000 timestamp units.
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")]
         public void test_promotion_budget_one_day_with_every_node_promoted()
         {
             var plan = new PromoPlan(0x0010_B0D6UL, 1500, 6, 20);
