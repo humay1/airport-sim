@@ -20,9 +20,9 @@ namespace AirportSim.Sim.Flow.Tests
             while (rig.Host.CurrentTick < fromTick + PromoConst.TicksPerDay)
             {
                 bool checkpoint = rig.Host.CurrentTick % 600UL == 0UL;
-                long before = GC.GetAllocatedBytesForCurrentThread();
+                long before = Allocation.Start();
                 rig.Host.Step(1);
-                long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+                long delta = Allocation.Since(before);
                 if (!checkpoint)
                 {
                     total += delta;
@@ -68,14 +68,14 @@ namespace AirportSim.Sim.Flow.Tests
             var rig = new PromoRig(PromoPlan.Standard(), record: false, recordCheckpoints: false);
             rig.Host.Step(6000);
             Assert.True(rig.TotalPopulation() > 0);
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            long before = Allocation.Start();
             for (int i = 0; i < 100; i++)
             {
                 rig.SetAll(i % 2 == 0);
                 rig.SetAll(i % 2 == 0);
             }
 
-            long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            long bytes = Allocation.Since(before);
             Assert.True(bytes == 0L, "SetPromoted allocated " + bytes.ToString(CultureInfo.InvariantCulture) + " bytes over 1800 calls");
             rig.SetAll(true);
             Assert.Equal(rig.Flow.Population(new NodeId(PromoConst.Gate)), rig.Flow.AgentsAt(new NodeId(PromoConst.Gate)).Count);
@@ -111,9 +111,9 @@ namespace AirportSim.Sim.Flow.Tests
                 {
                     var node = new NodeId(PromoConst.AllNodes[k]);
                     int pop = rig.Flow.Population(node);
-                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    long before = Allocation.Start();
                     IReadOnlyList<AgentView> views = rig.Flow.AgentsAt(node);
-                    long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+                    long delta = Allocation.Since(before);
                     if (pop <= peak[k])
                     {
                         bytes += delta;
