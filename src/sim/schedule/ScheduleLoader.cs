@@ -15,9 +15,9 @@ namespace AirportSim.Sim.Schedule
         // 11-interfaces-schedule.md §11.2: FLIGHT_ID_DAY_STRIDE - 1 (Q-039).
         private const int MaxFixtureRows = 99999;
 
-        // A string is immutable (07-conventions.md L10); the header's expected bytes are
-        // recomputed from it locally in Load rather than cached in a static byte[], which
-        // would be mutable shared state (review finding 9).
+        // A string is immutable (07-conventions.md L10, "no hidden statics in sim code");
+        // the header's expected bytes are recomputed from it locally in Load rather than
+        // cached in a static byte[], which would be mutable shared state.
         private const string HeaderText =
             "flight_ref,day,repeat_daily,movement,airline,aircraft_type,sched_hhmm,rotation_ref,min_turnaround_minutes,pax,pax_profile,hold_bag_permille,assist_permille,entry_node";
 

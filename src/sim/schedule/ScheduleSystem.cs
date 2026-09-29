@@ -20,7 +20,7 @@ namespace AirportSim.Sim.Schedule
         // The largest minutes_before_std a referenced pax profile may use; it is what makes
         // "no injection is ever due before its flight's publication" (§11.6) true by
         // construction, so it is asserted once, at construction, rather than guarded per tick.
-        private const uint MaxShowUpMinutesBeforeStd = (uint)(SimConstants.TICKS_PER_SIM_DAY / SimConstants.TICKS_PER_SIM_MINUTE);
+        private const uint MaxShowUpMinutesBeforeStd = (uint)(PlanPublishLeadTicks / SimConstants.TICKS_PER_SIM_MINUTE);
 
         private static readonly Comparison<(ulong Tick, FlightId Id)> TickThenIdComparer =
             (a, b) =>
@@ -39,10 +39,12 @@ namespace AirportSim.Sim.Schedule
         // that day's materialisation: the loop below visits rows in ascending RowOrdinal
         // and Occurs() preserves order, so nothing here is ever sorted or shifted.
         // Concatenating days 0..highestDay ascending, each day's ordinals ascending, is
-        // exactly ascending FlightId (§11.3, §11.7), because FlightIdDayStride exceeds any
-        // day's occurring row count. Publication itself only flips FlightState.Published —
-        // O(1), nothing inserted into a sorted container — and PublishedFlights/the hash
-        // walk filter this array by that flag at query time (review findings 5 and 6).
+        // exactly ascending FlightId (§11.3, §11.7): RowOrdinal is bounded by MAX_FIXTURE_ROWS
+        // (the fixture's total data row count, §11.2/§11.3, Q-039), which is
+        // FlightIdDayStride - 1, so it never reaches the next day's id range. Publication
+        // itself only flips FlightState.Published — O(1), nothing inserted into a sorted
+        // container — and PublishedFlights/the hash walk filter this array by that flag at
+        // query time.
         private readonly Dictionary<uint, int[]> _dayOrdinals = new Dictionary<uint, int[]>();
 
         // Per-day movement indices, each sorted once over only that day's rows at
@@ -50,14 +52,18 @@ namespace AirportSim.Sim.Schedule
         // A day's ScheduledTicks all fall in [day * TICKS_PER_SIM_DAY, (day+1) *
         // TICKS_PER_SIM_DAY), a range strictly below the next day's, so concatenating
         // days ascending preserves the required ascending (ScheduledTick, FlightId) order
-        // without ever touching an earlier day's list again (review finding 5).
+        // without ever touching an earlier day's list again.
         private readonly Dictionary<uint, List<(ulong Tick, FlightId Id)>> _departureByDay = new Dictionary<uint, List<(ulong Tick, FlightId Id)>>();
         private readonly Dictionary<uint, List<(ulong Tick, FlightId Id)>> _arrivalByDay = new Dictionary<uint, List<(ulong Tick, FlightId Id)>>();
 
         private readonly Dictionary<ulong, List<FlightId>> _publishQueue = new Dictionary<ulong, List<FlightId>>();
 
-        // Queued by due tick; each entry names the flight and the index of one of its
-        // precomputed InjectionEntry values, never a shared object (review finding 7).
+        // Its storage is reserved when a day is materialised, sized from that day's flights'
+        // buckets and classes (§11.9): each entry names the flight and the index of one of
+        // its InjectionEntry slots, never a shared object, and every slot for every
+        // (bucket, class) pair is queued here regardless of the eventual count, because the
+        // count is not known until publication (§11.6 "Expansion to injections" step 2/Tick
+        // step 2) — see WriteInjections.
         private readonly Dictionary<ulong, List<(FlightId Flight, int EntryIndex)>> _injectionQueue =
             new Dictionary<ulong, List<(FlightId Flight, int EntryIndex)>>();
 
@@ -195,6 +201,9 @@ namespace AirportSim.Sim.Schedule
                 return 0;
             }
 
+            // Every (bucket, class) pair is queued (see _injectionQueue's comment), but a
+            // class with a count of 0 produces no injection (§11.6 step 4) and so is not
+            // "pending"; Count contributes 0 to the sum regardless of Drained either way.
             int total = 0;
             InjectionEntry[] injections = state.Injections;
             bool[] drained = state.Drained;
@@ -221,6 +230,9 @@ namespace AirportSim.Sim.Schedule
             {
                 for (int i = 0; i < due.Count; i++)
                 {
+                    // §11.6 "Order of the steps in sim.schedule's Tick": for each flight
+                    // publishing this tick, in ascending FlightId, its two events are
+                    // published, and then its injections are computed and queued.
                     FlightId id = due[i];
                     FlightState state = _byId[id];
                     state.Published = true;
@@ -241,6 +253,11 @@ namespace AirportSim.Sim.Schedule
 
                     var milestone = new FlightMilestoneReached(r.Id, FlightMilestone.PlanPublished, t, t);
                     ctx.Events.Publish(in milestone, new EventRef(planId, true));
+
+                    if (state.Injections.Length > 0)
+                    {
+                        WriteInjections(state);
+                    }
                 }
 
                 _publishQueue.Remove(t);
@@ -253,7 +270,10 @@ namespace AirportSim.Sim.Schedule
                     (FlightId flight, int entryIndex) = dueInjections[i];
                     FlightState state = _byId[flight];
                     InjectionEntry entry = state.Injections[entryIndex];
-                    if (_flow != null)
+
+                    // A class with a count of 0 produces no injection (§11.6 step 4); its
+                    // slot is still drained, in its ascending (bucketIndex, classIndex) turn.
+                    if (_flow != null && entry.Count > 0)
                     {
                         bool hasBag = entry.ClassIndex >= 2;
                         bool assist = (entry.ClassIndex % 2) == 1;
@@ -297,6 +317,9 @@ namespace AirportSim.Sim.Schedule
                 }
             }
 
+            // Every (bucket, class) pair has a queued slot (see _injectionQueue's comment),
+            // but a class with a count of 0 produces no injection (§11.6 step 4) and so was
+            // never a "pending injection" to begin with, drained or not.
             ulong pendingTotal = 0;
             for (uint d = 0; d <= _highestDay; d++)
             {
@@ -313,10 +336,11 @@ namespace AirportSim.Sim.Schedule
                         continue;
                     }
 
+                    InjectionEntry[] injections = state.Injections;
                     bool[] drained = state.Drained;
-                    for (int k = 0; k < drained.Length; k++)
+                    for (int k = 0; k < injections.Length; k++)
                     {
-                        if (!drained[k])
+                        if (!drained[k] && injections[k].Count > 0)
                         {
                             pendingTotal++;
                         }
@@ -345,12 +369,12 @@ namespace AirportSim.Sim.Schedule
                     bool[] drained = state.Drained;
                     for (int k = 0; k < injections.Length; k++)
                     {
-                        if (drained[k])
+                        InjectionEntry e = injections[k];
+                        if (drained[k] || e.Count == 0)
                         {
                             continue;
                         }
 
-                        InjectionEntry e = injections[k];
                         h.Feed(e.DueTick);
                         h.Feed((long)e.Count);
                         h.Feed((long)e.ClassIndex);
@@ -437,17 +461,31 @@ namespace AirportSim.Sim.Schedule
                     row.AssistPermille,
                     row.EntryNode);
 
-                InjectionEntry[] injections = row.Kind == MovementKind.Departure && row.PaxCount > 0
-                    ? ComputeInjections(scheduledTick, row.PaxCount, row.HoldBagPermille, row.AssistPermille, _curves[i])
-                    : Array.Empty<InjectionEntry>();
+                // §11.9 "Injection queue": storage for this flight's occurrence is reserved
+                // here, sized from its curve's buckets and the four passenger classes; the
+                // actual counts are written at publication (WriteInjections), not here, per
+                // §11.6 "Expansion to injections" ("At publication, the flight's injections
+                // are computed once and queued"). Every (bucket, class) slot is queued
+                // regardless of its eventual count: the count is not known yet, and a due
+                // tick depends only on ScheduledTick and the curve, both already fixed.
+                IReadOnlyList<ShowUpBucket> curve = _curves[i];
+                bool hasDemand = row.Kind == MovementKind.Departure && row.PaxCount > 0;
+                InjectionEntry[] injections = hasDemand ? new InjectionEntry[curve.Count * 4] : Array.Empty<InjectionEntry>();
 
-                var state = new FlightState(record, injections);
+                var state = new FlightState(record, injections, curve);
                 _byId.Add(flightId, state);
 
                 AddToBucket(_publishQueue, publishTick, flightId);
-                for (int e = 0; e < injections.Length; e++)
+                if (hasDemand)
                 {
-                    AddToBucket(_injectionQueue, injections[e].DueTick, (flightId, e));
+                    for (int b = 0; b < curve.Count; b++)
+                    {
+                        ulong due = DueTickOf(scheduledTick, curve[b]);
+                        for (int c = 0; c < 4; c++)
+                        {
+                            AddToBucket(_injectionQueue, due, (flightId, (b * 4) + c));
+                        }
+                    }
                 }
 
                 List<(ulong Tick, FlightId Id)> movementList = row.Kind == MovementKind.Arrival ? arrivalsThisDay : departuresThisDay;
@@ -517,51 +555,55 @@ namespace AirportSim.Sim.Schedule
             return lo;
         }
 
-        private static InjectionEntry[] ComputeInjections(
-            ulong scheduledTick,
-            int paxCount,
-            int holdPermille,
-            int assistPermille,
-            IReadOnlyList<ShowUpBucket> curve)
+        private static ulong DueTickOf(ulong scheduledTick, in ShowUpBucket bucket)
         {
+            ulong lead = (ulong)bucket.MinutesBeforeStd * SimConstants.TICKS_PER_SIM_MINUTE;
+            return scheduledTick >= lead ? scheduledTick - lead : 0UL;
+        }
+
+        /// <summary>
+        /// §11.6 "Expansion to injections": computed at publication (Tick step 2), into the
+        /// storage <see cref="MaterializeDay"/> already reserved. Every scratch buffer is
+        /// stack-allocated (<c>stackalloc</c>, never the managed heap), so this allocates
+        /// nothing (§11.9): each entry is written in O(1), and the whole call is
+        /// O(buckets), which is bounded by the flight now publishing (§11.9's "injections
+        /// queued ... this tick").
+        /// </summary>
+        private static void WriteInjections(FlightState state)
+        {
+            FlightRecord r = state.Record;
+            IReadOnlyList<ShowUpBucket> curve = state.Curve;
             int n = curve.Count;
-            var bucketCounts = new int[n];
-            var bucketRemainders = new long[n];
+
+            Span<int> bucketCounts = stackalloc int[n];
+            Span<long> bucketRemainders = stackalloc long[n];
             long assigned = 0;
             for (int i = 0; i < n; i++)
             {
-                long exact = (long)paxCount * curve[i].SharePermille;
+                long exact = (long)r.PaxCount * curve[i].SharePermille;
                 bucketCounts[i] = (int)(exact / 1000L);
                 bucketRemainders[i] = exact % 1000L;
                 assigned += bucketCounts[i];
             }
 
-            DistributeRemainder(bucketCounts, bucketRemainders, paxCount - assigned);
+            DistributeRemainder(bucketCounts, bucketRemainders, r.PaxCount - assigned);
 
-            long holdW = holdPermille;
-            long assistW = assistPermille;
-            var classWeights = new[]
-            {
-                (1000L - holdW) * (1000L - assistW),
-                (1000L - holdW) * assistW,
-                holdW * (1000L - assistW),
-                holdW * assistW,
-            };
+            long holdW = r.HoldBagPermille;
+            long assistW = r.AssistPermille;
+            Span<long> classWeights = stackalloc long[4];
+            classWeights[0] = (1000L - holdW) * (1000L - assistW);
+            classWeights[1] = (1000L - holdW) * assistW;
+            classWeights[2] = holdW * (1000L - assistW);
+            classWeights[3] = holdW * assistW;
 
-            var output = new List<InjectionEntry>();
+            InjectionEntry[] injections = state.Injections;
+            Span<int> classCounts = stackalloc int[4];
+            Span<long> classRemainders = stackalloc long[4];
             for (int b = 0; b < n; b++)
             {
                 int bucketCount = bucketCounts[b];
-                if (bucketCount == 0)
-                {
-                    continue;
-                }
+                ulong due = DueTickOf(r.ScheduledTick, curve[b]);
 
-                ulong lead = (ulong)curve[b].MinutesBeforeStd * SimConstants.TICKS_PER_SIM_MINUTE;
-                ulong due = scheduledTick >= lead ? scheduledTick - lead : 0UL;
-
-                var classCounts = new int[4];
-                var classRemainders = new long[4];
                 long classAssigned = 0;
                 for (int c = 0; c < 4; c++)
                 {
@@ -575,19 +617,14 @@ namespace AirportSim.Sim.Schedule
 
                 for (int c = 0; c < 4; c++)
                 {
-                    if (classCounts[c] > 0)
-                    {
-                        output.Add(new InjectionEntry(c, classCounts[c], due));
-                    }
+                    injections[(b * 4) + c] = new InjectionEntry(c, classCounts[c], due);
                 }
             }
-
-            return output.ToArray();
         }
 
-        private static void DistributeRemainder(int[] counts, long[] remainders, long leftover)
+        private static void DistributeRemainder(Span<int> counts, Span<long> remainders, long leftover)
         {
-            var taken = new bool[counts.Length];
+            Span<bool> taken = stackalloc bool[counts.Length];
             for (long k = 0; k < leftover; k++)
             {
                 int best = -1;
@@ -620,28 +657,37 @@ namespace AirportSim.Sim.Schedule
 
         private sealed class FlightState
         {
-            public FlightState(FlightRecord record, InjectionEntry[] injections)
+            public FlightState(FlightRecord record, InjectionEntry[] injections, IReadOnlyList<ShowUpBucket> curve)
             {
                 Record = record;
                 Injections = injections;
                 Drained = new bool[injections.Length];
+                Curve = curve;
             }
 
             public FlightRecord Record { get; }
 
             public bool Published { get; set; }
 
-            /// <summary>Fixed at materialisation, ascending (bucketIndex, classIndex); never resized.</summary>
+            /// <summary>
+            /// Reserved at materialisation, sized to this flight's curve (buckets * 4
+            /// classes); every slot's <see cref="InjectionEntry.Count"/> is written once, at
+            /// publication (<see cref="WriteInjections"/>), never resized (§11.9).
+            /// </summary>
             public InjectionEntry[] Injections { get; }
 
             /// <summary>Parallel to <see cref="Injections"/>; true once that entry has been drained.</summary>
             public bool[] Drained { get; }
+
+            /// <summary>The pax profile's show-up curve, needed again at publication to write <see cref="Injections"/>.</summary>
+            public IReadOnlyList<ShowUpBucket> Curve { get; }
         }
 
         /// <summary>
-        /// One passenger-count entry, plain data (review finding 7): the queue that drains
-        /// it names its owning flight and its index into that flight's <see cref="FlightState.Injections"/>
-        /// array, never a reference to this value itself.
+        /// One passenger-count entry, plain data: never a reference (02-determinism.md rule
+        /// 7, 08-interfaces-core.md §8.4 "never branch on a reference"). The queue that
+        /// drains it names its owning flight and its index into that flight's
+        /// <see cref="FlightState.Injections"/> array, never a reference to this value itself.
         /// </summary>
         private readonly struct InjectionEntry
         {
