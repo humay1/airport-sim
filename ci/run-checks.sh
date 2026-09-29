@@ -30,7 +30,7 @@ if [ "${SKIP_UNIT_TESTS:-0}" = "1" ]; then
 elif [ -f AirportSim.sln ]; then
   filter=()
   [ "${SKIP_SLOW:-0}" = "1" ] && filter=(--filter "Category!=Slow")
-  dotnet test AirportSim.sln -c Release --nologo --no-build "${filter[@]}" \
+  dotnet test AirportSim.sln -c Release --nologo --no-build  --logger "console;verbosity=normal" "${filter[@]}" \
     && ok "tests pass" || fail "tests"
 else
   echo "  (skipped, no solution yet)"
