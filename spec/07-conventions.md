@@ -274,12 +274,18 @@ uses `Budget`. A test may carry both traits.
     sim-days) across all the hosts it runs. This rule is exact and does
     not depend on the machine. A test of exactly 10 sim-days, the size
     of `02`'s `determinism_same_process`, is not Slow by it.
-  - **(b) Time.** Its duration as reported by xUnit, in a `Release` run
-    on the CI runner, is **over 10 s**. That limit is machine-dependent,
-    so it has a margin of 2. The Test Author tags a test when their own
-    `Release` measurement is **over 5 s**. A test without the trait that
-    CI reports above 10 s is a review finding: tag it. It is never a
-    reason to weaken the test.
+  - **(b) Time.** In **any** `Release` run, on CI or on the author's
+    machine, xUnit reports its duration **over 5 s**. This limit depends
+    on the machine, so it has hysteresis instead of a single edge:
+    - a test goes Slow the first time any run reports it over 5 s. A
+      test without the trait seen over 5 s is a review finding: tag it,
+      and never weaken the test to dodge the tag;
+    - the tag comes off only when a change to the test brings it under
+      **2.5 s** in a `Release` run on CI. A run-to-run wobble near 5 s
+      therefore never flips it.
+    The 5 s line sits in a measured gap. On `main` at `4c3d900`, in
+    `Release`, the slowest tests were 33.9, 10.2, 7.6, 7.5, 7.2 and 6.1 s,
+    and the next were 3.4, 2.7 and 2.5 s.
   - Nothing else makes a test Slow. A test that meets neither rule must
     not be tagged, so the PR suite keeps its coverage.
 - **Where Slow tests run.** Not in PR runs. They run on every push to
@@ -289,9 +295,13 @@ uses `Budget`. A test may carry both traits.
   includes. The gates in `ci/run-checks.sh` are harness runs, not xUnit
   tests, and no trait affects them. That covers `02`'s determinism gates
   and `tools/SimHarness budget`, which stays the authoritative budget
-  measurement (L11, `03` "How a budget is measured"). A test that is both
-  `Budget` and Slow is still a budget assertion. It just runs on `main`
-  and nightly.
+  measurement (L11, `03` "How a budget is measured").
+- **A `Budget` test may also be Slow**, and a stress or gate test such as
+  T-011's may too. It is still a budget assertion, and a failure is still
+  a failure, but it is found **after merge**: on the next `main` push or
+  the nightly run, not on the PR. A Slow failure on `main` is a broken
+  `main`, to be fixed. It is never retagged or skipped to get `main`
+  green.
 - **T-009** (the 100-sim-day kill gate, `tasks/T-009-100-day-run.md`)
   steps 1 440 000 ticks per run, so it is Slow by rule (a). Its Test
   Author tags it from the start.

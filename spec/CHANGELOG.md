@@ -2226,19 +2226,37 @@ Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
                combined with `Budget`;
              - the rule for when a test must be Slow: (a) it steps more than
                144 000 ticks in total, which is exact and machine-free; or
-               (b) xUnit reports over 10 s in a `Release` CI run, with the
-               author tagging at over 5 s, a margin of 2;
+               (b) any `Release` run, on CI or the author's machine,
+               reports over 5 s. The tag comes off only below 2.5 s on CI,
+               a hysteresis that absorbs machine wobble;
+             - that a `Budget` or gate test may also be Slow, with its
+               failures then found on `main` after merge, never by
+               retagging;
              - that Slow changes no `ci/run-checks.sh` harness gate,
                including `tools/SimHarness budget`;
              - that T-009 is Slow by rule (a).
-             The thresholds are the Architect's: 10 sim-days matches `02`'s
-             `determinism_same_process` size, and 10 s keeps the PR suite
-             quick.
+             The thresholds are the Architect's. 10 sim-days matches `02`'s
+             `determinism_same_process` size. 5 s sits in a measured gap:
+             in a `Release` run of `main` at `4c3d900` on the owner's
+             laptop, 1223 tests took 103 s summed. The six slowest took
+             33.9, 10.2, 7.6, 7.5, 7.2 and 6.1 s, the next 3.4 s and
+             below, so 5 s catches exactly those six, about 72 of the
+             103 s.
 Raised by:   owner, via coordinator
 Impact:      T-009's Test Author tags its 100-day test `Slow`. A search of
              merged `tests/` found no test that steps more than about two
-             sim-days, so none meets rule (a). Rule (b) needs CI timings, and
-             was not checked here. The CI filter change is the owner's (`ci/`,
-             `.github/`). No scope added.
+             sim-days, so none meets rule (a). By rule (b) these six merged
+             tests are Slow now, and a Test Author task must add the trait,
+             because workers never edit tests:
+             - `PromotionBudgetTests.test_promotion_budget_one_day_with_every_node_promoted`;
+             - `FlowHeadlessDayTests.test_flow_headless_day_keeps_every_invariant`;
+             - `FlowStressBudgetTests.test_flow_stress_30k_day_update_path_allocates_nothing`;
+             - `ScheduleHashTests.test_schedule_hash_identical_with_and_without_flow_registered`;
+             - `RoutingCacheTests.test_flow_routing_cache_matches_uncached_reference`;
+             - `FlowStressBudgetTests.test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts`.
+             Four of them are budget, stress or kill-gate tests, including
+             T-011's. Their regressions will now be caught on `main` after
+             merge. The CI filter change is the owner's (`ci/`, `.github/`).
+             No scope added.
 Signed off:  owner, 2026-09-29 (the category and where it runs). The
              thresholds are the Architect's.
