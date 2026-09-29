@@ -15,6 +15,7 @@ namespace AirportSim.Sim.Schedule.Tests
     public sealed class ScheduleHashTests
     {
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_schedule_hash_identical_with_and_without_flow_registered()
         {
             var without = new HostRig(Fixture.Bytes(), record: false);
