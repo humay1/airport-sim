@@ -16,17 +16,22 @@ namespace AirportSim.Sim.Flow.Tests
     {
         private static long AllocatedOverDay(PromoRig rig, ulong fromTick)
         {
+            // Same exclusion as a per-tick GC.GetAllocatedBytesForCurrentThread
+            // pair would give (a tick is excluded when the tick it starts from
+            // is itself a checkpoint boundary, 08 §8.9), but batched into one
+            // forced collection per 600-tick period instead of one per tick:
+            // fromTick is itself always a checkpoint boundary (a multiple of
+            // 600), so each period is exactly one unmeasured tick off that
+            // boundary, then the 599 following ticks measured as a single
+            // window, landing back on the next boundary.
             long total = 0;
-            while (rig.Host.CurrentTick < fromTick + PromoConst.TicksPerDay)
+            ulong to = fromTick + PromoConst.TicksPerDay;
+            while (rig.Host.CurrentTick < to)
             {
-                bool checkpoint = rig.Host.CurrentTick % 600UL == 0UL;
-                long before = Allocation.Start();
                 rig.Host.Step(1);
-                long delta = Allocation.Since(before);
-                if (!checkpoint)
-                {
-                    total += delta;
-                }
+                long before = Allocation.Start();
+                rig.Host.Step(599);
+                total += Allocation.Since(before);
             }
 
             return total;
@@ -104,24 +109,50 @@ namespace AirportSim.Sim.Flow.Tests
             long bytes = 0;
             long reads = 0;
             long viewsRead = 0;
+            var pops = new int[PromoConst.AllNodes.Length];
             for (ulong t = 0; t < PromoConst.TicksPerDay; t++)
             {
                 rig.Host.Step(1);
+
+                bool anyAbovePeak = false;
                 for (int k = 0; k < PromoConst.AllNodes.Length; k++)
                 {
-                    var node = new NodeId(PromoConst.AllNodes[k]);
-                    int pop = rig.Flow.Population(node);
-                    long before = Allocation.Start();
-                    IReadOnlyList<AgentView> views = rig.Flow.AgentsAt(node);
-                    long delta = Allocation.Since(before);
-                    if (pop <= peak[k])
+                    pops[k] = rig.Flow.Population(new NodeId(PromoConst.AllNodes[k]));
+                    anyAbovePeak |= pops[k] > peak[k];
+                }
+
+                if (anyAbovePeak)
+                {
+                    // At least one node's population exceeds its day-1 peak
+                    // this tick, so its AgentsAt call is allowed to grow a
+                    // buffer here (Q-033). One window can't tell that call's
+                    // allocation apart from the others sharing it, so this
+                    // tick is read but not measured; peak still advances.
+                    for (int k = 0; k < PromoConst.AllNodes.Length; k++)
                     {
-                        bytes += delta;
-                        reads++;
-                        viewsRead += views.Count;
+                        rig.Flow.AgentsAt(new NodeId(PromoConst.AllNodes[k]));
+                    }
+                }
+                else
+                {
+                    // Every node is at or below its day-1 peak this tick, so
+                    // none of the reads below may grow a buffer: one window
+                    // safely covers the whole node loop.
+                    long before = Allocation.Start();
+                    int views = 0;
+                    for (int k = 0; k < PromoConst.AllNodes.Length; k++)
+                    {
+                        views += rig.Flow.AgentsAt(new NodeId(PromoConst.AllNodes[k])).Count;
                     }
 
-                    peak[k] = Math.Max(peak[k], pop);
+                    bytes += Allocation.Since(before);
+                    reads += PromoConst.AllNodes.Length;
+                    viewsRead += views;
+                }
+
+                for (int k = 0; k < PromoConst.AllNodes.Length; k++)
+                {
+                    peak[k] = Math.Max(peak[k], pops[k]);
                 }
             }
 
