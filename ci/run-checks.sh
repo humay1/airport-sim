@@ -23,8 +23,14 @@ fi
 
 # ---------------------------------------------------------------- tests
 step "unit + integration tests"
-if [ -f AirportSim.sln ]; then
-  dotnet test AirportSim.sln -c Release --nologo --no-build \
+# SKIP_UNIT_TESTS=1: determinism job (build-and-test already ran them).
+# SKIP_SLOW=1: PR runs skip [Trait("Category","Slow")] (spec/07 L11a).
+if [ "${SKIP_UNIT_TESTS:-0}" = "1" ]; then
+  echo "  (skipped: SKIP_UNIT_TESTS=1)"
+elif [ -f AirportSim.sln ]; then
+  filter=()
+  [ "${SKIP_SLOW:-0}" = "1" ] && filter=(--filter "Category!=Slow")
+  dotnet test AirportSim.sln -c Release --nologo --no-build "${filter[@]}" \
     && ok "tests pass" || fail "tests"
 else
   echo "  (skipped, no solution yet)"
