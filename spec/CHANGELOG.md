@@ -2219,9 +2219,12 @@ Signed off:  not required. `01` and `02` are untouched. The 1440-minute
 
 ## 2026-09-29 — spec/07 L11a (new); INDEX — the Slow test category
 Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
-             `Slow` category. PR CI skips them, and they run on every push to
-             `main` and nightly, next to the soak. L11a records the
-             convention:
+             `Slow` category. PR push runs skip them. A green pre-merge Slow
+             run on the PR's head commit is required for any PR touching
+             `src/` or `tests/`, and a failure blocks the merge (owner,
+             2026-09-29, answering the Architect's done-means-green
+             question). They also run on every push to `main` and nightly,
+             next to the soak. L11a records the convention:
              - the trait `[Trait("Category", "Slow")]`, which may be
                combined with `Budget`;
              - the rule for when a test must be Slow: (a) it steps more than
@@ -2229,9 +2232,9 @@ Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
                (b) any `Release` run, on CI or the author's machine,
                reports over 5 s. The tag comes off only below 2.5 s on CI,
                a hysteresis that absorbs machine wobble;
-             - that a `Budget` or gate test may also be Slow, with its
-               failures then found on `main` after merge, never by
-               retagging;
+             - that a `Budget` or gate test may also be Slow, and that its
+               failure blocks the merge through the pre-merge run. It is
+               never fixed by retagging;
              - that Slow changes no `ci/run-checks.sh` harness gate,
                including `tools/SimHarness budget`;
              - that T-009 is Slow by rule (a).
@@ -2255,8 +2258,11 @@ Impact:      T-009's Test Author tags its 100-day test `Slow`. A search of
              - `RoutingCacheTests.test_flow_routing_cache_matches_uncached_reference`;
              - `FlowStressBudgetTests.test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts`.
              Four of them are budget, stress or kill-gate tests, including
-             T-011's. Their regressions will now be caught on `main` after
-             merge. The CI filter change is the owner's (`ci/`, `.github/`).
-             No scope added.
-Signed off:  owner, 2026-09-29 (the category and where it runs). The
-             thresholds are the Architect's.
+             T-011's. Their regressions still block merges, through the
+             pre-merge Slow run. The CI filter and the manually triggered
+             pre-merge workflow are the owner's (`ci/`, `.github/`). For
+             the Integrator: before merging a PR that touches `src/` or
+             `tests/`, confirm a green Slow run on its head commit. No
+             scope added.
+Signed off:  owner, 2026-09-29 (the category, where it runs, and the
+             pre-merge requirement). The thresholds are the Architect's.

@@ -128,8 +128,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   exception types; **Slow tests (L11a, owner, 2026-09-29):
   `[Trait("Category", "Slow")]` when a test steps more than 144 000 ticks
   or any Release run reports it over 5 s (it is untagged only below
-  2.5 s). A `Budget` test may also be Slow. They are off PR runs
-  and run on `main` and nightly. The harness gates are unaffected**.
+  2.5 s). A `Budget` test may also be Slow. PR push runs skip them, a
+  green pre-merge Slow run on the PR head is required for any PR touching
+  `src/` or `tests/`, and they also run on `main` and nightly. The harness
+  gates are unaffected**.
 - LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
 

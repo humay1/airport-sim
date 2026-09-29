@@ -288,20 +288,27 @@ uses `Budget`. A test may carry both traits.
     and the next were 3.4, 2.7 and 2.5 s.
   - Nothing else makes a test Slow. A test that meets neither rule must
     not be tagged, so the PR suite keeps its coverage.
-- **Where Slow tests run.** Not in PR runs. They run on every push to
-  `main` and nightly, next to `soak_500_days`. The CI wiring is the
-  owner's (`ci/`, `.github/`).
+- **Where Slow tests run** (HUMAN DECISION — owner, 2026-09-29):
+  - **PR push runs skip them.**
+  - **A pre-merge Slow run is required** for any PR that touches `src/`
+    or `tests/`. It is a run of the Slow tests on the PR's head commit.
+    If it fails, or is missing for that head, the PR does not merge,
+    just as a failing `02` gate blocks a merge. So "done means green"
+    covers Slow tests, T-009's kill-gate test included.
+  - They also run on every push to `main` and nightly, next to
+    `soak_500_days`.
+  - How the pre-merge run is triggered, and the workflow files, are the
+    owner's CI wiring (`ci/`, `.github/`) and are not specified here.
 - **What Slow does not change.** It only chooses which xUnit tests a run
   includes. The gates in `ci/run-checks.sh` are harness runs, not xUnit
   tests, and no trait affects them. That covers `02`'s determinism gates
   and `tools/SimHarness budget`, which stays the authoritative budget
   measurement (L11, `03` "How a budget is measured").
 - **A `Budget` test may also be Slow**, and a stress or gate test such as
-  T-011's may too. It is still a budget assertion, and a failure is still
-  a failure, but it is found **after merge**: on the next `main` push or
-  the nightly run, not on the PR. A Slow failure on `main` is a broken
-  `main`, to be fixed. It is never retagged or skipped to get `main`
-  green.
+  T-011's may too. It is still a budget assertion, and its failure blocks
+  the merge through the pre-merge Slow run. A Slow failure that first
+  appears on `main` or nightly is a broken `main`, to be fixed. It is
+  never retagged or skipped to get green.
 - **T-009** (the 100-sim-day kill gate, `tasks/T-009-100-day-run.md`)
   steps 1 440 000 ticks per run, so it is Slow by rule (a). Its Test
   Author tags it from the start.
