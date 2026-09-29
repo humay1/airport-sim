@@ -204,11 +204,11 @@ namespace AirportSim.Sim.Flow.Tests
             var windows = new List<string>();
             for (int w = 0; w < 4; w++)
             {
-                long before = System.GC.GetAllocatedBytesForCurrentThread();
+                long before = Allocation.Start();
                 rig.Step(599);
-                long after = System.GC.GetAllocatedBytesForCurrentThread();
-                allocated += after - before;
-                windows.Add((after - before).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                long after = Allocation.Since(before);
+                allocated += after;
+                windows.Add(after.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 rig.Step(1);
             }
 
