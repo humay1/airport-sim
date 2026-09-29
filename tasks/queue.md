@@ -157,17 +157,20 @@ to wave through a failing `determinism` check.
 | T-005 | Command queue applied at tick boundaries | sim.core | T-001 | MERGED |
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | MERGED (PR #48) |
-| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | TESTS_AUTHORED (all dependencies now merged — releasable) |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | QUEUED |
-| T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | QUEUED (tests being authored) |
-| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | TESTS_AUTHORED (`test-author/T-011-stress-30k-tests`, blocked on T-010 merging) |
+| T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | MERGED (PR #54) |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | IN_PROGRESS (released 2026-09-29; its 100-day kill-gate test is Slow by L11a rule (a), so its PR needs the pre-merge `slow-tests` run) |
+| T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | MERGED (PR #56) |
+| T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | MERGED (PR #59) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
 | T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 | T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
 | T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | MERGED (PR #51, `7bb30b5`) |
-| T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | QUEUED (blocked on T-010 merging) |
-| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | QUEUED (blocked on T-010 merging) |
+| T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | MERGED (PR #60, `e99bc0d`) |
+| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | IN_PROGRESS (released 2026-09-29) |
+| T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | QUEUED (released by the owner 2026-09-29 together with T-039 and T-009; test-author, own PR) |
+
+**T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
