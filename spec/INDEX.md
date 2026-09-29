@@ -125,7 +125,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   spec-named, test names are method names, who creates each project and the
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
   (Q-030); exact
-  exception types.
+  exception types; **Slow tests (L11a, owner, 2026-09-29):
+  `[Trait("Category", "Slow")]` when a test steps more than 144 000 ticks
+  or takes over 10 s in Release on CI (tag at 5 s). They are off PR runs
+  and run on `main` and nightly. The harness gates are unaffected**.
 - LC: no property-testing library; `NuGetAudit=false` (Q-013).
 - Read if: every task (all of it).
 

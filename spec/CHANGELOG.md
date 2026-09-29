@@ -2216,3 +2216,29 @@ Revision 3:  after the third PR #57 review (rejected at f16c2f7):
              - this header lists §11.7 and §11.9.
 Signed off:  not required. `01` and `02` are untouched. The 1440-minute
              show-up bound (Q-038) is owner-confirmed 2026-09-28.
+
+## 2026-09-29 — spec/07 L11a (new); INDEX — the Slow test category
+Reason:      HUMAN DECISION — owner, 2026-09-29: long-running tests get a
+             `Slow` category. PR CI skips them, and they run on every push to
+             `main` and nightly, next to the soak. L11a records the
+             convention:
+             - the trait `[Trait("Category", "Slow")]`, which may be
+               combined with `Budget`;
+             - the rule for when a test must be Slow: (a) it steps more than
+               144 000 ticks in total, which is exact and machine-free; or
+               (b) xUnit reports over 10 s in a `Release` CI run, with the
+               author tagging at over 5 s, a margin of 2;
+             - that Slow changes no `ci/run-checks.sh` harness gate,
+               including `tools/SimHarness budget`;
+             - that T-009 is Slow by rule (a).
+             The thresholds are the Architect's: 10 sim-days matches `02`'s
+             `determinism_same_process` size, and 10 s keeps the PR suite
+             quick.
+Raised by:   owner, via coordinator
+Impact:      T-009's Test Author tags its 100-day test `Slow`. A search of
+             merged `tests/` found no test that steps more than about two
+             sim-days, so none meets rule (a). Rule (b) needs CI timings, and
+             was not checked here. The CI filter change is the owner's (`ci/`,
+             `.github/`). No scope added.
+Signed off:  owner, 2026-09-29 (the category and where it runs). The
+             thresholds are the Architect's.

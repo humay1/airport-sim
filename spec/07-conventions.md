@@ -265,6 +265,37 @@ That is the only use of the clock that "Unit tests never use wall-clock time"
 permits. The authoritative budget measurement is still
 `tools/SimHarness budget` (`ci/run-checks.sh`).
 
+**L11a. Slow tests.** HUMAN DECISION — owner, 2026-09-29. A long-running
+xUnit test carries `[Trait("Category", "Slow")]`, in the same way L11
+uses `Budget`. A test may carry both traits.
+
+- **When a test must be Slow.** A test must be Slow if either rule holds:
+  - **(a) Work.** It steps **more than 144 000 ticks** in total (10
+    sim-days) across all the hosts it runs. This rule is exact and does
+    not depend on the machine. A test of exactly 10 sim-days, the size
+    of `02`'s `determinism_same_process`, is not Slow by it.
+  - **(b) Time.** Its duration as reported by xUnit, in a `Release` run
+    on the CI runner, is **over 10 s**. That limit is machine-dependent,
+    so it has a margin of 2. The Test Author tags a test when their own
+    `Release` measurement is **over 5 s**. A test without the trait that
+    CI reports above 10 s is a review finding: tag it. It is never a
+    reason to weaken the test.
+  - Nothing else makes a test Slow. A test that meets neither rule must
+    not be tagged, so the PR suite keeps its coverage.
+- **Where Slow tests run.** Not in PR runs. They run on every push to
+  `main` and nightly, next to `soak_500_days`. The CI wiring is the
+  owner's (`ci/`, `.github/`).
+- **What Slow does not change.** It only chooses which xUnit tests a run
+  includes. The gates in `ci/run-checks.sh` are harness runs, not xUnit
+  tests, and no trait affects them. That covers `02`'s determinism gates
+  and `tools/SimHarness budget`, which stays the authoritative budget
+  measurement (L11, `03` "How a budget is measured"). A test that is both
+  `Budget` and Slow is still a budget assertion. It just runs on `main`
+  and nightly.
+- **T-009** (the 100-sim-day kill gate, `tasks/T-009-100-day-run.md`)
+  steps 1 440 000 ticks per run, so it is Slow by rule (a). Its Test
+  Author tags it from the start.
+
 ## Comments and documentation
 
 - Comment *why*, never *what*.
