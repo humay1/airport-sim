@@ -149,11 +149,11 @@ namespace AirportSim.Sim.Flow.Tests
             // (08 §8.9 allocates a fresh SystemHashes array at checkpoints only).
             Rig rig = Loaded(0xA110_C007UL);
             rig.Step(1201);
-            long before = System.GC.GetAllocatedBytesForCurrentThread();
+            long before = Allocation.Start();
             rig.Step(599);
-            long after = System.GC.GetAllocatedBytesForCurrentThread();
+            long after = Allocation.Since(before);
             Assert.Equal(1800UL, rig.Host.CurrentTick);
-            Assert.Equal(0L, after - before);
+            Assert.Equal(0L, after);
         }
     }
 }

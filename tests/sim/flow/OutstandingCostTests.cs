@@ -98,15 +98,15 @@ namespace AirportSim.Sim.Flow.Tests
             Rig large = Large();
             large.Flow.TryGetOutstanding(Probe, out _);
             large.Flow.TryGetOutstanding(new FlightId(999), out _);
-            long before = System.GC.GetAllocatedBytesForCurrentThread();
+            long before = Allocation.Start();
             for (int i = 0; i < 1000; i++)
             {
                 large.Flow.TryGetOutstanding(Probe, out _);
                 large.Flow.TryGetOutstanding(new FlightId(999), out _);
             }
 
-            long after = System.GC.GetAllocatedBytesForCurrentThread();
-            Assert.Equal(0L, after - before);
+            long after = Allocation.Since(before);
+            Assert.Equal(0L, after);
         }
     }
 }
