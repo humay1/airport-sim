@@ -2378,3 +2378,57 @@ Revision:    after the PR #66 review (rejected at 93abebf):
                uses the standard format.
 Signed off:  owner, 2026-09-29 (the Q-043 boarding stand-in). The rest is
              architecture and needs no sign-off.
+
+## 2026-09-30 — spec/03 "How a budget is measured" ("Measured" bullet, new "Budget tests: window and arithmetic"); 07 L11 (cross-reference); 19 §19.4; INDEX; open-questions — Q-044, Q-045: budget window, arithmetic, `sim.core`
+Reason:      While filing T-041, the Planner found that `03` fixes neither
+             a budget test's sample window nor how p99 is computed. This
+             replaces the answer first attempted in PR #66, which was
+             rejected there. That attempt conflicted with `07` L11's
+             `long`-only rule, claimed conformance falsely, left
+             invalidated tests unnamed and `sim.core` undecided, and gave
+             §19.4 a different pass condition.
+             - **Q-044:** exactly one sim-day of per-tick samples. The
+               scope is every timed per-tick budget test and §19.4. It
+               excludes allocation-only `Budget` tests and whole-run
+               gates. `sim.core` is bound, with a sample of one `Step(1)`.
+             - **Q-045:** `long`-only arithmetic, with each sample rounded
+               up to µs and an overflow guard, mean `Σu ≤ B·n`,
+               nearest-rank p99 `≤ 2B`, and a rounded-up reported mean.
+               §19.4 uses the same condition, and its flooring is removed.
+Raised by:   Q-044, Q-045 (Planner, T-041, via coordinator); PR #66 review
+Impact:      - **Merged tests invalidated, 9, all named in Q-045.** They
+               are `sim.core` `BudgetTests` (2 day tests),
+               `CommandQueueTests` (1 day test), `FlowBudgetTests`,
+               `FlowStressBudgetTests`, `PromotionBudgetTests`,
+               `sim.schedule` `BudgetTests` (2) and `WorldBudgetTests`
+               (T-041). Each needs a Test Author rewrite. The Planner files
+               the task or tasks. `WorldBudgetTests` is already T-041. The
+               15 allocation-only `Budget` tests are out of scope, and the
+               2 `HarnessCliTests` budget tests stay valid.
+             - **Merged harness code:** `tools/SimHarness`'s `budget`
+               subcommand rounds up instead of flooring (§19.4). T-009's
+               worker is in `tools/SimHarness/**` now, so the Planner folds
+               this into T-009, or files it after T-009 merges, to avoid a
+               conflict.
+             - **Open branches, which must change:**
+               - T-021's `AirsideBudgetTests`
+                 (`test-author/T-021-airside-tests`, `d10a9be`) uses
+                 rescaled raw-tick comparisons with no per-sample µs
+                 round-up, which is non-conforming like
+                 `PromotionBudgetTests`. The T-021 Test Author rewrites it
+                 to `03`'s rule before T-021 merges;
+               - T-009's kill-gate (a) is a whole-run gate and is out of
+                 scope.
+             - **Merge note:** PR #67 appends to `open-questions.md` and
+               `CHANGELOG.md` after the same lines, so expect textual
+               conflicts only.
+             - No `src/sim` change. No scope added.
+Revision:    after the PR #68 review (rejected at ae74944):
+             - the T-021 `AirsideBudgetTests` claim is corrected (above,
+               and in Q-045);
+             - `03` states the frequency bound behind the cap's
+               no-verdict claim;
+             - `03` says any 14 400 consecutive ticks after warm-up form a
+               window, with no alignment to a sim-day boundary;
+             - the `19` §19.6 cite resolves, now that PR #66 is on `main`.
+Signed off:  not required (measurement protocol, not balance).
