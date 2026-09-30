@@ -1332,3 +1332,176 @@ Answer:      **(a).** This is what the spec already implies. §9.6 defines
              merged three (§9.7), with the Test Author's test
              `test_inject_rejects_non_departing_direction`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
+
+### Q-041 — T-009: where do the kill-gate tests live?
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    The task file says `tests/sim/core/**`. Under `07` L3, that
+             project may reference only `src/sim/core`, so it cannot see
+             `WorldFactory`, `ScheduleFactory`, `FlowFactory` or
+             `HarnessGates`. The Test Author put the tests in
+             `tests/tools/simharness` instead (branch
+             `test-author/T-009-100-day-gate-tests`, `f531ca7`). Is that
+             right?
+Answer:      **Confirmed.** Every T-009 test, the two kill-gate tests
+             included, is in `tests/tools/simharness/`. The harness test
+             project sees the three modules through
+             `tools/SimHarness`'s own `ProjectReference`s, which T-009's
+             worker adds (`07` L3, L8). `19` §19.6 now states it. No `07`
+             change is needed, since L3 already says it.
+             **The Planner corrects `tasks/T-009-100-day-run.md`:**
+             - "Tests to pass" becomes `tests/tools/simharness/**`;
+             - "Writable paths" gains `tests/tools/simharness/**` and
+               `tests/fixtures/harness/**`. The path guard checks a
+               `test-author/T-009-*` branch against T-009's writable
+               paths. This is the T-011 precedent, and it does not reopen
+               Q-021, because `protected_for_role` still blocks a worker
+               from `tests/`;
+             - the worker still writes `tools/SimHarness/**` only. That
+               includes the three new `ProjectReference`s in the harness
+               `.csproj` (`07` L8). `AirportSim.sln` does not change;
+             - "Readable specs" gains `07`, `12` §12.3 and §12.7, `18` and
+               `19`. The description gains the boarding stand-in at
+               registry position 3 (Q-043).
+Status:      ANSWERED (spec/19-interfaces-harness.md#196-tests-of-the-phase-0-composition-and-the-kill-gate-q-041-to-q-043)
+
+### Q-042 — T-009: the CLI composition once modules are composed
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    `19` §19.2 said the first task that composes modules into the
+             harness amends the CLI composition line, but it gave no
+             amendment. Which content and fixtures do `determinism --days
+             N` and the other subcommands use, and how does the harness
+             find them? What happens to T-006's `HarnessCliTests`, which
+             assert `EmptyCompositionFinalHash`?
+Answer:      `19` §19.2a, the smallest composition that closes it:
+             - **One composition for every subcommand.** `determinism`,
+               `saveload`, `promotion` and `budget` all use it. No flag,
+               option or environment variable selects another. The empty
+               composition is not kept behind an option. It stays reachable
+               only through `HarnessGates` with a composer that registers
+               nothing, which is how `HarnessGatesTests` already use it.
+             - **Four fixtures, all the Test Author's.** They are
+               `tests/fixtures/world/phase0-landside.json`,
+               `tests/fixtures/flow/phase0-landside.flow.json` and
+               `tests/fixtures/schedule/phase0-200.csv`, plus a **new**
+               content fixture: the manifest
+               `tests/fixtures/harness/phase0-content.files` over
+               `tests/fixtures/harness/phase0-content/`. That content is
+               loaded with `08` §8.11's `IContentLoader`, and it holds
+               only the definitions the other three reference. Its values
+               are fixture sizing. `data/` is never read, because `data/`
+               values are the owner's balance values. Binding CI hashes to
+               them would turn every balance edit into a harness-test
+               failure, and a slower security value could stop the queues
+               draining over 100 days.
+             - **Locating them.** `07`'s Q-031 rule, applied to the
+               harness: the nearest ancestor of `AppContext.BaseDirectory`
+               that holds `AirportSim.sln`. Never the working directory, a
+               flag or an environment variable. Usage errors (exit 2) are
+               decided before any file is read. Every load failure is exit
+               3.
+             - **Composition.** Construct world, flow, schedule, then the
+               stand-in (Q-043). Register world (1), schedule (2),
+               stand-in (3), flow (4), and nothing else.
+             - **`HarnessCliTests`.** Its expected hashes are **replaced**:
+               each `EmptyCompositionFinalHash(n)` for a CLI run becomes
+               `HarnessGates.FinalHash` of the Test Author's kit
+               composition (§19.6) at the same seed and ticks.
+               `test_harness_cli_hash_only_matches_final_hash_gate` becomes
+               the equivalence test between the kit and the CLI.
+               `test_harness_cli_budget_core_only_day_passes` is renamed
+               `test_harness_cli_budget_phase0_day_passes`. Nothing else
+               in `HarnessCliTests.cs` changes. `HarnessGatesTests.cs` and
+               `EmptyCompositionFinalHash` do not change at all.
+             - **Withdrawn.** §19.2 said the composing task would make exit
+               codes 1 and 3 reachable through the CLI. It does not. Code 1
+               needs a nondeterministic composition, and code 3 needs a
+               broken repository fixture. Both stay untested through the
+               CLI, and no seam is added.
+             - **`budget --tier max`** times day 0 of this composition,
+               which is far below max tier. The §19.4 LOW CONFIDENCE note
+               is updated.
+             The Test Author's `KillGateKit` builds its content in C#
+             today. It moves those values into the content fixture and
+             loads them through `ContentLoaderFactory`, so the CLI and the
+             kit read the same bytes.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043)
+
+### Q-043 — T-009: at Phase 0 nothing boards, so is the kill gate measuring anything real?
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    One 100-day run ran for more than 10 minutes (572 CPU-s) and
+             did not finish. The Test Author's guess: nothing calls
+             `Absorb` at Phase 0, because `sim.airside` and its boarding
+             hold are absent. So departing cohorts pile up on the `Gate`
+             for 100 days, while `Tick` is O(cohorts) (`09` §9.10). Is
+             that right? If it is, what does the kill gate measure at
+             Phase 0?
+Finding:     **Confirmed, from the spec and from `main`.**
+             - The spec: `Absorb` is the only removal, both boarding and
+               missed-flight (`09` §9.7). Its only production caller is
+               `sim.airside` at `DoorsClosed` (`12` §12.7, §12.8).
+               `sim.schedule` only injects (`11` §11.6), and T-009
+               composes no `sim.airside`. A `Gate` keeps what it holds
+               (§9.6, §9.12 "Gate and Sink: nothing leaves").
+             - The code: on `main` the only `Absorb` calls are in
+               `src/sim/flow` itself and in `tests/sim/flow`, where
+               T-011's `StressDay` calls it at STD from its own driver.
+               `src/sim/schedule` calls only `Inject`
+               (`ScheduleSystem.cs:281`).
+             - The growth: cohorts on the `Gate` merge only per
+               `CohortKey`, which is flight, profile, bag and assistance.
+               `phase0-200.csv` has 100 departures a day, and every one
+               has bag and assistance shares strictly between 0 and 1000,
+               so up to four classes each. The `Gate` gains up to about
+               400 cohorts a sim-day. That is about 40 000 by day
+               100, and the count grows without bound. `09` §9.10's
+               bounded-cohort premise fails.
+             - The cost: `FlowSystem.MergeNode` compares a node's cohorts
+               pairwise, which is about k²/2 comparisons a tick on the
+               `Gate`, around 8 × 10⁸ by day 100. The snapshot also sums
+               every cohort every tick. That explains the run that did not
+               finish. CI's `determinism --days 10` would stall the same
+               way, at about 4 000 cohorts.
+Options:     - (a) **A harness boarding stand-in.** A harness-internal
+               system in `sim.airside`'s empty slot, position 3, calls
+               `Absorb(sink, flight)` for each departure at its planned
+               doors-close tick, STD (`12` §12.3). It has no hold. It
+               hashes 0, and it is removed when `sim.airside` joins. It
+               follows T-011's `StressDay` driver, and it makes the gate
+               measure the cost that a build with `sim.airside` pays.
+             - (b) Keep nothing boarding, and make `sim.flow`'s merge
+               linear. The cohorts stay unbounded (about 40 000), a linear
+               pass over them for 1 440 000 ticks is still about 3 × 10¹⁰
+               cohort visits, and the gate would measure a state that no
+               build ever reaches. Rejected.
+             - (c) `sim.flow` clears the `Gate` itself on a timer. That
+               changes merged `sim.flow` behaviour and duplicates `12`
+               §12.7's responsibility, and once `sim.airside` exists it
+               would remove passengers twice. Rejected.
+             - (d) Shorten the gate, relax the 60 s, or wait for
+               `sim.airside` (T-021). Each changes the gate's scope, the
+               budget or the build order, which are the owner's. None is
+               needed.
+Answer:      **(a)**, specified in `19` §19.2a and tested per §19.6. The
+             kill gate at Phase 0 measures `sim.world`, `sim.schedule` and
+             `sim.flow` over the Phase 0 fixtures for 100 sim-days, with
+             departures boarded at STD. Its modules, fixtures, day count
+             and 60 s budget are unchanged. `08` §8.5 names the stand-in
+             as the only non-test probe, and `09` §9.10 now says that
+             `Absorb` bounds the keys. No `sim.flow` or `sim.schedule`
+             code changes, so no merged work is invalidated. The
+             `KillGateKit` load check "every injected passenger is still
+             on a node" becomes the conservation check of §19.6.
+             **HUMAN DECISION — owner, 2026-09-29: accepted.** The
+             boarding stand-in, decision (a), is a valid reading of the
+             kill gate. The gate's scope is unchanged. (The Architect had
+             marked this LOW CONFIDENCE, and the owner confirmed it.)
+             **Not decided, and flagged for the owner:** 60 s over
+             1 440 000 ticks is about 41.7 µs a tick for the whole
+             composition, about 1/144 of `01`'s 6 ms whole-sim tick. It
+             is unmeasured with the stand-in. If T-009's worker cannot
+             meet it, that is the task's "escalate to the human owner"
+             path, not an agent decision to relax it.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043)
