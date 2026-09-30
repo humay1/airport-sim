@@ -1333,7 +1333,7 @@ Answer:      **(a).** This is what the spec already implies. §9.6 defines
              `test_inject_rejects_non_departing_direction`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
 
-<!-- Q-046 to Q-056 (T-021) are listed before Q-041 to Q-043 (T-009, merged first from PR #66). Q-044 and Q-045 are answered in spec PR #68. -->
+<!-- Q-046 to Q-056 (T-021, PR #67) are listed before Q-041 to Q-045, which merged first from PRs #66 and #68. -->
 
 ### Q-046 — `sim.airside`: the layout fixture's file format
 Raised by:   Test Author / T-021, via coordinator, 2026-09-29
@@ -1711,3 +1711,113 @@ Answer:      **(a)**, specified in `19` §19.2a and tested per §19.6. The
              meet it, that is the task's "escalate to the human owner"
              path, not an agent decision to relax it.
 Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043)
+
+<!-- Q-046 to Q-056 appear above, before Q-041. -->
+
+### Q-044 — Budget tests: may a module test sample fewer ticks than one sim-day?
+Raised by:   Planner, filing T-041 (the `WorldBudgetTests` fix), via coordinator, 2026-09-29
+Blocking:    T-041
+Question:    `03` "How a budget is measured" takes the statistic over "one
+             full sim-day" (14 400 ticks). `WorldBudgetTests` samples 2 000
+             ticks. May a module test use a shorter window, and if so, what
+             is the minimum? And does the statistic bind `sim.core`, which
+             has no `Tick`?
+Answer:      Architecture (measurement protocol, not balance). In `03`'s
+             new "Budget tests: window and arithmetic":
+             - **No shorter window.** Exactly `TICKS_PER_SIM_DAY`
+               consecutive per-tick samples. Warm-up is allowed and not
+               sampled, and several days are judged day by day. This
+               generalises `11` §11.9 (Q-031). p99 exists to catch the
+               bank peak, and with 2 000 samples it is only the 20th-worst
+               tick of a window that may miss the bank.
+             - **Alignment (revision after the PR #68 review).** Any 14 400
+               consecutive ticks after warm-up form a window. It need not
+               start on a sim-day boundary, because 14 400 consecutive ticks
+               always span every hour of the day once.
+             - **Scope.** It binds every xUnit test that asserts a time
+               against a per-tick budget of `03`'s table, and `19` §19.4.
+               It does not bind allocation-only `Budget` tests, or a
+               whole-run wall-clock gate such as T-009's kill gate. Any
+               other timed check carries no `Budget` trait. There is no
+               "extra check" category.
+             - **`sim.core`: decided, it binds.** `03` gives `sim.core` 0.25
+               ms for "loop, commands, event dispatch". Its sample is one
+               `ISimHost.Step(1)` of a host whose systems are the test's
+               probes, with checkpoint ticks included (`03` "Measured").
+Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)
+
+### Q-045 — Budget tests: how is p99 computed from N samples?
+Raised by:   Planner, filing T-041, via coordinator, 2026-09-29
+Blocking:    T-041
+Question:    `03` does not define p99 for N samples. T-011's
+             `FlowStressBudgetTests` uses nearest rank at index ⌈0.99·N⌉−1.
+             Pin one definition for every budget test.
+Answer:      Architecture. `03` "Arithmetic", in `long` only as `07` L11
+             requires, with no `Int128`:
+             - each raw `Stopwatch` sample is rounded **up** to whole µs,
+               as `(d × 10^6 + f − 1) / f`, and capped at `B·n + 1`, with
+               an overflow guard. The cap changes no verdict for any
+               `f ≤ long.MaxValue / (B·n + 2)`, about 1.07 × 10^11 Hz at
+               `B = 6000`, far above real `Stopwatch` frequencies (10^7,
+               10^9). It keeps `Σu` within `long`;
+             - the mean passes iff `Σu ≤ B × n`;
+             - p99 is nearest rank, `u[(99n + 99)/100 − 1]` of the sorted
+               samples, and passes iff `p99 ≤ 2B`;
+             - a reported mean is rounded up, so the printed value and the
+               verdict always agree.
+             `19` §19.4 now uses exactly this condition, with `B = 6000`.
+             Its old flooring of the samples and the mean accepted a mean
+             just over 6000 µs, so it is replaced. There is one pass
+             condition, shared. §19.4's index rule is unchanged. The
+             rounding and the comparison are new.
+Conformance: checked against every `[Trait("Category", "Budget")]` method
+             on `main` (`273f2ce`), 26 in all:
+             - **Out of scope, 15.** These assert allocation only and time
+               nothing:
+               - `sim.core` `BudgetTests`:
+                 `test_budget_step_with_no_systems_allocates_nothing` and
+                 `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`;
+               - `BusAllocationTests` (3);
+               - `CommandQueueTests.test_command_queue_apply_due_allocates_zero_bytes`;
+               - `FxTests` (2);
+               - `RandomServiceTests` (1);
+               - `RandomStreamTests` (1);
+               - `StateHasherTests` (1);
+               - `PromotionAllocationTests` (4).
+             - **Conforming, 2.** The `HarnessCliTests` budget tests,
+               `test_harness_cli_budget_max_prints_budget_line_consistent_with_exit`
+               and `test_harness_cli_budget_core_only_day_passes`. They
+               parse §19.4's line, and they hold under rounded-up
+               reporting. The harness code that prints the line must
+               change (Impact).
+             - **Non-conforming, 9.** Each needs a Test Author rewrite to
+               `03`'s rule:
+               - `sim.core` `BudgetTests.test_budget_day_with_no_systems_within_quarter_ms_per_tick`
+                 and `test_budget_day_with_busy_probes_within_quarter_ms_per_tick`:
+                 a whole-day total, floored, with no per-tick samples and
+                 no p99;
+               - `CommandQueueTests.test_command_queue_day_with_command_every_tick_within_core_budget`:
+                 a whole-day total, with no p99;
+               - `FlowBudgetTests.test_flow_budget_max_tier_within_two_and_a_half_ms_and_bounded_cohorts`:
+                 a one-hour total, floored, with no p99. It becomes a
+                 full-day per-tick test;
+               - `FlowStressBudgetTests.test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts`:
+                 the right window, but `Int128` arithmetic;
+               - `PromotionBudgetTests.test_promotion_budget_one_day_with_every_node_promoted`:
+                 the right window and index, but raw-tick rescaled
+                 comparisons instead of rounded-up µs;
+               - `sim.schedule` `BudgetTests.test_budget_one_day_mean_and_p99_within_budget_with_flow`
+                 and `test_budget_one_day_mean_and_p99_within_budget_without_flow`:
+                 the same as promotion;
+               - `WorldBudgetTests.test_world_budget_tick_and_queries_at_max_tier_within_point_one_ms`:
+                 2 000 ticks, a loop total, and no p99. This is T-041.
+             - **Open test branches (revised after the PR #68 review).**
+               - T-021's `AirsideBudgetTests`
+                 (`test-author/T-021-airside-tests`, `d10a9be`) is
+                 **non-conforming**. It uses rescaled raw-tick comparisons
+                 with no per-sample µs round-up, the same pattern as
+                 `PromotionBudgetTests`. The T-021 Test Author rewrites it
+                 to `03`'s rule before T-021 merges.
+               - T-009's kill-gate (a) is a whole-run gate, out of scope
+                 (`19` §19.6).
+Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)
