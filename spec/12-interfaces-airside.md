@@ -67,9 +67,11 @@ calls into `sim.world` at all.
 | `PENDING_FLIGHTS_CAPACITY` | 2048 entries | §12.11 pending list, a hard bound |
 
 The two capacities are engineering bounds, not balance. They are sized
-from `01`'s max tier, 800 daily movements. The pending list holds at most
-about one day of arrivals and rotation-less departures, plus day 0 at
-construction. The stand-wait queue is larger than any one day's arrivals.
+from `01`'s max tier, 800 daily movements. The pending list only holds
+flights scheduled within the next 24 hours (§12.11 "Why 2048 holds"). That
+window can span two calendar days, so it holds up to 1 600 entries, day 0
+at construction included. The stand-wait queue is larger than any one
+day's arrivals.
 Both are preallocated at `CreateSystem`, and neither ever grows.
 
 `AircraftHeldForRunway`/`StandUnavailable` etc. carry no constant of their own;
@@ -406,8 +408,12 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   goes to the aircraft with the lowest `FlightId` among those asking for it
   in that tick. Every other aircraft asking for it holds, joining the queue
   in ascending `FlightId`, so queue order is also the `EventId` order of
-  their hold events. "Asking" includes an aircraft placed on the graph
-  earlier in the same tick, by `OffRunway` in S3 or `Pushback` in S4.
+  their hold events. "Asking" includes every aircraft placed at a node
+  earlier in the same tick, whichever step placed it:
+  - an arrival that reached `OffRunway` in S3 and was granted a stand in
+    S5, whether as a new request or from the stand-wait queue;
+  - a departure pushed back in S4, in an S5 chain (§12.8a), or in an S6.1
+    chain.
 - `InboundAirborne` fires at `max(0, ScheduledTick − CRUISE_LEAD_TICKS)`
   (from `IScheduleSystem.TryGetFlight`, §12.9), always on time. Phase 0/1
   does not simulate an origin airport, so nothing can make it late. Both
@@ -449,8 +455,10 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   ordinal ordering. Phase 0/1 ships four contact stands; remote stands and
   buses are out of scope (`00-overview.md` non-goals do not forbid them later,
   but nothing here defines one).
-- **The assignment rule (Q-051).** An arrival is assigned once, at
-  `OffRunway`. It takes the compatible free stand with the **lowest
+- **The assignment rule (Q-051).** An arrival is assigned a stand once:
+  in S5 of its `OffRunway` tick if one is free, or otherwise in the S5
+  where the stand-wait queue gives it one. It takes the compatible free
+  stand with the **lowest
   `StandId`**. The earlier "earliest-declared" is dropped: `Load` sorts
   stands by id (§12.4), so declaration order means nothing. "Free" means
   free in the start-of-tick snapshot (§12.8a S1, Q-054), and not already
@@ -517,13 +525,16 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   workaround here.
 - A rotation-less **Departure** (`HasRotation = false`) is assumed already on
   its assigned stand at its **due tick**, `max(0, ScheduledTick −
-  MinTurnaround)`. That is clamped as in Q-048. At the due tick, in S5,
-  `sim.airside` claims the lowest-id compatible free stand under the normal
-  assignment rule above. In the same step it creates the `AircraftTrack`
-  directly in `OnStand` phase at that stand, and fires its own
-  `FlightMilestoneReached{OnStand}` (`PlannedTick = ActualTick` = the due
-  tick). That is the same trigger `sim.turnaround` uses to start jobs for
-  any departure, rotation-linked or not.
+  MinTurnaround)`. That is clamped as in Q-048. At its **start tick**
+  (§12.11), in S5, `sim.airside` claims the lowest-id compatible free stand
+  under the normal assignment rule above. The start tick is the due tick,
+  except for a departure due at or before its own publication. In the same
+  step it creates the `AircraftTrack` directly in `OnStand` phase at that
+  stand, and fires its own `FlightMilestoneReached{OnStand}`, with
+  `PlannedTick` = the due tick (§12.3, never moved) and `ActualTick` = that
+  tick. The two are equal whenever the start tick is the due tick. That is
+  the same trigger `sim.turnaround` uses to start jobs for any departure,
+  rotation-linked or not.
 - **No stand free (Q-053).** No track is created, and no event is emitted.
   The flight joins the stand-wait queue as a departure entry. In the S5
   where it gets a stand, the track is created exactly as above, at that
@@ -574,7 +585,7 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
    `AircraftTrack` directly in `OnStand` phase at the same `Stand`,
    reassigns `StandState.Occupant` to the departure's `FlightId`, and fires
    `FlightMilestoneReached{OnStand}` for the **departure** (`PlannedTick =
-   ScheduledTick - MinTurnaround`, `ActualTick` = this tick, `Cause` set to
+   max(0, ScheduledTick − MinTurnaround)`, as §12.3, `ActualTick` = this tick, `Cause` set to
    the `DeboardComplete` event). No `StandAssigned` event fires — the stand
    was never freed, only handed off. If the arrival has no rotation, nothing
    further happens automatically; see "Rotation-less flights" above.
@@ -905,13 +916,50 @@ never pending, because it is created at the handoff (§12.8).
   TICKS_PER_SIM_DAY`, which day 0 already covered. A later flight is
   published at `ScheduledTick − 14 400`, and its `InboundAirborne` is at
   `STA − 1 200`. So every later arrival is pending well before it starts.
-- **Late due ticks.** A rotation-less departure whose due tick is at or
-  before the tick of its publication starts at publication tick + 1
-  instead. That needs a `MinTurnaround` of 1 440 minutes or more.
-- **Each tick.** S2 starts the pending arrivals whose `InboundAirborne`
-  tick is `t`, and S5 takes the pending departures due at `t`, each in
+- **The start tick.** Each pending entry has a **start tick**:
+  - for an arrival, its `InboundAirborne` tick;
+  - for a rotation-less departure, `max(due tick, PublishTick + 1)`. The
+    day-0 read has no publication lag, so for day-0 departures it is the
+    due tick itself.
+
+  A departure's start tick is later than its due tick only when its due
+  tick is at or before its publication. That needs a `MinTurnaround` of
+  1 440 minutes or more. Its `OnStand` then keeps `PlannedTick` = the due
+  tick, the §12.3 formula, and has `ActualTick` = the tick it actually
+  gets a stand, which is at least the start tick. The difference is
+  lateness at `OnStand` (`14` §14.6: `Unexplained` for `!HasRotation`).
+  `PlannedTick` is never moved, because §12.3 is schedule-anchored (`10`
+  §10.4).
+- **Each tick.** S2 starts the pending arrivals whose start tick is `t`,
+  and S5 takes the pending departures whose start tick is `t`, each in
   ascending `FlightId`. The per-tick scan is O(pending), which is bounded
   by `PENDING_FLIGHTS_CAPACITY` (§12.2, §12.12).
+- **Removal (exact).** An entry leaves the pending list at the moment it
+  is taken, and never later:
+  - an arrival leaves in S2 of its start tick, when its track is created
+    and `InboundAirborne` fires;
+  - a rotation-less departure leaves in S5 of its start tick, when it is
+    taken as a new request. If it gets a stand, its track is created. If
+    it does not, it moves to the stand-wait queue as a departure entry.
+    Either way it is no longer pending.
+
+  So no flight is ever both pending and waiting for a stand, and no flight
+  is pending after its start tick.
+- **Why 2048 holds.** Under that removal rule, an entry is pending from
+  its publication, `ScheduledTick − 14 400` (or construction for day 0),
+  to its start tick, which is at most `ScheduledTick`. So at any tick `t`,
+  every pending flight has `ScheduledTick` in `[t, t + 14 400]`, a window
+  of one sim-day. That window can span two calendar days. At `01`'s max
+  tier of 800 daily movements, two days hold 1 600 movements, so the list
+  holds at most 1 600 flights, under 2 048.
+- **Overflow.** In `Tick` (the `FlightPlanPublished` handler, phase 3), an
+  append past the capacity throws `SimInvariantException` (`08` §8.5a) at
+  that tick. During the day-0 read in `CreateSystem` there is no tick, so
+  `CreateSystem` throws `ArgumentException` for parameter `schedule`,
+  whose message starts with `sim.airside: ` and names the pending list and
+  the capacity. That is consistent with `08` §8.5a, which defines
+  `SimInvariantException` only during a tick, and leaves exceptions from
+  construction unwrapped.
 
 ---
 
@@ -1035,6 +1083,16 @@ Done-condition tests this spec expects to exist, phrased per
   departure's `OnStand`, `DoorsClosed` and `Pushback` all fire in one tick,
   in that order, inside the arrival's turn.
 - `test_stand_wait_queue_overflow_throws_sim_invariant` (§12.12)
+- `test_pending_list_overflow_in_publication_handler_throws_sim_invariant`
+  (§12.11 "Overflow")
+- `test_pending_list_overflow_in_day_zero_read_throws_argument_exception`
+  (§12.11 "Overflow")
+- `test_pending_list_does_not_overflow_over_three_max_tier_days` (§12.11
+  "Removal", "Why 2048 holds"). Three sim-days of an 800-movement schedule
+  run without `SimInvariantException`, which fails without removal by
+  about day 3.
+- `test_departure_due_before_publication_keeps_planned_on_stand_formula`
+  (§12.11 "The start tick")
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task

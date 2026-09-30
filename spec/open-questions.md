@@ -1500,6 +1500,20 @@ Answer:      Architecture, **revised after the PR #67 review**. The first
              subscription, capped at `PENDING_FLIGHTS_CAPACITY`, and
              hashed. The fallback chain after a late `OnStand` runs at
              once, in S5 (§12.8a "Chains").
+             Revision 3, after the fourth PR #67 review:
+             - an entry leaves the pending list when it is taken at its
+               start tick: an arrival in S2, a rotation-less departure in
+               S5, whether it gets a stand or moves to the stand-wait
+               queue. So no flight is in both. The bound argument now
+               follows from that rule: a one-day window spanning two
+               calendar days holds at most 1 600 flights at max tier;
+             - a departure due at or before its publication starts at
+               `PublishTick + 1`. Its `OnStand` keeps `PlannedTick` = the
+               §12.3 formula and has a later `ActualTick`. §12.3, §12.7 and
+               §12.11 now agree;
+             - overflow in the day-0 read at `CreateSystem` throws
+               `ArgumentException`, since there is no tick for a
+               `SimInvariantException`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#rotation-less-flights-no-rotation-counterpart)
 
 ### Q-054 — `sim.airside`: same-tick release of a taxi edge and a stand

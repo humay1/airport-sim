@@ -2428,7 +2428,7 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                `12` instead, together with the writable-path addition.
              - **T-021 test branch:**
                - `AirsideRules` gains a second constructor argument;
-               - add the fixture JSON and the thirteen new §12.13 tests;
+               - add the fixture JSON and the sixteen new §12.13 tests;
                - `Load` messages must contain the §12.4 field names;
                - check that no test assumes a same-tick stand or edge
                  release, an unreserved stand in taxi-in, a
@@ -2509,6 +2509,29 @@ Revision 2:  after the third PR #67 review (rejected at c0cd79e):
                - the stale `phase1-single-runway.*` references are fixed
                  in `13`, `14` and `15`, and `16`'s fixture-format text;
                - `16` and T-031, and T-028 line 53, are in Impact.
+Revision 3:  after the fourth PR #67 review (rejected at b2f3e64):
+             - **pending removal (§12.11).** An entry leaves when it is taken
+               at its start tick: an arrival in S2, a rotation-less
+               departure in S5, whether it gets a stand or moves to the
+               stand-wait queue. It is never in both. The 2048 bound is
+               argued from this rule: a one-day window holds at most
+               1 600 flights at max tier;
+             - **late due ticks.** A departure due at or before its
+               publication starts at `PublishTick + 1`. `PlannedTick` keeps
+               the §12.3 formula, which is schedule-anchored per `10` §10.4,
+               and `ActualTick` is later. §12.3, §12.7 and §12.11 agree;
+             - **construction overflow.** The day-0 read throws
+               `ArgumentException` (`schedule`), because `08` §8.5a's
+               `SimInvariantException` exists only during a tick;
+             - non-blocking fixes:
+               - §12.8 step 3's `PlannedTick` is clamped;
+               - §12.6's "asking" list covers S5 grants from the queue, S5
+                 chain pushbacks and S6.1 chain pushbacks;
+               - §12.7's assignment rule covers queued arrivals;
+               - §12.2's wording is corrected (up to 1 600 entries, across
+                 two calendar days);
+               - three pending tests are added to §12.13, making sixteen
+                 new tests in all.
 Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
              rest is architecture and needs no sign-off.
 
