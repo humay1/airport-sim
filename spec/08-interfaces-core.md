@@ -865,7 +865,8 @@ interface ISimLog {
 
 ```
 enum LogLevel : byte   { Debug = 0, Info = 1, Warning = 2, Error = 3 }
-enum LogKey   : uint16 { None = 0 }             // appended by amendment; never renumbered
+enum LogKey   : uint16 { None = 0,              // appended by amendment; never renumbered
+                         AirsideReassignStandNoOp = 1 }   // 12 §12.10, Q-056
 readonly struct LogArgs { int32 Count; int64 A0; int64 A1; int64 A2; int64 A3 }
 ```
 

@@ -2297,3 +2297,54 @@ Revision 2:  after the second PR #61 review (rejected at 623e5fe):
                line does.
 Signed off:  owner, 2026-09-29 (the category, where it runs, and the
              pre-merge requirement). The thresholds are the Architect's.
+
+## 2026-09-30 — spec/12 §12.3, §12.4 (+ "File format"), §12.5, §12.6, §12.7, §12.10, §12.12, §12.12a, §12.13; 04 (airside_rules.json); 08 §8.10 (`LogKey`); INDEX; open-questions — Q-046 to Q-056: T-021 `sim.airside` gaps
+Reason:      T-021's Test Author (branch `test-author/T-021-airside-tests`,
+             `d10a9be`, 56 tests) reported 11 gaps in `12`:
+             - **Q-046:** the layout fixture format is pinned as JSON.
+               `Load` also checks node kinds, ranges and non-empty lists,
+               and returns lists sorted by id;
+             - **Q-047:** `AirsideRules.DoorsOpenDelayMinutes` is added;
+             - **Q-048:** `InboundAirborne` is clamped at tick 0;
+             - **Q-049:** a least-queue runway choice (stopgap);
+             - **Q-050:** a stand is reserved from assignment, and there is
+               one stand-wait queue, which is hashed;
+             - **Q-051:** assignment takes the lowest compatible free
+               `StandId`;
+             - **Q-052:** a landing is requested at `STA`, and the
+               early-aircraft clause is removed;
+             - **Q-053:** a rotation-less departure with no stand waits in
+               the queue;
+             - **Q-054:** edges and stands are read at start of tick, so a
+               release happens at `t + 1`;
+             - **Q-055:** "two integers" is now true;
+             - **Q-056:** `LogKey.AirsideReassignStandNoOp = 1`, with
+               reason codes.
+Raised by:   Q-046 to Q-056 (Test Author, T-021, via coordinator)
+Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
+             - **Merged, and must change:**
+               - `data/schemas/balance.schema.json` (`additionalProperties:
+                 false`, one required key) gains the required
+                 `doors_open_delay_minutes`. That is an agent content task;
+               - `data/balance/airside_rules.json` then fails validation
+                 until the owner adds the value. Only the owner may edit
+                 it;
+               - `src/sim/core/LogKey.cs` gains member 1. T-021's writable
+                 paths need that file (Planner), serialised with other
+                 `src/sim/core/**` work.
+             - **T-021 test branch:** `AirsideRules` gains a second
+               constructor argument; add the fixture JSON and the eight new
+               §12.13 tests; and check that no test assumes a same-tick
+               stand or edge release, an unreserved stand in taxi-in, or a
+               `queuePosition = 0` hold.
+             - **Merge note:** Q-041 to Q-045 are in PR #66, and both PRs
+               append to `open-questions.md` and `CHANGELOG.md` after the
+               same line, so the second to merge resolves a textual
+               conflict. The contents do not overlap.
+             - **Scope:** none added. The runway choice is a stopgap rule,
+               not a system.
+             **LOW CONFIDENCE:** Q-049's least-queue runway choice.
+             **OWNER DECISION NEEDED:** the value of
+             `doors_open_delay_minutes` (Q-047).
+Signed off:  not required (architecture), except the Q-047 value, which is
+             the owner's.

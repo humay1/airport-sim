@@ -1332,3 +1332,165 @@ Answer:      **(a).** This is what the spec already implies. §9.6 defines
              merged three (§9.7), with the Test Author's test
              `test_inject_rejects_non_departing_direction`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
+
+<!-- Q-041 to Q-045 are answered in spec PR #66 (T-009 kill gate, budget statistic). -->
+
+### Q-046 — `sim.airside`: the layout fixture's file format
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    §12.13 made the format of
+             `tests/fixtures/airside/phase1-single-runway.*` "the worker's
+             choice". But only the Test Author writes `tests/fixtures`,
+             and `Parse` has no specified input.
+Answer:      Architecture. The format is pinned in §12.4 "File format":
+             `phase1-single-runway.json`, in `08` §8.11's strict JSON
+             subset under `18` §18.2's rules, with four arrays (`runways`,
+             `nodes`, `edges`, `stands`), exact keys, and `true` or
+             `false` only for `bidirectional`. The failures are
+             `FormatException` with the `sourceName: ` prefix, and
+             `line <n>` for syntax and shape. `Parse` calls `Load`.
+             `Load` now also checks node kinds, ranges and non-empty lists,
+             and returns lists sorted by id. `MaxAircraftSizeCategory` is
+             resolved in `CreateSystem`. Two new tests (§12.13).
+Status:      ANSWERED (spec/12-interfaces-airside.md#file-format-q-046)
+
+### Q-047 — `sim.airside`: the `DoorsOpen` delay has no value or field
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021 (the field). The value blocks only a build that parses
+             `data/balance/airside_rules.json` with `sim.airside` (T-031).
+Question:    §12.3 says `DoorsOpen` is a "fixed door delay" after
+             `OnStand`, but no constant or content field holds it.
+Answer:      The field is architecture: `AirsideRules.DoorsOpenDelayMinutes`
+             (`uint32`, where 0 means the same tick). The JSON key is
+             `doors_open_delay_minutes` in `airside_rules.json`, and it is
+             required (`04`). `DoorsOpen` = `OnStand` +
+             `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, both planned and
+             actual. Under the §12.8 fallback it adds to every ground stay,
+             so it moves on-time performance, and the **value is balance:
+             OWNER DECISION NEEDED**. Tests use their own fixture value.
+             Not a compiled constant, per §12.2's rule that thresholds are
+             content.
+Status:      ANSWERED (spec/12-interfaces-airside.md#124-layout-the-airside-graph); value OWNER DECISION NEEDED
+
+### Q-048 — `sim.airside`: `InboundAirborne` before tick 0
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    `InboundAirborne` is at `STA − 1200`. For a day-0 `STA < 1200`,
+             such as the 00:20 arrival in `phase0-200.csv`, that tick would
+             underflow.
+Answer:      Architecture. Clamp: `max(0, STA − CRUISE_LEAD_TICKS)` for both
+             `PlannedTick` and `ActualTick`, which is the same clamp as `11`
+             §11.6's show-up rule. Day 0 is materialised at construction,
+             so the flight is visible at tick 0 (§12.3, §12.6). One new
+             test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
+
+### Q-049 — `sim.airside`: which runway does a movement use?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021 (the max-tier budget layout has 3 runways)
+Question:    The spec routes per runway but never picks one.
+Answer:      Architecture stopgap, **LOW CONFIDENCE**. The runway is chosen
+             once at the request point (an arrival at its `Landed` request
+             at `STA`, a departure at `Pushback`). It is the runway with
+             the fewest aircraft in its hold queue, ties to the lowest
+             `RunwayId` (§12.5 "Runway choice"). With one runway, nothing
+             changes. A real runway-allocation system (modes, segregation,
+             player control) is gameplay and is deferred to the owner, like
+             gate assignment. No owner decision is needed now, because
+             every Phase 0/1 fixture has one runway.
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model), LOW CONFIDENCE
+
+### Q-050 — `sim.airside`: is a stand reserved during taxi-in?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    A stand is assigned at `OffRunway` but "occupies from
+             `OnStand`". Can another aircraft take it in between?
+Answer:      Architecture. No: assignment sets `StandState.Occupant` at
+             once, and the stand is held from assignment to `Pushback`
+             inclusive. Waiters form one airport-wide stand-wait queue, in
+             `StandUnavailable` `EventId` order, with no head-of-line
+             blocking. The queue is walked each tick before new assignments,
+             and it is hashed after stand state (§12.7, §12.12).
+Status:      ANSWERED (spec/12-interfaces-airside.md#127-stands)
+
+### Q-051 — `sim.airside`: "earliest-declared, ties by ascending `StandId`"
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    Declaration order and id order can disagree, and ids are
+             unique, so there is never a tie to break.
+Answer:      Architecture. It becomes the compatible free stand with the
+             **lowest `StandId`**, and "earliest-declared" is dropped. `Load`
+             sorts stands by id, so declaration order is invisible (§12.4,
+             §12.7). The test name
+             `test_stand_assignment_prefers_lowest_id_among_compatible_free_stands`
+             already says this.
+Status:      ANSWERED (spec/12-interfaces-airside.md#127-stands)
+
+### Q-052 — `sim.airside`: when is a landing requested?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    §12.6's "early aircraft holds off-graph with `queuePosition =
+             0`" implies a request before `STA`. When is `Landed` requested?
+Answer:      Architecture. At `STA`, exactly, in `sim.airside`'s `Tick`. A
+             departure requests `TakeoffRoll` on reaching its threshold
+             node. `InboundAirborne` is fixed at Phase 0/1, so no aircraft
+             is early and no `queuePosition = 0` hold is ever emitted. The
+             clause is removed until upstream delay exists (§12.5, §12.6).
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
+
+### Q-053 — `sim.airside`: a rotation-less departure with no free stand
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    It is created on a stand at `STD − MinTurnaround`. What if
+             none is free?
+Answer:      Architecture. The track is created at that tick in
+             `AwaitingApproach`, off-graph, with no stand, and it emits
+             `StandUnavailable` and joins the stand-wait queue (Q-050). On
+             assignment it emits `StandAssigned`, enters `OnStand`, and
+             fires `OnStand` late (the planned tick is unchanged), then
+             continues as normal (§12.7). One new test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#rotation-less-flights-no-rotation-counterpart)
+
+### Q-054 — `sim.airside`: same-tick release of a taxi edge and a stand
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    (a) Does a taxi hold release on the tick the blocker leaves
+             the edge? (b) Is `StandAssigned` for a waiter on the
+             `Pushback` tick, or the next tick?
+Answer:      Architecture. Both read start-of-tick state, as `sim.flow`'s
+             snapshot does (`09` §9.12):
+             - (a) an edge left during `t` is enterable, and its hold
+               released, at `t + 1`. A free edge goes to its queue head,
+               else to the lowest requesting `FlightId`, and the others
+               queue in ascending `FlightId`;
+             - (b) a stand vacated by `Pushback` at `t` is assigned at
+               `t + 1`. A stand vacated by `ReassignStand` at the boundary
+               of `t` is free at `t`.
+             No cross-tick state results. Two new tests.
+Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
+
+### Q-055 — `sim.airside`: `AirsideRules` is not "two integers"
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    no
+Question:    §12.12a said "two integers", but the struct had one field.
+Answer:      With Q-047, `AirsideRules` has two fields,
+             `BoardingHoldMaxMinutes` and `DoorsOpenDelayMinutes`, so the
+             sentence is now true. §12.12a names both.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1212a-construction-q-009)
+
+### Q-056 — `sim.airside`: the `ReassignStand` no-op `LogKey`
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    `08` §8.7 says a no-op logs "with its own module's `LogKey`,
+             appended by amendment", but no airside key exists.
+Answer:      Architecture. `LogKey.AirsideReassignStandNoOp = 1` (`08`
+             §8.10). The line is `Info`, `SystemId(3)`, at the applying
+             tick, with `LogArgs(flight, newStand, reason)`. The reason is
+             1 (not tracked or not `OnStand`), 2 (occupied, including its
+             own stand) or 3 (incompatible), checked in that order
+             (§12.10). `LogKey` is in `src/sim/core/LogKey.cs`, so T-021's
+             worker needs that one file added to its writable paths, as
+             `08` says: "appended with the module that writes it". The
+             Planner must serialise it with any open `src/sim/core/**`
+             task.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1210-commands-consumed)

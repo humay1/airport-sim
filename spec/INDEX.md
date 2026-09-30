@@ -224,10 +224,18 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
   (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
   and `IAirsideLayoutLoader.Parse` (§12.12a); `ReassignStand`'s state checks
-  happen at `Apply`, as a no-op (§12.10, Q-010).
+  happen at `Apply`, as a no-op, **logged with `AirsideReassignStandNoOp` and
+  a reason (§12.10, Q-010, Q-056)**; **the layout file format, pinned JSON
+  (§12.4, Q-046)**; **`DoorsOpenDelayMinutes` in `AirsideRules`, value
+  OWNER DECISION NEEDED (§12.4, Q-047)**; **`InboundAirborne` clamped to 0,
+  landing requested at `STA` (§12.6, Q-048, Q-052)**; **stands: lowest id,
+  reserved from assignment, one stand-wait queue, rotation-less departures
+  wait too (§12.7, Q-050, Q-051, Q-053)**; **start-of-tick reads for edges
+  and stands (§12.6, §12.7, Q-054)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
-  actual doors-close point, and released at a zero count (§12.8).
+  actual doors-close point, and released at a zero count (§12.8); the
+  least-queue runway choice stopgap (§12.5, Q-049).
 - Read if: T-021 and the hold task; §12.3 for `sim.turnaround`/`sim.delay`;
   §12.4/§12.9 for `app.render`.
 

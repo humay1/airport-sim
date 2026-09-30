@@ -80,7 +80,7 @@ enumerating them.
 | `Landed` | `sim.airside` | Runway slot granted and occupancy begins, §12.5 |
 | `OffRunway` | `sim.airside` | Runway occupancy ends, aircraft enters taxi graph |
 | `OnStand` | `sim.airside` | Taxi-in complete, stand occupied |
-| `DoorsOpen` | `sim.airside` | Fixed content delay after `OnStand` |
+| `DoorsOpen` | `sim.airside` | `AirsideRules.DoorsOpenDelayMinutes` after `OnStand` (§12.4, Q-047) |
 | — `DeboardComplete`, `ReadyToBoard`, `BoardingComplete` — | `sim.turnaround` | out of scope here, Q-006 |
 | `DoorsClosed` | `sim.airside` | Ground service complete, §12.8 |
 | `Pushback` | `sim.airside` | Immediately after `DoorsClosed`, stand vacates |
@@ -104,11 +104,11 @@ time, holds excluded.
 
 | Milestone | `FlightId` | `PlannedTick` |
 |---|---|---|
-| `InboundAirborne` | arrival | `STA − CRUISE_LEAD_TICKS` (§12.6) |
+| `InboundAirborne` | arrival | `max(0, STA − CRUISE_LEAD_TICKS)` (§12.6, Q-048) |
 | `Landed` | arrival | `STA` |
 | `OffRunway` | arrival | `STA + OccupancyTicks` |
 | `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
-| `DoorsOpen` | arrival | planned `OnStand` + the fixed door delay |
+| `DoorsOpen` | arrival | planned `OnStand` + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE` |
 | `OnStand` | departure | `STD − MinTurnaround` (§12.8 step 3; §12.7 for a rotation-less departure) |
 | `DoorsClosed` | departure | `STD` |
 | `Pushback` | departure | `STD` |
@@ -196,27 +196,82 @@ interface IAirsideLayoutLoader {
 
 readonly struct AirsideRules {           // construction data, beside the layout; D6
   uint32 BoardingHoldMaxMinutes          // §12.8 "The boarding hold"; 0 disables the hold
+  uint32 DoorsOpenDelayMinutes           // §12.3 DoorsOpen after OnStand; 0 = the same tick (Q-047)
 }
 ```
 
 `AirsideRules` is construction data: immutable for the session and not
-hashed, like the layout. It is **never a compiled constant**.
-`BoardingHoldMaxMinutes` is a **balance value**
-(`04-data-schemas.md`, "Balance values are human-owned"). The playtest value is
-10 sim-minutes (D6), stored in `data/balance/airside_rules.json` and authored
-by the human owner, not by an agent. It is marked for tuning after the T-025
-playtest. Test fixtures carry their own values beside their tests; those are
-fixture sizing, not balance.
+hashed, like the layout. Neither field is **ever a compiled constant**.
+Both are **balance values**
+(`04-data-schemas.md`, "Balance values are human-owned"), stored in
+`data/balance/airside_rules.json` and authored by the human owner, not by
+an agent:
 
-Load-time validation, hard failures naming the offending id
-(`07-conventions.md`):
+- `BoardingHoldMaxMinutes`: the playtest value is 10 sim-minutes (D6),
+  marked for tuning after the T-025 playtest;
+- `DoorsOpenDelayMinutes` (Q-047): **OWNER DECISION NEEDED**, since no value
+  is set yet. Until the owner sets one, no build that parses the balance
+  file can register `sim.airside` (`16`).
+
+Test fixtures carry their own values beside their tests. Those are fixture
+sizing, not balance.
+
+Load-time validation (Q-046). Each check is a hard failure, and `Load`
+throws `FormatException` naming the offending id (`07-conventions.md`):
 
 - every `TaxiEdgeDef.From`/`To` and `StandDef.Node`/`RunwayDef.ThresholdNode`
   must reference a declared `TaxiNodeDef`;
+- a `StandDef.Node` must be a `StandPosition` node, and a
+  `RunwayDef.ThresholdNode` must be a `RunwayThreshold` node;
 - the graph must be connected: every `StandPosition` and every
   `RunwayThreshold` reachable from every other;
 - `StandDef.Id`, `RunwayDef.Id`, `TaxiNodeDef.Id`, `TaxiEdgeDef.Id` are each
-  unique within the layout.
+  unique within the layout;
+- ranges: every id is `≥ 1`; `DeclaredCapacityPerHour ≥ 1`;
+  `OccupancyTicks ≥ 1`; `TraversalTicks ≥ 1`;
+  `0 ≤ ActiveDirectionDeg ≤ 359`; `DepartureSinkNode.Value ≥ 1`;
+- at least one runway and at least one stand.
+
+`Load` returns each of the four lists sorted by ascending id. So nothing
+downstream sees declaration order, as in `18` §18.2.
+`MaxAircraftSizeCategory` is resolved in `CreateSystem` through
+`services.Content`, not in `Load`. An unresolved id throws
+`FormatException` whose message starts with `sim.airside: ` and contains
+the stand id and the category id.
+
+### File format (Q-046)
+
+Binding. It replaces §12.13's earlier "the worker's choice". `Parse` reads
+the strict JSON subset of `08` §8.11 "The loader", under `18` §18.2's
+rules. Duplicate, unknown and missing keys are load failures, and keys may
+come in any order. `true` and `false` are allowed, and only as the value
+of `bidirectional`. `sim.airside` hand-parses the file, with no package.
+The exact shape is:
+
+```
+{
+  "schema_version": 1,
+  "runways": [ { "id": <uint16>, "threshold_node": <uint16>, "active_direction_deg": <int32>,
+                 "declared_capacity_per_hour": <int32>, "occupancy_ticks": <uint32> }, ... ],
+  "nodes":   [ { "id": <uint16>, "kind": "runway_threshold" | "junction" | "stand_position" }, ... ],
+  "edges":   [ { "id": <uint16>, "from": <uint16>, "to": <uint16>,
+                 "traversal_ticks": <uint32>, "bidirectional": true | false }, ... ],
+  "stands":  [ { "id": <uint16>, "node": <uint16>,
+                 "max_aircraft_size_category": "<ContentId>", "departure_sink_node": <uint32> }, ... ]
+}
+```
+
+- Each object has exactly the keys shown. `schema_version` must be `1`.
+- An integer is `0` or `-?[1-9][0-9]*`, and one outside its C# type's range
+  is a load failure. The ranges of the validation list above then apply.
+- After parsing, `Parse` calls `Load` on the result. So its validation
+  failures are `Load`'s, with the message prefixed by `sourceName` and
+  `": "`.
+- **Failures.** Every syntax, shape or range failure throws
+  `FormatException` whose message starts with `sourceName` followed by
+  `": "` and contains `line <n>`. A `null` `sourceName` throws
+  `ArgumentNullException`.
+- The §12.13 fixture is `tests/fixtures/airside/phase1-single-runway.json`.
 
 ### Routing
 
@@ -225,8 +280,9 @@ this is the same "never per-agent A\*" discipline applied to a graph small
 enough to solve exhaustively up front): for every `(RunwayThreshold,
 StandPosition)` pair, the least-`TraversalTicks` path, ties broken by ascending
 `TaxiEdgeId` at the first diverging edge. Stored as an ordered edge list per
-pair. A layout with more than one runway repeats this per runway; Phase 0/1
-ships exactly one.
+pair. A layout with more than one runway repeats this per runway. The
+Phase 0/1 fixture ships exactly one, and §12.5 "Runway choice" says which
+runway a movement uses.
 
 ---
 
@@ -256,6 +312,24 @@ tick both constraints pass, emitting `AircraftHeldForRunwayReleased`
 immediately before the milestone (`Cause` set to the hold event —
 `10-events.md` §10.2).
 
+**When a movement is requested (Q-052).** An arrival requests `Landed` in
+its `Tick` at `STA`, exactly. A departure requests `TakeoffRoll` in the
+tick it reaches its runway's `ThresholdNode`. A movement that can claim a
+slot in its request tick fires its milestone that tick and never enters
+the queue.
+
+**Runway choice (Q-049) — LOW CONFIDENCE.** A movement chooses its runway
+once, at its request point, and never changes it. For an arrival, that
+point is the `Landed` request at `STA`. For a departure, it is `Pushback`,
+because the taxi route leads to one threshold. It takes the runway with the
+fewest aircraft in its hold queue, as `RunwayQueueLength` would report at
+that moment. Ties go to the lowest `RunwayId`. With one runway, this is
+always that runway. It is a Phase 0/1 stopgap, so that multi-runway
+fixtures such as the max-tier budget layout spread their load. It is not a
+runway-allocation system. Runway modes, segregated arrival and departure
+runways, and player control are gameplay, and they are the owner's, to
+come by amendment, like gate assignment (`18` §18.5).
+
 ---
 
 ## 12.6 The taxiway model
@@ -271,10 +345,24 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   node, subject to the next edge's occupancy per this same rule — an aircraft
   never "vanishes" between edges; if the next edge is occupied it holds at the
   node, not mid-edge.
-- `InboundAirborne` fires `CRUISE_LEAD_TICKS` before `ScheduledTick` (from
-  `IScheduleSystem.TryGetFlight`, §12.9), always on time — Phase 0/1 does not
-  simulate an origin airport, so nothing can make it late. Both `PlannedTick`
-  and `ActualTick` equal `ScheduledTick - CRUISE_LEAD_TICKS`.
+- **Same-tick edge release (Q-054).** Edge occupancy for entering is read
+  as it stood at the start of the tick's taxi step. An edge that its
+  occupant leaves during tick `t` can be entered no earlier than `t + 1`,
+  and a hold on it is released, with its `AircraftHeldOnTaxiwayReleased`,
+  at `t + 1` at the earliest. An edge that is free at the start of the
+  step goes first to the head of its hold queue. If the queue is empty, it
+  goes to the aircraft with the lowest `FlightId` among those asking for it
+  in that tick. Every other aircraft asking for it holds, joining the queue
+  in ascending `FlightId`, so the queue order is also the `EventId` order
+  of their hold events.
+- `InboundAirborne` fires at `max(0, ScheduledTick − CRUISE_LEAD_TICKS)`
+  (from `IScheduleSystem.TryGetFlight`, §12.9), always on time. Phase 0/1
+  does not simulate an origin airport, so nothing can make it late. Both
+  `PlannedTick` and `ActualTick` equal that tick. The clamp (Q-048) only
+  matters for a day-0 arrival with `STA < CRUISE_LEAD_TICKS`, such as
+  `phase0-200.csv`'s 00:20 arrival, and it is the same clamp as `11`
+  §11.6's show-up clamp. Day 0 is materialised at construction (`11`
+  §11.9), so the flight is visible at tick 0.
 
   > **LOW CONFIDENCE — `InboundAirborne` is a formality event at Phase 0/1.**
   > It exists so the milestone sequence and the delay tree's `late_inbound`
@@ -284,10 +372,12 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   > weight rather than a placeholder worth keeping.
 
 - `Landed` fires when a runway slot is granted per §12.5, at or after
-  `ScheduledTick` — never earlier; an early aircraft holds off-graph
-  (`AircraftHeldForRunway` with `queuePosition = 0`, occupying no node) until
-  its own `ScheduledTick`, so a slack schedule cannot make traffic denser than
-  planned.
+  `ScheduledTick`, never earlier. The request is made at `STA` exactly
+  (§12.5, Q-052). At Phase 0/1 no aircraft is ever early, since
+  `InboundAirborne` is fixed. So the earlier "early aircraft holds
+  off-graph with `queuePosition = 0`" case cannot occur, and no
+  `AircraftHeldForRunway` with `queuePosition = 0` is ever emitted. The case
+  returns by amendment when upstream delay is modelled.
 - `OffRunway` fires `OccupancyTicks` after `Landed`; the aircraft then enters
   the taxi graph at the runway's `ThresholdNode` and follows the precomputed
   route (§12.4) toward a stand chosen per §12.7.
@@ -306,15 +396,34 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   ordinal ordering. Phase 0/1 ships four contact stands; remote stands and
   buses are out of scope (`00-overview.md` non-goals do not forbid them later,
   but nothing here defines one).
-- Assignment happens once, at `OffRunway`: the earliest-declared, compatible,
-  currently-free stand, ties broken by ascending `StandId`. If none is free,
-  the aircraft holds at the runway threshold node — `StandUnavailable {
-  Flight, Stand: null, occupying: null }` — and re-evaluates every tick a stand
-  frees, emitting `StandAssigned { Flight, Stand, occupying: null }` the tick
-  it succeeds, `Cause` set to whichever `Pushback` freed the stand.
-- A stand occupies from `OnStand` to `Pushback` inclusive. Reassigning an
-  occupied stand is the `ReassignStand` command, §12.10; nothing else forces a
-  reassignment mid-turnaround.
+- **The assignment rule (Q-051).** Assignment happens once, at `OffRunway`.
+  It takes the compatible free stand with the **lowest `StandId`**. The
+  earlier "earliest-declared" is dropped: `Load` sorts stands by id
+  (§12.4), so declaration order means nothing. "Free" is read as it stood
+  at the start of the tick (Q-054). A stand vacated by a `Pushback` during
+  tick `t` is assignable from `t + 1`, and a stand vacated by a
+  `ReassignStand` applied at the boundary of `t` is free at `t`.
+- **Reservation (Q-050).** Assignment sets `StandState.Occupant` at once,
+  so the stand is held from assignment to `Pushback` inclusive, taxi-in
+  included. `FreeStands()` excludes it from that tick on, and no other
+  aircraft is given it. Only `OnStand` starts the turnaround (§12.8).
+- **Waiting for a stand (Q-050, Q-053).** If no compatible stand is free,
+  the aircraft emits `StandUnavailable { Flight, Stand: null, occupying:
+  null }` and joins the airport's single **stand-wait queue**, ordered by
+  ascending `EventId` of that event. An arrival waits at its runway's
+  threshold node. A rotation-less departure waits off-graph (below). Every
+  tick, before any new assignment, the queue is walked in order. Each
+  waiter takes the lowest-id compatible stand free at the start of the
+  tick that no earlier waiter took this tick. A waiter with no such stand
+  keeps its place and does not block later waiters. On success it emits
+  `StandAssigned { Flight, Stand, occupying: null }` and leaves the queue.
+  Its `Cause` is the `Pushback` that freed that stand, or `EventRef.None`
+  if a `ReassignStand` freed it. New
+  `OffRunway` and rotation-less assignments in the same tick come after
+  the queue.
+- A stand is held from assignment to `Pushback` inclusive (above).
+  Reassigning an occupied stand is the `ReassignStand` command (§12.10).
+  Nothing else forces a reassignment mid-turnaround.
 - **Arriving passengers.** `11-interfaces-schedule.md` §11.4 defines
   `FlightRecord.PaxCount` for `Departure` rows only; a Phase 0/1 `Arrival` row
   always carries a pax count of zero (no arrival demand is specified yet).
@@ -346,10 +455,18 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
 - A rotation-less **Departure** (`HasRotation = false`) is assumed already on
   its assigned stand at `ScheduledTick - MinTurnaround`: `sim.airside` creates
   its `AircraftTrack` directly in `OnStand` phase at that tick, claims the
-  earliest compatible free stand under the normal assignment rule above, and
+  lowest-id compatible free stand under the normal assignment rule above, and
   fires its own `FlightMilestoneReached{OnStand}` (`PlannedTick = ActualTick
   = ScheduledTick - MinTurnaround`) — the same trigger `sim.turnaround` uses
   to start jobs for any departure, rotation-linked or not.
+- **No stand free (Q-053).** The track is still created at that tick, in
+  `AwaitingApproach` phase, off-graph, with `Stand` unset and `DueAt =
+  TICK_UNSCHEDULED`. It emits `StandUnavailable` and joins the stand-wait
+  queue above. The tick it is assigned a stand, it emits `StandAssigned`,
+  enters `OnStand` at that stand, and fires `OnStand`, with `PlannedTick =
+  ScheduledTick − MinTurnaround` and `ActualTick` = that tick. It then
+  continues exactly as in the paragraph above, so the lateness shows at
+  `OnStand` and is attributed to the stand interval.
 
   > **LOW CONFIDENCE — rotation-less departures get no real ground time under
   > the §12.8 fallback.** Without `sim.turnaround`, the fallback timer also
@@ -561,6 +678,20 @@ they are checked at `Apply`. A command that fails them is a logged no-op,
 not a rejection. This replaces the earlier "Rejected (`NotPermitted`) if
 occupied or incompatible", which admission cannot decide deterministically.
 
+**The no-op log line (Q-056).** `Apply` checks in this order and stops at
+the first failure:
+
+1. the flight is not tracked, or its `Phase ≠ OnStand`: reason 1;
+2. `newStand` has an occupant, which includes the flight's own stand:
+   reason 2;
+3. the aircraft is incompatible with `newStand` (§12.7): reason 3.
+
+On a failure it changes nothing and writes one line, `Write(tick,
+LogLevel.Info, SystemId(3), LogKey.AirsideReassignStandNoOp, new
+LogArgs(flight.Value, newStand.Value, reason))`, where `tick` is the tick
+whose boundary applies the command (`08` §8.7). The key is appended to
+`sim.core`'s `LogKey` as `AirsideReassignStandNoOp = 1` (`08` §8.10).
+
 Named as the example in `07-conventions.md` ("Commands: imperative, ...,
 `ReassignStand`"); this is that command's binding definition.
 
@@ -614,8 +745,13 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
    in queue order (each entry's `FlightId`).
 2. Taxi edge state, ascending `TaxiEdgeId`: `Occupant`, hold queue in queue
    order.
-3. Stand state, ascending `StandId`: `Occupant`.
+3. Stand state, ascending `StandId`: `Occupant`. Then the stand-wait queue
+   (§12.7, Q-050), in queue order: each entry's `FlightId`, preceded by the
+   queue length.
 4. Tracked aircraft, ascending `FlightId`: every field of `AircraftTrack`.
+
+Q-054's start-of-tick reads leave no state across ticks, so nothing more is
+hashed for them.
 
 Not hashed, because derived: `FreeStands()`, `RunwayQueueLength()`, the
 precomputed routing table (§12.4, fixed at load and part of the loaded layout,
@@ -647,8 +783,9 @@ AirsideFactory.CreateSystem(in SystemServices services, in AirsideLayout layout,
 ```
 
 - `layout` must come from `IAirsideLayoutLoader` (validated).
-- `rules` is parsed by the caller: `AirsideRules` is two integers, and no sim
-  module parses JSON. The format is `04-data-schemas.md`.
+- `rules` is parsed by the caller: `AirsideRules` is two integers,
+  `BoardingHoldMaxMinutes` and `DoorsOpenDelayMinutes` (Q-047, Q-055), and
+  no sim module parses JSON. The format is `04-data-schemas.md`.
 - `flow` null: no `Inject`/`Absorb` calls and no boarding hold (§12.7, §12.8).
 - `turnaroundRegistered` is what selects §12.8's handshake (true) or its
   fallback (false). It was previously implicit, and it is now an explicit
@@ -658,10 +795,8 @@ AirsideFactory.CreateSystem(in SystemServices services, in AirsideLayout layout,
 
 ## 12.13 The Phase 0/1 fixture (T-021)
 
-`tests/fixtures/airside/phase1-single-runway.*` (format is the worker's
-choice — this is graph data, not the schedule CSV, and carries no byte-level
-strictness requirement the way §12.4 doesn't impose one), binding on the Test
-Author:
+`tests/fixtures/airside/phase1-single-runway.json`, in §12.4's "File
+format" (Q-046), binding on the Test Author:
 
 - exactly one `RunwayDef`;
 - a taxiway graph connecting the runway threshold to four `StandDef`s, with at
@@ -689,6 +824,15 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_doors_close_after_min_turnaround_when_turnaround_absent`
 - `test_arrival_pax_count_zero_skips_inject`
 - `test_airside_tick_consumes_no_rng`
+- `test_layout_parse_fixture_file_equals_built_layout` (Q-046): `Parse` of
+  the fixture file equals `Load` of the same layout built in code.
+- `test_layout_parse_rejects_unknown_key_with_line_number` (Q-046)
+- `test_inbound_airborne_clamps_to_tick_zero_before_cruise_lead` (Q-048)
+- `test_stand_reserved_from_assignment_until_pushback` (Q-050)
+- `test_stand_freed_by_pushback_is_assigned_next_tick` (Q-054)
+- `test_taxi_hold_released_the_tick_after_blocker_leaves_edge` (Q-054)
+- `test_rotationless_departure_waits_for_stand_and_fires_late_on_stand` (Q-053)
+- `test_reassign_stand_no_op_logs_key_and_reason` (Q-056)
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task
