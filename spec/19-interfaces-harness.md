@@ -145,12 +145,16 @@ harness reads nothing else, and never reads `data/`.
   ancestor directory that contains a file named `AirportSim.sln`, then join
   the repository-relative path. The current working directory, environment
   variables and flags are never used.
-- **When.** After the arguments parse, and before any run. A usage error
-  (exit 2) is decided before any file is read. Then every fixture file is
-  read once, and the content is loaded once, into one `IContentIndex` that
-  every run of the invocation uses. Each of these is a harness error, exit
-  3 with stdout empty (§19.3): not finding the root, failing to read a
-  file, a malformed manifest, and any load or validation failure.
+- **When.** A usage error (exit 2) is decided before any file is read.
+  Then, before any run, the root is found, every fixture file's bytes are
+  read once, and the content is loaded once, into one `IContentIndex`
+  that every run of the invocation uses. The walk-graph, flow-graph and
+  schedule bytes are parsed inside the composer (below), because the flow
+  loader needs the run's `IWorldSystem`. So their failures surface in the
+  first run's `compose` call. Every one of these failures is a harness
+  error, exit 3 with stdout empty (§19.3): not finding the root, failing
+  to read a file, a malformed manifest, and any load, parse or validation
+  failure, whether before the first run or inside it.
 - **The content manifest.** `phase0-content.files` is UTF-8 without a BOM.
   Each line is one path relative to `phase0-content/`, `/`-separated, and
   ends in LF. It has no empty line and no duplicate. The harness's
@@ -210,6 +214,13 @@ no stand and no milestone.
   the tick and of `sim.schedule`'s hashed state, so, like `09` §9.10's
   derived state, it is not hashed. It consumes no RNG, and it allocates
   only in step 1.
+- **For `sim.save`.** That claim holds only for runs that start at tick 0,
+  which is every run today, since `SaveLoad` replays from tick 0 (§19.2).
+  A run restored from a mid-day snapshot would start with an empty day
+  list, and it would diverge. The amendment that makes `SaveLoad` reload a
+  real snapshot must therefore either rebuild the day list at restore,
+  from `MovementsBetween(t, next day boundary, Departure)` filtered to
+  `ScheduledTick ≥ t`, or snapshot and hash it.
 - **Scope.** It exists only in this composition. The amendment that adds
   `sim.airside` to the harness removes it in the same change. No
   production composition (`16`) registers it. `08` §8.5's probe-system
@@ -244,10 +255,12 @@ and a `--tier` other than `max` are all usage errors.
 | 0 | the gate passed |
 | 1 | the gate failed: a divergence, or a budget exceeded |
 | 2 | usage error. Nothing runs, and stdout stays empty |
-| 3 | harness error: any exception during the run, `SimInvariantException` included |
+| 3 | harness error: any exception during the run, `SimInvariantException` included, or a §19.2a fixture failure before the first run |
 
 For codes 2 and 3, stdout is empty, and stderr carries one human-readable
-message (for 3, the exception's `ToString()`). No other exit code is
+message. For 3 that is the exception's `ToString()`, or, for a pre-run
+fixture failure that is not an exception, a message naming the file and
+the failure. No other exit code is
 returned. There is no "not implemented" code: all four subcommands are
 T-006's in full, and a subcommand that cannot run fails as code 3, never as
 0.
@@ -355,18 +368,28 @@ Binding on T-009's Test Author.
   seed 12345 (§19.3). A literal golden may be added beside it, but is not
   required. `test_harness_cli_budget_core_only_day_passes` is renamed
   `test_harness_cli_budget_phase0_day_passes`, with its assertions
-  unchanged. No other CLI test changes. `HarnessGatesTests.cs` and
+  unchanged. No other CLI test's assertions change. The Test Author may,
+  and should, update the comments in `HarnessCliTests.cs` that describe
+  the empty composition, such as the class doc comment and the renamed
+  budget test's comment. `HarnessGatesTests.cs` and
   `EmptyCompositionFinalHash` are unchanged, since they test the gates with
   their own composers.
 - **The kill-gate tests.**
-  - (a) One run of 1 440 000 ticks with seed 12345, through
-    `HarnessGates.FinalHash` with the kit, completes in under 60 s of wall
-    clock, measured per `07` L11.
+  - (a) **A whole-run wall-clock gate.** One run of 1 440 000 ticks with
+    seed 12345, through `HarnessGates.FinalHash` with the kit, takes under
+    60 s **in total**, composition included. The one measurement is the
+    elapsed `Stopwatch.GetTimestamp()` difference around the whole call,
+    compared in `long` arithmetic (`07` L11). It carries the `Budget`
+    trait, but it is not a per-module budget. `03`'s per-tick statistic
+    (mean and p99 over one sim-day's ticks) does not apply to it, and it
+    takes no per-tick samples.
   - (b) `HarnessGates.SameProcess` with the kit, the same seed and ticks,
     passes, with `checkpoints=2400`.
 
-  Both are Slow by `07` L11a rule (a). After the run, a load check replaces
-  the assumption that nothing absorbs:
+  Both are Slow by `07` L11a rule (a). After the gate returns, a load check
+  replaces the assumption that nothing absorbs. In (a) it checks the one
+  run. In (b) it checks the second run, the composer's latest call, whose
+  systems the kit keeps. The gate has already shown both runs equal.
   - `PublishedFlights()` holds 101 × 200 flights;
   - the head count is conserved. The passengers injected equal the
     population on all nodes at the end, plus

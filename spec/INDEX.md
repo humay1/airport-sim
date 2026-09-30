@@ -145,7 +145,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   content access.
 - Key: **`SIM_SECONDS_PER_TICK = 6`, so a day is 14 400 ticks, and goldens
   may be authored (HD, D2, §8.2)**; **`Fx` hand-rolls its 128-bit multiply,
-  divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
+  divide and leading-zero count (D1, §8.3)**; **probe systems at empty
+  registry positions are for tests only, with the one exception of the
+  harness's boarding stand-in at 3 (§8.5, Q-043)**; FIFO event dispatch with
   handlers in registry order (§8.6); **the bus allocates nothing after
   `Build`, with no warm-up, and a type with no subscriber stores nothing
   (§8.6, Q-035)**; commands admitted only at ≥ 1 tick of

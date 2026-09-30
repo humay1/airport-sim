@@ -2360,5 +2360,21 @@ Impact:      - **No merged `src/` changes.** `sim.flow`, `sim.schedule`
              about 41.7 µs a tick, about 1/144 of `01`'s 6 ms tick. It is
              unmeasured with the stand-in. A miss escalates to the owner
              under T-009's "Done when".
+Revision:    after the PR #66 review (rejected at 93abebf):
+             - Q-044 and Q-045 (the budget window and arithmetic) are
+               removed from this PR and move to their own spec PR. The
+               `03` edits are reverted here;
+             - §19.6(a) is a whole-run wall-clock gate: 60 s in total, one
+               `long` `Stopwatch` measurement, and not subject to `03`'s
+               per-tick statistic, although it carries `Budget`;
+             - §19.6(b)'s load check applies to the second run;
+             - §19.2a "When" says the three graph and schedule parses
+               happen in the first run's `compose`. §19.3's exit-3 row
+               covers pre-run fixture failures;
+             - the stand-in's day list is flagged for the snapshot-based
+               `SaveLoad` amendment;
+             - the Test Author may update `HarnessCliTests.cs` comments;
+             - the INDEX `08` entry names the §8.5 line, and Q-043's Status
+               uses the standard format.
 Signed off:  owner, 2026-09-29 (the Q-043 boarding stand-in). The rest is
              architecture and needs no sign-off.
