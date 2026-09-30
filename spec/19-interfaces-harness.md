@@ -180,11 +180,15 @@ free-form and is not tested.
 
 One run of `TICKS_PER_SIM_DAY` ticks with the CLI composition, stepped one
 tick per `Step(1)`. Each `Step(1)` is timed with
-`Stopwatch.GetTimestamp()` in `long` arithmetic (`07` L11), and the time is
-converted to whole microseconds by flooring. `mean_us` is the floored mean,
-and `p99_us` is the value at 0-based index `⌈0.99 × n⌉ − 1` of the sorted
-samples. It passes if `mean_us ≤ 6000` and `p99_us ≤ 12000`. That is the
-`03` statistic applied to `01`'s 6 ms whole-sim total. Per-module budgets
+`Stopwatch.GetTimestamp()` in `long` arithmetic (`07` L11). The samples,
+the pass condition and the reported numbers are exactly `03` "Budget tests:
+window and arithmetic" (Q-045), with `B = 6000` and `n = TICKS_PER_SIM_DAY`:
+each sample is rounded **up** to whole microseconds, `mean_us` is the
+rounded-up mean, and `p99_us` is the nearest-rank value. It passes if
+`mean_us ≤ 6000` and `p99_us ≤ 12000`, which is exactly `03`'s condition.
+This replaces the earlier flooring of the samples and of the mean, which
+accepted a mean just over 6000 µs. That is the `03` statistic applied to
+`01`'s 6 ms whole-sim total. Per-module budgets
 stay in each module's own tests (`03`, "How a budget is measured"). The
 harness does not re-assert them.
 

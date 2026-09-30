@@ -78,7 +78,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: downward calls only, upward information as events; `sim.airside`
   depends on `flow` (D6 fix); new module `app.host` (HD, D7); **the soak runs a
   mid-tier fixture under 0.1 ms/tick (HD, D3)**; budget pass = mean ≤ budget
-  and p99 ≤ 2× budget.
+  and p99 ≤ 2× budget; **every timed budget test, and `19` §19.4, uses exactly
+  one sim-day of per-tick samples, rounded up to µs in `long` arithmetic,
+  with mean `Σu ≤ B·n` and nearest-rank p99 `≤ 2B`. Allocation-only tests and
+  whole-run gates are exempt, and `sim.core` samples `Step(1)` (Q-044,
+  Q-045)**.
 - LC: the checkpoint-hashing ceiling (20 ms) and the snapshot-write ceiling
   (250 ms).
 - Read if: planning; any budget test ("How a budget is measured"); the soak
