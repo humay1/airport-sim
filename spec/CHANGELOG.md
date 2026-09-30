@@ -2379,7 +2379,7 @@ Revision:    after the PR #66 review (rejected at 93abebf):
 Signed off:  owner, 2026-09-29 (the Q-043 boarding stand-in). The rest is
              architecture and needs no sign-off.
 
-## 2026-09-30 — spec/12 §12.3, §12.4 (+ "File format"), §12.5, §12.6, §12.7, §12.8, §12.8a (new), §12.10, §12.11, §12.12, §12.12a, §12.13; 13 §13.11; 14; 16; 04 (airside_rules.json); 08 §8.10 (`LogKey`); INDEX; open-questions — Q-046 to Q-056: T-021 `sim.airside` gaps
+## 2026-09-30 — spec/12 §12.3, §12.4 (+ "File format"), §12.5, §12.6, §12.7, §12.8, §12.8a (new), §12.10, §12.11, §12.12, §12.12a, §12.13; 13, 14, 15 (fixture name); 16 (file table); 04 (airside_rules.json); 08 §8.10 (`LogKey`); INDEX; open-questions — Q-046 to Q-056: T-021 `sim.airside` gaps
 Reason:      T-021's Test Author (branch `test-author/T-021-airside-tests`,
              `d10a9be`, 56 tests) reported 11 gaps in `12`:
              - **Q-046:** the layout fixture format is pinned as JSON.
@@ -2428,17 +2428,22 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                `12` instead, together with the writable-path addition.
              - **T-021 test branch:**
                - `AirsideRules` gains a second constructor argument;
-               - add the fixture JSON and the eleven new §12.13 tests;
+               - add the fixture JSON and the thirteen new §12.13 tests;
                - `Load` messages must contain the §12.4 field names;
                - check that no test assumes a same-tick stand or edge
                  release, an unreserved stand in taxi-in, a
                  `queuePosition = 0` hold, or a track for a rotation-less
                  departure that is still waiting.
-             - **Merge note:** Q-041 to Q-043 merged with PR #66, and
-               Q-044 and Q-045 are in PR #68. #68 appends after the same
-               lines of `open-questions.md` and `CHANGELOG.md`, so a
-               textual conflict is expected there. The contents do not
-               overlap.
+             - **`app.host` (`16`, T-031):** the host parses
+               `airside_rules.json` and must read the new key, passing it
+               as `AirsideRules.DoorsOpenDelayMinutes`. `16`'s file table
+               now says so. T-031's task file should cite it (Planner).
+             - **`tasks/T-028-content-schemas.md` line 53** gives the
+               one-key `airside_rules.json` shape. The content task that
+               changes `balance.schema.json` updates it (Planner).
+             - **Merge note:** Q-041 to Q-045 merged earlier, with PRs #66
+               and #68. The resulting `open-questions.md` and
+               `CHANGELOG.md` conflicts are resolved in this branch.
              - **Scope:** none added. The runway choice is a stopgap rule,
                not a system.
              **HUMAN DECISION, owner, 2026-09-30:**
@@ -2472,6 +2477,38 @@ Revision:    after the PR #67 review (rejected at 5f29a25):
                - the INDEX `04` and `08` entries are updated;
                - the impact list is completed;
              - the owner's decisions on Q-047 and Q-049 are recorded.
+Revision 2:  after the third PR #67 review (rejected at c0cd79e):
+             - **runways are the S1 exception.** S7 reads runway
+               `Occupant` and `NextSlotTick` live, so a runway cleared in S3
+               is claimable in S7 of the same tick;
+             - **chains (§12.8a).** An action that makes another §12.8
+               action due at the current tick runs it at once, in the same
+               turn. This pins `DoorsOpenDelayMinutes = 0` and
+               `MinTurnaround = 0`, and "0 = the same tick" holds. A
+               departure created in an arrival's turn runs its chained
+               actions inside that turn, and not at its own `FlightId`
+               position;
+             - **`Load` messages.** Range check 1 covers only an object's
+               own `id` and its value fields. A `0` in a node-reference
+               field fails at check 4. Within an object, the first failing
+               field in file-format key order is named;
+             - **hard bounds.** `STAND_WAIT_CAPACITY = 1024` and
+               `PENDING_FLIGHTS_CAPACITY = 2048` are preallocated and never
+               grow. Overflow is `SimInvariantException`. This replaces the
+               growth-allowed text, which contradicted `08` §8.5 and `07`;
+             - **finding flights without a scan (§12.11).** A pending list
+               is fed by a day-0 read at `CreateSystem` and by a
+               `FlightPlanPublished` subscription. The pending list is
+               hashed;
+             - non-blocking fixes:
+               - §12.8's `StandUnavailable` claim covers arrivals only;
+               - the §12.3 departure `OnStand` is clamped;
+               - the §12.7 LOW CONFIDENCE note matches the chain rule;
+               - duplicate, unknown and missing keys are parse failures;
+               - §12.8a is in INDEX and in this entry's heading;
+               - the stale `phase1-single-runway.*` references are fixed
+                 in `13`, `14` and `15`, and `16`'s fixture-format text;
+               - `16` and T-031, and T-028 line 53, are in Impact.
 Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
              rest is architecture and needs no sign-off.
 

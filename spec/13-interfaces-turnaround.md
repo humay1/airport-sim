@@ -372,7 +372,7 @@ Test Author:
   the blocked path;
 - runs against `tests/fixtures/schedule/phase0-200.csv`
   (`11-interfaces-schedule.md` §11.10) and
-  `tests/fixtures/airside/phase1-single-runway.*`
+  `tests/fixtures/airside/phase1-single-runway.json`
   (`12-interfaces-airside.md` §12.13), with `sim.airside` **registered** this
   time — T-022 is exactly the task that exercises the real handshake in
   `12-interfaces-airside.md` §12.8 instead of its no-`sim.turnaround`

@@ -1362,6 +1362,10 @@ Answer:      Architecture. The format is pinned in §12.4 "File format":
                Only parse failures (syntax, shape, C#-type range) carry
                it.
              One more test.
+             Revision 2: check 1 covers each object's own `id` and its
+             value fields only. A `0` in a node-reference field fails at
+             check 4. Within one object, the first failing field in
+             file-format key order is named.
 Status:      ANSWERED (spec/12-interfaces-airside.md#file-format-q-046)
 
 ### Q-047 — `sim.airside`: the `DoorsOpen` delay has no value or field
@@ -1435,7 +1439,10 @@ Answer:      Architecture. No: assignment sets `StandState.Occupant` at
                rotation-less departures at their due tick) are taken in
                ascending `FlightId` (S5 of §12.8a);
              - a waiting arrival is `HeldOnTaxiway` at its threshold node;
-             - the queue's storage and cost are in §12.12.
+             - the queue's cost is in §12.12.
+             Revision 2: the queue has a hard bound, `STAND_WAIT_CAPACITY =
+             1024`. It is preallocated and never grows, and overflow is
+             `SimInvariantException` (§12.2, §12.12).
 Status:      ANSWERED (spec/12-interfaces-airside.md#127-stands)
 
 ### Q-051 — `sim.airside`: "earliest-declared, ties by ascending `StandId`"
@@ -1487,6 +1494,12 @@ Answer:      Architecture, **revised after the PR #67 review**. The first
                amended, and it is not proposed here.
              §12.3's and §12.9's "a departure track starts in `OnStand`"
              stays true. One test.
+             Revision 2: rotation-less departures are found without a scan,
+             through §12.11's pending list. That list is fed by a day-0
+             read at `CreateSystem` and a `FlightPlanPublished`
+             subscription, capped at `PENDING_FLIGHTS_CAPACITY`, and
+             hashed. The fallback chain after a late `OnStand` runs at
+             once, in S5 (§12.8a "Chains").
 Status:      ANSWERED (spec/12-interfaces-airside.md#rotation-less-flights-no-rotation-counterpart)
 
 ### Q-054 — `sim.airside`: same-tick release of a taxi edge and a stand
@@ -1510,6 +1523,15 @@ Answer:      Architecture. `sim.airside`'s `Tick` now has a pinned step
              `OffRunway` in S3 or `Pushback` in S4) asks for an edge in S6
              of the same tick. An aircraft holding at a node occupies no
              edge. No cross-tick state results. Two new tests.
+             Revision 2:
+             - runways are the exception to S1. S7 reads them live, so a
+               runway cleared in S3 is claimable in S7;
+             - **chains.** An action that makes another action due at the
+               current tick runs it at once, in the same turn. That pins
+               zero `DoorsOpenDelayMinutes` and zero `MinTurnaround`, and
+               it keeps a departure created in an arrival's turn inside
+               that turn. One more test,
+               `test_zero_door_delay_and_turnaround_chain_in_one_tick`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#128a-order-within-tick-q-054)
 
 ### Q-055 — `sim.airside`: `AirsideRules` is not "two integers"

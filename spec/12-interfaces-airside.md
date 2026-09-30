@@ -63,6 +63,14 @@ calls into `sim.world` at all.
 | `CRUISE_LEAD_TICKS` | 1200 (2 sim-hours) | §12.6, `InboundAirborne` offset |
 | `TAXI_EDGE_CAPACITY` | 1 aircraft | §12.5, single-lane simplification |
 | `RUNWAY_SLOT_ROUNDING` | ceiling | §12.5, capacity → separation |
+| `STAND_WAIT_CAPACITY` | 1024 entries | §12.7 stand-wait queue, a hard bound (Q-050) |
+| `PENDING_FLIGHTS_CAPACITY` | 2048 entries | §12.11 pending list, a hard bound |
+
+The two capacities are engineering bounds, not balance. They are sized
+from `01`'s max tier, 800 daily movements. The pending list holds at most
+about one day of arrivals and rotation-less departures, plus day 0 at
+construction. The stand-wait queue is larger than any one day's arrivals.
+Both are preallocated at `CreateSystem`, and neither ever grows.
 
 `AircraftHeldForRunway`/`StandUnavailable` etc. carry no constant of their own;
 their thresholds are runway/stand content, never hardcoded.
@@ -109,7 +117,7 @@ time, holds excluded.
 | `OffRunway` | arrival | `STA + OccupancyTicks` |
 | `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
 | `DoorsOpen` | arrival | planned `OnStand` + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE` |
-| `OnStand` | departure | `STD − MinTurnaround` (§12.8 step 3; §12.7 for a rotation-less departure) |
+| `OnStand` | departure | `max(0, STD − MinTurnaround)` (§12.8 step 3; §12.7 for a rotation-less departure, whose due tick this is) |
 | `DoorsClosed` | departure | `STD` |
 | `Pushback` | departure | `STD` |
 | `TakeoffRoll` | departure | `STD + RouteTicks(stand, threshold)`, where `threshold` is that of the runway chosen at `Pushback` (§12.5) |
@@ -219,17 +227,23 @@ sizing, not balance.
 
 Load-time validation (Q-046). Each check is a hard failure (`07-conventions.md`).
 `Load` runs the checks in the order below and throws at the first failure.
-Within a check, it reports the offending object with the lowest id, taking
-the lists in the order runways, nodes, edges, stands. The failure is a
+Within a check, the lists are taken in the order runways, nodes, edges,
+stands, and the first list with a failure is used. Within that list, the
+offending object with the lowest id is reported (for a duplicate, the
+duplicated id). Within that object, the first failing field in the
+file-format key order of the shape below is reported. The failure is a
 `FormatException` whose message starts with `sim.airside: ` and contains
 the **field name** and the **id or ids** given here, in decimal. Tests
 assert the type, the prefix, the field name and the ids, and nothing else.
 
-1. **Ranges.** Every id is `≥ 1`; `DeclaredCapacityPerHour ≥ 1`;
-   `OccupancyTicks ≥ 1`; `TraversalTicks ≥ 1`;
-   `0 ≤ ActiveDirectionDeg ≤ 359`; `DepartureSinkNode.Value ≥ 1`. The
-   message names the object's id and the field, using the file-format key
-   (`id`, `occupancy_ticks`, and so on).
+1. **Ranges.** Each object's **own** `id` is `≥ 1`;
+   `DeclaredCapacityPerHour ≥ 1`; `OccupancyTicks ≥ 1`;
+   `TraversalTicks ≥ 1`; `0 ≤ ActiveDirectionDeg ≤ 359`;
+   `DepartureSinkNode.Value ≥ 1`. The message names the object's id and
+   the field, using the file-format key (`id`, `occupancy_ticks`, and so
+   on). Node-reference fields (`from`, `to`, `node`, `threshold_node`) are
+   **not** range-checked. A `0` there fails at check 4 as an undeclared
+   node, because no node has id `0` once check 1 has passed.
 2. **Non-empty.** At least one runway and at least one stand. The message
    names the list, `runways` or `stands`, and no id.
 3. **Unique ids.** `RunwayDef.Id`, `TaxiNodeDef.Id`, `TaxiEdgeDef.Id` and
@@ -262,8 +276,8 @@ Binding. It replaces §12.13's earlier "the worker's choice". `Parse` reads
 the strict JSON subset of `08` §8.11 "The loader", with `18` §18.2's
 rules and one exception: `18` §18.2 forbids `true` and `false`, but here
 they are allowed, and only as the value of `bidirectional`. Duplicate,
-unknown and missing keys are load failures, and keys may come in any
-order. `sim.airside` hand-parses the file, with no package.
+unknown and missing keys are **parse** (shape) failures, and keys may come
+in any order. `sim.airside` hand-parses the file, with no package.
 The exact shape is:
 
 ```
@@ -527,10 +541,12 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   (§12.8), and the stand it names is the one `Absorb` uses.
 
   > **LOW CONFIDENCE — rotation-less departures get no real ground time under
-  > the §12.8 fallback.** Without `sim.turnaround`, the fallback timer also
-  > measures `MinTurnaround` from this same creation tick, so `DoorsClosed`
-  > fires the instant the track is created — `MinTurnaround` is spent once to
-  > place the aircraft and has nothing left to cover boarding. The Phase 0/1
+  > the §12.8 fallback.** Without `sim.turnaround`, the fallback's
+  > doors-close point for a rotation-less departure is its creation tick,
+  > the actual `OnStand` tick. So in S5 the chain `Absorb`, `DoorsClosed`,
+  > `Pushback` (or a boarding hold) runs at once after `OnStand` (§12.8a
+  > "Chains"). `MinTurnaround` is spent once, to place the aircraft, and
+  > has nothing left to cover boarding. The Phase 0/1
   > fixture requirement (`11-interfaces-schedule.md` §11.10) only needs one
   > such row to exist to exercise `TICK_UNSCHEDULED`, not to complete a
   > plausible turnaround, so this is left as a known gap rather than guessed
@@ -642,9 +658,10 @@ Anyone still outstanding at that `Absorb` becomes a missed passenger, which
   `DoorsClosed`'s `PlannedTick` stays `STD` (§12.3), so the hold's ticks show
   up as lateness at the `Pushback` checkpoint, where `sim.delay` attributes
   them to this interval (`14-interfaces-delay.md` §14.5).
-- The stand stays occupied during the hold. An aircraft waiting for that stand
-  gets an ordinary `StandUnavailable` interval, so the knock-on delay is
-  attributed as well.
+- The stand stays occupied during the hold. An **arrival** waiting for that
+  stand gets an ordinary `StandUnavailable` interval, so the knock-on delay
+  is attributed as well. A rotation-less departure waiting for it emits
+  nothing (§12.7, Q-053), and its delay goes to `Unexplained`.
 - `sim.flow` not registered, or `BoardingHoldMaxMinutes == 0`: no hold, and
   neither event is emitted. As above, behaviour depends only on the upstream
   producer, here the passengers' owner.
@@ -675,41 +692,67 @@ taken in ascending `FlightId` unless the step says otherwise.
   are free, as at the start of `Tick`. Every edge grant (S6) and stand
   grant (S5) in this tick reads this snapshot. A grant made earlier in the
   same step also makes that edge or stand unavailable for the rest of the
-  step. Nothing vacated during this tick is granted before `t + 1`.
-- **S2 Inbound.** Start tracking each arrival whose `InboundAirborne` tick
-  is `t` (§12.6), and fire `InboundAirborne`.
+  step. No edge or stand vacated during this tick is granted before
+  `t + 1`. **Runways are the exception.** S7 reads each runway's
+  `Occupant` and `NextSlotTick` live, so a runway cleared by `OffRunway`
+  or `Airborne` in S3 can be claimed in S7 of the same tick. `Occupant`
+  already models the surface, and `NextSlotTick` the separation.
+- **S2 Inbound.** Start tracking each pending arrival whose
+  `InboundAirborne` tick is `t` (§12.6, §12.11 "How flights are found"),
+  and fire `InboundAirborne`.
 - **S3 Runway exits.** `OffRunway` for each arrival due, which puts it at
   its threshold node needing a stand (S5). `Airborne` for each departure
   due, which leaves tracked state.
-- **S4 Ground.** For each tracked flight on stand, the §12.8 actions due
-  at `t`, each flight's in §12.8's own order:
+- **S4 Ground.** For each tracked flight on stand, the §12.8 actions that
+  fell due at `t` in an earlier tick's reckoning, each flight's in §12.8's
+  own order:
   - the handshake or fallback departure-track creation;
-  - `DoorsOpen` at `OnStand + DoorsOpenDelayMinutes`, when the delay is
-    not 0;
+  - `DoorsOpen` at `OnStand + DoorsOpenDelayMinutes`;
   - the boarding-hold re-evaluation;
   - `Absorb`, `DoorsClosed` and `Pushback`. `Pushback` chooses the runway
     (§12.5), vacates the stand, and puts the aircraft at the stand node,
     asking for its first edge in S6.
 - **S5 Stands.** §12.7 "Order of stand work in one tick": the queue
   first, then new requests. A rotation-less departure's track is created
-  here, when it gets a stand. With the §12.8 fallback, that departure's
-  doors-close chain (`Absorb`, `DoorsClosed`, then `Pushback`, or a
-  boarding hold) runs at once, in this step, after its `OnStand`.
+  here, when it gets a stand, and its `OnStand` starts a chain (below).
 - **S6 Taxi.**
   1. Every aircraft on an edge with `DueAt ≤ t` reaches the edge's end
      node and leaves the edge, which frees it for `t + 1`. An aircraft
      holding at a node occupies no edge. If the node ends its route:
-     - an arrival fires `OnStand`, and `DoorsOpen` at once when
-       `DoorsOpenDelayMinutes` is 0;
+     - an arrival fires `OnStand`, which starts a chain (below);
      - a departure is at its threshold and requests `TakeoffRoll` in S7.
      Otherwise it asks for the route's next edge.
   2. Edge grants, per §12.6 "Same-tick edge release", in ascending
-     `TaxiEdgeId`.
+     `TaxiEdgeId`. A departure pushed back by a chain in S6.1 asks for
+     its first edge here.
 - **S7 Runway.** §12.5 "Order of runway work in one tick": the queues
   first, then new requests (`Landed` at `STA`, and `TakeoffRoll` from S6).
 
+**Chains (Q-054, zero delays).** When an action makes another §12.8 action
+due at the current tick `t`, that action runs **at once**, in the same
+turn, and not in S4. So does every action it makes due at `t` in turn.
+This covers `DoorsOpenDelayMinutes = 0`, `MinTurnaround = 0`, or both:
+
+- an arrival's `OnStand` in S6 fires `DoorsOpen` at once when the delay
+  is 0;
+- a `DoorsOpen` whose fallback handoff (`DoorsOpen + MinTurnaround`) is
+  `t` creates the departure at once;
+- a departure's `OnStand`, whether created by a handoff or in S5, runs
+  its fallback doors-close point at once when it is due at `t`. That is
+  `Absorb` then `DoorsClosed` then `Pushback`, or the start of a boarding
+  hold.
+
+The whole chain belongs to the turn of the flight whose action started
+it. A departure `D` created in arrival `A`'s turn runs its chained
+actions right after `D`'s `OnStand`, inside `A`'s turn, and not at `D`'s
+own `FlightId` position. Later in the same step, `D` has nothing left due
+at `t`, so nothing runs twice. From the next tick on, `D`'s due actions
+(for example boarding-hold re-evaluations) are taken at `D`'s own
+`FlightId` position.
+
 A step's events are published in the order its actions run, so this order
-fixes every `EventId` order that §12.5 to §12.7 use.
+fixes every `EventId` order that §12.5 to §12.7 and `sim.delay`'s
+`DelayEventId`s use.
 
 ---
 
@@ -830,6 +873,7 @@ Full field lists in `10-events.md` §10.6 except where this file adds a
 |---|---|---|
 | `FlightMilestoneReached { Milestone = DeboardComplete }` | `sim.turnaround` | §12.8, create the departure's track and hand off the stand, next tick |
 | `FlightMilestoneReached { Milestone = BoardingComplete }` | `sim.turnaround` | §12.8, transition to `DoorsClosed` next tick |
+| `FlightPlanPublished` | `sim.schedule` | §12.11 "How flights are found": add the flight to the pending list |
 
 `sim.airside` also calls `IScheduleSystem.TryGetRotation` (query, downward,
 `11-interfaces-schedule.md` §11.7) at the handoff in §12.8 step 3, to find the
@@ -842,10 +886,32 @@ tick for each departure on a boarding hold (§12.8). It is the module's only
 
 `sim.airside` calls `IScheduleSystem.TryGetFlight` (query, downward,
 `11-interfaces-schedule.md` §11.7) to read `ScheduledTick`, `MinTurnaround` and
-`AircraftType`; it does not subscribe to `FlightPlanPublished` — a flight
-already exists in `IScheduleSystem.PublishedFlights()` before its
-`ScheduledTick` is imminent, and `sim.airside` only needs to look it up once,
-at `InboundAirborne` time, when it starts tracking the flight.
+`AircraftType`.
+
+**How flights are found (Q-053, revised).** `sim.airside` never scans the
+published flights in `Tick`. It keeps a **pending list** of flights it
+must start: arrivals, which start at `InboundAirborne`, and rotation-less
+departures, which start at their due tick. A departure with a rotation is
+never pending, because it is created at the handoff (§12.8).
+
+- **Day 0.** `CreateSystem` reads day 0 through
+  `schedule.MovementsBetween(0, TICKS_PER_SIM_DAY, kind)` for both kinds.
+  Day 0 is materialised at construction (`11` §11.9), and construction may
+  allocate. It adds every arrival, and every departure without a rotation
+  (`TryGetRotation` false), to the pending list.
+- **Later days.** `sim.airside` subscribes to `FlightPlanPublished` (`11`
+  §11.5). The handler, in phase 3, appends the flight to the pending list
+  on the same rule. It ignores a flight with `ScheduledTick <
+  TICKS_PER_SIM_DAY`, which day 0 already covered. A later flight is
+  published at `ScheduledTick − 14 400`, and its `InboundAirborne` is at
+  `STA − 1 200`. So every later arrival is pending well before it starts.
+- **Late due ticks.** A rotation-less departure whose due tick is at or
+  before the tick of its publication starts at publication tick + 1
+  instead. That needs a `MinTurnaround` of 1 440 minutes or more.
+- **Each tick.** S2 starts the pending arrivals whose `InboundAirborne`
+  tick is `t`, and S5 takes the pending departures due at `t`, each in
+  ascending `FlightId`. The per-tick scan is O(pending), which is bounded
+  by `PENDING_FLIGHTS_CAPACITY` (§12.2, §12.12).
 
 ---
 
@@ -861,6 +927,8 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
    (§12.7, Q-050), in queue order: each entry's `FlightId`, preceded by the
    queue length.
 4. Tracked aircraft, ascending `FlightId`: every field of `AircraftTrack`.
+5. The pending list (§12.11): its length, then each entry's `FlightId`, in
+   ascending `FlightId`.
 
 §12.8a's S1 snapshot leaves no state across ticks, so nothing more is
 hashed for it.
@@ -877,22 +945,24 @@ declares no stream and contributes no stream state to its hash, the same
 posture as `sim.schedule` (`11-interfaces-schedule.md` §11.9).
 
 Budget: **0.80 ms/tick at max tier** (`03-module-map.md`). Per-tick work is
-O(tracked aircraft + runways + held edges + waiters × stands). It is never a
+O(tracked aircraft + runways + held edges + pending + waiters × stands). It is never a
 scan of the taxi graph. The only scans of the stand list are the S5 grants
 (§12.8a), at O(stands) per waiter or new request, and `FreeStands()`'s
 O(stands). Stands are bounded by `03-module-map.md`'s max tier at 60.
 
-- **The stand-wait queue's bound (Q-050).** Each entry is a flight past
-  `OffRunway` or past its due tick that holds no stand. The spec sets no
-  hard bound. A schedule with too few stands, for example with
-  rotation-less arrivals that hold stands for good (§12.7), grows it day
-  by day. Its storage is preallocated at `CreateSystem` to twice the
-  schedule table's row count (`11` §11.3). Growth past that is allowed,
-  but it allocates, and it means the fixture has too few stands for its
-  schedule. A budget fixture must never reach it.
-- No allocation in the update path (`07-conventions.md`), beyond the growth
-  just stated. The routing table is computed once at load, off the tick
-  path.
+- **Hard bounds (Q-050).** The stand-wait queue holds at most
+  `STAND_WAIT_CAPACITY` entries, and the pending list at most
+  `PENDING_FLIGHTS_CAPACITY` (§12.2). Both are preallocated at
+  `CreateSystem` and never grow. An append that would exceed either one
+  throws `SimInvariantException` (`08` §8.5a). The message names the
+  flight and the structure, and nothing is appended. For the stand-wait
+  queue that means the layout has too few stands for its schedule, for
+  example because rotation-less arrivals hold stands for good (§12.7). At
+  Phase 0/1 the layout is a fixed fixture, so this is a fixture error. When
+  construction exists, the bound is revisited by amendment.
+- No allocation in the update path (`07-conventions.md`, `08` §8.5). The
+  routing table and the day-0 read are done once at construction, off the
+  tick path.
 
 ---
 
@@ -960,6 +1030,11 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_layout_parse_range_failure_has_no_line_number` (Q-046)
 - `test_same_sta_arrivals_request_runway_in_flight_id_order` (Q-049, Q-052)
 - `test_same_tick_stand_requests_take_stands_in_flight_id_order` (Q-050)
+- `test_zero_door_delay_and_turnaround_chain_in_one_tick` (Q-054, §12.8a
+  "Chains"): with both values 0, arrival `OnStand`, `DoorsOpen`, and the
+  departure's `OnStand`, `DoorsClosed` and `Pushback` all fire in one tick,
+  in that order, inside the arrival's turn.
+- `test_stand_wait_queue_overflow_throws_sim_invariant` (§12.12)
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task
