@@ -79,9 +79,14 @@ the tuning harness and run experiments; deciding which outcome is fun is the
 human owner's call. Any agent PR touching `data/balance/` is auto-rejected.
 
 The first balance file is `data/balance/airside_rules.json`:
-`{ "schema_version": 1, "boarding_hold_max_minutes": <uint32> }`. The Phase 1
-value is 10 (D6, `12-interfaces-airside.md` §12.4 `AirsideRules`), marked for
-tuning after the T-025 playtest. It is validated by `balance.schema.json`,
+`{ "schema_version": 1, "boarding_hold_max_minutes": <uint32>,
+"doors_open_delay_minutes": <uint32> }`. Both keys are required. The Phase 1
+`boarding_hold_max_minutes` is 10 (D6, `12-interfaces-airside.md` §12.4
+`AirsideRules`), marked for tuning after the T-025 playtest.
+The Phase 1 `doors_open_delay_minutes` is 2 (Q-047, **HUMAN DECISION,
+owner, 2026-09-30**), and the owner writes it to the file.
+`schema_version` stays 1, because no build has shipped the
+one-key form. It is validated by `balance.schema.json`,
 because `ci/validate-content.py` maps one schema to one `data/` directory by
 name. The schema may be written by an agent content task. The balance file
 itself is written only by the human owner.

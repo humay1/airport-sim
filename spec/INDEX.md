@@ -92,7 +92,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: the content schema list, content conventions, balance ownership.
 - Key: all content is data and validated; fixtures are not content;
   `data/balance/` is human-only; **the first balance file is
-  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6)**;
+  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6;
+  `doors_open_delay_minutes` = 2, HD, owner, 2026-09-30, Q-047)**;
   **Phase 0/1 content fields for size categories, aircraft, pax profiles and
   queue profiles, with pax-profile and queue-profile values owner-authored as
   balance (Q-011)**; a schema's name must equal its directory's name.
@@ -158,6 +159,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
+  **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
+  Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
@@ -232,7 +235,23 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
   (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
   and `IAirsideLayoutLoader.Parse` (§12.12a); `ReassignStand`'s state checks
-  happen at `Apply`, as a no-op (§12.10, Q-010).
+  happen at `Apply`, as a no-op, **logged with `AirsideReassignStandNoOp` and
+  a reason (§12.10, Q-010, Q-056)**; **the layout file format, pinned JSON
+  (§12.4, Q-046)**; **`DoorsOpenDelayMinutes` in `AirsideRules`, 2 minutes
+  (§12.4, Q-047, HD, owner, 2026-09-30)**; **`InboundAirborne` clamped to 0,
+  landing requested at `STA` (§12.6, Q-048, Q-052)**; **the least-queue
+  runway choice stopgap (§12.5, Q-049, HD, owner, 2026-09-30)**; **stands:
+  lowest id, reserved from assignment, one stand-wait queue, rotation-less
+  departures wait with no track (§12.7, Q-050, Q-051, Q-053)**; **the step
+  order S1 to S7 inside `Tick`: one start-of-tick snapshot for edges and
+  stands, runways read live, and same-tick chains for zero delays (§12.8a,
+  Q-054)**; **flights found through a pending list, fed by a day-0 read and
+  by `FlightPlanPublished`. Each entry leaves at its start tick, and a
+  rotation-less departure starts at `max(due tick, PublishTick + 1)`
+  (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
+  `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
+  `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
+  `ArgumentException` (§12.2, §12.11, §12.12)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
