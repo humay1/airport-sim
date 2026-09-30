@@ -246,9 +246,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   order S1 to S7 inside `Tick`: one start-of-tick snapshot for edges and
   stands, runways read live, and same-tick chains for zero delays (§12.8a,
   Q-054)**; **flights found through a pending list, fed by a day-0 read and
-  by `FlightPlanPublished` (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY`
-  and `PENDING_FLIGHTS_CAPACITY`, where overflow is `SimInvariantException`
-  (§12.2, §12.12)**.
+  by `FlightPlanPublished`. Each entry leaves at its start tick, and a
+  rotation-less departure starts at `max(due tick, PublishTick + 1)`
+  (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
+  `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
+  `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
+  `ArgumentException` (§12.2, §12.11, §12.12)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).

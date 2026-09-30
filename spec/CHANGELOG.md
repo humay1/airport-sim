@@ -2428,7 +2428,7 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                `12` instead, together with the writable-path addition.
              - **T-021 test branch:**
                - `AirsideRules` gains a second constructor argument;
-               - add the fixture JSON and the sixteen new §12.13 tests;
+               - add the fixture JSON and the seventeen new §12.13 tests;
                - `Load` messages must contain the §12.4 field names;
                - check that no test assumes a same-tick stand or edge
                  release, an unreserved stand in taxi-in, a
@@ -2530,8 +2530,21 @@ Revision 3:  after the fourth PR #67 review (rejected at b2f3e64):
                - §12.7's assignment rule covers queued arrivals;
                - §12.2's wording is corrected (up to 1 600 entries, across
                  two calendar days);
-               - three pending tests are added to §12.13, making sixteen
+               - four pending tests are added to §12.13, making seventeen
                  new tests in all.
+Revision 4:  after the fifth PR #67 review (rejected at a5818cb): the stale
+             wording is made consistent across `spec/`:
+             - §12.7 S5 step 2 and the §12.11 intro now say *start tick*,
+               `max(due tick, PublishTick + 1)`, and Q-050's revision
+               matches;
+             - §12.12 "Hard bounds" and the INDEX `12` entry now say
+               overflow during a tick is `SimInvariantException`, and
+               overflow in `CreateSystem`'s day-0 read is
+               `ArgumentException`;
+             - §12.11 "Overflow" says "during a tick" instead of "in
+               `Tick`";
+             - the test count is corrected to seventeen new §12.13 tests
+               (thirteen, plus four pending tests).
 Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
              rest is architecture and needs no sign-off.
 

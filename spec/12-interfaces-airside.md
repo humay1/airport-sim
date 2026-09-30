@@ -489,7 +489,8 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
      keeps its place and does not block later entries.
   2. The tick's new requests are taken in ascending `FlightId`. They are
      arrivals that reached `OffRunway` in S3 of this tick, and
-     rotation-less departures whose due tick is this tick. Each takes
+     rotation-less departures whose **start tick** is this tick (§12.11:
+     `max(due tick, PublishTick + 1)`, or the due tick for day 0). Each takes
      the lowest-id compatible free stand, or joins the queue's tail in
      that order.
 - A stand is held from assignment to `Pushback` inclusive (above).
@@ -902,7 +903,8 @@ tick for each departure on a boarding hold (§12.8). It is the module's only
 **How flights are found (Q-053, revised).** `sim.airside` never scans the
 published flights in `Tick`. It keeps a **pending list** of flights it
 must start: arrivals, which start at `InboundAirborne`, and rotation-less
-departures, which start at their due tick. A departure with a rotation is
+departures, which start at their start tick, `max(due tick, PublishTick +
+1)` (below). A departure with a rotation is
 never pending, because it is created at the handoff (§12.8).
 
 - **Day 0.** `CreateSystem` reads day 0 through
@@ -952,9 +954,9 @@ never pending, because it is created at the handoff (§12.8).
   of one sim-day. That window can span two calendar days. At `01`'s max
   tier of 800 daily movements, two days hold 1 600 movements, so the list
   holds at most 1 600 flights, under 2 048.
-- **Overflow.** In `Tick` (the `FlightPlanPublished` handler, phase 3), an
-  append past the capacity throws `SimInvariantException` (`08` §8.5a) at
-  that tick. During the day-0 read in `CreateSystem` there is no tick, so
+- **Overflow.** During a tick, an append past the capacity throws
+  `SimInvariantException` (`08` §8.5a) at that tick. Such an append can
+  only come from the `FlightPlanPublished` handler, in phase 3. During the day-0 read in `CreateSystem` there is no tick, so
   `CreateSystem` throws `ArgumentException` for parameter `schedule`,
   whose message starts with `sim.airside: ` and names the pending list and
   the capacity. That is consistent with `08` §8.5a, which defines
@@ -1001,9 +1003,12 @@ O(stands). Stands are bounded by `03-module-map.md`'s max tier at 60.
 - **Hard bounds (Q-050).** The stand-wait queue holds at most
   `STAND_WAIT_CAPACITY` entries, and the pending list at most
   `PENDING_FLIGHTS_CAPACITY` (§12.2). Both are preallocated at
-  `CreateSystem` and never grow. An append that would exceed either one
-  throws `SimInvariantException` (`08` §8.5a). The message names the
-  flight and the structure, and nothing is appended. For the stand-wait
+  `CreateSystem` and never grow. An append during a tick that would exceed
+  either one throws `SimInvariantException` (`08` §8.5a). The message names
+  the flight and the structure, and nothing is appended. The one append
+  outside a tick is the pending list's day-0 read in `CreateSystem`. There
+  an overflow throws `ArgumentException` instead (§12.11 "Overflow"). The
+  stand-wait queue is empty at construction. For the stand-wait
   queue that means the layout has too few stands for its schedule, for
   example because rotation-less arrivals hold stands for good (§12.7). At
   Phase 0/1 the layout is a fixed fixture, so this is a fixture error. When

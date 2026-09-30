@@ -1436,7 +1436,7 @@ Answer:      Architecture. No: assignment sets `StandState.Occupant` at
              - the queue is in joining order, not `EventId` order, since a
                departure entry has no event;
              - same-tick new requests (arrivals at `OffRunway` and
-               rotation-less departures at their due tick) are taken in
+               rotation-less departures at their start tick, §12.11) are taken in
                ascending `FlightId` (S5 of §12.8a);
              - a waiting arrival is `HeldOnTaxiway` at its threshold node;
              - the queue's cost is in §12.12.
