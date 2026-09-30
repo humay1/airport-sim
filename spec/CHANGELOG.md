@@ -2326,20 +2326,36 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                - `data/schemas/balance.schema.json` (`additionalProperties:
                  false`, one required key) gains the required
                  `doors_open_delay_minutes`. That is an agent content task;
-               - `data/balance/airside_rules.json` then fails validation
-                 until the owner adds the value. Only the owner may edit
-                 it;
+               - `data/balance/airside_rules.json` must gain
+                 `"doors_open_delay_minutes": 2`, and only the owner may
+                 write it. **The schema change and the owner's edit must
+                 land in the same commit, or at least the same merge.**
+                 Otherwise `ci/run-checks.sh`'s content-schema check is
+                 red on `main` in between;
                - `src/sim/core/LogKey.cs` gains member 1. T-021's writable
                  paths need that file (Planner), serialised with other
-                 `src/sim/core/**` work.
-             - **T-021 test branch:** `AirsideRules` gains a second
-               constructor argument; add the fixture JSON and the eight new
-               §12.13 tests; and check that no test assumes a same-tick
-               stand or edge release, an unreserved stand in taxi-in, or a
-               `queuePosition = 0` hold.
-             - **Merge note:** Q-041 to Q-045 are in PR #66, and both PRs
-               append to `open-questions.md` and `CHANGELOG.md` after the
-               same line, so the second to merge resolves a textual
+                 `src/sim/core/**` work;
+               - `tests/fixtures/content/valid/balance/airside_rules.json`
+                 (T-027's loader fixture) keeps the one-key shape. The
+                 content loader ignores `balance/` (`08` §8.11), so nothing
+                 fails. A Test Author may update it for accuracy, and it is
+                 not required.
+             - **`tasks/T-021-runway-taxiway-stands.md`** (Planner)
+               restates text this PR supersedes: the one-field
+               `AirsideRules` (line 126), "the fixed door delay" (line
+               175), and "earliest-declared" (line 205). It must point to
+               `12` instead, together with the writable-path addition.
+             - **T-021 test branch:**
+               - `AirsideRules` gains a second constructor argument;
+               - add the fixture JSON and the eleven new §12.13 tests;
+               - `Load` messages must contain the §12.4 field names;
+               - check that no test assumes a same-tick stand or edge
+                 release, an unreserved stand in taxi-in, a
+                 `queuePosition = 0` hold, or a track for a rotation-less
+                 departure that is still waiting.
+             - **Merge note:** Q-041 to Q-045 are in PRs #66 and #68. All
+               three PRs append to `open-questions.md` and `CHANGELOG.md`
+               after the same line, so each later merge resolves a textual
                conflict. The contents do not overlap.
              - **Scope:** none added. The runway choice is a stopgap rule,
                not a system.
@@ -2348,5 +2364,31 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                to `data/balance/airside_rules.json`;
              - Q-049's least-queue runway stopgap is accepted. It was
                marked LOW CONFIDENCE.
+Revision:    after the PR #67 review (rejected at 5f29a25):
+             - **Q-053 redesigned.** No track until a stand is assigned, and
+               no event while waiting. The track starts in `OnStand` at the
+               assigned stand, so §12.3 and §12.9 stay true. Lateness goes
+               to `Unexplained` under `14` §14.6, unchanged. The fallback's
+               creation tick is the actual `OnStand` tick;
+             - **§12.8a (new):** the step order S1 to S7 inside `Tick`,
+               with one start-of-tick snapshot for edges and stands. The
+               same-tick order is pinned for runway requests and releases
+               (S7) and for new stand requests (S5, ascending `FlightId`
+               after the queue). The stand-wait queue is in joining order;
+             - `Load`'s failures are pinned: check order, field names and
+               ids for every kind. Range failures carry no `line <n>`;
+             - non-blocking fixes:
+               - the §12.12 budget text, and the queue's storage and cost;
+               - Q-056 check 1 excludes a handed-off arrival;
+               - a waiting arrival is `HeldOnTaxiway`;
+               - a node-holding aircraft occupies no edge;
+               - the rotation-less due tick is clamped to 0;
+               - the planned `TakeoffRoll` names the runway chosen at
+                 `Pushback`;
+               - the `18` §18.2 `true`/`false` exception is explicit;
+               - the Q-054 Status anchor points to §12.8a;
+               - the INDEX `04` and `08` entries are updated;
+               - the impact list is completed;
+             - the owner's decisions on Q-047 and Q-049 are recorded.
 Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
              rest is architecture and needs no sign-off.

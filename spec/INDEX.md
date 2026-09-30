@@ -88,7 +88,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: the content schema list, content conventions, balance ownership.
 - Key: all content is data and validated; fixtures are not content;
   `data/balance/` is human-only; **the first balance file is
-  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6)**;
+  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6;
+  `doors_open_delay_minutes` = 2, HD, owner, 2026-09-30, Q-047)**;
   **Phase 0/1 content fields for size categories, aircraft, pax profiles and
   queue profiles, with pax-profile and queue-profile values owner-authored as
   balance (Q-011)**; a schema's name must equal its directory's name.
@@ -152,6 +153,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
+  **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
+  Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
