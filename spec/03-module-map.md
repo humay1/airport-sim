@@ -138,10 +138,13 @@ Any other timed check that does not follow these rules carries no `Budget`
 trait, and it does not satisfy a budget.
 
 - **Window (Q-044).** The samples are exactly `n = TICKS_PER_SIM_DAY`
-  (14 400) consecutive ticks of one sim-day, one sample per tick. No shorter
-  window satisfies a budget. Warm-up ticks before the window are allowed
-  and are not sampled. A test that measures several days applies the pass
-  condition to each day's window on its own, never to their union. This
+  (14 400) consecutive ticks, one sample per tick. Any 14 400 consecutive
+  ticks after warm-up form a window, and the window need **not** start on a
+  sim-day boundary. Any such window covers every time of day exactly once,
+  the bank peak included. No shorter window satisfies a budget. Warm-up
+  ticks before the window are allowed and are not sampled. A test that
+  measures several windows applies the pass condition to each window on its
+  own, never to their union. The windows do not overlap. This
   generalises `11` §11.9's rule (Q-031). Every module that has a budget
   test has at least one that follows this.
 - **Arithmetic (Q-045).** Everything is `long`, per `07` L11, with no
@@ -155,7 +158,12 @@ trait, and it does not satisfy a budget.
      up is conservative, because it adds under 1 µs a tick. The cap
      changes no verdict: one capped sample already fails the mean, and it
      fails p99 whenever p99 reaches it, since `C > 2 × B`. The cap is what
-     keeps `Σu` within `long`, because `Σu ≤ n × C`.
+     keeps `Σu` within `long`, because `Σu ≤ n × C`. The guard's `u = C`
+     is at most the sample's true rounded-up value only while `f ≤
+     long.MaxValue / (C + 1)`. For the largest `B` in scope, `19` §19.4's
+     6000, that bound is about 1.07 × 10^11 Hz. Real `Stopwatch.Frequency`
+     values (10^7 on Windows, 10^9 elsewhere) are far below it, and a test
+     on a machine whose `f` exceeds it is outside this rule.
   3. **Mean:** it passes iff `Σu ≤ B × n`.
   4. **p99:** nearest rank. Sort the `u` ascending, and `p99 = u[(99 × n +
      99) / 100 − 1]` in integer division, which is `⌈0.99 × n⌉ − 1`. It
