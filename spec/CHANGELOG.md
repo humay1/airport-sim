@@ -2343,8 +2343,10 @@ Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
                conflict. The contents do not overlap.
              - **Scope:** none added. The runway choice is a stopgap rule,
                not a system.
-             **LOW CONFIDENCE:** Q-049's least-queue runway choice.
-             **OWNER DECISION NEEDED:** the value of
-             `doors_open_delay_minutes` (Q-047).
-Signed off:  not required (architecture), except the Q-047 value, which is
-             the owner's.
+             **HUMAN DECISION, owner, 2026-09-30:**
+             - `doors_open_delay_minutes = 2` (Q-047). The owner writes it
+               to `data/balance/airside_rules.json`;
+             - Q-049's least-queue runway stopgap is accepted. It was
+               marked LOW CONFIDENCE.
+Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
+             rest is architecture and needs no sign-off.

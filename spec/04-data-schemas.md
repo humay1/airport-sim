@@ -83,8 +83,9 @@ The first balance file is `data/balance/airside_rules.json`:
 "doors_open_delay_minutes": <uint32> }`. Both keys are required. The Phase 1
 `boarding_hold_max_minutes` is 10 (D6, `12-interfaces-airside.md` §12.4
 `AirsideRules`), marked for tuning after the T-025 playtest.
-`doors_open_delay_minutes` (Q-047) has no value yet: **OWNER DECISION
-NEEDED**. `schema_version` stays 1, because no build has shipped the
+The Phase 1 `doors_open_delay_minutes` is 2 (Q-047, **HUMAN DECISION,
+owner, 2026-09-30**), and the owner writes it to the file.
+`schema_version` stays 1, because no build has shipped the
 one-key form. It is validated by `balance.schema.json`,
 because `ci/validate-content.py` maps one schema to one `data/` directory by
 name. The schema may be written by an agent content task. The balance file

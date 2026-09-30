@@ -1366,11 +1366,12 @@ Answer:      The field is architecture: `AirsideRules.DoorsOpenDelayMinutes`
              required (`04`). `DoorsOpen` = `OnStand` +
              `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, both planned and
              actual. Under the §12.8 fallback it adds to every ground stay,
-             so it moves on-time performance, and the **value is balance:
-             OWNER DECISION NEEDED**. Tests use their own fixture value.
-             Not a compiled constant, per §12.2's rule that thresholds are
-             content.
-Status:      ANSWERED (spec/12-interfaces-airside.md#124-layout-the-airside-graph); value OWNER DECISION NEEDED
+             so it moves on-time performance, and the value is balance.
+             **HUMAN DECISION, owner, 2026-09-30: 2 sim-minutes.** The owner
+             writes it to `data/balance/airside_rules.json`. Tests use their
+             own fixture value. It is not a compiled constant, per §12.2's
+             rule that thresholds are content.
+Status:      ANSWERED (spec/12-interfaces-airside.md#124-layout-the-airside-graph)
 
 ### Q-048 — `sim.airside`: `InboundAirborne` before tick 0
 Raised by:   Test Author / T-021, via coordinator, 2026-09-29
@@ -1389,7 +1390,9 @@ Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
 Raised by:   Test Author / T-021, via coordinator, 2026-09-29
 Blocking:    T-021 (the max-tier budget layout has 3 runways)
 Question:    The spec routes per runway but never picks one.
-Answer:      Architecture stopgap, **LOW CONFIDENCE**. The runway is chosen
+Answer:      Architecture stopgap. **HUMAN DECISION, owner, 2026-09-30:
+             accepted.** The Architect had marked it LOW CONFIDENCE. The
+             runway is chosen
              once at the request point (an arrival at its `Landed` request
              at `STA`, a departure at `Pushback`). It is the runway with
              the fewest aircraft in its hold queue, ties to the lowest
@@ -1398,7 +1401,7 @@ Answer:      Architecture stopgap, **LOW CONFIDENCE**. The runway is chosen
              player control) is gameplay and is deferred to the owner, like
              gate assignment. No owner decision is needed now, because
              every Phase 0/1 fixture has one runway.
-Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model), LOW CONFIDENCE
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
 
 ### Q-050 — `sim.airside`: is a stand reserved during taxi-in?
 Raised by:   Test Author / T-021, via coordinator, 2026-09-29

@@ -209,9 +209,10 @@ an agent:
 
 - `BoardingHoldMaxMinutes`: the playtest value is 10 sim-minutes (D6),
   marked for tuning after the T-025 playtest;
-- `DoorsOpenDelayMinutes` (Q-047): **OWNER DECISION NEEDED**, since no value
-  is set yet. Until the owner sets one, no build that parses the balance
-  file can register `sim.airside` (`16`).
+- `DoorsOpenDelayMinutes` (Q-047): the playtest value is 2 sim-minutes.
+  **HUMAN DECISION, owner, 2026-09-30.** The owner writes it to
+  `data/balance/airside_rules.json`. Until then, that file fails the
+  schema, and no build that parses it can register `sim.airside` (`16`).
 
 Test fixtures carry their own values beside their tests. Those are fixture
 sizing, not balance.
@@ -318,7 +319,8 @@ tick it reaches its runway's `ThresholdNode`. A movement that can claim a
 slot in its request tick fires its milestone that tick and never enters
 the queue.
 
-**Runway choice (Q-049) — LOW CONFIDENCE.** A movement chooses its runway
+**Runway choice (Q-049) — HUMAN DECISION, owner, 2026-09-30: the stopgap
+is accepted.** A movement chooses its runway
 once, at its request point, and never changes it. For an arrival, that
 point is the `Landed` request at `STA`. For a departure, it is `Pushback`,
 because the taxi route leads to one threshold. It takes the runway with the
