@@ -1904,8 +1904,9 @@ Answer:      Yes, for every module. `03` "How a budget is measured" now
              construction, `Build`, `Validate` at admission, phase 4, and
              ticks the module's spec allows to allocate (`11` §11.9).
              Timing is unchanged: "Measured" still bills `Tick` only.
-             A `Budget`-trait allocation test asserts exactly 0 with the
-             T-037 meter, around either `ISimHost.Step` windows with no
+             An allocation test, with or without the `Budget` trait,
+             asserts exactly 0 with the T-037 meter. It meters either
+             `ISimHost.Step` windows with no
              checkpoint and no allocating tick, or a direct rig that also
              delivers the module's commands and events in the same
              window. Every module with a handler has at least one such
@@ -1913,6 +1914,10 @@ Answer:      Yes, for every module. `03` "How a budget is measured" now
              warm-up that already ran it. `07` "Performance", `08` §8.6,
              `09` §9.10, `12` §12.12 and `14` §14.13 point to it, and
              `13` §13.11 names T-022's test.
+             Revision, after the PR #73 review: the trait is not required.
+             `07` L11 binds timed assertions, and an allocation test times
+             nothing. So `sim.flow`'s existing untagged allocation tests
+             count.
 Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)
 
 ### Q-062 — `sim.airside`: the handed-off arrival's track
@@ -1939,6 +1944,19 @@ Answer:      Architecture. At the handoff, on either path, the arrival
              `DoorsOpen`. If `DeboardComplete` comes first, the handoff
              chains right after `DoorsOpen` (§12.8a "Chains"). A
              rotation-less arrival is never handed off, and stays tracked.
+             Revision, after the PR #73 review:
+             - the wait for `DoorsOpen` keeps a consumed `DeboardComplete`
+               across ticks and checkpoints, together with the `EventRef`
+               that becomes the departure `OnStand`'s `Cause`. That is now
+               explicit state: a new `AircraftTrack.RecordedCause`, set by
+               the phase-3 handler, cleared by the action it waits for,
+               and hashed and saved with the track. The same field holds a
+               `BoardingComplete` for its one-tick wait, which closes the
+               older, unhashed gap. Q-060 still adds no per-hold state,
+               because no behaviour reads a copied blocker;
+             - §12.8a S4, which governs, now runs `DoorsOpen` first, and
+               the handoff only once `DoorsOpen` has fired. §12.3 and
+               the §12.11 table say the same.
 Status:      ANSWERED (spec/12-interfaces-airside.md#the-handed-off-arrival-q-062)
 
 <!-- Q-060 to Q-062 appear above, before Q-057. -->

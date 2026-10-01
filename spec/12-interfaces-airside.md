@@ -149,8 +149,9 @@ others are still binding, for the UI and for later checkpoints.
 - The stand itself does not change occupant between the two: the departure's
   track is created at the arrival's `Stand` the tick `sim.turnaround` (or the
   §12.8 fallback) reaches the equivalent of "ready to hand off" — precisely,
-  the `Tick` after the arrival's `DeboardComplete`, and never before its
-  `DoorsOpen` (§12.8 step 3, Q-062), or the fallback's handoff tick —
+  the first `Tick` after the arrival's `DeboardComplete` in which its
+  `DoorsOpen` has fired (§12.8 step 3, §12.8a S4, Q-062), or the
+  fallback's handoff tick —
   carrying `StandState` forward without a `StandAssigned` event, since the
   stand was never freed.
 
@@ -602,32 +603,40 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
    practice.
 2. `sim.turnaround` emits `DeboardComplete` for the **arrival**'s `FlightId`
    when deboarding finishes.
-3. `sim.airside` subscribes to `DeboardComplete`. On its next `Tick`, for an
-   arrival it still has on stand: if `HasRotation`
-   (`IScheduleSystem.TryGetRotation`), it creates the departure's
-   `AircraftTrack` directly in `OnStand` phase at the same `Stand`,
-   reassigns `StandState.Occupant` to the departure's `FlightId`, and fires
-   `FlightMilestoneReached{OnStand}` for the **departure** (`PlannedTick =
-   max(0, ScheduledTick − MinTurnaround)`, as §12.3, `ActualTick` = this tick, `Cause` set to
-   the `DeboardComplete` event). No `StandAssigned` event fires — the stand
-   was never freed, only handed off. The arrival's track is removed in the
-   same action (below, "The handed-off arrival"). If the arrival has no
-   rotation, nothing further happens automatically; see "Rotation-less
-   flights" above.
-   **The handoff never runs before the arrival's `DoorsOpen` (Q-062).**
-   `sim.turnaround` starts `Deboard` at the arrival's `OnStand` (`13`
-   §13.6), so `DeboardComplete` can come before `DoorsOpen` is due. In
-   that case the handoff is not due on the next `Tick`. It runs at once
-   after the arrival's `DoorsOpen`, in the same turn, as a chain (§12.8a
-   "Chains"). The `Cause` of the departure's `OnStand` is still the
-   `DeboardComplete` event.
+3. `sim.airside` subscribes to `DeboardComplete`. Its phase-3 handler
+   **records** the event (Q-062). It does so for a tracked arrival in
+   `OnStand` whose `HasRotation` is true (`IScheduleSystem.TryGetRotation`)
+   and whose `RecordedCause` is unset (§12.9): it sets that track's
+   `RecordedCause` to the event. It ignores every other `DeboardComplete`,
+   so a rotation-less arrival records nothing, and nothing further happens
+   automatically; see "Rotation-less flights" above.
+   **The handoff is due** at the first `Tick` after the recording, and only
+   once the arrival's `DoorsOpen` has fired (§12.8a S4). `sim.turnaround`
+   starts `Deboard` at the arrival's `OnStand` (`13` §13.6), so
+   `DeboardComplete` can come before `DoorsOpen` is due. The record then
+   waits, in hashed state, and the handoff runs right after the arrival's
+   `DoorsOpen`, in the same turn. At the handoff, `sim.airside` creates the
+   departure's `AircraftTrack` directly in `OnStand` phase at the same
+   `Stand`, reassigns `StandState.Occupant` to the departure's `FlightId`,
+   and fires `FlightMilestoneReached{OnStand}` for the **departure**
+   (`PlannedTick = max(0, ScheduledTick − MinTurnaround)`, as §12.3,
+   `ActualTick` = this tick, `Cause` = the arrival's `RecordedCause`, the
+   `DeboardComplete` event). No `StandAssigned` event fires — the stand
+   was never freed, only handed off. The arrival's track, and its record
+   with it, is removed in the same action (below, "The handed-off
+   arrival").
 4. `sim.turnaround`, seeing the departure's `OnStand`, starts
    departure-prep jobs and eventually emits `ReadyToBoard` then
    `BoardingComplete` for the **departure**'s `FlightId`.
-5. `sim.airside` subscribes to `BoardingComplete`. On its next `Tick`, for a
-   departure it has on stand: calls `Absorb` (§12.7), fires
-   `FlightMilestoneReached{DoorsClosed}` for the departure, then `Pushback`.
-   The boarding hold below may defer this step.
+5. `sim.airside` subscribes to `BoardingComplete`. Its phase-3 handler
+   records the event the same way, in `RecordedCause` of a tracked
+   departure in `OnStand` whose `RecordedCause` is unset, and ignores any
+   other. On its next `Tick`, that departure reaches its doors-close
+   point: `sim.airside` calls `Absorb` (§12.7), fires
+   `FlightMilestoneReached{DoorsClosed}` for the departure, then
+   `Pushback`. The boarding hold below may defer this step. The
+   doors-close point clears `RecordedCause`. If it starts a boarding hold,
+   it first uses the record as the hold's `Cause` (below).
 
 ### Without `sim.turnaround` — the fallback T-021 ships and tests
 
@@ -665,9 +674,23 @@ producer does.
 At the handoff, on either path, the arrival **leaves tracked state**, as a
 departure does at `Airborne` (§12.6). `10` §10.3 rule 2 already names the
 handoff as the point where an arrival leaves the simulation. The handoff
-action runs in this order: create the departure's track, reassign `StandState.Occupant`,
+action runs in this order: read the arrival's `RecordedCause` (handshake
+only), create the departure's track, reassign `StandState.Occupant`,
 remove the arrival's track, then fire the departure's `OnStand`, and in
 the fallback, go on to its doors-close point.
+
+- **The wait is hashed state.** Between a `DeboardComplete` and the
+  handoff, the only memory of the event is the arrival track's
+  `RecordedCause` (§12.9). It is fed with the track (§12.12 item 4) and
+  saved with it. So two runs that disagree on whether the event arrived
+  disagree in the hash from the next checkpoint on, and a save taken
+  during the wait keeps it, as `08` §8.6 requires: events are not saved,
+  and must never be the sole carrier of state. The same field carries a `BoardingComplete`
+  for the one tick before the doors-close point. This state is added
+  because behaviour depends on it: when the handoff runs, and the
+  `Cause` of the departure's `OnStand`. Q-060 adds no per-hold state for
+  a different reason. There the copied value would only decorate a
+  release payload, and no behaviour reads it.
 
 - From that action on, `TryGetTrack(arrival)` returns false, and the
   arrival is not in `TrackedFlights()`. It is never tracked again, and
@@ -755,7 +778,9 @@ Binding on `sim.airside`'s `Tick` at tick `t`. Where §12.5 to §12.8 read
 loosely, this section governs. `ReassignStand` has already applied at the
 tick boundary, before `Tick` (`08` §8.7). Consumed events
 (`DeboardComplete`, `BoardingComplete`) were recorded by their handlers in
-phase 3 of an earlier tick, and they act here. Within a step, flights are
+phase 3 of an earlier tick, in the track's `RecordedCause` (§12.9, Q-062),
+and they act here. A record is the only cross-tick trace of such an
+event. Within a step, flights are
 taken in ascending `FlightId` unless the step says otherwise.
 
 - **S1 Snapshot.** Record which taxi edges are occupied and which stands
@@ -774,13 +799,22 @@ taken in ascending `FlightId` unless the step says otherwise.
   its threshold node needing a stand (S5). `Airborne` for each departure
   due, which leaves tracked state.
 - **S4 Ground.** For each tracked flight on stand, the §12.8 actions that
-  fell due at `t` in an earlier tick's reckoning, each flight's in §12.8's
-  own order:
-  - the handshake or fallback departure-track creation, which also
-    removes the arrival's track (§12.8 "The handed-off arrival", Q-062);
+  fell due at `t` in an earlier tick's reckoning, each flight's in this
+  order:
   - `DoorsOpen` at `OnStand + DoorsOpenDelayMinutes`;
+  - the handoff, **only once the arrival's `DoorsOpen` has fired**, at
+    this tick or earlier (Q-062). With the handshake, it is due when the
+    arrival's `RecordedCause` holds a `DeboardComplete`. In the fallback,
+    it is due at `DoorsOpen + MinTurnaround`, which is never before
+    `DoorsOpen`. It creates the departure's track and removes the
+    arrival's (§12.8 "The handed-off arrival"). A handoff that becomes
+    due through this tick's `DoorsOpen` runs right after it, so that
+    `DoorsOpen` always fires for a tracked arrival;
   - the boarding-hold re-evaluation;
-  - `Absorb`, `DoorsClosed` and `Pushback`. `Pushback` chooses the runway
+  - the doors-close point: `Absorb`, `DoorsClosed` and `Pushback`, or the
+    start of a boarding hold. With the handshake, it is due when the
+    departure's `RecordedCause` holds a `BoardingComplete`, and it clears
+    the record. `Pushback` chooses the runway
     (§12.5), vacates the stand, and puts the aircraft at the stand node,
     asking for its first edge in S6.
 - **S5 Stands.** §12.7 "Order of stand work in one tick": the queue
@@ -808,8 +842,9 @@ This covers `DoorsOpenDelayMinutes = 0`, `MinTurnaround = 0`, or both:
   is 0;
 - a `DoorsOpen` whose fallback handoff (`DoorsOpen + MinTurnaround`) is
   `t` creates the departure at once;
-- a `DoorsOpen` for an arrival whose `DeboardComplete` is already
-  recorded hands off at once (§12.8 step 3, Q-062);
+- a `DoorsOpen`, in S4 or in a chain, for an arrival whose
+  `RecordedCause` already holds a `DeboardComplete` hands off at once
+  (§12.8 step 3, Q-062);
 - a departure's `OnStand`, whether created by a handoff or in S5, runs
   its fallback doors-close point at once when it is due at `t`. That is
   `Absorb` then `DoorsClosed` then `Pushback`, or the start of a boarding
@@ -860,10 +895,23 @@ readonly struct AircraftTrack {
   Tick             PhaseEnteredAt
   Tick             DueAt               // TICK_UNSCHEDULED (11 §11.2) while holding indefinitely; the hold deadline during a boarding hold
   Tick             PassengerHoldSince  // §12.8 boarding hold start; TICK_UNSCHEDULED unless held
+  EventRef         RecordedCause       // §12.8 steps 3 and 5, Q-062; EventRef.None (10 §10.2) unless a consumed event awaits action
 }
 
 readonly struct StandState { StandId Id; FlightId? Occupant }
 ```
+
+**`RecordedCause` (Q-062).** It is the consumed `sim.turnaround` event that
+a phase-3 handler recorded and that has not been acted on yet. On an
+arrival's track that is a `DeboardComplete`, which waits for the handoff.
+On a departure's track it is a `BoardingComplete`, which waits for the
+doors-close point. It is `EventRef.None` otherwise, and always in a build
+with `turnaroundRegistered` false. Only the handlers of §12.8 steps 3 and 5
+set it, and only the action it waits for clears it. A handler never
+overwrites a set value. It is fed in field order (§12.12 item 4) as
+`HasValue` (`bool`), then `Id.Tick` (`uint64`), then `Id.Sequence`, widened
+to `uint64` (`08` §8.9). All three are fed even for `EventRef.None`, with
+`Id.Tick` and `Id.Sequence` fed as 0.
 
 **`AtNode` and `OnEdge` together.** While `OnEdge` is set, `AtNode` holds the
 node the aircraft **entered the edge from**, and `EdgeProgress` runs from 0 at
@@ -947,13 +995,14 @@ Full field lists in `10-events.md` §10.6 except where this file adds a
 
 | Event | From | Reaction |
 |---|---|---|
-| `FlightMilestoneReached { Milestone = DeboardComplete }` | `sim.turnaround` | §12.8, create the departure's track, hand off the stand and remove the arrival's track, next tick, and never before the arrival's `DoorsOpen` (Q-062) |
-| `FlightMilestoneReached { Milestone = BoardingComplete }` | `sim.turnaround` | §12.8, transition to `DoorsClosed` next tick |
+| `FlightMilestoneReached { Milestone = DeboardComplete }` | `sim.turnaround` | §12.8 step 3: record it in the arrival's `RecordedCause`. From the next tick, and never before the arrival's `DoorsOpen`, create the departure's track, hand off the stand and remove the arrival's track (§12.8a S4, Q-062) |
+| `FlightMilestoneReached { Milestone = BoardingComplete }` | `sim.turnaround` | §12.8 step 5: record it in the departure's `RecordedCause`, then transition to `DoorsClosed` next tick |
 | `FlightPlanPublished` | `sim.schedule` | §12.11 "How flights are found": add the flight to the pending list |
 
 `sim.airside` also calls `IScheduleSystem.TryGetRotation` (query, downward,
-`11-interfaces-schedule.md` §11.7) at the handoff in §12.8 step 3, to find the
-departure `FlightId` to create a track for.
+`11-interfaces-schedule.md` §11.7) in §12.8 step 3: in the `DeboardComplete`
+handler, to decide whether to record the event, and at the handoff, to find
+the departure `FlightId` to create a track for.
 
 `sim.airside` calls `IFlowSystem.TryGetOutstanding` (query, downward,
 `09-interfaces-flow.md` §9.7a) at a departure's doors-close point, and once per
@@ -1043,12 +1092,17 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 4. Tracked aircraft, ascending `FlightId`: every field of `AircraftTrack`.
    A flight is fed only while tracked: from `InboundAirborne` to its
    handoff for an arrival with a rotation (§12.8, Q-062), and from
-   `OnStand` to `Airborne` for a departure.
+   `OnStand` to `Airborne` for a departure. The fields include
+   `RecordedCause`, encoded as §12.9 says, so a consumed
+   `DeboardComplete` or `BoardingComplete` awaiting action is hashed and
+   saved (Q-062).
 5. The pending list (§12.11): its length, then each entry's `FlightId`, in
    ascending `FlightId`.
 
 §12.8a's S1 snapshot leaves no state across ticks, so nothing more is
-hashed for it.
+hashed for it. The phase-3 handlers keep nothing outside these five items:
+they write only to the pending list (item 5) and to `RecordedCause` (item
+4).
 
 Not hashed, because derived: `FreeStands()`, `RunwayQueueLength()`, the
 precomputed routing table (§12.4, fixed at load and part of the loaded layout,
@@ -1085,11 +1139,11 @@ O(stands). Stands are bounded by `03-module-map.md`'s max tier at 60.
   tick path. The update path includes the module's event handlers and its
   `ReassignStand` `Apply` (`03` "How a budget is measured", Q-061). So the
   `FlightPlanPublished` and `FlightMilestoneReached` handlers allocate
-  nothing. They write into storage preallocated at `CreateSystem`, the
-  pending list included. A `Budget`-trait allocation test meters them as
-  `03` says, with at least one later-day `FlightPlanPublished` appended to
-  the pending list, and one `ReassignStand` applied and one a no-op,
-  inside the metered window. The
+  nothing. They write only into the preallocated pending list and into
+  existing tracks' `RecordedCause`. An allocation test meters them as `03`
+  says, with at least one later-day `FlightPlanPublished` appended to the
+  pending list, and one `ReassignStand` applied and one a no-op, inside
+  the metered window. The
   `FlightMilestoneReached` handler, which also receives the module's own
   milestones, is metered in a build with `turnaroundRegistered` true. In
   that build a probe registered at position 5 publishes `DeboardComplete`
@@ -1192,7 +1246,10 @@ Done-condition tests this spec expects to exist, phrased per
   (Q-062, §12.8 step 3): `turnaroundRegistered` true, with a probe at
   position 5 publishing the arrival's `DeboardComplete` before its
   `DoorsOpen` is due. The departure's `OnStand` fires right after the
-  arrival's `DoorsOpen`, in the same tick and turn.
+  arrival's `DoorsOpen`, in the same tick and turn, with `Cause` = the
+  `DeboardComplete`. From the recording to the handoff, the arrival's
+  `RecordedCause` names that event, and the system hash differs from that
+  of the same run without the probe's event.
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task

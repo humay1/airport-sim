@@ -133,9 +133,11 @@ the Test Author and the Verifier:
   admission, phase 4, and any tick the module's own spec names as allowed
   to allocate, such as `11` §11.9's day materialisation.
 
-  A `Budget`-trait allocation test asserts exactly 0 bytes, using the test
-  kit's `Allocation.Start()` and `Allocation.Since()` meter (T-037). It
-  meters one of two things:
+  An **allocation test** is any xUnit test that asserts the update path
+  allocates exactly 0 bytes. It may carry the `Budget` trait, but it need
+  not, because `07` L11 binds timed assertions, and an allocation test
+  times nothing. It uses the test kit's `Allocation.Start()` and
+  `Allocation.Since()` meter (T-037), and it meters one of two things:
   - `ISimHost.Step` over ticks that contain no checkpoint tick and no tick
     allowed to allocate. That meters phases 1 to 3 of every registered
     system, so any probes in the build must allocate nothing;

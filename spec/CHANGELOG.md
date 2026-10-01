@@ -2655,8 +2655,12 @@ Impact:      - **`sim.airside` is not merged**, so no merged `src/` breaks.
                  does `WorldQueriesTests`;
                - `sim.core`'s allocation tests cover the loop and the
                  bus, and are unaffected;
-               - `sim.flow` meters `Step` windows (`FlowBudgetTests`,
-                 `BoardingTests`, `PromotionAllocationTests`). They
+               - `sim.flow` meters `Step` windows in
+                 `FlowBudgetTests.test_flow_budget_update_path_allocates_nothing`,
+                 `BoardingTests.test_boarding_thousands_of_clean_flights_allocate_nothing_and_leave_no_state`
+                 and `PromotionAllocationTests`. None of these carries the
+                 `Budget` trait, and none needs it: `03` counts any test
+                 that asserts zero allocation (revision below). They
                  include its six no-op event handlers whenever those
                  events fire in the window, which the Test Author
                  confirms. **No metered window applies a
@@ -2666,9 +2670,10 @@ Impact:      - **`sim.airside` is not merged**, so no merged `src/` breaks.
                  (#71) switches lanes every tick but meters `sim.flow`'s
                  `Tick` alone, so phase 1's `Apply` is outside its meter.
                  Metering each `Step(1)` instead, with the submits left
-                 between `Step`s, makes it conform. The Planner files
-                 that as a test-only task under `tests/sim/flow/**`. No
-                 `src/` change is expected;
+                 between `Step`s, makes it conform. Like the others, it
+                 needs no `Budget` trait. The Planner files that as a
+                 test-only task under `tests/sim/flow/**`. No `src/`
+                 change is expected;
                - T-022 (`13`) and T-024 (`14`, whose work is mostly in
                  handlers) must meet the rule. `13` §13.11 names
                  T-022's test, and `14` §14.13 says so.
@@ -2690,6 +2695,41 @@ Impact:      - **`sim.airside` is not merged**, so no merged `src/` breaks.
                the `open-questions.md` and `CHANGELOG.md` conflicts.
                Q-060 to Q-062 are listed before Q-057 there.
              - **Scope:** none added.
+Revision:    after the PR #73 review (rejected at `fccf76a`):
+             - **Determinism, hash and save (Q-062).** Waiting for
+               `DoorsOpen` kept a consumed `DeboardComplete`, and its
+               `EventRef`, across ticks and checkpoints with no hashed
+               home. It is now explicit state. `AircraftTrack` gains
+               `EventRef RecordedCause` (§12.9). It is set only by the
+               `DeboardComplete` and `BoardingComplete` handlers, and
+               only for a tracked flight in `OnStand` with no record yet.
+               A `DeboardComplete` is also recorded only for an arrival
+               with a rotation. The action the record waits for clears
+               it. It is fed with the track, as `HasValue`, `Id.Tick`
+               and `Id.Sequence`, and it is saved with it. The departure
+               `OnStand`'s `Cause` is read from it. This also closes the
+               older one-tick gap for both consumed events, which crossed
+               a phase-4 checkpoint unhashed. §12.12 now says the
+               handlers write only to items 4 and 5. Q-060 is unchanged:
+               state is added where behaviour reads it, and a copied
+               release blocker would be read by nothing;
+             - **§12.8a governs (Q-062).** S4 now runs `DoorsOpen` first,
+               then the handoff only once `DoorsOpen` has fired. A
+               handoff made due by this tick's `DoorsOpen` runs right
+               after it. §12.3, §12.8 steps 3 and 5, the §12.11 consumed
+               table, the TryGetRotation note and "Chains" all say the
+               same;
+             - **Q-061 conformance.** `03` and §12.12 no longer say
+               "`Budget`-trait allocation test". An allocation test is
+               any test that asserts zero allocation, with or without
+               the trait, since `07` L11 binds timed assertions. The
+               impact note above names the untagged `sim.flow` tests it
+               counts;
+             - **Impact added.** `AircraftTrack` gains a field, so T-021's
+               worker implements and hashes it. Test code that builds or
+               prints tracks (`Show.Track`) may add it. The §12.13
+               handoff-wait test also checks the record and the hash. No
+               merged `src/` reads `AircraftTrack`.
 Signed off:  not required (interface precision; no balance, scope, or
              `01`/`02` change).
 
