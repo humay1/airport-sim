@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
-| Depends on | T-039, T-040 (both write `tests/sim/flow/**`; merge them first, no concurrent release). T-023 merged (#71) |
+| Depends on | T-039, T-040, T-023 (all merged: #63, #64, #71) |
 | Spec source | `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-044, Q-045; PR #68, `7c9a373`); `spec/07-conventions.md` L11, L11a; `spec/03-module-map.md` "How a budget is measured" (Q-061 update path, Q-064 handler timing; PRs #73, #75) |
 | Blocked by | — |
 

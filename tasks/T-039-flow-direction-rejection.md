@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (blocked on T-010 merging) |
+| Status | MERGED (PR #63) |
 | Module | `sim.flow` |
 | Assigned role | worker |
 | Depends on | T-010 (PR #56, open) |

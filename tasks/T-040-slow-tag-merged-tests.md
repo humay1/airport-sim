@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (released by the owner 2026-09-29, together with T-039 and T-009) |
+| Status | MERGED (PR #64) |
 | Module | `sim.flow` tests, `sim.schedule` tests |
 | Assigned role | test-author |
 | Depends on | none open (T-007, T-010, T-011, T-008 merged; L11a merged in PR #61, `80f8baa`) |

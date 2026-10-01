@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (blocked on T-010 merging first) |
+| Status | MERGED (PR #60) |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
 | Depends on | T-037 (merged, PR #51, `7bb30b5`), T-007 (merged) |

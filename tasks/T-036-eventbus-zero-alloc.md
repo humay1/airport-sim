@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | TESTS_AUTHORED (`test-author/T-036-eventbus-zero-alloc-tests`) |
+| Status | MERGED (PR #47) |
 | Module | `sim.core` |
 | Assigned role | worker |
 | Depends on | T-001 |
