@@ -13,6 +13,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/sim/core/AirportSim.Sim.Core.csproj" />
+    <ProjectReference Include="../../src/sim/world/AirportSim.Sim.World.csproj" />
+    <ProjectReference Include="../../src/sim/schedule/AirportSim.Sim.Schedule.csproj" />
+    <ProjectReference Include="../../src/sim/flow/AirportSim.Sim.Flow.csproj" />
   </ItemGroup>
 
 </Project>
