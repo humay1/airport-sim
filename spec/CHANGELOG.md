@@ -2978,8 +2978,12 @@ Reason:      `16` §16.8's `test_host_composition_matches_harness_checkpoints`
              - **`16` §16.8, §16.11:** the test lives there, and no
                golden is committed for it.
              - **Rejected:** golden dumps (owner confirmation on every
-               hash-moving change), spawning the harness (Q-025), and the
-               harness referencing `app.host`.
+               hash-moving change), spawning the harness, and the
+               harness referencing `app.host`. Spawning is not forbidden
+               by Q-025, which binds harness tests only. It is rejected
+               because it drops §16.8's in-process run and ties the test
+               to the build layout (corrected after the review of #83 at
+               `8df4681`, which raised the same framing there).
 Raised by:   Q-077 (Architect, while answering Q-066 to Q-076, PR #83)
 Impact:      - **Merged code and tests:** none. No existing project
                changes. `ci/run-checks.sh` builds and tests the solution,
@@ -2997,7 +3001,10 @@ Impact:      - **Merged code and tests:** none. No existing project
                "Open now" line to none, and keeps both CHANGELOG entries.
                #83 also rewrites the D7 paragraph just above, so the
                §16.8 hunks are adjacent and will conflict textually. The
-               new paragraph follows #83's wording of the D7 paragraph.
+               new paragraph follows #83's wording of the D7 paragraph,
+               which keeps "in-process" (restored at #83's `a8e3edb`).
+               #83's OPEN Q-077 entry carries the same corrected
+               framing of option (C), so dropping it loses nothing.
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (project layout; no balance, scope or
              `01`/`02` change).
