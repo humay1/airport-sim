@@ -93,8 +93,84 @@ namespace AirportSim.Sim.Airside.Tests
 
             Assert.Equal(x1, rig.Occupant(FixtureLayout.S1)!.Value.Value);
             Assert.Equal(x2, rig.Occupant(FixtureLayout.S2)!.Value.Value);
-            var added = log.Lines.GetRange(linesBefore, log.Lines.Count - linesBefore);
-            Assert.Contains(added, l => l.StartsWith("t=4001 Info s=3 ", StringComparison.Ordinal));
+            AssertNoOpLogged(log, linesBefore, 4001UL, x1, FixtureLayout.S2, 2L);
+        }
+
+        /// <summary>
+        /// 12 §12.10 (Q-056): exactly one line since <paramref name="from"/>,
+        /// Write(tick, Info, SystemId(3), LogKey.AirsideReassignStandNoOp,
+        /// new LogArgs(flight, newStand, reason)), at the applying tick.
+        /// </summary>
+        private static void AssertNoOpLogged(CapturingLog log, int from, ulong tick, ulong flight, ushort stand, long reason)
+        {
+            var lines = log.Entries.GetRange(from, log.Entries.Count - from).FindAll(e => e.Key == LogKey.AirsideReassignStandNoOp);
+            Assert.True(lines.Count == 1, "expected one AirsideReassignStandNoOp line, got " + lines.Count.ToString(CultureInfo.InvariantCulture) + ":\n" + string.Join("\n", log.Lines));
+            var e = lines[0];
+            Assert.Equal(1, (int)LogKey.AirsideReassignStandNoOp);
+            Assert.Equal(tick, e.Tick);
+            Assert.Equal(LogLevel.Info, e.Level);
+            Assert.Equal(AirConst.AirsideSystemId, e.System);
+            Assert.Equal(3, e.Args.Count);
+            Assert.Equal(unchecked((long)flight), e.Args.A0);
+            Assert.Equal((long)stand, e.Args.A1);
+            Assert.Equal(reason, e.Args.A2);
+        }
+
+        [Fact]
+        public void test_reassign_stand_no_op_logs_key_and_reason()
+        {
+            // Reason 1: unknown flight; flight not OnStand; and an arrival that
+            // is OnStand but whose stand was handed to its departure.
+            var log = new CapturingLog();
+            HostRig rig = Rig(log);
+            ulong x1 = rig.Id("X1");
+            ulong x2 = rig.Id("X2");
+            rig.RunTo(3000UL);
+            int mark = log.Entries.Count;
+            rig.Submit(Payload.ReassignCommand(3001UL, 999UL, FixtureLayout.S4), out _);
+            rig.RunTo(3002UL);
+            AssertNoOpLogged(log, mark, 3001UL, 999UL, FixtureLayout.S4, 1L);
+
+            mark = log.Entries.Count;
+            rig.Submit(Payload.ReassignCommand(3003UL, x1, FixtureLayout.S1), out _);
+            rig.RunTo(3004UL);
+            AssertNoOpLogged(log, mark, 3003UL, x1, FixtureLayout.S1, 1L);
+
+            // Reason 2: newStand occupied by another flight, or by the flight itself.
+            rig.RunTo(4000UL);
+            mark = log.Entries.Count;
+            rig.Submit(Payload.ReassignCommand(4001UL, x1, FixtureLayout.S2), out _);
+            rig.RunTo(4002UL);
+            AssertNoOpLogged(log, mark, 4001UL, x1, FixtureLayout.S2, 2L);
+            mark = log.Entries.Count;
+            rig.Submit(Payload.ReassignCommand(4003UL, x2, FixtureLayout.S2), out _);
+            rig.RunTo(4004UL);
+            AssertNoOpLogged(log, mark, 4003UL, x2, FixtureLayout.S2, 2L);
+
+            // Reason 3: free but incompatible (heavy X2 to medium-only S1, here free).
+            var log3 = new CapturingLog();
+            var only = new HostRig(Csv.Of(Csv.Row("X2", "A", "06:10", aircraft: "a359")), log: log3);
+            only.RunTo(4000UL);
+            only.Submit(Payload.ReassignCommand(4001UL, only.Id("X2"), FixtureLayout.S1), out _);
+            only.RunTo(4002UL);
+            AssertNoOpLogged(log3, 0, 4001UL, only.Id("X2"), FixtureLayout.S1, 3L);
+
+            // Reason 1, handed-off arrival: a boarding hold keeps R_D on S1 after
+            // the handoff at DoorsOpen + 35 min, while R_A's track stays OnStand.
+            var logH = new CapturingLog();
+            var handed = new HostRig(Csv.Of(Csv.Pair("R_A", "R_D", "06:30", "08:00")), flow: ScriptedFlow.For(2UL, 200UL, 3, 77U), log: logH);
+            ulong ra = handed.Id("R_A");
+            ulong rd = handed.Id("R_D");
+            Assert.Equal(2UL, rd);
+            handed.RunTo(4400UL);
+            ulong handoff = handed.Rec.Milestone(rd, FlightMilestone.OnStand).Tick;
+            Assert.True(handoff < 4399UL);
+            Assert.Equal(rd, handed.Occupant(FixtureLayout.S1)!.Value.Value);
+            handed.Submit(Payload.ReassignCommand(4401UL, ra, FixtureLayout.S4), out _);
+            handed.RunTo(4402UL);
+            AssertNoOpLogged(logH, 0, 4401UL, ra, FixtureLayout.S4, 1L);
+            Assert.Equal(rd, handed.Occupant(FixtureLayout.S1)!.Value.Value);
+            Assert.False(handed.Occupant(FixtureLayout.S4).HasValue);
         }
 
         [Fact]

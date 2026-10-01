@@ -68,8 +68,9 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(3, layout.Edges[0].Id.Value);
             Assert.Equal(12, layout.Stands[0].Id.Value);
 
-            var rules = new AirsideRules(10U);
+            var rules = new AirsideRules(10U, 2U);
             Assert.Equal(10U, rules.BoardingHoldMaxMinutes);
+            Assert.Equal(2U, rules.DoorsOpenDelayMinutes);
         }
 
         [Fact]

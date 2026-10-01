@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using AirportSim.Sim.Core;
 using Xunit;
@@ -68,6 +69,55 @@ namespace AirportSim.Sim.Airside.Tests
 
             Assert.Equal(AirConst.At(8, 0) + FixtureLayout.RouteTicks(FixtureLayout.S2), rig.Rec.Milestone(d1, FlightMilestone.TakeoffRoll).Milestone.PlannedTick);
             Assert.Empty(rig.Rec.Of<StandUnavailable>(d1));
+        }
+
+        [Fact]
+        public void test_rotationless_departure_waits_for_stand_with_no_track_and_fires_late_on_stand()
+        {
+            // 12 §12.7 "No stand free" (Q-053). X1-X3 hold S2-S4 for good;
+            // R_A holds S1 until R_D pushes back. D9 (a320) is due at 07:00,
+            // with no stand free: no track, no event, until S1 is assignable,
+            // the tick after R_D's Pushback. Then OnStand fires late, with
+            // PlannedTick still the due tick, and the fallback chain runs at once.
+            var rows = new List<string>
+            {
+                Csv.Row("X1", "A", "06:00", aircraft: "a388"),
+                Csv.Row("X2", "A", "06:10", aircraft: "a359"),
+                Csv.Row("X3", "A", "06:20", aircraft: "a388"),
+                Csv.Row("D9", "D", "07:35"),
+            };
+            rows.AddRange(Csv.Pair("R_A", "R_D", "06:30", "08:00"));
+            ScriptedFlow flow = ScriptedFlow.None();
+            var rig = new HostRig(Csv.Of(rows.ToArray()), flow: flow);
+            ulong d9 = rig.Id("D9");
+            ulong due = AirConst.At(7, 0);
+
+            rig.RunTo(due + 1UL);
+            Assert.False(rig.Airside.TryGetTrack(new FlightId(d9), out _), "a waiting rotation-less departure has no track");
+            Assert.DoesNotContain(new FlightId(d9), rig.Airside.TrackedFlights());
+
+            rig.RunTo(AirConst.TicksPerDay);
+            ulong pushback = rig.Rec.Milestone(rig.Id("R_D"), FlightMilestone.Pushback).Tick;
+            Assert.True(pushback > due, "fixture assumption: S1 is still held at D9's due tick");
+            ulong got = pushback + 1UL;
+
+            List<Rec> mine = rig.Rec.All.FindAll(r => r.Flight == d9);
+            Assert.NotEmpty(mine);
+            Assert.All(mine, r => Assert.True(r.Tick >= got, "event before D9 got a stand: " + r));
+            Assert.Empty(rig.Rec.Of<StandUnavailable>(d9));
+
+            Rec onStand = rig.Rec.Milestone(d9, FlightMilestone.OnStand);
+            Assert.Equal(due, onStand.Milestone.PlannedTick);
+            Assert.Equal(got, onStand.Milestone.ActualTick);
+            Assert.Equal(got, rig.Rec.Milestone(d9, FlightMilestone.DoorsClosed).Tick);
+            Rec push = rig.Rec.Milestone(d9, FlightMilestone.Pushback);
+            Assert.Equal(got, push.Tick);
+            Assert.Equal(FixtureLayout.StandNode(FixtureLayout.S1), push.Track.AtNode!.Value.Value);
+
+            var absorbs = flow.AbsorbsOf(d9);
+            Assert.Single(absorbs);
+            Assert.Equal(got, absorbs[0].Tick);
+            Assert.Equal(FixtureLayout.Sink(FixtureLayout.S1), absorbs[0].Sink);
         }
     }
 }

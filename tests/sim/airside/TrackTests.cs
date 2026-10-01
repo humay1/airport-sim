@@ -29,6 +29,11 @@ namespace AirportSim.Sim.Airside.Tests
 
             ulong airborne = AirConst.At(6, 0) - AirConst.CruiseLead;
             Assert.False(tracks.ContainsKey(airborne - 1UL), "tracked before InboundAirborne");
+            for (ulong t = airborne; t < 3700UL; t++)
+            {
+                Assert.True(tracks.ContainsKey(t), "untracked at t=" + t.ToString(CultureInfo.InvariantCulture) + ", after InboundAirborne");
+            }
+
             AircraftTrack first = tracks[airborne];
             Assert.Equal(a1, first.Flight.Value);
             Assert.Equal(MovementKind.Arrival, first.Kind);

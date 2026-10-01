@@ -282,9 +282,11 @@ namespace AirportSim.Sim.Airside.Tests
     internal sealed class CapturingLog : ISimLog
     {
         public readonly List<string> Lines = new List<string>();
+        public readonly List<(ulong Tick, LogLevel Level, ushort System, LogKey Key, LogArgs Args)> Entries = new List<(ulong Tick, LogLevel Level, ushort System, LogKey Key, LogArgs Args)>();
 
         public void Write(ulong tick, LogLevel level, SystemId system, LogKey key, in LogArgs args)
         {
+            Entries.Add((tick, level, system.Value, key, args));
             Lines.Add(string.Format(CultureInfo.InvariantCulture, "t={0} {1} s={2} k={3} n={4} {5} {6} {7} {8}", tick, level, system.Value, (int)key, args.Count, args.A0, args.A1, args.A2, args.A3));
         }
     }
@@ -497,6 +499,7 @@ namespace AirportSim.Sim.Airside.Tests
         public readonly Recorder? Events;
         public readonly RecordingCheckpointSink Sink = new RecordingCheckpointSink();
         public readonly Dictionary<string, ulong> Ids;
+        public readonly AirsideProbe? Probe;
 
         public HostRig(
             byte[] csv,
@@ -507,17 +510,27 @@ namespace AirportSim.Sim.Airside.Tests
             TurnaroundProbe? turnaround = null,
             ulong seed = 0x5EED_0021UL,
             bool record = true,
-            ISimLog? log = null)
+            ISimLog? log = null,
+            uint doorDelayMinutes = AirConst.FixtureDoorDelayMinutes,
+            bool probe = false)
         {
-            Ids = Csv.Day0Ids(csv);
+            Ids = Csv.Ids(csv);
             ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, AirsideContent.Index(), Sink, log ?? new NullLog()));
             ScheduleTable table = ScheduleFactory.CreateLoader().Load(csv, ScheduleFixture.SourceName);
             Schedule = ScheduleFactory.CreateSystem(b.Services, table, null);
             Layout = layout ?? FixtureLayout.Layout();
             Flow = flow;
-            Airside = AirsideFactory.CreateSystem(b.Services, Layout, new AirsideRules(holdMinutes), Schedule, flow, turnaroundRegistered);
+            Airside = AirsideFactory.CreateSystem(b.Services, Layout, new AirsideRules(holdMinutes, doorDelayMinutes), Schedule, flow, turnaroundRegistered);
             b.Register(Schedule);
-            b.Register(Airside);
+            if (probe)
+            {
+                Probe = new AirsideProbe(Airside);
+                b.Register(Probe);
+            }
+            else
+            {
+                b.Register(Airside);
+            }
             if (flow != null)
             {
                 b.Register(flow);
@@ -599,87 +612,56 @@ namespace AirportSim.Sim.Airside.Tests
         }
     }
 
-    /// <summary>A pure clock over a settable tick, per 08 §8.2.</summary>
-    internal sealed class TestClock : ISimClock
-    {
-        public ulong CurrentTick { get; set; }
-
-        public uint DayIndex => (uint)(CurrentTick / AirConst.TicksPerDay);
-
-        public uint SecondOfDay => (uint)((CurrentTick % AirConst.TicksPerDay) * 6UL);
-
-        public Fx MinutesBetween(ulong a, ulong b)
-        {
-            return Fx.FromRatio((long)b - (long)a, (long)AirConst.TicksPerMinute);
-        }
-
-        public ulong TickOfDayTime(uint dayIndex, uint secondOfDay)
-        {
-            if (secondOfDay >= 86400U)
-            {
-                throw new ArgumentOutOfRangeException(nameof(secondOfDay));
-            }
-
-            return (dayIndex * AirConst.TicksPerDay) + (secondOfDay / 6U);
-        }
-    }
-
     /// <summary>
-    /// Assigns EventIds like the bus (08 §8.6), (tick, sequence from 0 per
-    /// tick), and counts by type without allocating.
+    /// Registered in sim.airside's place (same SystemId, 3), so the real host
+    /// and bus drive it, phase-3 handlers included. It measures the inner
+    /// Tick only (03 "Measured: the module's Tick only"): time and bytes
+    /// allocated on this thread. It can also hand the inner Tick a trap RNG
+    /// in place of the host's, so any RNG use is sim.airside's own.
     /// </summary>
-    internal sealed class CountingPublisher : IEventPublisher
+    internal sealed class AirsideProbe : ISimSystem
     {
-        private readonly TestClock _clock;
-        private ulong _tick = ulong.MaxValue;
-        private uint _seq;
+        private readonly IAirsideSystem _inner;
 
-        public long Milestones;
-        public long RunwayHolds;
-        public long TaxiHolds;
-        public long StandHolds;
-        public long PassengerHolds;
-        public long Others;
-
-        public CountingPublisher(TestClock clock)
+        public AirsideProbe(IAirsideSystem inner)
         {
-            _clock = clock;
+            _inner = inner;
         }
 
-        public EventId Publish<T>(in T evt, in EventRef cause) where T : struct, ISimEvent
-        {
-            if (_clock.CurrentTick != _tick)
-            {
-                _tick = _clock.CurrentTick;
-                _seq = 0;
-            }
+        public IRandomService? Rng;
+        public bool Timing;
+        public bool Allocations;
+        public long LastElapsed;
+        public long LastBytes;
 
-            if (typeof(T) == typeof(FlightMilestoneReached))
+        public SystemId Id => _inner.Id;
+
+        public string Name => _inner.Name;
+
+        public void Tick(in TickContext ctx)
+        {
+            TickContext inner = Rng == null ? ctx : new TickContext(ctx.Tick, ctx.Clock, ctx.Events, Rng, ctx.Content, ctx.Log);
+            if (Allocations)
             {
-                Milestones++;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                _inner.Tick(inner);
+                LastBytes = GC.GetAllocatedBytesForCurrentThread() - before;
             }
-            else if (typeof(T) == typeof(AircraftHeldForRunway))
+            else if (Timing)
             {
-                RunwayHolds++;
-            }
-            else if (typeof(T) == typeof(AircraftHeldOnTaxiway))
-            {
-                TaxiHolds++;
-            }
-            else if (typeof(T) == typeof(StandUnavailable))
-            {
-                StandHolds++;
-            }
-            else if (typeof(T) == typeof(DepartureHeldForPassengers))
-            {
-                PassengerHolds++;
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                _inner.Tick(inner);
+                LastElapsed = System.Diagnostics.Stopwatch.GetTimestamp() - start;
             }
             else
             {
-                Others++;
+                _inner.Tick(inner);
             }
+        }
 
-            return new EventId(_tick, _seq++);
+        public ulong ComputeStateHash()
+        {
+            return _inner.ComputeStateHash();
         }
     }
 
@@ -749,86 +731,6 @@ namespace AirportSim.Sim.Airside.Tests
         }
     }
 
-    /// <summary>
-    /// sim.schedule and sim.airside driven directly through ISimSystem.Tick
-    /// with a test-built TickContext (08 §8.5), outside any host, so RNG use,
-    /// allocation and time are attributable to sim.airside's Tick alone.
-    /// </summary>
-    internal sealed class DirectRig
-    {
-        public readonly IScheduleSystem Schedule;
-        public readonly IAirsideSystem Airside;
-        public readonly TestClock Clock = new TestClock();
-        public readonly CountingPublisher Publisher;
-        public readonly IRandomService Rng;
-        public readonly IContentIndex Content;
-        public readonly ISimLog Log = new NullLog();
-        public readonly FakeFlowBase? Flow;
-        public ulong NextTick;
-
-        public DirectRig(byte[] csv, AirsideLayout layout, FakeFlowBase? flow, uint holdMinutes = 10, IRandomService? rng = null)
-        {
-            Content = AirsideContent.Index();
-            ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(0x5EED_0021UL, Content, new RecordingCheckpointSink(), Log));
-            ScheduleTable table = ScheduleFactory.CreateLoader().Load(csv, ScheduleFixture.SourceName);
-            Schedule = ScheduleFactory.CreateSystem(b.Services, table, null);
-            Flow = flow;
-            Airside = AirsideFactory.CreateSystem(b.Services, layout, new AirsideRules(holdMinutes), Schedule, flow, false);
-            Publisher = new CountingPublisher(Clock);
-            Rng = rng ?? new TrapRandomService();
-        }
-
-        private TickContext Begin()
-        {
-            Clock.CurrentTick = NextTick;
-            if (Flow != null)
-            {
-                Flow.NextTick = NextTick;
-            }
-
-            return new TickContext(NextTick, Clock, Publisher, Rng, Content, Log);
-        }
-
-        public void TickOnce()
-        {
-            TickContext ctx = Begin();
-            Schedule.Tick(ctx);
-            Airside.Tick(ctx);
-            NextTick++;
-        }
-
-        /// <summary>One tick; returns the Stopwatch timestamp units spent in sim.airside's Tick only.</summary>
-        public long TickTimed()
-        {
-            TickContext ctx = Begin();
-            Schedule.Tick(ctx);
-            long start = System.Diagnostics.Stopwatch.GetTimestamp();
-            Airside.Tick(ctx);
-            long elapsed = System.Diagnostics.Stopwatch.GetTimestamp() - start;
-            NextTick++;
-            return elapsed;
-        }
-
-        /// <summary>One tick; returns the bytes allocated on this thread inside sim.airside's Tick only.</summary>
-        public long TickAllocated()
-        {
-            TickContext ctx = Begin();
-            Schedule.Tick(ctx);
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            Airside.Tick(ctx);
-            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-            NextTick++;
-            return delta;
-        }
-
-        public void RunTo(ulong tick)
-        {
-            while (NextTick < tick)
-            {
-                TickOnce();
-            }
-        }
-    }
 
     /// <summary>
     /// Every zero-allocation assertion measures through this; a copy of the

@@ -219,7 +219,7 @@ namespace AirportSim.Sim.Airside.Tests
             }
 
             var slotTicks = new List<ulong>();
-            var pushbackIds = new Dictionary<EventId, (ulong Flight, ulong Tick)>();
+            var pushbackIds = new Dictionary<EventId, (ushort Stand, ulong Tick)>();
             var arrivalStand = new Dictionary<ulong, ushort>();
             var doorsOpenAt = new Dictionary<ulong, ulong>();
             int doorsClosed = 0;
@@ -247,16 +247,12 @@ namespace AirportSim.Sim.Airside.Tests
                 ulong occ = FixtureLayout.OccupancyTicks;
                 if (fr.Kind == MovementKind.Arrival)
                 {
-                    if (seen.TryGetValue(FlightMilestone.InboundAirborne, out Rec? ia))
-                    {
-                        Assert.True(sched >= AirConst.CruiseLead);
-                        Assert.Equal(sched - AirConst.CruiseLead, ia.Milestone.PlannedTick);
-                        Assert.Equal(sched - AirConst.CruiseLead, ia.Milestone.ActualTick);
-                    }
-                    else if (sched >= AirConst.CruiseLead)
-                    {
-                        Assert.Fail("arrival " + f + " never got InboundAirborne");
-                    }
+                    // Every arrival this module tracks started with InboundAirborne,
+                    // at max(0, STA - CRUISE_LEAD_TICKS) (12 §12.6, Q-048).
+                    Assert.True(seen.TryGetValue(FlightMilestone.InboundAirborne, out Rec? ia), "arrival " + f + " never got InboundAirborne");
+                    ulong airborne = sched >= AirConst.CruiseLead ? sched - AirConst.CruiseLead : 0UL;
+                    Assert.Equal(airborne, ia!.Milestone.PlannedTick);
+                    Assert.Equal(airborne, ia.Milestone.ActualTick);
 
                     if (seen.TryGetValue(FlightMilestone.Landed, out Rec? landed))
                     {
@@ -279,7 +275,8 @@ namespace AirportSim.Sim.Airside.Tests
                         Assert.True(AirsideContent.Fits(fr.AircraftType.Value, FixtureLayout.MaxSize(s)), "incompatible stand: " + on);
                         if (seen.TryGetValue(FlightMilestone.DoorsOpen, out Rec? open))
                         {
-                            Assert.Equal(open.Milestone.PlannedTick - on.Milestone.PlannedTick, open.Milestone.ActualTick - on.Milestone.ActualTick);
+                            Assert.Equal(on.Milestone.PlannedTick + AirConst.FixtureDoorDelayTicks, open.Milestone.PlannedTick);
+                            Assert.Equal(on.Milestone.ActualTick + AirConst.FixtureDoorDelayTicks, open.Milestone.ActualTick);
                             doorsOpenAt[f] = open.Milestone.ActualTick;
                         }
                     }
@@ -288,7 +285,8 @@ namespace AirportSim.Sim.Airside.Tests
                 {
                     ulong minTurn = (ulong)Fx.Floor(fr.MinTurnaround) * AirConst.TicksPerMinute;
                     Rec on = seen[FlightMilestone.OnStand];
-                    Assert.Equal(sched - minTurn, on.Milestone.PlannedTick);
+                    ulong due = sched >= minTurn ? sched - minTurn : 0UL;
+                    Assert.Equal(due, on.Milestone.PlannedTick);
                     if (seen.TryGetValue(FlightMilestone.DoorsClosed, out Rec? closed))
                     {
                         doorsClosed++;
@@ -296,9 +294,9 @@ namespace AirportSim.Sim.Airside.Tests
                         Rec push = seen[FlightMilestone.Pushback];
                         Assert.Equal(sched, push.Milestone.PlannedTick);
                         Assert.Equal(closed.Milestone.ActualTick, push.Milestone.ActualTick);
-                        pushbackIds.Add(push.Id, (f, push.Tick));
                         Assert.True(push.HasTrack && push.Track.AtNode.HasValue, "untracked or off-graph at Pushback: " + push);
                         ushort s = standOfNode[push.Track.AtNode!.Value.Value];
+                        pushbackIds.Add(push.Id, (s, push.Tick));
                         if (fr.HasRotation && arrivalStand.TryGetValue(fr.Rotation.Value, out ushort arrS))
                         {
                             Assert.Equal(arrS, s);
@@ -326,9 +324,10 @@ namespace AirportSim.Sim.Airside.Tests
                         ulong arrTurn = (ulong)Fx.Floor(arr.MinTurnaround) * AirConst.TicksPerMinute;
                         Assert.Equal(doorsOpenAt[arr.Id.Value] + arrTurn, on.Milestone.ActualTick);
                     }
-                    else if (fr.DayIndex == 0U)
+                    else
                     {
-                        Assert.Equal(sched - minTurn, on.Milestone.ActualTick);
+                        // Rotation-less: at the due tick, or later if it waited for a stand.
+                        Assert.True(on.Milestone.ActualTick >= due);
                     }
                 }
 
@@ -355,7 +354,8 @@ namespace AirportSim.Sim.Airside.Tests
                 foreach (var (h, _) in taxi)
                 {
                     var held = (AircraftHeldOnTaxiway)h.Payload;
-                    Assert.True(held.Blocking.HasValue && held.Blocking.Value.Value != f, "taxi hold without another blocking flight: " + h);
+                    // Blocking is FlightId? (10 §10.6); when set it names another flight.
+                    Assert.True(!held.Blocking.HasValue || held.Blocking.Value.Value != f, "taxi hold blocked by itself: " + h);
                 }
 
                 foreach ((Rec h, Rec r) in stand)
@@ -367,11 +367,13 @@ namespace AirportSim.Sim.Airside.Tests
                 }
             }
 
-            // Every StandAssigned was caused by a Pushback that freed its stand, at or before it.
-            foreach (var (r, _) in rec.Of<StandAssigned>())
+            // Every StandAssigned was caused by the Pushback that vacated that
+            // stand, one tick earlier (12 §12.7, Q-054); no command runs here.
+            foreach (var (r, asg) in rec.Of<StandAssigned>())
             {
-                Assert.True(pushbackIds.TryGetValue(r.Env.Cause.Id, out (ulong Flight, ulong Tick) p), "StandAssigned not caused by a Pushback: " + r);
-                Assert.True(p.Tick <= r.Tick);
+                Assert.True(pushbackIds.TryGetValue(r.Env.Cause.Id, out (ushort Stand, ulong Tick) p), "StandAssigned not caused by a Pushback: " + r);
+                Assert.Equal(p.Tick + 1UL, r.Tick);
+                Assert.Equal(p.Stand, asg.Stand!.Value.Value);
             }
 
             // 12 §12.5 pacing: slots at least minSeparationTicks apart, arrivals and departures pooled.

@@ -135,5 +135,45 @@ namespace AirportSim.Sim.Airside.Tests
             ulong roll = rig.Rec.Milestone(rig.Id("D1"), FlightMilestone.TakeoffRoll).Milestone.ActualTick;
             Assert.Equal(roll + FixtureLayout.OccupancyTicks, rig.Rec.Milestone(rig.Id("D1"), FlightMilestone.Airborne).Milestone.ActualTick);
         }
+
+        [Fact]
+        public void test_runway_choice_takes_fewest_queued_ties_to_lowest_id()
+        {
+            // 12 §12.5 "Runway choice" (Q-049 stopgap): at its request point a
+            // movement takes the runway with the fewest aircraft in its hold
+            // queue, ties to the lowest RunwayId. Three arrivals at 06:00,
+            // taken in FlightId order: A1 sees 0/0 and claims runway 1; A2
+            // sees 0/0 (A1 claimed, it did not queue), picks runway 1 and
+            // holds; A3 sees 1/0 and claims runway 2.
+            AirsideLayout layout = new LayoutBuilder()
+                .Runway(1, 1, 15, 10).Runway(2, 2, 15, 10)
+                .Node(1, TaxiNodeKind.RunwayThreshold).Node(2, TaxiNodeKind.RunwayThreshold).Node(3, TaxiNodeKind.Junction)
+                .Node(11, TaxiNodeKind.StandPosition).Node(12, TaxiNodeKind.StandPosition).Node(13, TaxiNodeKind.StandPosition)
+                .Edge(1, 1, 3, 30).Edge(2, 2, 3, 30).Edge(3, 3, 11, 20).Edge(4, 3, 12, 20).Edge(5, 3, 13, 20)
+                .Stand(1, 11, AirsideContent.Super, 901).Stand(2, 12, AirsideContent.Super, 902).Stand(3, 13, AirsideContent.Super, 903)
+                .Load();
+            var rig = new HostRig(Csv.Of(Csv.Row("A3", "A", "06:00"), Csv.Row("A2", "A", "06:00"), Csv.Row("A1", "A", "06:00")), layout: layout);
+            ulong a1 = rig.Id("A1");
+            ulong a2 = rig.Id("A2");
+            ulong a3 = rig.Id("A3");
+            rig.RunTo(3700UL);
+
+            Rec l1 = rig.Rec.Milestone(a1, FlightMilestone.Landed);
+            Rec l3 = rig.Rec.Milestone(a3, FlightMilestone.Landed);
+            Assert.Equal(3600UL, l1.Tick);
+            Assert.Equal(3600UL, l3.Tick);
+            Assert.Equal(1, l1.Track.Runway!.Value.Value);
+            Assert.Equal(2, l3.Track.Runway!.Value.Value);
+
+            var held = rig.Rec.Of<AircraftHeldForRunway>(a2);
+            Assert.Single(held);
+            Assert.Equal(3600UL, held[0].Rec.Tick);
+            Assert.Equal(1, held[0].Evt.Runway.Value);
+            Rec l2 = rig.Rec.Milestone(a2, FlightMilestone.Landed);
+            Assert.Equal(3640UL, l2.Tick);
+            Assert.Equal(1, l2.Track.Runway!.Value.Value);
+            Assert.Empty(rig.Rec.Of<AircraftHeldForRunway>(a1));
+            Assert.Empty(rig.Rec.Of<AircraftHeldForRunway>(a3));
+        }
     }
 }

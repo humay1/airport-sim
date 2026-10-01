@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AirportSim.Sim.Core;
 using Xunit;
@@ -99,6 +100,20 @@ namespace AirportSim.Sim.Airside.Tests
             HostRig rig = Rig();
             Assert.True(rig.Submit(Payload.ReassignCommand(5UL, rig.Id("X1"), FixtureLayout.S4), out CommandRejection reason));
             Assert.Equal(CommandRejection.None, reason);
+        }
+
+        [Fact]
+        public void test_airside_system_unresolved_stand_size_category_fails_construction()
+        {
+            // 12 §12.4: MaxAircraftSizeCategory resolves in CreateSystem, not
+            // Load; a miss is a FormatException naming the stand and the id.
+            LayoutBuilder b = FixtureLayout.Builder();
+            b.Stands[3] = new StandDef(new StandId(4), new TaxiNodeId(FixtureLayout.StandNode(4)), new ContentId("jumbo"), new NodeId(904));
+            AirsideLayout layout = b.Load();
+            FormatException ex = Assert.Throws<FormatException>(() => new HostRig(Csv.Of(Csv.Row("X1", "A", "12:00")), layout: layout));
+            Assert.StartsWith("sim.airside: ", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("jumbo", ex.Message, StringComparison.Ordinal);
+            Assert.Matches(@"(?<![0-9])4(?![0-9])", ex.Message);
         }
     }
 }

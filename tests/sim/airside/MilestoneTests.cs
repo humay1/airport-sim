@@ -7,9 +7,8 @@ namespace AirportSim.Sim.Airside.Tests
     /// <summary>
     /// 12 §12.3 "PlannedTick per milestone" (schedule-anchored and
     /// cumulative, 10 §10.4) and "Which FlightId gets which milestone", on
-    /// one unimpeded rotation run through the §12.8 fallback. The fixed door
-    /// delay has no pinned value (open question), so DoorsOpen is checked
-    /// against OnStand rather than against a literal.
+    /// one unimpeded rotation run through the §12.8 fallback, with the
+    /// suite's DoorsOpenDelayMinutes of 2 (Q-047).
     /// </summary>
     public sealed class MilestoneTests
     {
@@ -42,12 +41,9 @@ namespace AirportSim.Sim.Airside.Tests
             AssertAt(rig, a1, FlightMilestone.OffRunway, sta + occ, sta + occ);
             AssertAt(rig, a1, FlightMilestone.OnStand, sta + occ + route, sta + occ + route);
 
-            Rec doorsOpen = rig.Rec.Milestone(a1, FlightMilestone.DoorsOpen);
-            ulong doorDelay = doorsOpen.Milestone.PlannedTick - (sta + occ + route);
-            Assert.True(doorsOpen.Milestone.PlannedTick >= sta + occ + route);
-            Assert.Equal(doorsOpen.Milestone.PlannedTick, doorsOpen.Milestone.ActualTick);
-            ulong open = doorsOpen.Milestone.ActualTick;
-            Assert.Equal(sta + occ + route + doorDelay, open);
+            // DoorsOpen: planned OnStand + DoorsOpenDelayMinutes × 10 (the suite's 2 minutes).
+            ulong open = sta + occ + route + AirConst.FixtureDoorDelayTicks;
+            AssertAt(rig, a1, FlightMilestone.DoorsOpen, open, open);
 
             // Fallback: the departure's ground block is DoorsOpen + MinTurnaround (12 §12.8).
             ulong close = open + minTurn;

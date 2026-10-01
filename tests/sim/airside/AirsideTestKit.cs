@@ -28,6 +28,17 @@ namespace AirportSim.Sim.Airside.Tests
         public const ushort FlowSystemId = 4;
         public const ushort TurnaroundSystemId = 5;
         public const ushort RecorderSystemId = 7;
+        public const int StandWaitCapacity = 1024;
+        public const int PendingCapacity = 2048;
+
+        /// <summary>
+        /// The suite's DoorsOpenDelayMinutes (12 §12.4: "Test fixtures carry
+        /// their own values beside their tests"). It equals the owner's
+        /// playtest value, but is never read from data/.
+        /// </summary>
+        public const uint FixtureDoorDelayMinutes = 2U;
+
+        public const ulong FixtureDoorDelayTicks = FixtureDoorDelayMinutes * TicksPerMinute;
 
         /// <summary>minSeparationTicks = ceil(TICKS_PER_SIM_HOUR / DeclaredCapacityPerHour), 12 §12.5.</summary>
         public static ulong MinSeparation(int capacityPerHour)
@@ -175,12 +186,13 @@ namespace AirportSim.Sim.Airside.Tests
             string rotation = "",
             string aircraft = "a320",
             string minTurn = "35",
-            string repeat = "0")
+            string repeat = "0",
+            string day = "0")
         {
             bool dep = movement == "D";
             return string.Join(",", new[]
             {
-                flightRef, "0", repeat, movement, "NVA", aircraft, sched, rotation, minTurn,
+                flightRef, day, repeat, movement, "NVA", aircraft, sched, rotation, minTurn,
                 dep ? "100" : "0", "business", dep ? "500" : "0", dep ? "10" : "0", dep ? "1" : "",
             });
         }
@@ -197,28 +209,68 @@ namespace AirportSim.Sim.Airside.Tests
 
         /// <summary>
         /// 11 §11.3: FlightId.Value = DayIndex * 100000 + RowOrdinal + 1, where
-        /// RowOrdinal indexes the rows sorted by flight_ref, ordinal.
+        /// RowOrdinal indexes the rows sorted by flight_ref, ordinal. Each
+        /// row maps to the id of its first occurrence, on its own `day`.
         /// </summary>
-        public static Dictionary<string, ulong> Day0Ids(byte[] csv)
+        public static Dictionary<string, ulong> Ids(byte[] csv)
         {
             string[] lines = Encoding.UTF8.GetString(csv).Split('\n');
-            var refs = new List<string>();
+            var rows = new List<(string Ref, ulong Day)>();
             for (int i = 1; i < lines.Length; i++)
             {
                 if (lines[i].Length > 0)
                 {
-                    refs.Add(lines[i].Split(',')[0]);
+                    string[] f = lines[i].Split(',');
+                    rows.Add((f[0], ulong.Parse(f[1], CultureInfo.InvariantCulture)));
                 }
             }
 
-            refs.Sort(StringComparer.Ordinal);
+            rows.Sort((a, b) => string.CompareOrdinal(a.Ref, b.Ref));
             var ids = new Dictionary<string, ulong>(StringComparer.Ordinal);
-            for (int i = 0; i < refs.Count; i++)
+            for (int i = 0; i < rows.Count; i++)
             {
-                ids.Add(refs[i], (ulong)i + 1UL);
+                ids.Add(rows[i].Ref, (rows[i].Day * AirConst.DayStride) + (ulong)i + 1UL);
             }
 
             return ids;
+        }
+    }
+
+    /// <summary>
+    /// The repository root is the nearest ancestor of AppContext.BaseDirectory
+    /// holding AirportSim.sln (07 "Fixture location", Q-031). A missing root
+    /// fails the test.
+    /// </summary>
+    internal static class Repo
+    {
+        public static byte[] Read(params string[] relative)
+        {
+            string? dir = AppContext.BaseDirectory;
+            while (dir != null && !File.Exists(Path.Combine(dir, "AirportSim.sln")))
+            {
+                dir = Path.GetDirectoryName(dir);
+            }
+
+            Assert.True(dir != null, "no ancestor of " + AppContext.BaseDirectory + " contains AirportSim.sln");
+            var parts = new List<string> { dir! };
+            parts.AddRange(relative);
+            return File.ReadAllBytes(Path.Combine(parts.ToArray()));
+        }
+    }
+
+    /// <summary>tests/fixtures/airside/phase1-single-runway.json, the §12.13 fixture in §12.4's file format.</summary>
+    internal static class AirsideFixture
+    {
+        public const string SourceName = "phase1-single-runway.json";
+
+        public static byte[] Bytes()
+        {
+            return Repo.Read("tests", "fixtures", "airside", SourceName);
+        }
+
+        public static AirsideLayout Parse()
+        {
+            return AirsideFactory.CreateLayoutLoader().Parse(Bytes(), SourceName);
         }
     }
 
@@ -237,14 +289,7 @@ namespace AirportSim.Sim.Airside.Tests
         {
             if (_bytes == null)
             {
-                string? dir = AppContext.BaseDirectory;
-                while (dir != null && !File.Exists(Path.Combine(dir, "AirportSim.sln")))
-                {
-                    dir = Path.GetDirectoryName(dir);
-                }
-
-                Assert.True(dir != null, "no ancestor of " + AppContext.BaseDirectory + " contains AirportSim.sln");
-                _bytes = File.ReadAllBytes(Path.Combine(dir!, "tests", "fixtures", "schedule", "phase0-200.csv"));
+                _bytes = Repo.Read("tests", "fixtures", "schedule", "phase0-200.csv");
             }
 
             return (byte[])_bytes.Clone();
@@ -345,10 +390,11 @@ namespace AirportSim.Sim.Airside.Tests
 
     /// <summary>
     /// The Phase 0/1 airside layout that 12 §12.13 describes, built in code.
-    /// The fixture file itself (tests/fixtures/airside/phase1-single-runway.*)
-    /// is not written: its format is "the worker's choice" and unpinned, so
-    /// the suite loads this layout through IAirsideLayoutLoader.Load instead.
-    /// Every §12.13 requirement is asserted on it in FixtureLayoutTests.
+    /// tests/fixtures/airside/phase1-single-runway.json holds the same layout
+    /// in §12.4's file format, and test_layout_parse_fixture_file_equals_built_layout
+    /// keeps the two equal. Rigs use this built copy, so that a Parse bug
+    /// fails the Parse tests and nothing else. Every §12.13 requirement is
+    /// asserted on it in FixtureLayoutTests.
     ///
     ///   T(1) --E1 30-- J1(2) --E2 20-- S1(node 11)
     ///                   |
@@ -359,8 +405,6 @@ namespace AirportSim.Sim.Airside.Tests
     ///                   |---E6 20-- S4(node 14)
     ///
     /// E1 is shared by every threshold-to-stand route, E3 by three of them.
-    /// Stand ids are declared in ascending order, so "earliest-declared" and
-    /// "ascending StandId" (12 §12.7) never disagree on this layout.
     /// </summary>
     internal static class FixtureLayout
     {

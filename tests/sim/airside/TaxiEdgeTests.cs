@@ -52,20 +52,23 @@ namespace AirportSim.Sim.Airside.Tests
             var release = (AircraftHeldOnTaxiwayReleased)pairs[0].Release.Payload;
             Assert.Equal(FixtureLayout.E1, release.Edge.Value);
 
-            // Released the first tick E1 is free. D1 leaves it at 3650; which
-            // of the two is processed first within that tick is not pinned.
+            // D1 leaves E1 in S6 of 3650; edge grants read the S1 snapshot, so
+            // A1 enters it, and is released, at 3651 (12 §12.6, Q-054).
             ulong released = pairs[0].Release.Tick;
-            Assert.True(released >= 3650UL && released <= 3651UL, "released at " + released.ToString(CultureInfo.InvariantCulture));
+            Assert.True(released == 3651UL, "released at " + released.ToString(CultureInfo.InvariantCulture));
             Assert.Equal(FixtureLayout.E1, a1Tracks[released].OnEdge!.Value.Value);
             Assert.Equal(FixtureLayout.Threshold, a1Tracks[released].AtNode!.Value.Value);
 
-            for (ulong t = 3640UL; t < 3650UL; t++)
+            for (ulong t = 3640UL; t <= 3650UL; t++)
             {
                 AircraftTrack ta = a1Tracks[t];
                 Assert.Equal(AircraftLegPhase.HeldOnTaxiway, ta.Phase);
                 Assert.False(ta.OnEdge.HasValue, "held mid-edge: " + Show.Track(ta));
                 Assert.Equal(FixtureLayout.Threshold, ta.AtNode!.Value.Value);
-                Assert.Equal(FixtureLayout.E1, d1Tracks[t].OnEdge!.Value.Value);
+                if (t < 3650UL)
+                {
+                    Assert.Equal(FixtureLayout.E1, d1Tracks[t].OnEdge!.Value.Value);
+                }
             }
 
             Assert.Empty(rig.Rec.Of<AircraftHeldOnTaxiway>(d1));

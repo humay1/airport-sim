@@ -156,5 +156,31 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(0, release.Outstanding);
             Assert.False(release.HeldAt.HasValue);
         }
+
+        [Fact]
+        public void test_departure_due_before_publication_keeps_planned_on_stand_formula()
+        {
+            // 12 §12.11 "The start tick": a rotation-less departure starts at
+            // max(due tick, PublishTick + 1). Day 1, STD 12:00 (21600) with a
+            // 1500-minute MinTurnaround: due 6600, published at 7200, so it
+            // starts at 7201. OnStand keeps PlannedTick = due (§12.3).
+            var late = new HostRig(Csv.Of(Csv.Row("L1", "D", "12:00", minTurn: "1500", day: "1")));
+            ulong l1 = late.Id("L1");
+            Assert.Equal(AirConst.DayStride + 1UL, l1);
+            Assert.Equal(7200UL, late.Flight(l1).PublishTick);
+            late.RunTo(7201UL);
+            Assert.False(late.Airside.TryGetTrack(new FlightId(l1), out _), "started before PublishTick + 1");
+            late.RunTo(7300UL);
+            Rec onStand = late.Rec.Milestone(l1, FlightMilestone.OnStand);
+            Assert.Equal(6600UL, onStand.Milestone.PlannedTick);
+            Assert.Equal(7201UL, onStand.Milestone.ActualTick);
+
+            // Day 0 has no publication lag: the due tick, clamped to 0 (Q-048), is the start tick.
+            var early = new HostRig(Csv.Of(Csv.Row("E1", "D", "06:00", minTurn: "1500")));
+            early.RunTo(1UL);
+            Rec e = early.Rec.Milestone(early.Id("E1"), FlightMilestone.OnStand);
+            Assert.Equal(0UL, e.Milestone.PlannedTick);
+            Assert.Equal(0UL, e.Milestone.ActualTick);
+        }
     }
 }

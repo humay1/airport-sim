@@ -32,5 +32,35 @@ namespace AirportSim.Sim.Airside.Tests
             // A2's landing was held (40-tick slots), its InboundAirborne was not.
             Assert.NotEmpty(rig.Rec.Of<AircraftHeldForRunway>(rig.Id("A2")));
         }
+
+        [Fact]
+        public void test_inbound_airborne_clamps_to_tick_zero_before_cruise_lead()
+        {
+            // 12 §12.6 (Q-048): max(0, STA - CRUISE_LEAD_TICKS), planned and actual.
+            var rig = new HostRig(Csv.Of(
+                Csv.Row("A1", "A", "00:20"),
+                Csv.Row("A2", "A", "01:00"),
+                Csv.Row("A3", "A", "02:00"),
+                Csv.Row("A4", "A", "02:01")));
+            rig.RunTo(1UL);
+            foreach (string name in new[] { "A1", "A2", "A3" })
+            {
+                Rec r = rig.Rec.Milestone(rig.Id(name), FlightMilestone.InboundAirborne);
+                Assert.Equal(0UL, r.Tick);
+                Assert.Equal(0UL, r.Milestone.PlannedTick);
+                Assert.Equal(0UL, r.Milestone.ActualTick);
+                Assert.Equal(AircraftLegPhase.AwaitingApproach, rig.Track(rig.Id(name)).Phase);
+            }
+
+            Assert.False(rig.Rec.Has(rig.Id("A4"), FlightMilestone.InboundAirborne));
+            rig.RunTo(11UL);
+            Rec a4 = rig.Rec.Milestone(rig.Id("A4"), FlightMilestone.InboundAirborne);
+            Assert.Equal(10UL, a4.Milestone.PlannedTick);
+            Assert.Equal(10UL, a4.Milestone.ActualTick);
+
+            // The early arrival still lands at its own STA (12 §12.5, Q-052).
+            rig.RunTo(300UL);
+            Assert.Equal(AirConst.At(0, 20), rig.Rec.Milestone(rig.Id("A1"), FlightMilestone.Landed).Tick);
+        }
     }
 }

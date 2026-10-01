@@ -101,23 +101,31 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(FixtureLayout.S1, assigned.Stand!.Value.Value);
             Assert.False(assigned.Occupying.HasValue);
 
-            // Cause is the Pushback that freed S1 (12 §12.7). The stand is
-            // occupied "through Pushback inclusive", so the assignment is on
-            // that tick or the next; the spec does not pin which.
+            // Cause is the Pushback that freed S1 (12 §12.7); a stand vacated
+            // at t is assignable from t + 1 (Q-054).
             Assert.Equal(pushback.Id, pairs[0].Release.Env.Cause.Id);
             ulong at = pairs[0].Release.Tick;
-            Assert.True(at >= pushback.Tick && at <= pushback.Tick + 1UL, "StandAssigned at " + at.ToString(CultureInfo.InvariantCulture) + ", Pushback at " + pushback.Tick.ToString(CultureInfo.InvariantCulture));
+            Assert.True(at == pushback.Tick + 1UL, "StandAssigned at " + at.ToString(CultureInfo.InvariantCulture) + ", Pushback at " + pushback.Tick.ToString(CultureInfo.InvariantCulture));
 
-            // While waiting: at the threshold node, on no edge, no stand, and
-            // (until the Pushback tick, where the freeing is in flight) no stand free.
-            for (ulong t = offRunway; t < pushback.Tick; t++)
+            // While waiting (12 §12.7): at the threshold node, HeldOnTaxiway,
+            // on no edge, no stand, DueAt unscheduled; and until the Pushback
+            // tick no stand is free.
+            for (ulong t = offRunway; t < at; t++)
             {
                 AircraftTrack tr = tracks[t];
+                Assert.Equal(AircraftLegPhase.HeldOnTaxiway, tr.Phase);
                 Assert.Equal(FixtureLayout.Threshold, tr.AtNode!.Value.Value);
                 Assert.False(tr.OnEdge.HasValue, "waiting for a stand but on an edge: " + Show.Track(tr));
                 Assert.False(tr.Stand.HasValue, "waiting for a stand but holds one: " + Show.Track(tr));
-                Assert.Empty(free[t]);
+                Assert.Equal(AirConst.TickUnscheduled, tr.DueAt);
+                if (t < pushback.Tick)
+                {
+                    Assert.Empty(free[t]);
+                }
             }
+
+            Assert.Equal(FixtureLayout.S1, tracks[at].Stand!.Value.Value);
+            Assert.Equal(w, rig.Occupant(FixtureLayout.S1)!.Value.Value);
 
             Rec onStand = rig.Rec.Milestone(w, FlightMilestone.OnStand);
             Assert.Equal(FixtureLayout.S1, onStand.Track.Stand!.Value.Value);
@@ -185,6 +193,78 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Empty(rig.Rec.Of<StandAssigned>(rd));
             Assert.Empty(rig.Rec.Of<StandUnavailable>(ra));
             Assert.Empty(rig.Rec.Of<StandUnavailable>(rd));
+        }
+
+        [Fact]
+        public void test_stand_reserved_from_assignment_until_pushback()
+        {
+            // 12 §12.7 (Q-050): assignment at OffRunway sets Occupant at once.
+            // X (a320, 06:31) lands at 3940 behind R_A's slot and leaves the
+            // runway at 3950, while R_A is still taxiing to S1: S1 is not
+            // free, so X takes S2.
+            var rows = new List<string>(Csv.Pair("R_A", "R_D", "06:30", "08:00"));
+            rows.Add(Csv.Row("X", "A", "06:31"));
+            var rig = new HostRig(Csv.Of(rows.ToArray()));
+            ulong ra = rig.Id("R_A");
+            ulong rd = rig.Id("R_D");
+            ulong x = rig.Id("X");
+            var occupant = new Dictionary<ulong, ulong?>();
+            var free = new Dictionary<ulong, List<ushort>>();
+            var raTrack = new Dictionary<ulong, AircraftTrack>();
+            rig.StepEach(AirConst.TicksPerDay, t =>
+            {
+                FlightId? o = rig.Occupant(FixtureLayout.S1);
+                occupant[t] = o.HasValue ? o.Value.Value : (ulong?)null;
+                free[t] = rig.Free();
+                if (rig.Airside.TryGetTrack(new FlightId(ra), out AircraftTrack tr))
+                {
+                    raTrack[t] = tr;
+                }
+            });
+
+            ulong off = rig.Rec.Milestone(ra, FlightMilestone.OffRunway).Tick;
+            ulong onStand = rig.Rec.Milestone(ra, FlightMilestone.OnStand).Tick;
+            ulong pushback = rig.Rec.Milestone(rd, FlightMilestone.Pushback).Tick;
+            Assert.True(occupant[off - 1UL] == null, "S1 occupied before R_A's assignment");
+            for (ulong t = off; t < onStand; t++)
+            {
+                Assert.True(occupant[t] == ra, "t=" + t.ToString(CultureInfo.InvariantCulture) + ": S1 not reserved for R_A during taxi-in");
+                Assert.DoesNotContain(FixtureLayout.S1, free[t]);
+                Assert.Equal(FixtureLayout.S1, raTrack[t].Stand!.Value.Value);
+            }
+
+            for (ulong t = off; t < pushback; t++)
+            {
+                Assert.DoesNotContain(FixtureLayout.S1, free[t]);
+            }
+
+            Assert.Contains(FixtureLayout.S1, free[pushback + 1UL]);
+            Assert.True(rig.Rec.Milestone(x, FlightMilestone.OffRunway).Tick < onStand, "fixture assumption: X leaves the runway during R_A's taxi-in");
+            Assert.Equal(FixtureLayout.S2, rig.Rec.Milestone(x, FlightMilestone.OnStand).Track.Stand!.Value.Value);
+        }
+
+        [Fact]
+        public void test_stand_freed_by_pushback_is_assigned_next_tick()
+        {
+            var rig = new HostRig(Csv.Of(FullApron()));
+            ulong w = rig.Id("W");
+            ulong rd = rig.Id("R_D");
+            rig.RunTo(5000UL);
+            ulong p = rig.Rec.Milestone(rd, FlightMilestone.Pushback).Tick;
+
+            var fresh = new HostRig(Csv.Of(FullApron()));
+            fresh.RunTo(p + 1UL);
+            AircraftTrack waiting = fresh.Track(w);
+            Assert.Equal(AircraftLegPhase.HeldOnTaxiway, waiting.Phase);
+            Assert.False(waiting.Stand.HasValue, "W was given S1 in the tick it was vacated: " + Show.Track(waiting));
+            Assert.Empty(fresh.Rec.Of<StandAssigned>(w));
+
+            fresh.RunTo(p + 2UL);
+            var assigned = fresh.Rec.Of<StandAssigned>(w);
+            Assert.Single(assigned);
+            Assert.Equal(p + 1UL, assigned[0].Rec.Tick);
+            Assert.Equal(FixtureLayout.S1, fresh.Track(w).Stand!.Value.Value);
+            Assert.Equal(w, fresh.Occupant(FixtureLayout.S1)!.Value.Value);
         }
     }
 }

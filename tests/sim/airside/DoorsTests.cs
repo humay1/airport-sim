@@ -61,28 +61,27 @@ namespace AirportSim.Sim.Airside.Tests
         }
 
         [Fact]
-        public void test_doors_open_follows_on_stand_by_one_fixed_delay()
+        public void test_doors_open_follows_on_stand_by_rules_door_delay()
         {
+            // 12 §12.3 (Q-047): DoorsOpen at OnStand + DoorsOpenDelayMinutes ×
+            // TICKS_PER_SIM_MINUTE, planned and actual, read from AirsideRules.
             var rows = new[]
             {
                 Csv.Row("X1", "A", "06:00"), Csv.Row("X2", "A", "06:20"), Csv.Row("X3", "A", "09:40"), Csv.Row("X4", "A", "13:00"),
             };
-            var rig = new HostRig(Csv.Of(rows));
-            rig.RunTo(AirConst.TicksPerDay);
-
-            var delays = new List<ulong>();
-            foreach (string name in new[] { "X1", "X2", "X3", "X4" })
+            foreach (uint minutes in new[] { AirConst.FixtureDoorDelayMinutes, 7U })
             {
-                Rec onStand = rig.Rec.Milestone(rig.Id(name), FlightMilestone.OnStand);
-                Rec open = rig.Rec.Milestone(rig.Id(name), FlightMilestone.DoorsOpen);
-                Assert.True(open.Milestone.ActualTick >= onStand.Milestone.ActualTick);
-                ulong actual = open.Milestone.ActualTick - onStand.Milestone.ActualTick;
-                ulong planned = open.Milestone.PlannedTick - onStand.Milestone.PlannedTick;
-                Assert.Equal(planned, actual);
-                delays.Add(actual);
+                var rig = new HostRig(Csv.Of(rows), doorDelayMinutes: minutes);
+                rig.RunTo(AirConst.TicksPerDay);
+                ulong delay = minutes * AirConst.TicksPerMinute;
+                foreach (string name in new[] { "X1", "X2", "X3", "X4" })
+                {
+                    Rec onStand = rig.Rec.Milestone(rig.Id(name), FlightMilestone.OnStand);
+                    Rec open = rig.Rec.Milestone(rig.Id(name), FlightMilestone.DoorsOpen);
+                    Assert.Equal(onStand.Milestone.ActualTick + delay, open.Milestone.ActualTick);
+                    Assert.Equal(onStand.Milestone.PlannedTick + delay, open.Milestone.PlannedTick);
+                }
             }
-
-            Assert.All(delays, d => Assert.Equal(delays[0], d));
         }
     }
 }
