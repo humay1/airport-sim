@@ -111,14 +111,41 @@ the Test Author and the Verifier:
   across the day's ticks. The mean protects the frame; the p99 catches the peak
   that only shows up at the 07:00 bank, which is exactly when the player is
   watching.
-- **Measured:** the module's `Tick` only, excluding fixture setup and excluding
-  the checkpoint phase, which is billed separately above. There are two
+- **Measured:** the module's own work in each tick, excluding fixture setup
+  and excluding the checkpoint phase, which is billed separately above
+  (Q-064). That is its `Tick`, plus the bodies of the handlers it
+  registers: each command handler's `Apply` in phase 1 (`08` §8.7) and each
+  event handler in phase 3 (`08` §8.6). The bus calling a handler, and the
+  command queue ordering and handing out commands, are `sim.core`'s
+  "commands and event dispatch". The time inside the handler is the
+  subscriber's, as its allocations are (`08` §8.6). A module that registers
+  no handler is measured around `Tick` alone, as before. There are two
   exceptions:
   - `sim.world` bills its callers' queries as well (`18` §18.4);
   - `sim.core` has no `Tick` (Q-044). Its sample is one `ISimHost.Step(1)`
     call on a host whose registered systems are the test's probes, with
     checkpoint ticks included. The probes' own work counts, so a test keeps
     it to what exercises the loop, commands and event dispatch.
+- **Timing a module's handlers (Q-064).** The test builds the module with a
+  `SystemServices` (`08` §8.11a) whose `Events` and `Commands` forward to
+  the real bus and registry. They wrap each handler the module registers
+  in a timing shim when it registers it, during construction. The shim
+  reads `Stopwatch.GetTimestamp()` before and after the real handler and
+  adds the difference to the current tick's sample. It allocates nothing
+  per call. Its own overhead counts against the module, which only makes
+  the test stricter. Tick `t`'s raw sample is the sum of the differences
+  around the module's `Tick` and around every shimmed call during `t`'s
+  phases 1 to 3. The arithmetic below then applies to that sum unchanged.
+  No other way of timing handlers satisfies a budget.
+
+  > **LOW CONFIDENCE — billing handler time to the subscriber.** `01`
+  > leaves the split of its 6 ms to this file, so this is the Architect's
+  > apportionment. It does not change a budget value. But `sim.delay`'s
+  > 0.40 ms (`01`) now has to cover the work it does in handlers, which is
+  > nearly all of its work, and until now none of it was timed. If T-024
+  > measures over budget, the remedy is the reserve, handed out by
+  > amendment, or the owner reopening `01`'s split. It is not narrowing
+  > this rule. Flagged so the owner sees it before T-024.
 - **Allocation:** zero bytes allocated in the update path, asserted as well as
   timed. A GC pause does not appear in a mean and ruins a frame anyway.
   **The update path (Q-061)** of a module is all of its code that runs in
@@ -128,7 +155,8 @@ the Test Author and the Verifier:
   - its event handlers, in phase 3;
   - its queries, when another system calls them in those phases.
 
-  This is wider than "Measured" above, which bills time to `Tick` alone.
+  It covers the same work that "Measured" above times (Q-064), plus the
+  module's queries when other systems call them.
   Outside the update path are construction and `Build`, `Validate` at
   admission, phase 4, and any tick the module's own spec names as allowed
   to allocate, such as `11` §11.9's day materialisation.
@@ -181,7 +209,9 @@ trait, and it does not satisfy a budget.
   `Int128`, no floating point and no `TimeSpan`. Let `f =
   Stopwatch.Frequency` and let `B` be the budget in whole microseconds:
   1. The raw sample `d` is the `Stopwatch.GetTimestamp()` difference
-     around one tick's measured work.
+     around one tick's measured work. For a module with handlers, it is
+     the sum of the differences around each part of that work ("Timing a
+     module's handlers", Q-064).
   2. It is converted to whole microseconds **rounding up**, and capped at
      `C = B × n + 1`. If `d > (long.MaxValue − f + 1) / 1 000 000`, then
      `u = C`. Otherwise `u = min((d × 1 000 000 + f − 1) / f, C)`. Rounding

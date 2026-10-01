@@ -351,6 +351,21 @@ tick both constraints pass, emitting `AircraftHeldForRunwayReleased`
 immediately before the milestone (`Cause` set to the hold event —
 `10-events.md` §10.2).
 
+**`queuePosition` (Q-063).** It is **1-based**, and it counts the flight
+itself. It is the runway's hold-queue length just after the flight joins,
+so `1` means nobody was ahead of it. That is what `RunwayQueueLength`
+(§12.9) would report at that moment. The queue is one list per runway, so
+pacing and occupancy holds share one count. The value is fixed when the hold
+is emitted, and it is not updated while the queue moves up. No event
+reports a later position. `AircraftHeldForRunwayReleased.QueuePosition` is
+always **0**, because the flight is no longer in the queue. It is the
+field's empty value, as `HeldAt` is null on
+`DepartureHeldForPassengersReleased` (`10` §10.6). `sim.delay` reads the
+position from the opening event (`14` §14.3). Copying the opening value
+onto the release would need per-hold state that `AircraftTrack` does not
+carry, and a released flight is always the head, so its current position
+says nothing.
+
 **When a movement is requested (Q-052).** An arrival requests `Landed` in
 its `Tick` at `STA`, exactly. A departure requests `TakeoffRoll` in the
 tick it reaches its runway's `ThresholdNode`. A movement that can claim a
@@ -1115,7 +1130,11 @@ routing, hold-queue order) is a declared deterministic rule; the module
 declares no stream and contributes no stream state to its hash, the same
 posture as `sim.schedule` (`11-interfaces-schedule.md` §11.9).
 
-Budget: **0.80 ms/tick at max tier** (`03-module-map.md`). Per-tick work is
+Budget: **0.80 ms/tick at max tier** (`03-module-map.md`). It covers the
+`FlightPlanPublished` and `FlightMilestoneReached` handlers and the
+`ReassignStand` `Apply`, timed with `03`'s handler shims (Q-064), as well as
+`Tick`. With the handshake, that includes recording into `RecordedCause`
+(§12.8). Per-tick work is
 O(tracked aircraft + runways + held edges + pending + waiters × stands). It is never a
 scan of the taxi graph. The only scans of the stand list are the S5 grants
 (§12.8a), at O(stands) per waiter or new request, and `FreeStands()`'s
@@ -1250,6 +1269,9 @@ Done-condition tests this spec expects to exist, phrased per
   `DeboardComplete`. From the recording to the handoff, the arrival's
   `RecordedCause` names that event, and the system hash differs from that
   of the same run without the probe's event.
+- `test_runway_hold_queue_position_is_one_based_and_release_carries_zero`
+  (Q-063): the first flight held on an empty queue has `queuePosition` 1,
+  and the next has 2. Each release carries 0.
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task

@@ -329,7 +329,10 @@ duration are catalogue lookups. Same posture as `sim.schedule`
 (`11-interfaces-schedule.md` §11.9) and `sim.airside`
 (`12-interfaces-airside.md` §12.12).
 
-Budget: **0.50 ms/tick at max tier** (`03-module-map.md`). Per-tick work is
+Budget: **0.50 ms/tick at max tier** (`03-module-map.md`). It covers the
+module's event handlers, for example the `OnStand` handler that creates jobs
+(§13.6), as well as its `Tick`. They are timed with `03`'s handler shims
+(Q-064). Per-tick work is
 O(active jobs + blocked jobs + vehicles), never a scan proportional to
 flights not currently in turnaround. No allocation in the update path
 (`07-conventions.md`).

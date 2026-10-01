@@ -86,9 +86,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   command `Apply`, `Tick`, event handlers and queries called then. Every
   module with a handler has an allocation test, with or without the
   `Budget` trait, that runs each handler inside the metered window
-  (Q-061)**.
+  (Q-061)**; **a module's measured time is its `Tick` plus its command and
+  event handler bodies, timed through shims in its `SystemServices`
+  (Q-064)**.
 - LC: the checkpoint-hashing ceiling (20 ms) and the snapshot-write ceiling
-  (250 ms).
+  (250 ms); billing handler time to the subscriber, so `sim.delay`'s
+  0.40 ms covers its handlers (Q-064).
 - Read if: planning; any budget test ("How a budget is measured"); the soak
   ("The soak fixture").
 
@@ -263,7 +266,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   state at the handoff, which never runs before its `DoorsOpen` (§12.8,
   §12.8a S4, Q-062)**; **a consumed `DeboardComplete` or `BoardingComplete`
   awaiting action is hashed state, in `AircraftTrack.RecordedCause` (§12.9,
-  §12.12, Q-062)**.
+  §12.12, Q-062)**; **a runway hold's `queuePosition` is 1-based and counts
+  the flight itself, and it is 0 on `Released` (§12.5, Q-063)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
@@ -285,7 +289,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: integer-tick allocation, so leaves sum exactly (§14.6); `DelayEventId`
   is its own counter (§14.7); `DelayEvent` published only at finalisation
   (§14.8); **fifth interval family: passenger hold, `passenger_late`,
-  `DelaySource.PassengerHold` (§14.3, §14.5, §14.9, HD, D6)**.
+  `DelaySource.PassengerHold` (§14.3, §14.5, §14.9, HD, D6)**; **the
+  0.40 ms budget covers the event handlers, timed by `03`'s shims (§14.13,
+  Q-064)**.
 - LC (all accepted as provisional, HD, D8): 2-day retention (§14.2);
   the checkpoint set (§14.4); the cap and recovery order (§14.6).
 - Read if: T-024.
