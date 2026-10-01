@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `sim.delay` |
 | Assigned role | worker |
-| Depends on | T-022, T-023, T-026 |
-| Spec source | `spec/00-overview.md` build order #6; `spec/06-delay-attribution.md`; `spec/10-events.md` §10.5–§10.7; `spec/14-interfaces-delay.md` (answers Q-007) |
+| Depends on | T-022 (not merged), T-023 (merged #71), T-026 (merged #29) |
+| Spec source | `spec/00-overview.md` build order #6; `spec/06-delay-attribution.md`; `spec/10-events.md` §10.5–§10.7; `spec/14-interfaces-delay.md` (answers Q-007); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
 | Blocked by | — |
 
 ## Writable paths
@@ -273,13 +273,26 @@ fixtures. Expect at least:
 - `test_delay_unmatched_close_event_throws_with_tick`
 - `test_delay_tick_consumes_no_rng`
 
+Per `14` §14.13 the Test Author also writes a `Budget` test with handler timers
+(Q-064) and an allocation test with every handler inside the metered window
+(Q-061), both to `03`'s window and arithmetic rules. The spec names no test
+ids for them; the Test Author picks ids in the `test_delay_...` style.
+
 **Do not edit them.** If a test contradicts `spec/14-interfaces-delay.md`,
 file an open question and stop.
 
 ## Performance budget
 
 `0.40` ms/tick at max tier (`spec/03-module-map.md`, `spec/14-interfaces-delay.md`
-§14.13). Per-event O(1) amortised (intervals arrive in `OpenerId` order, no
+§14.13). **It covers the module's event handlers as well as `Tick` (Q-064):**
+nearly all of `sim.delay`'s work runs in phase-3 handlers, and a budget test
+sums `Tick` and every shimmed handler call per tick (`03` "Timing a module's
+handlers"). **LOW CONFIDENCE (`03`):** the 0.40 ms now covers work no budget
+timed before. If the measurement is over, the worker does **not** narrow the
+rule, widen the budget or retry: report it to the team lead, because the
+remedy (the reserve, or the owner reopening `01`'s split) is the owner's
+decision. The allocation test runs every handler inside the metered window
+(Q-061, §14.13). Per-event O(1) amortised (intervals arrive in `OpenerId` order, no
 sort needed); per-checkpoint O(k log k) for the flight's *k* retained
 intervals, never a scan over all flights or nodes; pruning is O(nodes
 pruned), once per sim-day. No allocation in the update path — records,

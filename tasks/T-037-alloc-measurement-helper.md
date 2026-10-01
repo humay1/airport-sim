@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_PROGRESS (PR to follow) |
+| Status | MERGED (PR #51) |
 | Module | `sim.core` test infrastructure (plus `sim.world` tests) |
 | Assigned role | test-author |
 | Depends on | T-036 (merged) |

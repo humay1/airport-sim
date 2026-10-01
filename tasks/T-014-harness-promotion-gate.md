@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-009, T-010 |
+| Depends on | T-009 (merged #74), T-010 (merged #56) |
 | Spec source | `spec/19-interfaces-harness.md` §19.2 ("`Promotion` before `sim.flow` promotion (T-010)"); `spec/09-interfaces-flow.md` §9.1, §9.7 (`SetPromoted`/`AgentsAt`, Q-033), "Promotion rules"; `spec/02-determinism.md` "Gates" (`determinism_promotion`: "same day headless vs with camera parked on a gate") |
 | Blocked by | — |
 

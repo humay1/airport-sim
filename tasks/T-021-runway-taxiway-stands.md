@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `sim.airside` |
 | Assigned role | worker |
-| Depends on | T-003, T-005, T-008, T-026 |
-| Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005; §12.8's boarding hold answers part of Q-007 §14.9, HD D6; §12.8a step order, §12.11 pending list, §12.2 capacities, §12.4 file format and `AirsideRules`, §12.10 no-op log line, §12.13 tests: PR #67, `8cf445c`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (PR #68) |
+| Depends on | T-003 (merged #18), T-005 (merged #26), T-008 (merged #54), T-026 (merged #29); all merged |
+| Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005; §12.8's boarding hold answers part of Q-007 §14.9, HD D6; §12.8a step order, §12.11 pending list, §12.2 capacities, §12.4 file format and `AirsideRules`, §12.10 no-op log line, §12.13 tests: PR #67, `8cf445c`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (PR #68) and "How a budget is measured" (Q-061, Q-064; PRs #73, #75); `spec/12-interfaces-airside.md` Q-060 to Q-063 (PRs #73, #75) |
 | Blocked by | — |
 
 **Dependency correction (systematic type-dependency recheck):**
@@ -127,6 +127,7 @@ readonly struct AircraftTrack {
   Tick             PhaseEnteredAt
   Tick             DueAt               // the hold deadline during a boarding hold, D6
   Tick             PassengerHoldSince  // §12.8 boarding hold start; TICK_UNSCHEDULED unless held
+  EventRef         RecordedCause       // §12.8 steps 3 and 5, Q-062; EventRef.None unless a consumed event awaits action
 }
 
 readonly struct StandState { StandId Id; FlightId? Occupant }
@@ -452,7 +453,8 @@ budget test for `sim.airside` (0.80 ms/tick, `B = 800` whole microseconds)
 that follows `03` "Budget tests: window and arithmetic" exactly, not the
 older "across the day's ticks" reading:
 
-- the sample is the module's `Tick` only (`03` "Measured"), one sample per
+- the sample is the module's `Tick` plus its handlers and `Apply`, timed by
+  shims (`03` "Measured", Q-064; see the post-#73/#75 note above), one sample per
   tick, over exactly `n = 14 400` consecutive ticks after warm-up; no shorter
   window satisfies a budget; several windows are judged one by one, never as
   a union, and do not overlap;
@@ -470,6 +472,40 @@ older "across the day's ticks" reading:
   duration exceeds 5 s: then add `Slow` beside `Budget`. The window is never
   shortened.
 
+**Post-#73/#75 sync (2026-10-01): Q-060 to Q-064.** `12` is the source; this
+file cites it and does not restate it. The worker implements to §12.8 steps 3
+and 5, §12.8a S4, §12.9 `RecordedCause`, §12.10 and §12.12; the tests are the
+Test Author's. Additional §12.13 tests:
+
+- `test_taxi_hold_blocking_names_same_step_grantee_and_release_blocking_is_null` (Q-060)
+- `test_taxi_hold_blocking_names_snapshot_occupant_that_left_this_tick` (Q-060)
+- `test_airside_update_path_allocates_nothing_including_handlers` (Q-061, §12.12)
+- `test_handed_off_arrival_leaves_tracked_state_at_handoff` (Q-062)
+- `test_handoff_waits_for_arrival_doors_open_when_deboard_completes_first` (Q-062; probe at position 5, `turnaroundRegistered` true)
+- `test_runway_hold_queue_position_is_one_based_and_release_carries_zero` (Q-063)
+
+Consequences for the worker, each by `12` and not new here:
+
+- **`AircraftTrack.RecordedCause`** (`EventRef`, §12.9) is implemented, set only
+  by the §12.8 step 3 and 5 handlers, cleared only by the action it waits for,
+  **hashed in §12.12 item 4 and saved with the track**. The handed-off arrival
+  leaves tracked state (Q-062): `TryGetTrack(arrival)` is false afterwards.
+- `Blocking` and `QueuePosition` payloads follow Q-060 and Q-063 exactly; both
+  `Released` events carry their empty value (null, 0).
+- **The update path includes handlers and `ReassignStand` `Apply`** (Q-061): no
+  allocation in the `FlightPlanPublished` or `FlightMilestoneReached` handlers
+  or in `Apply`, which write only into the preallocated pending list and
+  existing tracks' `RecordedCause`.
+- **Test-side note for the Test Author:** a `Show.Track`-style helper that
+  renders or compares an `AircraftTrack` must include `RecordedCause`, or two
+  tracks that differ only in it compare equal.
+- **`AirsideBudgetTests` times handlers (Q-064).** The sample is `Tick` plus
+  the bodies of the module's handlers and `Apply`, each wrapped by a
+  non-allocating shim in the test's `SystemServices` (`03` "Timing a module's
+  handlers"), summed per tick; the arithmetic above then applies unchanged. Its
+  max-tier run uses `turnaroundRegistered` true with a position-5 probe, so
+  the `FlightMilestoneReached` handler is in the window (§12.12).
+
 **Do not edit them.** If a test contradicts `spec/12-interfaces-airside.md`,
 file an open question and stop.
 
@@ -480,7 +516,7 @@ file an open question and stop.
 14 400-sample window with p99 ≤ 1.6 ms (`AirsideBudgetTests` above). Per-tick
 work is O(tracked aircraft + runways + held edges + pending + waiters ×
 stands), never a scan of the taxi graph; `FreeStands()` is O(stands), bounded and cheap at max
-tier (60 stands). No allocation in the update path; the routing table is
+tier (60 stands). No allocation in the update path, which includes the handlers and the `ReassignStand` `Apply` (Q-061); the routing table is
 computed once at load, off the tick path.
 
 ## Done when

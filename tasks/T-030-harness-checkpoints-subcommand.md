@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-004, T-006, T-009 |
+| Depends on | T-004 (merged #20), T-006 (merged #31), T-009 (merged #74); all merged |
 | Spec source | `spec/16-interfaces-host.md` §16.8 "The harness side" (D7) |
 | Blocked by | — |
 

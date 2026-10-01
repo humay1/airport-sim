@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN_PROGRESS (blocked on T-036 merging, for its budget test) |
+| Status | MERGED (PR #48) |
 | Module | `sim.flow` |
 | Assigned role | worker |
 | Depends on | T-003, T-012, T-026, T-036 |

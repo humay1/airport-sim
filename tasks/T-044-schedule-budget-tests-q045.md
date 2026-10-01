@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.schedule` tests |
 | Assigned role | test-author |
-| Depends on | T-040 (writes `tests/sim/schedule/ScheduleHashTests.cs`; merge it first) |
+| Depends on | T-040 (merged #64; wrote `tests/sim/schedule/ScheduleHashTests.cs`) |
 | Spec source | `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-044, Q-045; PR #68, `7c9a373`); `spec/11-interfaces-schedule.md` §11.9; `spec/07-conventions.md` L11, L11a |
 | Blocked by | — |
 
@@ -26,7 +26,7 @@ reading every timed `Budget` test in `tests/sim/schedule/**`. `03` notes the
 window "generalises `11` §11.9's rule (Q-031)", so a window need not start on a
 sim-day boundary, but must cover 14 400 consecutive ticks, which includes each
 bank. T-040 tags `ScheduleHashTests`, a different file in the same directory, so
-this task is serialised after it to keep the paths unshared.
+this task is serialised after it to keep the paths unshared. (historical, resolved: T-040 merged #64)
 
 ## What this task does
 

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (spec gap closed by Q-057; releasable after T-009 merges and tests are authored) |
+| Status | QUEUED (spec gap closed by Q-057; releasable after T-009 merges and tests are authored) (historical, resolved: T-009 merged #74; now ordered after T-030, then one at a time with T-014) |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`) |
 | Assigned role | worker |
-| Depends on | T-009 (first of the later harness writers: T-013, then T-014, T-030, T-045; see `queue.md`) |
+| Depends on | T-009 (merged #74); harness writer order is T-030, then T-013 and T-014 one at a time, then T-045; see `queue.md` |
 | Spec source | `spec/19-interfaces-harness.md` §19.2b and §19.3 (Q-057, PR #70, `b00adcb`); `spec/00-overview.md`; `spec/02-determinism.md` "Gates" (`soak_500_days`); `spec/03-module-map.md` "The soak fixture" (answers Q-003, D3) |
 | Blocked by | — |
 
@@ -15,7 +15,7 @@
 that: the nightly soak runs a **mid-tier** fixture kept under 0.1 ms/tick
 mean, not the max-tier fixture the per-module budget tests use — at max-tier
 cost 500 days is roughly 12 hours, not "minutes". This task authors that
-fixture and its golden hash, once T-009 has landed the harness's own
+fixture and its golden hash, once T-009 (merged #74) has landed the harness's own
 100-day/goldens-allowed baseline (`spec/08-interfaces-core.md` §8.1/§8.2,
 D2: golden hashes may now be authored).
 
@@ -139,7 +139,7 @@ and escalate if that is not enough.
 
 **Spec gap closed (Q-057, spec PR #70, `b00adcb`).** `19` §19.2b and §19.3
 now specify `soak` (grammar, exit codes, composition, golden handling). The
-hold on this task is lifted: it is releasable once T-009 has merged and the
+hold on this task is lifted: it is releasable once T-009 has merged (done, #74; the harness writer order in `queue.md` still applies) and the
 Test Author's tests and `tests/fixtures/soak/**` are authored. The nightly
 workflow's existing `soak --days 500 --golden tests/golden/soak-500.hashes`
 needs no change.

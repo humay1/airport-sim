@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #71) |
 | Module | `sim.flow` |
 | Assigned role | test-author (tests-only; T-007 already implemented the behaviour) |
 | Depends on | T-005, T-007, T-026 |
@@ -24,7 +24,7 @@ Never edit the code and never weaken a test.
 
 Shares a directory with T-039 and T-040 (`tests/sim/flow/**`); do not release
 concurrently with either unless they write different files, and check for
-overlap before release.
+overlap before release. (historical, resolved: T-039 #63, T-040 #64 and this task #71 are all merged)
 
 ## Readable specs
 

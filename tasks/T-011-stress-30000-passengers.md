@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #59) |
 | Module | `sim.flow` |
 | Assigned role | worker |
 | Depends on | T-010 |
@@ -48,7 +48,7 @@ needed to meet it. Do not add a new fixture or test file under `tests/**`
 yourself, no matter how tempting — file back to the Test Author instead.
 
 **Release order, binding (this cycle):** T-011 depends on T-010, which is
-not yet merged. The Test Author's tests are done
+not yet merged. (historical, resolved: T-010 merged #56; this task merged #59) The Test Author's tests are done
 (`test-author/T-011-stress-30k-tests`, `a885923`:
 `tests/sim/flow/StressDay.cs`, `FlowStressBudgetTests.cs`) and **pass the
 budget against `main` today** — mean `0.50`–`0.63` ms, p99 `2.60`–`3.26` ms
@@ -60,6 +60,7 @@ since T-010 itself lands in this same directory. **A worker is needed only
 if the budget fails once T-010's code is in** — as things measure now, on
 pre-T-010 `main`, it holds with margin, but T-010 changes `sim.flow`'s own
 update path (cohort→agent promotion/demotion) and could change the cost.
+(historical, resolved: that PR merged after T-010 (#56); T-011 merged #59 and no worker was needed)
 
 ## Readable specs
 
@@ -106,7 +107,7 @@ architecture is redesigned here — not later. Escalate to the human owner."
 `a885923`): mean `0.50`–`0.63` ms, p99 `2.60`–`3.26` ms, `0` bytes
 allocated, peak `252` live cohorts. Well inside budget as of today; T-010
 has not yet merged, so this is not the final measurement — see the Release
-order note above.
+order note above. (historical, resolved: T-010 merged #56)
 
 ## Done when
 
