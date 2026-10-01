@@ -3,7 +3,9 @@
 Pins the harness subcommands that `ci/run-checks.sh` invokes, their exit
 codes and output, and the public surface that the harness's own test project
 compiles against. It answers `open-questions.md` Q-025, Q-026 and Q-027,
-and, for T-009's Phase 0 composition, Q-041 to Q-043.
+and, for T-009's Phase 0 composition, Q-041 to Q-043. For T-013's `soak`
+subcommand, which the nightly workflow invokes (`.github/workflows/`), it
+answers Q-057, and for T-045's budget statistic Q-058.
 Notation is as in `08-interfaces-core.md`. Where this file appears to
 contradict `01-architecture.md` or `02-determinism.md`, those win and it is a
 spec bug. `ci/**` is the human owner's. This file describes what the harness
@@ -38,6 +40,7 @@ HarnessGates.SameProcess(IContentIndex content, SimComposer compose, uint64 seed
 HarnessGates.SaveLoad(IContentIndex content, SimComposer compose, uint64 seed, uint32 ticks, uint32 saveAt) -> GateResult
 HarnessGates.Promotion(IContentIndex content, SimComposer compose, uint64 seed, uint32 ticks) -> GateResult
 HarnessGates.FinalHash(IContentIndex content, SimComposer compose, uint64 seed, uint32 ticks) -> string
+HarnessGates.BudgetFromSamples(IReadOnlyList<int64> samples, int64 frequency) -> GateResult   // Q-058, §19.4
 ```
 
 - `Program.Main(args)` is exactly `HarnessCli.Run(args, Console.Out,
@@ -63,6 +66,11 @@ HarnessGates.FinalHash(IContentIndex content, SimComposer compose, uint64 seed, 
   exceptions to exit codes (§19.3).
 - `FinalHash` runs once and returns the final `WorldStateHash()` as exactly
   16 lowercase hexadecimal digits.
+- `BudgetFromSamples` runs nothing. It is the pure §19.4 statistic, and
+  its argument rules are in §19.4. It is the only member that takes
+  timings. No CLI form passes samples in, and none may be added.
+- `soak` (§19.2b) has no `HarnessGates` member. It is reached only through
+  `HarnessCli.Run`.
 
 ## 19.2 What each gate does (Q-026, Q-027)
 
@@ -105,23 +113,30 @@ If every checkpoint agrees but the final hashes differ: `final`.
   including `sim.flow`, and the Planner creates it (Q-033). Until then, a
   harness that stubs the comparison is wrong.
 - **The CLI composition.** Every CLI run, of every subcommand in §19.3,
-  uses the Phase 0 composition of §19.2a (Q-042, from T-009). It replaces
+  uses the composer of §19.2a (Q-042, from T-009). `soak` runs it over the
+  soak fixture set (§19.2b, Q-057), and every other subcommand over the
+  Phase 0 fixture set. It replaces
   T-006's empty composition, which no CLI form selects any more. The empty
   composition stays reachable only through `HarnessGates` with a composer
   that registers nothing, as the gate tests already use it. No option,
-  flag or environment variable selects a composition.
+  flag or environment variable selects a composition or a fixture set. The
+  subcommand alone decides the set.
 - **Untested by design (Q-029).** `at=world` and `at=count` cannot be
   reached. Runs of one gate step the same ticks at the same checkpoint
   cadence, so their counts match. A world hash is a function of the tick,
   `CoreHash` and `SystemHashes`, so it cannot differ while those agree. Both
   stay in the grammar as defensive reports. Exit codes 1 and 3 cannot be
-  reached by a test through `HarnessCli.Run` either (Q-042). Code 1 needs a
+  reached by a test through `HarnessCli.Run` either (Q-042), except by
+  `soak` (below). Code 1 needs a
   nondeterministic composition, and the Phase 0 composition is
   deterministic. Code 3 needs a missing or invalid repository fixture, which
   an in-process test cannot arrange without writing repository files. The
   divergence seam (§19.1) proves failure through `HarnessGates` instead, and
   no CLI seam is added. T-006's earlier statement that the first composing
-  task makes them reachable is withdrawn.
+  task makes them reachable is withdrawn. `soak` is the exception, because
+  its golden and output paths may be fully qualified paths outside the repository
+  (§19.2b). A test reaches code 1 with an altered golden and code 3 with a
+  missing one, both in a temporary directory (§19.7).
 
 ## 19.2a The Phase 0 CLI composition (Q-042, Q-043)
 
@@ -140,6 +155,11 @@ harness reads nothing else, and never reads `data/`.
 | flow graph | `tests/fixtures/flow/phase0-landside.flow.json` | `FlowFactory.CreateGraphLoader().Load(…, world)` (`09` §9.11) | `phase0-landside.flow.json` |
 | schedule | `tests/fixtures/schedule/phase0-200.csv` | `ScheduleFactory.CreateLoader().Load` (`11` §11.9a) | `phase0-200.csv` |
 
+These four are the **Phase 0 fixture set**. `soak` uses the **soak fixture
+set** of §19.2b instead, which has the same four inputs at other paths.
+Every rule in this section applies to either set, with that set's paths
+and `sourceName`s.
+
 - **Locating them.** The `07` "Fixture location" rule (Q-031), applied to
   the harness: walk up from `AppContext.BaseDirectory` to the nearest
   ancestor directory that contains a file named `AirportSim.sln`, then join
@@ -155,8 +175,9 @@ harness reads nothing else, and never reads `data/`.
   error, exit 3 with stdout empty (§19.3): not finding the root, failing
   to read a file, a malformed manifest, and any load, parse or validation
   failure, whether before the first run or inside it.
-- **The content manifest.** `phase0-content.files` is UTF-8 without a BOM.
-  Each line is one path relative to `phase0-content/`, `/`-separated, and
+- **The content manifest.** `phase0-content.files`, like the soak set's
+  manifest, is UTF-8 without a BOM.
+  Each line is one path relative to its content directory, `/`-separated, and
   ends in LF. It has no empty line and no duplicate. The harness's
   `IContentSource` returns exactly those lines from `Files()`, and those
   files' bytes from `ReadAll`. This is the T-027 `valid.files` convention:
@@ -167,7 +188,7 @@ harness reads nothing else, and never reads `data/`.
   `queue_profile` ids. Its values are **fixture sizing** (`09` §9.10, `11`
   §11.10), not balance. The Test Author chooses them so that the security
   queues drain between banks over 100 days, and states the derivation in
-  the kill-gate test kit (§19.6).
+  the kill-gate test kit (§19.6). The soak set's sizing is §19.2b.
 
 **The composer.** Every call parses the walk-graph, flow-graph and
 schedule bytes afresh and constructs fresh systems, as §19.1 requires of
@@ -183,7 +204,10 @@ the stand-in (3), `flow` (4), and nothing else. So every checkpoint's
 `SystemHashes` has exactly four entries, in that order.
 
 **The boarding stand-in (Q-043).** A harness-internal `ISimSystem` with
-`Id = SystemId(3)`. `Name` is a free diagnostic label. It stands in for
+`Id = SystemId(3)`. `Name` is a free diagnostic label. Once the soak
+golden exists, though, it is part of that golden's `systems` line (§19.2b),
+so whatever value T-009 merges is then kept, and changing it is a golden
+change. It stands in for
 exactly one `sim.airside` behaviour: the departure's `Absorb` call at the
 doors-close point (`12` §12.7), taken at that point's planned tick, `STD`
 (`12` §12.3: `DoorsClosed.PlannedTick = STD`). It models no boarding hold,
@@ -202,8 +226,9 @@ no stand and no milestone.
   once, at `STD`. `sim.schedule` (2) ticks before it, so a passenger
   injected at `STD` is already in `sim.flow`, and is reported missed.
 - **`PHASE0_DEPARTURE_SINK = NodeId(9)`**, the only `Sink` node of
-  `tests/fixtures/flow/phase0-landside.flow.json`. It is a harness-internal
-  constant. If that fixture's `Sink` changes, this line is amended in the
+  `tests/fixtures/flow/phase0-landside.flow.json`, and of the soak set's
+  flow graph (§19.2b). It is a harness-internal constant, the same for both
+  sets. If either fixture's `Sink` changes, this line is amended in the
   same change. A wrong value throws in `Absorb` (`09` §9.7), which is exit
   3.
 - **Events.** It publishes nothing itself, and it subscribes to nothing.
@@ -226,14 +251,98 @@ no stand and no milestone.
   production composition (`16`) registers it. `08` §8.5's probe-system
   allowance covers it.
 
-**`budget --tier max`** times the first sim-day of this composition
-(§19.4).
+**`budget --tier max`** times the first sim-day of this composition, over
+the Phase 0 set (§19.4).
+
+## 19.2b `soak`: the soak fixture set and the golden (Q-057)
+
+Binding on T-013 and its Test Author. This is how the harness runs `02`'s
+`soak_500_days` gate and `03` "The soak fixture".
+
+**The soak fixture set.** Four fixtures, all written by the Test Author
+under `tests/fixtures/soak/` (`03`). They are loaded exactly as the
+Phase 0 set is (§19.2a), with the same loaders, rules and failure
+handling:
+
+| Input | Repository path | `sourceName` |
+|---|---|---|
+| content | manifest `tests/fixtures/soak/soak-content.files`, files under `tests/fixtures/soak/soak-content/` | none |
+| walk graph | `tests/fixtures/soak/soak-landside.json` | `soak-landside.json` |
+| flow graph | `tests/fixtures/soak/soak-landside.flow.json` | `soak-landside.flow.json` |
+| schedule | `tests/fixtures/soak/soak.csv` | `soak.csv` |
+
+- The flow graph's only `Sink` is `NodeId(9)`, which is
+  `PHASE0_DEPARTURE_SINK` (§19.2a).
+- Every schedule row has `repeat_daily = 1`, so that every day carries
+  load (`03`).
+- **Sizing.** The fixture is sized as `03` requires, with headroom below
+  0.1 ms per tick of whole-sim mean cost. The security queues drain between
+  banks, and live cohorts stay bounded over 500 days. The values are
+  fixture sizing, not balance. The Test Author states the derivation in
+  the sizing test (§19.7).
+- The set is separate from the Phase 0 set so that editing a Phase 0
+  fixture for T-009's tests never moves the soak golden, and editing the
+  soak set never moves a T-009 expectation.
+
+**The run.** `soak --days D` makes one run (§19.1) of `ticks = D ×
+TICKS_PER_SIM_DAY`, with seed 12345, §19.2's command script for that
+`ticks`, and the §19.2a composer over the soak set. It is compared with no
+second run. `02`'s pass condition is the golden. `soak` times nothing and
+reports no timing. The 0.1 ms bound is checked by the sizing test, not by
+the gate.
+
+**The dump.** From the run's recorded checkpoints, the harness builds the
+checkpoint dump, version 1, of `16` §16.8, byte for byte: `seed 12345`,
+the `systems` line with the four registered systems' `Name`s in registry
+order, and then one line per checkpoint. Call its bytes `R`.
+
+**`--golden P`.** Before the run, the harness reads all of `P`'s bytes
+once, into `G`. A failure to read is exit 3. After the run, the gate passes
+iff `R` and `G` are byte-identical. Otherwise let `o` be the first byte
+offset at which they differ, or the shorter length if one is a prefix of
+the other. The report is `FAIL soak line=<L>`, where `L` is 1 plus the
+number of LF bytes in `R` before `o`, and the exit code is 1. On stderr the
+harness should also write line `L` of each. That output is free-form and
+is not tested. The harness reads no other golden file, so
+`soak-500.meta.json` is never read.
+
+**`--out P`.** This form authors a golden, and CI does not use it. Before
+the run, if `P` already exists, or its parent directory does not, that is
+exit 3. So the harness never overwrites a file. After the run, it creates
+`P` as a new file and writes `R` to it. A failure to write is exit 3.
+Writing a file does not make it a golden. Whether a dump is committed as
+`tests/golden/soak-500.hashes`, and who confirms it, is governed by
+`tests/golden/README.md` (no agent regenerates a golden, and the human
+owner confirms every change).
+
+**Paths.** `P` is not empty. If `Path.IsPathFullyQualified(P)`, it is
+used as given. Otherwise it is a `/`-separated repository-relative path,
+joined to the root found as in §19.2a. `Path.IsPathRooted` is not the
+test. On Windows it also accepts `/x` and `C:x`, which resolve against the
+current drive or directory. A `P` that is rooted but not fully qualified
+is therefore a usage error. The current working directory is never used.
+So the nightly workflow's `--golden tests/golden/soak-500.hashes` names the
+committed golden from whatever directory the job runs in.
+
+**The golden.** `tests/golden/soak-500.hashes` is the `--out` dump of
+`soak --days 500` (`03`). Until it is committed, the nightly `soak` exits
+3. That is correct, because a missing golden is a harness error and never a
+pass.
+
+**When the composition changes.** The soak registers what the §19.2a
+composer registers, which is every system the harness composes (`03`).
+The amendment that adds a system to that composer, such as `sim.airside`
+replacing the stand-in, changes the soak's hashes, and its golden is
+re-authored under the README's rules.
 
 ## 19.3 The command line (Q-026)
 
-Exactly these forms, which are the ones `ci/run-checks.sh` uses. The flags
-after the subcommand may come in any order. Each is given at most once, and
-each value is a decimal integer without a sign.
+Exactly these forms. The first five are the ones `ci/run-checks.sh` uses.
+`soak --golden` is the one the nightly workflow uses (Q-057), and
+`soak --out` is used by no CI job. The flags
+after the subcommand may come in any order. Each is given at most once.
+Each value is a decimal integer without a sign, except `P`, which is a
+path (§19.2b).
 
 | Invocation | Does | Seed |
 |---|---|---|
@@ -242,28 +351,34 @@ each value is a decimal integer without a sign.
 | `saveload --ticks T --save-at K` | `SaveLoad(T, K)` | 12345 |
 | `promotion --days D` | `Promotion`, `ticks = D × TICKS_PER_SIM_DAY` | 12345 |
 | `budget --tier max` | §19.4 | 12345 |
+| `soak --days D --golden P` | §19.2b, the run's dump compared with `P` | 12345 |
+| `soak --days D --out P` | §19.2b, the run's dump written to `P` | 12345 |
 
 **Usage errors.** A missing subcommand or flag, an unknown subcommand or
 flag, a repeated flag, a value that does not parse, `D = 0`,
 `D × TICKS_PER_SIM_DAY` above `uint32`, `T = 0`, `K` outside `0 < K < T`,
-and a `--tier` other than `max` are all usage errors.
+a `--tier` other than `max`, a `soak` with both or neither of `--golden`
+and `--out`, an empty `P`, and a `P` for which `Path.IsPathRooted` is
+true but `Path.IsPathFullyQualified` is false (§19.2b) are all usage
+errors.
 
 **Exit codes.**
 
 | Code | Meaning |
 |---|---|
-| 0 | the gate passed |
-| 1 | the gate failed: a divergence, or a budget exceeded |
+| 0 | the gate passed, or `soak --out` wrote its dump |
+| 1 | the gate failed: a divergence, a budget exceeded, or a `soak` dump that differs from its golden |
 | 2 | usage error. Nothing runs, and stdout stays empty |
-| 3 | harness error: any exception during the run, `SimInvariantException` included, or a §19.2a fixture failure before the first run |
+| 3 | harness error: any exception during the run, `SimInvariantException` included, a §19.2a fixture failure before the first run, or a §19.2b path failure (a golden that cannot be read, or an `--out` path that exists, has no parent directory or cannot be written) |
 
 For codes 2 and 3, stdout is empty, and stderr carries one human-readable
 message. For 3 that is the exception's `ToString()`, or, for a pre-run
-fixture failure that is not an exception, a message naming the file and
-the failure. No other exit code is
-returned. There is no "not implemented" code: all four subcommands are
-T-006's in full, and a subcommand that cannot run fails as code 3, never as
-0.
+fixture or path failure that is not an exception, a message naming the file
+and the failure. No other exit code is
+returned. There is no "not implemented" code: `determinism`, `saveload`,
+`promotion` and `budget` are T-006's in full, `soak` is T-013's, and a
+subcommand that cannot run fails as code 3, never as 0. Until T-013
+merges, `soak` is an unknown subcommand, which is code 2.
 
 **Stdout.** UTF-8 without a BOM, LF, invariant formatting, single spaces.
 There is **exactly one line**, followed by a newline:
@@ -273,10 +388,16 @@ There is **exactly one line**, followed by a newline:
 pass:          PASS <gate> ticks=<n> checkpoints=<k> final=<hex16>
 divergence:    FAIL <gate> tick=<t> at=<where>
 budget:        <PASS|FAIL> budget ticks=<n> mean_us=<m> p99_us=<p>
+soak written:  WROTE soak ticks=<n> checkpoints=<k> final=<hex16>
+soak differs:  FAIL soak line=<L>
 ```
 
-- `<gate>` is `determinism_same_process`, `determinism_save_load` or
-  `determinism_promotion`.
+- In the pass line, `<gate>` is `determinism_same_process`,
+  `determinism_save_load`, `determinism_promotion` or `soak`. In the
+  divergence line, it is one of the first three only, because `soak`
+  reports a difference with its own line.
+- In the `soak` pass and written lines, `final` is the run's final
+  `WorldStateHash()`. `<L>` is defined in §19.2b.
 - `<hex16>` is 16 lowercase hexadecimal digits.
 - `<k>` is the number of checkpoints in one run (for `SaveLoad`, in U).
 - `<where>` is `count`, `core`, `system:<j>`, `world`, `final` or `reload`
@@ -292,7 +413,8 @@ free-form and is not tested.
 
 ## 19.4 `budget --tier max` (Q-026)
 
-One run of `TICKS_PER_SIM_DAY` ticks with the CLI composition, stepped one
+One run of `TICKS_PER_SIM_DAY` ticks with the CLI composition over the
+Phase 0 set, stepped one
 tick per `Step(1)`. Each `Step(1)` is timed with
 `Stopwatch.GetTimestamp()` in `long` arithmetic (`07` L11). The samples,
 the pass condition and the reported numbers are exactly `03` "Budget tests:
@@ -305,6 +427,30 @@ accepted a mean just over 6000 µs. That is the `03` statistic applied to
 `01`'s 6 ms whole-sim total. Per-module budgets
 stay in each module's own tests (`03`, "How a budget is measured"). The
 harness does not re-assert them.
+
+**The statistic is `HarnessGates.BudgetFromSamples` (Q-058).** Real
+timings cannot show rounding up apart from flooring, so the statistic is a
+pure public member that a test calls with chosen samples. It runs nothing,
+reads no clock, and does not modify `samples`.
+
+- **Result.** `samples` are the raw differences `d`, and `frequency` is
+  `f`. With `B = 6000` and `n = samples.Count`, `Passed` is `03`'s verdict
+  (steps 2 to 4), and `Report` is the §19.3 budget line, `ticks=<n>`, with
+  `03` step 5's `mean_us` and `p99_us`.
+- **The CLI uses it.** `budget --tier max` collects its `n` samples in tick
+  order and makes exactly one call, with `Stopwatch.Frequency`. It prints
+  `Report`, and it exits 0 if `Passed` and 1 otherwise. The CLI computes
+  no part of the verdict or the line itself. A Reviewer checks this,
+  because a test cannot.
+- **Arguments.** `null` throws `ArgumentNullException`. These throw
+  `ArgumentOutOfRangeException`: `samples.Count ≠ TICKS_PER_SIM_DAY`
+  (`03`'s window), any sample below 0, and a `frequency` that is ≤ 0 or
+  above `long.MaxValue / (C + 1)` with `C = 6000 × TICKS_PER_SIM_DAY + 1`
+  (`03` step 2's bound, beyond which the rule does not hold). In the CLI,
+  such an exception is exit 3.
+- **Why a public member.** `07` L5 forbids `InternalsVisibleTo`, so an
+  internal function could not be tested. A CLI flag that injects timings
+  would put a seam in the gate itself. This member adds neither.
 
 > **LOW CONFIDENCE — the load.** `03` names a max-tier fixture, and the harness
 > has none. Until one is specified, `budget --tier max` times the CLI
@@ -404,3 +550,67 @@ Binding on T-009's Test Author.
     nodes, are at most a ceiling that the Test Author sets and derives in
     the test (`09` §9.10). This is the check that catches a `Gate` growing
     without bound.
+
+## 19.7 Tests of `soak` and of the budget statistic (Q-057, Q-058)
+
+Binding on the Test Authors of T-013 and T-045. Every test is in
+`tests/tools/simharness/` (Q-041). No test writes a repository file. A
+`soak` path in a test is a fully qualified path in a fresh temporary directory
+that the test deletes. No xUnit test runs 500 days, since the nightly gate
+does that.
+
+**`soak` (T-013).** The **soak kit** is §19.6's kit composition built over
+the soak set instead of the Phase 0 set.
+
+- **Round trip.** `soak --days 1 --out <tmp>/a` exits 0 and prints the
+  `WROTE` line. The file starts `airport-sim-checkpoints 1`, then
+  `seed 12345`, then a `systems` line with four names, and has 24
+  checkpoint lines. `soak --days 1 --golden <tmp>/a` then exits 0 and
+  prints the `PASS soak` line, with the same `checkpoints=24` and `final`.
+- **Equivalence.** That `final` equals `HarnessGates.FinalHash` of the
+  soak kit content and composer, seed 12345, 14 400 ticks. This ties the
+  soak kit to the CLI.
+- **Reproducible.** Two `--out` runs of `--days 1`, to two files, are
+  byte-identical.
+- **Differs.** The golden with one hexadecimal digit changed on its
+  checkpoint line `L` exits 1 and prints `FAIL soak line=<L>`. The golden
+  cut to its first `M` lines, with line `M`'s terminating LF kept, exits 1
+  and prints `FAIL soak line=<M + 1>`. That is a prefix of `R`, so `o` is
+  its length, and `R` has `M` LF bytes before `o`. If line `M`'s LF were
+  dropped too, the report would be `line=<M>`. The test uses the LF-kept
+  form.
+- **Path failures.** A `--golden` path that does not exist exits 3, and a
+  `--out` path that already exists exits 3 and leaves that file unchanged.
+  In both, stdout is empty.
+- **Usage.** `soak --days 1` alone, `soak` with both `--golden` and
+  `--out`, `soak --days 1 --golden ""`, and `soak --days 1 --seed 1
+  --golden <tmp>/a` all exit 2.
+- **Sizing.** One run of the soak kit through `HarnessGates.FinalHash`,
+  of `K` sim-days with `K ≥ 10` and seed 12345, takes in total less than
+  `K × 14 400 × 100` µs. That is a mean under 0.1 ms per tick. It is
+  measured as §19.6 (a) is: one `long` elapsed difference around the whole
+  call, compared in `long` arithmetic. It carries the `Budget` trait, but
+  it is a whole-run gate and is not bound by `03`'s per-tick statistic. It
+  is Slow by `07` L11a whenever `K > 10`. After it returns, it checks that
+  the live cohorts stay at most a ceiling that the Test Author derives in
+  the test, as in §19.6. The derivation of the fixture's sizing goes in
+  this test.
+
+**The budget statistic (T-045).** These tests call
+`HarnessGates.BudgetFromSamples` directly, with `n = 14 400` samples and
+`f = 10^7` unless stated otherwise. There are six: the five below, each
+with its exact `Report` in full, and one argument test.
+
+| Test | Samples | `Report` |
+|---|---|---|
+| `test_harness_gates_budget_from_samples_at_budget_passes` | all `60 000` | `PASS budget ticks=14400 mean_us=6000 p99_us=6000` |
+| `test_harness_gates_budget_from_samples_rounds_each_sample_up` | all `60 001` (6000.1 µs, which flooring would pass) | `FAIL budget ticks=14400 mean_us=6001 p99_us=6001` |
+| `test_harness_gates_budget_from_samples_p99_nearest_rank_passes_at_144_slow` | 144 of `120 001`, the rest `0` | `PASS budget ticks=14400 mean_us=121 p99_us=0` |
+| `test_harness_gates_budget_from_samples_p99_nearest_rank_fails_at_145_slow` | 145 of `120 001`, the rest `0` | `FAIL budget ticks=14400 mean_us=121 p99_us=12001` |
+| `test_harness_gates_budget_from_samples_caps_overflowing_sample` | one `long.MaxValue`, the rest `0` | `FAIL budget ticks=14400 mean_us=6001 p99_us=0` |
+
+In the p99 rows, the position of the slow samples in the list varies and
+the result does not. `samples` is unchanged after each call. One more test,
+`test_harness_gates_budget_from_samples_rejects_bad_arguments`, checks the
+§19.4 argument rules: `null`, 14 399 samples, one sample of `-1`, and
+`frequency` 0. The existing `HarnessCliTests` budget tests are unchanged.

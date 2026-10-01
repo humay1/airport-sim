@@ -26,7 +26,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 |---|---|
 | Anyone constructing a system (harness, host, integration tests) | `08` §8.11a, then the module's Construction section: `09` §9.11, `11` §11.9a, `12` §12.12a, `13` §13.10a, `14` §14.13a, `15` §15.9, `17` §17.7 |
 | `sim.core` (T-001–T-006, T-026) | `08` all; `10` §10.2, §10.3; `03` budgets. T-003: `08` §8.3. T-026: `10` §10.6 plus the type blocks of `12` §12.4, `13` §13.3, `14` §14.3 |
-| `tools.simharness` (T-006, T-009) | `19` all; `02` Gates; `08` §8.5, §8.5a, §8.7, §8.9, §8.11a; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
+| `tools.simharness` (T-006, T-009, T-013, T-045) | `19` all; `02` Gates; `08` §8.5, §8.5a, §8.7, §8.9, §8.11a; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
 | `sim.world` (fixed walk graph) | `18` all; `08` §8.9, §8.11a; `09` §9.6 (its consumer) |
 | `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `18` §18.2, §18.3, §18.5; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
 | `sim.schedule` (T-008) | `11` all; `08` §8.2, §8.4; `09` §9.7; `10` §10.4, §10.6 |
@@ -347,23 +347,32 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: the public surface of the harness (`HarnessCli`, `HarnessGates`,
   `SimComposer`, `GateResult`), the NoOp command script, the run comparison,
   exit codes 0/1/2/3, the one-line stdout, `budget --tier max`; the Phase 0
-  CLI composition and its boarding stand-in (§19.2a); the T-009 tests
-  (§19.6).
+  CLI composition and its boarding stand-in (§19.2a); the `soak`
+  subcommand, its fixture set and its golden (§19.2b); the T-009 tests
+  (§19.6); the T-013 and T-045 tests (§19.7).
 - Key: harness tests run in process from `tests/tools/simharness` (`07`
   L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
   an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
   `promotion` passes vacuously until T-010; **every CLI subcommand uses one
-  Phase 0 composition over four Test Author fixtures, found from the
+  composition over four Test Author fixtures (the Phase 0 set, or for
+  `soak` the soak set), found from the
   `AirportSim.sln` root, with content from a manifest and never from
   `data/` (§19.2a, Q-042)**; **a harness-internal stand-in at registry
   position 3 calls `Absorb` for each departure at `STD`, hashes 0, and is
-  removed when `sim.airside` joins (§19.2a, Q-043)**.
+  removed when `sim.airside` joins (§19.2a, Q-043)**; **`soak --days D
+  --golden P` runs that composer over `tests/fixtures/soak/` with seed
+  12345 and compares its `16` §16.8 dump with `P` byte for byte, and
+  `soak --out P` writes a dump and never overwrites (§19.2b, Q-057)**;
+  **`budget`'s verdict and line come from the pure public
+  `HarnessGates.BudgetFromSamples`, which tests call with chosen samples
+  (§19.4, Q-058)**.
 - LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
   `sim.save` (§19.5). **HD (owner, 2026-09-29):** the boarding stand-in is
   a valid reading of the kill gate (§19.2a, Q-043).
-- Read if: T-006, T-009, T-030; the Test Author for the harness.
+- Read if: T-006, T-009, T-013, T-030, T-045; the Test Author for the
+  harness.
 
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
