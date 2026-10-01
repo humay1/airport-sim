@@ -78,7 +78,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: downward calls only, upward information as events; `sim.airside`
   depends on `flow` (D6 fix); new module `app.host` (HD, D7); **the soak runs a
   mid-tier fixture under 0.1 ms/tick (HD, D3)**; budget pass = mean ≤ budget
-  and p99 ≤ 2× budget.
+  and p99 ≤ 2× budget; **every timed budget test, and `19` §19.4, uses exactly
+  one sim-day of per-tick samples, rounded up to µs in `long` arithmetic,
+  with mean `Σu ≤ B·n` and nearest-rank p99 `≤ 2B`. Allocation-only tests and
+  whole-run gates are exempt, and `sim.core` samples `Step(1)` (Q-044,
+  Q-045)**.
 - LC: the checkpoint-hashing ceiling (20 ms) and the snapshot-write ceiling
   (250 ms).
 - Read if: planning; any budget test ("How a budget is measured"); the soak
@@ -88,7 +92,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: the content schema list, content conventions, balance ownership.
 - Key: all content is data and validated; fixtures are not content;
   `data/balance/` is human-only; **the first balance file is
-  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6)**;
+  `data/balance/airside_rules.json` (`boarding_hold_max_minutes` = 10, HD, D6;
+  `doors_open_delay_minutes` = 2, HD, owner, 2026-09-30, Q-047)**;
   **Phase 0/1 content fields for size categories, aircraft, pax profiles and
   queue profiles, with pax-profile and queue-profile values owner-authored as
   balance (Q-011)**; a schema's name must equal its directory's name.
@@ -145,13 +150,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   content access.
 - Key: **`SIM_SECONDS_PER_TICK = 6`, so a day is 14 400 ticks, and goldens
   may be authored (HD, D2, §8.2)**; **`Fx` hand-rolls its 128-bit multiply,
-  divide and leading-zero count (D1, §8.3)**; FIFO event dispatch with
+  divide and leading-zero count (D1, §8.3)**; **probe systems at empty
+  registry positions are for tests only, with the one exception of the
+  harness's boarding stand-in at 3 (§8.5, Q-043)**; FIFO event dispatch with
   handlers in registry order (§8.6); **the bus allocates nothing after
   `Build`, with no warm-up, and a type with no subscriber stores nothing
   (§8.6, Q-035)**; commands admitted only at ≥ 1 tick of
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
+  **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
+  Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
@@ -182,7 +191,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   speed)` at Phase 0/1, and with a required reference-model test (§9.6,
   Q-036)**; **only `Departing` cohorts at Phase 0/1: `Inject` rejects
   other directions (§9.6, §9.7, Q-040)**; **gate count in `sim.flow`-local fixtures is
-  fixture sizing (§9.10, Q-037)**; factory plus `IFlowGraphLoader`, where
+  fixture sizing (§9.10, Q-037)**; **`Absorb` bounds the keys, so a run
+  meant to measure cost includes an `Absorb` caller (§9.10, Q-043)**;
+  factory plus `IFlowGraphLoader`, where
   `FlowGraph` is node behaviour only, in a pinned JSON format (§9.11, Q-032);
   **exact tick semantics: snapshot, one node per tick, merge, thresholds (§9.12, Q-032)**.
 - LC: least-cost routing (§9.6); `TryGetOutstanding` and its "most passengers"
@@ -224,7 +235,23 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
   (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
   and `IAirsideLayoutLoader.Parse` (§12.12a); `ReassignStand`'s state checks
-  happen at `Apply`, as a no-op (§12.10, Q-010).
+  happen at `Apply`, as a no-op, **logged with `AirsideReassignStandNoOp` and
+  a reason (§12.10, Q-010, Q-056)**; **the layout file format, pinned JSON
+  (§12.4, Q-046)**; **`DoorsOpenDelayMinutes` in `AirsideRules`, 2 minutes
+  (§12.4, Q-047, HD, owner, 2026-09-30)**; **`InboundAirborne` clamped to 0,
+  landing requested at `STA` (§12.6, Q-048, Q-052)**; **the least-queue
+  runway choice stopgap (§12.5, Q-049, HD, owner, 2026-09-30)**; **stands:
+  lowest id, reserved from assignment, one stand-wait queue, rotation-less
+  departures wait with no track (§12.7, Q-050, Q-051, Q-053)**; **the step
+  order S1 to S7 inside `Tick`: one start-of-tick snapshot for edges and
+  stands, runways read live, and same-tick chains for zero delays (§12.8a,
+  Q-054)**; **flights found through a pending list, fed by a day-0 read and
+  by `FlightPlanPublished`. Each entry leaves at its start tick, and a
+  rotation-less departure starts at `max(due tick, PublishTick + 1)`
+  (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
+  `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
+  `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
+  `ArgumentException` (§12.2, §12.11, §12.12)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
@@ -319,15 +346,23 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 ### `19-interfaces-harness.md` — `tools.simharness` CI gates (new, Q-025–Q-027)
 - Owns: the public surface of the harness (`HarnessCli`, `HarnessGates`,
   `SimComposer`, `GateResult`), the NoOp command script, the run comparison,
-  exit codes 0/1/2/3, the one-line stdout, `budget --tier max`.
+  exit codes 0/1/2/3, the one-line stdout, `budget --tier max`; the Phase 0
+  CLI composition and its boarding stand-in (§19.2a); the T-009 tests
+  (§19.6).
 - Key: harness tests run in process from `tests/tools/simharness` (`07`
-  L1/L3); the divergence seam is an injected composer, with no CLI flag;
+  L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
+  an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
-  `promotion` passes vacuously until T-010; the CLI composition registers no
-  systems until a task amends it.
+  `promotion` passes vacuously until T-010; **every CLI subcommand uses one
+  Phase 0 composition over four Test Author fixtures, found from the
+  `AirportSim.sln` root, with content from a manifest and never from
+  `data/` (§19.2a, Q-042)**; **a harness-internal stand-in at registry
+  position 3 calls `Absorb` for each departure at `STD`, hashes 0, and is
+  removed when `sim.airside` joins (§19.2a, Q-043)**.
 - LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
-  `sim.save` (§19.5).
+  `sim.save` (§19.5). **HD (owner, 2026-09-29):** the boarding stand-in is
+  a valid reading of the kill gate (§19.2a, Q-043).
 - Read if: T-006, T-009, T-030; the Test Author for the harness.
 
 ### `CHANGELOG.md`

@@ -520,7 +520,7 @@ depends on T-009, T-010 and T-021, not on T-009 alone.
 Author:
 
 - positions for every taxi node, and geometry for the runway, of
-  `tests/fixtures/airside/phase1-single-runway.*`
+  `tests/fixtures/airside/phase1-single-runway.json`
   (`12-interfaces-airside.md` §12.13);
 - a `FlowNodeBox` for every landside node used by the schedule fixture's
   `entry_node`s and by the `sim.flow` fixtures that T-007 and T-023 run, and

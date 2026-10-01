@@ -622,7 +622,7 @@ waits, flights that never finalise, and day boundaries crossed. This is how
 One headless sim-day with `sim.schedule`, `sim.flow`, `sim.airside`,
 `sim.turnaround` and `sim.delay` registered, against
 `tests/fixtures/schedule/phase0-200.csv` (`11-interfaces-schedule.md` §11.10),
-`tests/fixtures/airside/phase1-single-runway.*`
+`tests/fixtures/airside/phase1-single-runway.json`
 (`12-interfaces-airside.md` §12.13) and
 `tests/fixtures/turnaround/phase1-four-vehicles.*`
 (`13-interfaces-turnaround.md` §13.11). Assert every invariant below over

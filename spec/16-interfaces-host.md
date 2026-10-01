@@ -106,14 +106,16 @@ interface IScenarioBundle {
 | `bundle.json` | `{ "schema_version": 1, "seed": "<uint64 decimal>", "systems": [ "<module name>", ... ] }` | the host |
 | `world.fixture` | `18-interfaces-world.md` §18.2; required whenever `sim.flow` is listed | `IWalkGraphLoader.Load` |
 | `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader.Load` |
-| `airside.fixture` | `12-interfaces-airside.md` §12.4, in the format of T-021's fixture | `IAirsideLayoutLoader.Parse` |
-| `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules` |
+| `airside.fixture` | `12-interfaces-airside.md` §12.4 "File format" (JSON, Q-046) | `IAirsideLayoutLoader.Parse` |
+| `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules`, both keys, `boarding_hold_max_minutes` and `doors_open_delay_minutes` (Q-047) |
 | `turnaround.fixture` | `13-interfaces-turnaround.md` §13.4, in the format of T-022's fixture | `ITurnaroundSetupLoader.Load` |
 | `flow.fixture` | `sim.flow`'s opaque `FlowGraph`, in the format of T-007/T-023's fixtures | `IFlowGraphLoader.Load` |
 | `render_layout.fixture` | `15-interfaces-render.md` §15.4 | `IRenderLayoutLoader.Load` |
 
-File names are exact. The `.fixture` files keep whatever byte format their
-module's worker chose; the name says nothing about the format.
+File names are exact. The `.fixture` files keep the byte format their
+module's spec pins, or, where no spec pins one, the format its worker
+chose. `airside.fixture` is `12` §12.4's JSON, despite its extension. The
+name says nothing about the format.
 
 - `systems` lists module names (`ISimSystem.Name`). A listed system whose
   file is missing is a hard load failure naming the file

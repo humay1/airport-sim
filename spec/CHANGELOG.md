@@ -2297,3 +2297,307 @@ Revision 2:  after the second PR #61 review (rejected at 623e5fe):
                line does.
 Signed off:  owner, 2026-09-29 (the category, where it runs, and the
              pre-merge requirement). The thresholds are the Architect's.
+
+## 2026-09-29 — spec/19 intro, §19.2, §19.2a (new), §19.4, §19.6 (new); 08 §8.5; 09 §9.10; INDEX; open-questions — Q-041, Q-042, Q-043: T-009's test location, the Phase 0 CLI composition, the boarding stand-in
+Reason:      T-009's Test Author raised three questions.
+             - **Q-041:** the task file put the tests in
+               `tests/sim/core`, which `07` L3 cannot compile against the
+               factories or `HarnessGates`. `tests/tools/simharness` is
+               confirmed.
+             - **Q-042:** §19.2 deferred the CLI composition to "the first
+               composing task" but never specified it. §19.2a now pins
+               one Phase 0 composition for every subcommand:
+               - four Test Author fixtures, one of them a new content
+                 fixture read through a manifest, never `data/`;
+               - how the harness finds them (the `AirportSim.sln` root,
+                 Q-031);
+               - when loading happens, and that its failures are exit 3;
+               - construction and registration order.
+               T-006's CLI tests replace their empty-composition hashes
+               with the Test Author kit's `FinalHash`. §19.2's promise
+               that exit codes 1 and 3 become reachable through the CLI is
+               withdrawn.
+             - **Q-043:** confirmed that nothing calls `Absorb` at Phase
+               0, so the `Gate` grows by about 400 cohorts a sim-day, and
+               the merged pairwise merge makes that quadratic. A
+               harness-internal boarding stand-in at registry position 3
+               calls `Absorb` at each departure's STD, hashes 0, and is
+               removed when `sim.airside` joins. `08` §8.5 names it as the
+               only non-test probe. `09` §9.10 states that `Absorb` bounds
+               the keys.
+Raised by:   Q-041, Q-042, Q-043 (Test Author, T-009, via coordinator)
+Impact:      - **No merged `src/` changes.** `sim.flow`, `sim.schedule`
+               and `sim.world` are untouched.
+             - **Merged tests change**, all of them T-006's CLI tests in
+               `tests/tools/simharness/HarnessCliTests.cs`. Seven expected
+               hashes move from the empty composition to the Phase 0 kit
+               composition, the equivalence test switches to the kit, and
+               one budget test is renamed (§19.6). The T-009 Test Author
+               makes these edits in the T-009 test branch, and they merge
+               with the T-009 worker's harness change (`07` L9). CI's
+               `determinism`, `saveload` and `promotion` hashes all change
+               when T-009 merges. That is expected, and no golden is
+               checked in `ci/`.
+             - **T-009 test branch** (`f531ca7`): the content moves from
+               C# into `tests/fixtures/harness/`; the kit gains the probe
+               at position 3; the "nothing absorbs" load check becomes the
+               §19.6 conservation, `Absorb` and cohort-ceiling checks.
+             - **T-009 worker** (`tools/SimHarness/**`): adds the three
+               `ProjectReference`s, the fixture locator, the manifest
+               content source, the composition and the stand-in.
+             - **Planner:** correct `tasks/T-009-100-day-run.md` (tests
+               path, writable paths `tests/tools/simharness/**` and
+               `tests/fixtures/harness/**`, readable specs, and the
+               stand-in in its description), per Q-041.
+             - **Scope:** none added. The stand-in is a harness test
+               driver for an existing `12` §12.7 call, not a game system.
+             **HUMAN DECISION — owner, 2026-09-29 (Q-043): accepted.** The
+             boarding stand-in is a valid reading of the kill gate. The
+             gate's scope is unchanged: the same modules, fixtures, 100
+             days and 60 s. The Architect had first marked this LOW
+             CONFIDENCE.
+             **For the owner, not decided:** 60 s for 1 440 000 ticks is
+             about 41.7 µs a tick, about 1/144 of `01`'s 6 ms tick. It is
+             unmeasured with the stand-in. A miss escalates to the owner
+             under T-009's "Done when".
+Revision:    after the PR #66 review (rejected at 93abebf):
+             - Q-044 and Q-045 (the budget window and arithmetic) are
+               removed from this PR and move to their own spec PR. The
+               `03` edits are reverted here;
+             - §19.6(a) is a whole-run wall-clock gate: 60 s in total, one
+               `long` `Stopwatch` measurement, and not subject to `03`'s
+               per-tick statistic, although it carries `Budget`;
+             - §19.6(b)'s load check applies to the second run;
+             - §19.2a "When" says the three graph and schedule parses
+               happen in the first run's `compose`. §19.3's exit-3 row
+               covers pre-run fixture failures;
+             - the stand-in's day list is flagged for the snapshot-based
+               `SaveLoad` amendment;
+             - the Test Author may update `HarnessCliTests.cs` comments;
+             - the INDEX `08` entry names the §8.5 line, and Q-043's Status
+               uses the standard format.
+Signed off:  owner, 2026-09-29 (the Q-043 boarding stand-in). The rest is
+             architecture and needs no sign-off.
+
+## 2026-09-30 — spec/12 §12.3, §12.4 (+ "File format"), §12.5, §12.6, §12.7, §12.8, §12.8a (new), §12.10, §12.11, §12.12, §12.12a, §12.13; 13, 14, 15 (fixture name); 16 (file table); 04 (airside_rules.json); 08 §8.10 (`LogKey`); INDEX; open-questions — Q-046 to Q-056: T-021 `sim.airside` gaps
+Reason:      T-021's Test Author (branch `test-author/T-021-airside-tests`,
+             `d10a9be`, 56 tests) reported 11 gaps in `12`:
+             - **Q-046:** the layout fixture format is pinned as JSON.
+               `Load` also checks node kinds, ranges and non-empty lists,
+               and returns lists sorted by id;
+             - **Q-047:** `AirsideRules.DoorsOpenDelayMinutes` is added;
+             - **Q-048:** `InboundAirborne` is clamped at tick 0;
+             - **Q-049:** a least-queue runway choice (stopgap);
+             - **Q-050:** a stand is reserved from assignment, and there is
+               one stand-wait queue, which is hashed;
+             - **Q-051:** assignment takes the lowest compatible free
+               `StandId`;
+             - **Q-052:** a landing is requested at `STA`, and the
+               early-aircraft clause is removed;
+             - **Q-053:** a rotation-less departure with no stand waits in
+               the queue;
+             - **Q-054:** edges and stands are read at start of tick, so a
+               release happens at `t + 1`;
+             - **Q-055:** "two integers" is now true;
+             - **Q-056:** `LogKey.AirsideReassignStandNoOp = 1`, with
+               reason codes.
+Raised by:   Q-046 to Q-056 (Test Author, T-021, via coordinator)
+Impact:      - `sim.airside` is not merged, so no merged `src/` breaks.
+             - **Merged, and must change:**
+               - `data/schemas/balance.schema.json` (`additionalProperties:
+                 false`, one required key) gains the required
+                 `doors_open_delay_minutes`. That is an agent content task;
+               - `data/balance/airside_rules.json` must gain
+                 `"doors_open_delay_minutes": 2`, and only the owner may
+                 write it. **The schema change and the owner's edit must
+                 land in the same commit, or at least the same merge.**
+                 Otherwise `ci/run-checks.sh`'s content-schema check is
+                 red on `main` in between;
+               - `src/sim/core/LogKey.cs` gains member 1. T-021's writable
+                 paths need that file (Planner), serialised with other
+                 `src/sim/core/**` work;
+               - `tests/fixtures/content/valid/balance/airside_rules.json`
+                 (T-027's loader fixture) keeps the one-key shape. The
+                 content loader ignores `balance/` (`08` §8.11), so nothing
+                 fails. A Test Author may update it for accuracy, and it is
+                 not required.
+             - **`tasks/T-021-runway-taxiway-stands.md`** (Planner)
+               restates text this PR supersedes: the one-field
+               `AirsideRules` (line 126), "the fixed door delay" (line
+               175), and "earliest-declared" (line 205). It must point to
+               `12` instead, together with the writable-path addition.
+             - **T-021 test branch:**
+               - `AirsideRules` gains a second constructor argument;
+               - add the fixture JSON and the seventeen new §12.13 tests;
+               - `Load` messages must contain the §12.4 field names;
+               - check that no test assumes a same-tick stand or edge
+                 release, an unreserved stand in taxi-in, a
+                 `queuePosition = 0` hold, or a track for a rotation-less
+                 departure that is still waiting.
+             - **`app.host` (`16`, T-031):** the host parses
+               `airside_rules.json` and must read the new key, passing it
+               as `AirsideRules.DoorsOpenDelayMinutes`. `16`'s file table
+               now says so. T-031's task file should cite it (Planner).
+             - **`tasks/T-028-content-schemas.md` line 53** gives the
+               one-key `airside_rules.json` shape. The content task that
+               changes `balance.schema.json` updates it (Planner).
+             - **Merge note:** Q-041 to Q-045 merged earlier, with PRs #66
+               and #68. The resulting `open-questions.md` and
+               `CHANGELOG.md` conflicts are resolved in this branch.
+             - **Scope:** none added. The runway choice is a stopgap rule,
+               not a system.
+             **HUMAN DECISION, owner, 2026-09-30:**
+             - `doors_open_delay_minutes = 2` (Q-047). The owner writes it
+               to `data/balance/airside_rules.json`;
+             - Q-049's least-queue runway stopgap is accepted. It was
+               marked LOW CONFIDENCE.
+Revision:    after the PR #67 review (rejected at 5f29a25):
+             - **Q-053 redesigned.** No track until a stand is assigned, and
+               no event while waiting. The track starts in `OnStand` at the
+               assigned stand, so §12.3 and §12.9 stay true. Lateness goes
+               to `Unexplained` under `14` §14.6, unchanged. The fallback's
+               creation tick is the actual `OnStand` tick;
+             - **§12.8a (new):** the step order S1 to S7 inside `Tick`,
+               with one start-of-tick snapshot for edges and stands. The
+               same-tick order is pinned for runway requests and releases
+               (S7) and for new stand requests (S5, ascending `FlightId`
+               after the queue). The stand-wait queue is in joining order;
+             - `Load`'s failures are pinned: check order, field names and
+               ids for every kind. Range failures carry no `line <n>`;
+             - non-blocking fixes:
+               - the §12.12 budget text, and the queue's storage and cost;
+               - Q-056 check 1 excludes a handed-off arrival;
+               - a waiting arrival is `HeldOnTaxiway`;
+               - a node-holding aircraft occupies no edge;
+               - the rotation-less due tick is clamped to 0;
+               - the planned `TakeoffRoll` names the runway chosen at
+                 `Pushback`;
+               - the `18` §18.2 `true`/`false` exception is explicit;
+               - the Q-054 Status anchor points to §12.8a;
+               - the INDEX `04` and `08` entries are updated;
+               - the impact list is completed;
+             - the owner's decisions on Q-047 and Q-049 are recorded.
+Revision 2:  after the third PR #67 review (rejected at c0cd79e):
+             - **runways are the S1 exception.** S7 reads runway
+               `Occupant` and `NextSlotTick` live, so a runway cleared in S3
+               is claimable in S7 of the same tick;
+             - **chains (§12.8a).** An action that makes another §12.8
+               action due at the current tick runs it at once, in the same
+               turn. This pins `DoorsOpenDelayMinutes = 0` and
+               `MinTurnaround = 0`, and "0 = the same tick" holds. A
+               departure created in an arrival's turn runs its chained
+               actions inside that turn, and not at its own `FlightId`
+               position;
+             - **`Load` messages.** Range check 1 covers only an object's
+               own `id` and its value fields. A `0` in a node-reference
+               field fails at check 4. Within an object, the first failing
+               field in file-format key order is named;
+             - **hard bounds.** `STAND_WAIT_CAPACITY = 1024` and
+               `PENDING_FLIGHTS_CAPACITY = 2048` are preallocated and never
+               grow. Overflow is `SimInvariantException`. This replaces the
+               growth-allowed text, which contradicted `08` §8.5 and `07`;
+             - **finding flights without a scan (§12.11).** A pending list
+               is fed by a day-0 read at `CreateSystem` and by a
+               `FlightPlanPublished` subscription. The pending list is
+               hashed;
+             - non-blocking fixes:
+               - §12.8's `StandUnavailable` claim covers arrivals only;
+               - the §12.3 departure `OnStand` is clamped;
+               - the §12.7 LOW CONFIDENCE note matches the chain rule;
+               - duplicate, unknown and missing keys are parse failures;
+               - §12.8a is in INDEX and in this entry's heading;
+               - the stale `phase1-single-runway.*` references are fixed
+                 in `13`, `14` and `15`, and `16`'s fixture-format text;
+               - `16` and T-031, and T-028 line 53, are in Impact.
+Revision 3:  after the fourth PR #67 review (rejected at b2f3e64):
+             - **pending removal (§12.11).** An entry leaves when it is taken
+               at its start tick: an arrival in S2, a rotation-less
+               departure in S5, whether it gets a stand or moves to the
+               stand-wait queue. It is never in both. The 2048 bound is
+               argued from this rule: a one-day window holds at most
+               1 600 flights at max tier;
+             - **late due ticks.** A departure due at or before its
+               publication starts at `PublishTick + 1`. `PlannedTick` keeps
+               the §12.3 formula, which is schedule-anchored per `10` §10.4,
+               and `ActualTick` is later. §12.3, §12.7 and §12.11 agree;
+             - **construction overflow.** The day-0 read throws
+               `ArgumentException` (`schedule`), because `08` §8.5a's
+               `SimInvariantException` exists only during a tick;
+             - non-blocking fixes:
+               - §12.8 step 3's `PlannedTick` is clamped;
+               - §12.6's "asking" list covers S5 grants from the queue, S5
+                 chain pushbacks and S6.1 chain pushbacks;
+               - §12.7's assignment rule covers queued arrivals;
+               - §12.2's wording is corrected (up to 1 600 entries, across
+                 two calendar days);
+               - four pending tests are added to §12.13, making seventeen
+                 new tests in all.
+Revision 4:  after the fifth PR #67 review (rejected at a5818cb): the stale
+             wording is made consistent across `spec/`:
+             - §12.7 S5 step 2 and the §12.11 intro now say *start tick*,
+               `max(due tick, PublishTick + 1)`, and Q-050's revision
+               matches;
+             - §12.12 "Hard bounds" and the INDEX `12` entry now say
+               overflow during a tick is `SimInvariantException`, and
+               overflow in `CreateSystem`'s day-0 read is
+               `ArgumentException`;
+             - §12.11 "Overflow" says "during a tick" instead of "in
+               `Tick`";
+             - the test count is corrected to seventeen new §12.13 tests
+               (thirteen, plus four pending tests).
+Signed off:  owner, 2026-09-30 (the Q-047 value and the Q-049 stopgap). The
+             rest is architecture and needs no sign-off.
+
+## 2026-09-30 — spec/03 "How a budget is measured" ("Measured" bullet, new "Budget tests: window and arithmetic"); 07 L11 (cross-reference); 19 §19.4; INDEX; open-questions — Q-044, Q-045: budget window, arithmetic, `sim.core`
+Reason:      While filing T-041, the Planner found that `03` fixes neither
+             a budget test's sample window nor how p99 is computed. This
+             replaces the answer first attempted in PR #66, which was
+             rejected there. That attempt conflicted with `07` L11's
+             `long`-only rule, claimed conformance falsely, left
+             invalidated tests unnamed and `sim.core` undecided, and gave
+             §19.4 a different pass condition.
+             - **Q-044:** exactly one sim-day of per-tick samples. The
+               scope is every timed per-tick budget test and §19.4. It
+               excludes allocation-only `Budget` tests and whole-run
+               gates. `sim.core` is bound, with a sample of one `Step(1)`.
+             - **Q-045:** `long`-only arithmetic, with each sample rounded
+               up to µs and an overflow guard, mean `Σu ≤ B·n`,
+               nearest-rank p99 `≤ 2B`, and a rounded-up reported mean.
+               §19.4 uses the same condition, and its flooring is removed.
+Raised by:   Q-044, Q-045 (Planner, T-041, via coordinator); PR #66 review
+Impact:      - **Merged tests invalidated, 9, all named in Q-045.** They
+               are `sim.core` `BudgetTests` (2 day tests),
+               `CommandQueueTests` (1 day test), `FlowBudgetTests`,
+               `FlowStressBudgetTests`, `PromotionBudgetTests`,
+               `sim.schedule` `BudgetTests` (2) and `WorldBudgetTests`
+               (T-041). Each needs a Test Author rewrite. The Planner files
+               the task or tasks. `WorldBudgetTests` is already T-041. The
+               15 allocation-only `Budget` tests are out of scope, and the
+               2 `HarnessCliTests` budget tests stay valid.
+             - **Merged harness code:** `tools/SimHarness`'s `budget`
+               subcommand rounds up instead of flooring (§19.4). T-009's
+               worker is in `tools/SimHarness/**` now, so the Planner folds
+               this into T-009, or files it after T-009 merges, to avoid a
+               conflict.
+             - **Open branches, which must change:**
+               - T-021's `AirsideBudgetTests`
+                 (`test-author/T-021-airside-tests`, `d10a9be`) uses
+                 rescaled raw-tick comparisons with no per-sample µs
+                 round-up, which is non-conforming like
+                 `PromotionBudgetTests`. The T-021 Test Author rewrites it
+                 to `03`'s rule before T-021 merges;
+               - T-009's kill-gate (a) is a whole-run gate and is out of
+                 scope.
+             - **Merge note:** PR #67 appends to `open-questions.md` and
+               `CHANGELOG.md` after the same lines, so expect textual
+               conflicts only.
+             - No `src/sim` change. No scope added.
+Revision:    after the PR #68 review (rejected at ae74944):
+             - the T-021 `AirsideBudgetTests` claim is corrected (above,
+               and in Q-045);
+             - `03` states the frequency bound behind the cap's
+               no-verdict claim;
+             - `03` says any 14 400 consecutive ticks after warm-up form a
+               window, with no alignment to a sim-day boundary;
+             - the `19` §19.6 cite resolves, now that PR #66 is on `main`.
+Signed off:  not required (measurement protocol, not balance).

@@ -557,6 +557,11 @@ namespace AirportSim.Sim.Flow
                 throw new ArgumentOutOfRangeException(nameof(count), count, "count must be positive");
             }
 
+            if (key.Direction != FlowDirection.Departing)
+            {
+                throw new ArgumentException("Inject: only Departing cohorts exist at Phase 0/1", nameof(key));
+            }
+
             ulong id = NewCohortId();
             int slot = AllocateSlot();
             _slots[slot] = new CohortSlot

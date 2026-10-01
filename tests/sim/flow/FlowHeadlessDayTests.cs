@@ -14,6 +14,7 @@ namespace AirportSim.Sim.Flow.Tests
         private static readonly Fx WalkSpeed = Fx.FromRatio(13, 10);  // DayScenario's walker
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_flow_headless_day_keeps_every_invariant()
         {
             var rig = Rig.Fixture(DayScenario.Content());
