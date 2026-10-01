@@ -290,6 +290,8 @@ namespace AirportSim.Sim.Airside.Tests
                 }
                 else if (evt.Milestone == FlightMilestone.DoorsOpen)
                 {
+                    // The arrival's OnStand has already come, so it can leave the set.
+                    self._arrivals.Remove(evt.Flight.Value);
                     self._due.Add((ctx.Tick + DeboardTicks, evt.Flight.Value, FlightMilestone.DeboardComplete));
                 }
                 else if (evt.Milestone == FlightMilestone.OnStand && !self._arrivals.Contains(evt.Flight.Value))
@@ -303,6 +305,8 @@ namespace AirportSim.Sim.Airside.Tests
 
         public void Tick(in TickContext ctx)
         {
+            // Publish what is due and compact the rest in place: no per-tick closure.
+            int kept = 0;
             for (int i = 0; i < _due.Count; i++)
             {
                 if (_due[i].Due == ctx.Tick)
@@ -310,10 +314,13 @@ namespace AirportSim.Sim.Airside.Tests
                     ctx.Events.Publish(new FlightMilestoneReached(new FlightId(_due[i].Flight), _due[i].Milestone, ctx.Tick, ctx.Tick), EventRef.None);
                     Published++;
                 }
+                else if (_due[i].Due > ctx.Tick)
+                {
+                    _due[kept++] = _due[i];
+                }
             }
 
-            ulong now = ctx.Tick;
-            _due.RemoveAll(d => d.Due <= now);
+            _due.RemoveRange(kept, _due.Count - kept);
         }
 
         public ulong ComputeStateHash()

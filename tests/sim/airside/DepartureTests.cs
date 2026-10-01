@@ -167,6 +167,11 @@ namespace AirportSim.Sim.Airside.Tests
             var late = new HostRig(Csv.Of(Csv.Row("L1", "D", "12:00", minTurn: "1500", day: "1")));
             ulong l1 = late.Id("L1");
             Assert.Equal(AirConst.DayStride + 1UL, l1);
+
+            // Day 1 is materialised at the start of tick 0's Tick (11 §11.9),
+            // so the record exists only once tick 0 has run.
+            // 11 §11.5: PublishTick = ScheduledTick − 14 400 = 21 600 − 14 400.
+            late.RunTo(1UL);
             Assert.Equal(7200UL, late.Flight(l1).PublishTick);
             late.RunTo(7201UL);
             Assert.False(late.Airside.TryGetTrack(new FlightId(l1), out _), "started before PublishTick + 1");

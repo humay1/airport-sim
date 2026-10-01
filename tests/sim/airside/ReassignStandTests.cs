@@ -17,7 +17,9 @@ namespace AirportSim.Sim.Airside.Tests
     /// </summary>
     public sealed class ReassignStandTests
     {
-        // X1 (a320) is on S1 from 3660; X2 (a359) on S2 from 3765.
+        // 12 §12.3 planned OnStand = STA + OccupancyTicks + RouteTicks, unimpeded here:
+        // X1 (a320) on S1 from 3600 + 10 + 50 (E1 30, E2 20) = 3660;
+        // X2 (a359, so not S1) on S2 from 3700 + 10 + 55 (E1 30, E3 15, E4 10) = 3765.
         private static HostRig Rig(ISimLog? log = null)
         {
             return new HostRig(Csv.Of(Csv.Row("X1", "A", "06:00"), Csv.Row("X2", "A", "06:10", aircraft: "a359")), log: log);
