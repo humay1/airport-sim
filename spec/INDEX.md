@@ -135,7 +135,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   polyfills**; **solution layout (Q-013): fixed project paths and names,
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
-  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
+  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
+  **one integration test project, `tests/integration/`, references both
+  `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
   `[Trait("Category", "Slow")]` on a test method, with a `[Theory]`'s rows

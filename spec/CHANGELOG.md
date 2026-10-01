@@ -2952,3 +2952,48 @@ Impact:      - **Merged code:** none invalidated. On a tick that
 Signed off:  not required (measurement protocol and a `sim.core`
              invariant that merged code already meets; no balance, scope
              or `01`/`02` change).
+
+## 2026-10-01 — spec/07 L1, L3, L8; 16 §16.8, §16.11; INDEX; open-questions — Q-077: an integration test project for the D7 test
+Reason:      `16` §16.8's `test_host_composition_matches_harness_checkpoints`
+             must call both `HarnessCli.Run` and `IHeadlessRun` in
+             process. `07` L3 lets a test project reference only its own
+             module's production project, and neither `app.host` nor the
+             harness references the other, so no project could hold the
+             test. The smallest fix is one test project with exactly two
+             references, restricted to tests that compare the two
+             modules.
+             - **L1:** `tests/integration/AirportSim.Integration.Tests.csproj`,
+               `net8.0`, C# 12.
+             - **L3:** the L3 file with its names changed and two
+               `ProjectReference`s, `src/app/host` then
+               `tools/SimHarness`. In process only. At Phase 1 it holds
+               only the D7 test. Neither module references the other.
+             - **L8:** T-031's Test Author writes the project file and
+               the L4 parallelisation file. T-031 adds it to
+               `AirportSim.sln`.
+             - **`16` §16.8, §16.11:** the test lives there, and no
+               golden is committed for it.
+             - **Rejected:** golden dumps (owner confirmation on every
+               hash-moving change), spawning the harness (Q-025), and the
+               harness referencing `app.host`.
+Raised by:   Q-077 (Architect, while answering Q-066 to Q-076, PR #83)
+Impact:      - **Merged code and tests:** none. No existing project
+               changes. `ci/run-checks.sh` builds and tests the solution,
+               so the new project runs with no `ci/` change.
+             - **T-031:** the Planner syncs its task file. The D7 test
+               moves to `tests/integration/`, the Test Author's grant
+               gains `tests/integration/**`, and its `.sln` edit adds a
+               third project. Its dependencies do not change.
+             - **PR #83:** it files Q-077 as OPEN and adds a §16.8
+               paragraph that calls it open. Whichever of #83 and this PR
+               merges second keeps this PR's answered Q-077 entry and
+               drops #83's OPEN one. It also replaces #83's "How this test
+               reaches both ... is OPEN (Q-077)" paragraph with this PR's
+               "Where the D7 test lives" paragraph, restores the INDEX
+               "Open now" line to none, and keeps both CHANGELOG entries.
+               #83 also rewrites the D7 paragraph just above, so the
+               §16.8 hunks are adjacent and will conflict textually. The
+               new paragraph follows #83's wording of the D7 paragraph.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (project layout; no balance, scope or
+             `01`/`02` change).

@@ -2144,3 +2144,35 @@ Answer:      Architecture. On a tick that completes normally, command
              for both kinds. It is a separate small test-only task after
              T-042, not part of T-042.
 Status:      ANSWERED (spec/08-interfaces-core.md#87-commands)
+
+### Q-077 — `app.host`: the D7 test cannot reach the harness
+Raised by:   Architect, answering Q-066 to Q-076 (PR #83), 2026-10-01
+Blocking:    T-031 (`test_host_composition_matches_harness_checkpoints`)
+Question:    `07` L3 lets `tests/app/host` reference only
+             `src/app/host`, and `app.host` does not reference the
+             harness, nor the harness `app.host`. No test project can
+             therefore call both `HarnessCli.Run` and `IHeadlessRun` in
+             process, and harness tests never spawn a process (Q-025).
+             How does the D7 test run both sides?
+Why it matters: As specified, the test cannot be written.
+Answer:      Architecture, option (A). `07` L1 gains one integration test
+             project, `tests/integration/AirportSim.Integration.Tests.csproj`.
+             Under L3 it is the only test project with two references:
+             `src/app/host`, then `tools/SimHarness`. It calls both in
+             process and spawns nothing. It holds only tests that compare
+             `app.host` with the harness, which at Phase 1 is exactly
+             the D7 test. Any other test there needs an amendment. L8:
+             T-031's Test Author writes the project file, and T-031 adds
+             it to `AirportSim.sln`. `16` §16.8 and §16.11 say where the
+             test lives. Rejected:
+             (B) committed golden dumps compared by a harness test and a
+             host test. Every hash-moving change would re-author them,
+             with owner confirmation (`tests/golden/README.md`), for
+             nothing that (A) does not check directly;
+             (C) spawning the built harness, which breaks Q-025's
+             in-process rule and depends on the build layout;
+             (D) the harness referencing `app.host`, which pulls
+             `app.render` and `app.ui` into a CI tool and makes "two
+             independent compositions" uncheckable.
+             No option was chosen that needs an owner decision.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
