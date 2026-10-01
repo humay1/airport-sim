@@ -688,7 +688,9 @@ demands, stated so it is not discovered late:
   and its derivation in the test. `18` §18.5's single `Gate` binds only
   that shared file and the fixtures that load it (`18` §18.6).
 - No allocation in the update path (`07-conventions.md`). Cohort storage is a
-  pooled, index-stable structure; split and merge reuse slots.
+  pooled, index-stable structure; split and merge reuse slots. The update
+  path includes the `SetServersOpen` `Apply` and the module's event
+  handlers (`03` "How a budget is measured", Q-061).
 
 ---
 

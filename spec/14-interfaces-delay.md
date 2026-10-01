@@ -143,7 +143,7 @@ readonly struct FlightDelay {                // the per-flight record, as querie
 | `FlightTotal` | 0 | 0 |
 | `InboundAircraft` | inbound `FlightId.Value` | 0 |
 | `RunwayHold` | `RunwayId.Value` | `queuePosition` at the hold's opening |
-| `TaxiwayHold` | `TaxiEdgeId.Value` | blocking `FlightId.Value`, or `FLIGHT_ID_NONE` |
+| `TaxiwayHold` | `TaxiEdgeId.Value` | the opening event's blocking `FlightId.Value` (never null at Phase 1, `12` §12.6, Q-060), or `FLIGHT_ID_NONE` if null |
 | `StandUnavailable` | `StandId.Value + 1`, or 0 when the event's stand is null (always, at Phase 1: `12-interfaces-airside.md` §12.7) | occupying `FlightId.Value`, or `FLIGHT_ID_NONE` |
 | `TurnaroundJobWait` | `JobKind` ordinal | `ResourceKind` ordinal |
 | `Unexplained` | 0 | 0 |
@@ -589,7 +589,10 @@ Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). The shape:
   allocate.
 - No allocation in the update path (`07-conventions.md`): records, intervals
   and nodes live in pooled, index-stable storage; a removed leaf's slot is
-  reused, its id is not.
+  reused, its id is not. The update path includes the event handlers, where
+  most of this module's work runs, so its allocation test runs every
+  handler inside the metered window (`03` "How a budget is measured",
+  Q-061).
 
 ---
 

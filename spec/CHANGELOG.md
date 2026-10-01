@@ -2601,3 +2601,88 @@ Revision:    after the PR #68 review (rejected at ae74944):
                window, with no alignment to a sim-day boundary;
              - the `19` §19.6 cite resolves, now that PR #66 is on `main`.
 Signed off:  not required (measurement protocol, not balance).
+
+## 2026-10-01 — spec/12 §12.3, §12.6, §12.8 (+ "The handed-off arrival", new), §12.8a, §12.9, §12.10, §12.11, §12.12, §12.13; 03 "How a budget is measured"; 07 "Performance"; 08 §8.5, §8.6; 09 §9.10; 10 §10.6; 13 §13.11; 14 §14.3, §14.13; INDEX; open-questions — Q-060 to Q-062: T-021 airside gaps, round 2
+Reason:      T-021's Test Author found three gaps in the merged `12` (#67):
+             - **Q-060:** which flight a taxi hold's `Blocking` names when
+               the edge was free in the snapshot but granted earlier in
+               the same step. It is the snapshot occupant if there is
+               one, even one that left in S6.1, else this step's
+               grantee. It is never null on the hold, and always null on
+               `AircraftHeldOnTaxiwayReleased`, like `HeldAt` on
+               `DepartureHeldForPassengersReleased`;
+             - **Q-061:** whether event handlers are in the "update
+               path". They are, for every module. `03` now defines the
+               update path as phases 1 to 3: command `Apply`, `Tick`,
+               event handlers, and queries called then. It also says how
+               an allocation test meters it: `Step` windows without a
+               checkpoint, or a direct rig that delivers the handlers'
+               input in the same window. Every module with a handler
+               has one test that runs each handler inside the window.
+               Timing is unchanged, and "Measured" still bills `Tick`
+               only;
+             - **Q-062:** the handed-off arrival's track. It leaves
+               tracked state at the handoff, on both paths, so it has no
+               phase or stand left to pin, and it is no longer hashed or
+               drawn. `10` §10.3 rule 2 already treated the handoff as
+               the arrival's exit. So that `DoorsOpen` always fires
+               first, the handshake's handoff never runs before the
+               arrival's `DoorsOpen`. When `DeboardComplete` comes first,
+               the handoff chains right after `DoorsOpen`.
+Raised by:   Q-060 to Q-062 (Test Author, T-021, via coordinator)
+Impact:      - **`sim.airside` is not merged**, so no merged `src/` breaks.
+               `src/sim/core/AircraftHeldOnTaxiway*.cs` already carry
+               `FlightId? Blocking`, so no payload type changes.
+             - **T-021 test branch** (`test-author/T-021-airside-tests`,
+               `432c081`):
+               - add the five new §12.13 tests (two for Q-060, one for
+                 Q-061, two for Q-062);
+               - `TaxiEdgeTests` already expects the snapshot occupant
+                 (`d1`), which is consistent. No test asserts a
+                 non-null release `Blocking`;
+               - `ReassignStandTests`' handed-off case still logs
+                 reason 1. Its comment "R_A's track stays OnStand" is
+                 now wrong, and should say the track is gone.
+                 `HandshakeTests`' `TrackedFlights` subset check still
+                 holds;
+               - the airside allocation test must also meter the
+                 `FlightPlanPublished` handler, `ReassignStand`'s
+                 `Apply`, and, with a position-5 probe, the
+                 `FlightMilestoneReached` handler (§12.12).
+             - **Q-061 on merged modules' tests** (`main`, `f81822b`):
+               - `sim.schedule` and `sim.world` register no handler, so
+                 `ScheduleTickTests`' `Tick`-only meter conforms, and so
+                 does `WorldQueriesTests`;
+               - `sim.core`'s allocation tests cover the loop and the
+                 bus, and are unaffected;
+               - `sim.flow` meters `Step` windows (`FlowBudgetTests`,
+                 `BoardingTests`, `PromotionAllocationTests`). They
+                 include its six no-op event handlers whenever those
+                 events fire in the window, which the Test Author
+                 confirms. **No metered window applies a
+                 `SetServersOpen`**, so `sim.flow` has no conforming
+                 test for its command handler. The Planner adds one,
+                 for example to T-023's test list, under
+                 `tests/sim/flow/**`. No `src/` change is expected;
+               - T-022 (`13`) and T-024 (`14`, whose work is mostly in
+                 handlers) must meet the rule. `13` §13.11 names
+                 T-022's test, and `14` §14.13 says so.
+             - **Q-062 and the T-021 worker:** the handoff removes the
+               arrival's track, and the handshake waits for `DoorsOpen`.
+               The removal also bounds the tracked set, which would
+               otherwise grow by one track per rotation arrival, forever.
+             - **`tasks/T-021-runway-taxiway-stands.md`** (Planner): if
+               it restates the handoff or the allocation scope, it must
+               cite `12` instead.
+             - **Not decided here, flagged:** `03` "Measured" times
+               `Tick` only. A module that works in its handlers, chiefly
+               `sim.delay`, therefore has almost nothing timed against
+               its budget. Changing that is a budget-protocol decision
+               that Q-061 did not ask, and it needs its own question
+               before T-024.
+             - **Merge note:** PR #70 files Q-057 to Q-059 after the same
+               lines in `open-questions.md` and `CHANGELOG.md`. Resolve by
+               merging, keeping both sides.
+             - **Scope:** none added.
+Signed off:  not required (interface precision; no balance, scope, or
+             `01`/`02` change).

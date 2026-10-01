@@ -281,7 +281,9 @@ readonly struct TickContext {
 }
 ```
 
-`Tick` must not allocate on the hot path (`07-conventions.md`).
+`Tick` must not allocate on the hot path (`07-conventions.md`), and neither
+may the system's command and event handlers (`03` "How a budget is
+measured", Q-061).
 
 ### Fixed phase order
 
@@ -446,7 +448,9 @@ covers `Publish`, dispatch and the per-tick reset, for every tick of at most
 `MAX_EVENTS_PER_TICK` events. It holds from the first tick, with no warm-up.
 It does not depend on which event types have been published before, or on
 how many events an earlier tick carried. Allocations inside a handler are
-the subscriber's, not the bus's.
+the subscriber's, not the bus's. A subscriber's handlers are part of its
+own update path, so they must allocate nothing either (`03` "How a budget
+is measured", Q-061).
 
 - **The channel set is fixed at `Build`.** Subscription closes at `Build`
   (§8.11a), so the event types with at least one subscriber are known

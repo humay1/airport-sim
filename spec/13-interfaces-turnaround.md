@@ -391,3 +391,7 @@ Done-condition tests this spec expects to exist, phrased per
   (integration-shaped: this is the counterpart to
   `12-interfaces-airside.md` §12.13's fallback-only test, and is what
   actually proves the §12.8 handshake works end to end)
+- `test_turnaround_update_path_allocates_nothing_including_handlers`
+  (Q-061, `03` "How a budget is measured"): with `sim.airside`
+  registered, every `sim.turnaround` handler runs inside the metered
+  window
