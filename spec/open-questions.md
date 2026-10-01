@@ -1948,3 +1948,54 @@ Answer:      **HUMAN DECISION — owner, 2026-10-01: (B).** The owner
              `budget --tier max --report` stays a usage error. The
              Architect recorded this and did not decide it.
 Status:      ANSWERED (spec/19-interfaces-harness.md#193-the-command-line-q-026) — HUMAN DECISION
+
+<!-- Q-060 to Q-062 are filed by PR #73 (T-021 airside gaps, round 2). -->
+
+### Q-063 — `sim.airside`: the base of `queuePosition`, and its value on `Released`
+Raised by:   Architect, while answering Q-060 (PR #73), 2026-10-01
+Blocking:    T-021
+Question:    `AircraftHeldForRunway.QueuePosition` has no base. Is it 0-
+             or 1-based, does it count the flight itself, and does it
+             count pacing and occupancy holds together? Nothing says what
+             `AircraftHeldForRunwayReleased.QueuePosition` carries.
+Why it matters: Both are event payloads, so they are logged and must be
+             exact. `sim.delay` copies the opening value into
+             `DelayExplanation.B`.
+Answer:      Architecture. It is 1-based and counts the flight itself. It
+             is the runway's one hold queue's length just after the
+             flight joins, which is what `RunwayQueueLength` reports then,
+             so `1` means nobody was ahead. The retired "early aircraft
+             with `queuePosition = 0`" case (Q-052) already treated 0 as
+             "not in the queue". The value is fixed at emission. On
+             `Released` it is always 0, the field's empty value, as `HeldAt`
+             is null on `DepartureHeldForPassengersReleased`. `sim.delay`
+             reads the opener. A released flight is always the head, and
+             copying the opening value would need per-hold state. `10`
+             §10.6 and `14` §14.3 say so. One new §12.13 test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
+
+### Q-064 — Budgets: handler work that `03` does not time
+Raised by:   Architect, while answering Q-061 (PR #73), 2026-10-01
+Blocking:    T-024
+Question:    `03` "Measured" times a module's `Tick` only. `sim.delay`
+             does nearly all of its work in phase-3 event handlers
+             (`14` §14.4–§14.8), so its 0.40 ms budget would time almost
+             nothing. Whose budget does handler time belong to, and how
+             is it timed?
+Why it matters: A budget that does not time the work cannot fail, and the
+             6 ms frame total would be under-counted by every handler.
+Answer:      Architecture. `01` leaves the split of its 6 ms to `03`, so
+             this is the Architect's apportionment, and no budget value
+             changes. A module's measured time is now its `Tick` plus the
+             bodies of its command `Apply`s and event handlers. The bus's
+             call into a handler stays `sim.core`'s "event dispatch". To
+             time them, the test builds the module with a
+             `SystemServices` whose `Events` and `Commands` wrap each
+             registered handler in a non-allocating timing shim. The
+             tick's sample is the sum of the differences around `Tick`
+             and every shimmed call, and `03`'s arithmetic applies to the
+             sum. A module with no handler is timed as before. Marked LOW
+             CONFIDENCE so the owner sees that `sim.delay`'s 0.40 ms now
+             covers its handlers. If T-024 measures over, the remedies
+             are the reserve or the owner reopening `01`'s split.
+Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)

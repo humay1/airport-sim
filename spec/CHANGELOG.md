@@ -2681,3 +2681,64 @@ Impact:      None to the spec or to code. The nightly "Performance trend"
              lands. Until then, `budget --tier max --report` stays a usage
              error.
 Signed off:  owner, 2026-10-01
+
+## 2026-10-01 — spec/12 §12.5, §12.13; 03 "How a budget is measured" ("Measured", new "Timing a module's handlers", arithmetic step 1); 10 §10.6; 14 §14.3, §14.13; INDEX; open-questions — Q-063, Q-064: runway `queuePosition`, timing handler work
+Reason:      Two gaps the Architect found while answering Q-060 and Q-061
+             (PR #73):
+             - **Q-063:** `AircraftHeldForRunway.QueuePosition` had no
+               base, and its `Released` value was unspecified. It is now
+               1-based and counts the flight itself: the runway's one
+               hold queue's length just after the flight joins. It is
+               fixed at emission, and it is always 0 on `Released`;
+             - **Q-064:** `03` timed `Tick` only, so `sim.delay`, whose
+               work is nearly all in event handlers, had almost nothing
+               timed against its 0.40 ms. A module's measured time is
+               now its `Tick` plus its command and event handler bodies.
+               It is timed through non-allocating shims that the test
+               installs in the module's `SystemServices`, summed per
+               tick. The bus's call into a handler stays `sim.core`'s.
+Raised by:   Q-063, Q-064 (Architect, during PR #73, via coordinator)
+Impact:      - **Q-063:** `sim.airside` is not merged. The payload types in
+               `src/sim/core/AircraftHeldForRunway*.cs` are unchanged.
+               T-021's test branch prints the value, and no test there
+               asserts it. One new §12.13 test. Q-060 (PR #73) gives the
+               taxi family the same "empty on `Released`" rule.
+             - **Q-064 on merged timed budget tests** (`main`, `84c754d`):
+               - **Unaffected:** `sim.schedule`'s `BudgetTests` and
+                 `WorldBudgetTests`, whose modules register no handler,
+                 and `sim.core`'s `BudgetTests` and `CommandQueueTests`,
+                 which sample `Step(1)`;
+               - **Non-conforming:** `sim.flow` registers six event
+                 handlers and `SetServersOpen`. Three of its timed tests
+                 time `Tick` alone: `FlowStressBudgetTests` and
+                 `SecurityLaneBudgetTests` through `StressDay`'s
+                 `TimedSystem`, and `PromotionBudgetTests` between
+                 probes at positions 3 and 5. `SecurityLaneBudgetTests`
+                 says outright that phase 1 is outside its sample,
+                 although it applies three `SetServersOpen` every tick.
+                 The fourth, `FlowBudgetTests`' max-tier test, times
+                 whole `Step`s over one hour. It was already listed as
+                 non-conforming under Q-044, and it becomes a per-tick
+                 test with shims. A test-only task
+                 (Planner, `tests/sim/flow/**`) adds the shims to the
+                 shared rigs. The event handlers have empty bodies today,
+                 so only `SecurityLaneBudgetTests` is expected to measure
+                 materially more. No `src/` change is expected;
+               - **Open branch:** T-021's `AirsideBudgetTests` must shim
+                 `sim.airside`'s handlers before T-021 merges.
+             - **T-022, T-024:** their budget tests use the shims. For
+               T-024 this is the whole point. `14` §14.13 says so.
+             - **Depends on PR #73:** #73's Q-061 text in `03` says
+               "This is wider than "Measured" above, which bills time to
+               `Tick` alone", and its CHANGELOG says "Timing is
+               unchanged". Whichever of the two PRs merges second must
+               merge `main` and reword those to cite Q-064.
+             - **Scope:** none added. **No budget value changes.**
+             - **LOW CONFIDENCE (Q-064):** billing handler time to the
+               subscriber means `sim.delay`'s 0.40 ms, from `01`, now
+               covers its handlers. If T-024 measures over, the remedy is
+               the reserve, by amendment, or the owner reopening `01`'s
+               split.
+Signed off:  not required (event payload precision and measurement
+             protocol; no balance, scope or `01`/`02` change). The owner
+             should review the Q-064 LOW CONFIDENCE marker before T-024.

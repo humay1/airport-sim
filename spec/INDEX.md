@@ -82,9 +82,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   one sim-day of per-tick samples, rounded up to µs in `long` arithmetic,
   with mean `Σu ≤ B·n` and nearest-rank p99 `≤ 2B`. Allocation-only tests and
   whole-run gates are exempt, and `sim.core` samples `Step(1)` (Q-044,
-  Q-045)**.
+  Q-045)**; **a module's measured time is its `Tick` plus its command and
+  event handler bodies, timed through shims in its `SystemServices`
+  (Q-064)**.
 - LC: the checkpoint-hashing ceiling (20 ms) and the snapshot-write ceiling
-  (250 ms).
+  (250 ms); billing handler time to the subscriber, so `sim.delay`'s
+  0.40 ms covers its handlers (Q-064).
 - Read if: planning; any budget test ("How a budget is measured"); the soak
   ("The soak fixture").
 
@@ -251,7 +254,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
   `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
   `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
-  `ArgumentException` (§12.2, §12.11, §12.12)**.
+  `ArgumentException` (§12.2, §12.11, §12.12)**; **a runway hold's
+  `queuePosition` is 1-based and counts the flight itself, and it is 0 on
+  `Released` (§12.5, Q-063)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
@@ -273,7 +278,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: integer-tick allocation, so leaves sum exactly (§14.6); `DelayEventId`
   is its own counter (§14.7); `DelayEvent` published only at finalisation
   (§14.8); **fifth interval family: passenger hold, `passenger_late`,
-  `DelaySource.PassengerHold` (§14.3, §14.5, §14.9, HD, D6)**.
+  `DelaySource.PassengerHold` (§14.3, §14.5, §14.9, HD, D6)**; **the
+  0.40 ms budget covers the event handlers, timed by `03`'s shims (§14.13,
+  Q-064)**.
 - LC (all accepted as provisional, HD, D8): 2-day retention (§14.2);
   the checkpoint set (§14.4); the cap and recovery order (§14.6).
 - Read if: T-024.
