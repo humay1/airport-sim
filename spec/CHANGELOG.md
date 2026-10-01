@@ -2968,6 +2968,10 @@ Reason:      `16` §16.8's `test_host_composition_matches_harness_checkpoints`
                `ProjectReference`s, `src/app/host` then
                `tools/SimHarness`. In process only. At Phase 1 it holds
                only the D7 test. Neither module references the other.
+               The exception covers both of L3's "one reference"
+               sentences: "every other test project ... the one
+               `ProjectReference` changed" and "references **only** the
+               production project" (review of #84 at `91b1b91`).
              - **L8:** T-031's Test Author writes the project file and
                the L4 parallelisation file. T-031 adds it to
                `AirportSim.sln`.
