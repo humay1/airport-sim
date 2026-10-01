@@ -2601,3 +2601,58 @@ Revision:    after the PR #68 review (rejected at ae74944):
                window, with no alignment to a sim-day boundary;
              - the `19` §19.6 cite resolves, now that PR #66 is on `main`.
 Signed off:  not required (measurement protocol, not balance).
+
+## 2026-10-01 — spec/19 §19.1, §19.2, §19.2a, new §19.2b, §19.3, §19.4, new §19.7; 03 "The soak fixture", "Budget tests: window and arithmetic"; 16 §16.8; INDEX; open-questions — Q-057, Q-058 (Q-059 filed): `soak` subcommand, budget statistic seam
+Reason:      While syncing task files (PR #69), the Planner found two gaps in
+             `19`:
+             - **Q-057:** no `soak` subcommand, although the nightly
+               workflow already runs `soak --days 500 --golden
+               tests/golden/soak-500.hashes`. New §19.2b: one run of the
+               §19.2a composer over a separate soak fixture set in
+               `tests/fixtures/soak/`, with seed 12345. It passes iff the
+               run's `16` §16.8 dump is byte-identical to the golden, and
+               otherwise prints `FAIL soak line=<L>` with exit 1.
+               `soak --out P` writes a dump to a new file, never
+               overwriting, so that a golden can be authored. Paths are
+               repository-relative from the `AirportSim.sln` root, or
+               rooted. `soak` times nothing. The 0.1 ms bound is a
+               whole-run sizing test (§19.7). The invocation matches CI as
+               it stands, so `ci/` and `.github/` need no change.
+             - **Q-058:** no seam to test `budget`'s rounding. New pure
+               public member `HarnessGates.BudgetFromSamples(samples,
+               frequency) -> GateResult`, which the CLI must call exactly
+               once. `07` L5 rules out an internal function, and a CLI
+               injection flag would be a seam in the gate. §19.7 gives
+               six tests with exact lines, one of which tells rounding up
+               apart from flooring.
+             - **Q-059, filed OPEN for the owner.** The nightly
+               "Performance trend" step runs `budget --tier max --report`,
+               which is a usage error under §19.3. What the report means is
+               the owner's, so this change does not answer it.
+Raised by:   Q-057, Q-058 (Planner, PR #69, via coordinator); Q-059
+             (Architect)
+Impact:      - **Additive.** No merged code or test is invalidated. `soak`
+               was an unknown subcommand, so nothing implements it.
+               `BudgetFromSamples` is a new member. The existing `budget`
+               tests in `HarnessCliTests` are unchanged.
+             - **T-009 (in progress):** none. The stand-in's `Name` stays
+               free, and the value T-009 merges is kept once the soak
+               golden exists. §19.2a's rules are restated to apply to
+               either fixture set, with no change for the Phase 0 set.
+             - **T-013:** its task file must follow §19.2b and §19.7. It
+               names `soak --days 500 --seed <n>`, but there is no `--seed`
+               (seed 12345). Its tests go in `tests/tools/simharness/`. The
+               Test Author writes `tests/fixtures/soak/**`. The 500-day
+               golden can only be generated with `soak --out` once T-013's
+               worker code exists, so the Planner must sequence the
+               golden commit after the implementation, under
+               `tests/golden/README.md` (the owner confirms).
+             - **T-045:** its spec gap is closed. The worker adds
+               `BudgetFromSamples` and routes `RunBudget` through it.
+             - **Nightly CI:** after T-013 merges and until the golden is
+               committed, `soak` exits 3 instead of 2. Q-059 stays open.
+             - Scope: one subcommand with two forms, one public member and
+               one fixture set. All of these are tooling. No sim scope is
+               added.
+Signed off:  not required (harness tooling, not balance). Q-059 needs the
+             owner.
