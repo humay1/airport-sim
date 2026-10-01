@@ -2893,3 +2893,62 @@ Impact:      - **Q-063:** `sim.airside` is not merged. The payload types in
 Signed off:  not required (event payload precision and measurement
              protocol; no balance, scope or `01`/`02` change). The owner
              should review the Q-064 LOW CONFIDENCE marker before T-024.
+
+## 2026-10-01 — spec/08 §8.5, §8.7 (new "Allocation"); 03 "How a budget is measured" (`Step` meter bullet); INDEX; open-questions — Q-065: applying commands allocates nothing
+Reason:      `12` §12.12 (Q-061) has `sim.airside`'s allocation test meter
+             `ISimHost.Step` with a `ReassignStand` applied and one a no-op
+             in the window. `08` pinned the bus as allocation-free (§8.6,
+             Q-035) but said nothing about command application, or about
+             the loop. So an allocation in `ApplyDue` would fail a
+             module's test for a `sim.core` reason. Pinning it is a
+             narrower spec than letting module tests subtract an unknown
+             core cost.
+             - **§8.7 "Allocation":** on a tick that completes normally,
+               `ApplyDue` and its dispatch allocate nothing, for every
+               kind, any number of due commands per tick and any log size,
+               from the first tick after `Build`. The log grows only at
+               admission, outside `Step`. `Apply` gets the admitted
+               payload copy, and nothing else is copied. One new test is
+               named.
+             - **§8.5:** on such a tick, the loop allocates nothing outside
+               a checkpoint tick's phase 4.
+             - **The bound (review of #77 at `8111cdc`).** It mirrors
+               Q-035's on §8.6. A tick that throws, whether from a
+               handler's `Apply` or from a broken `sim.core` limit such as
+               `MAX_EVENTS_PER_TICK`, is wrapped by §8.5a in a new
+               `SimInvariantException`. Merged `SimHost.WrapAndBreak`
+               allocates the message and the exception. That tick is
+               outside the rule and never in an allocation test's window.
+               The first draft's unbounded wording contradicted §8.5a.
+             - **03:** the `ISimHost.Step` meter excludes nothing for
+               `sim.core`, on ticks that complete normally.
+Raised by:   Q-065 (Test Author / T-021)
+Impact:      - **Merged code:** none invalidated. On a tick that
+               completes normally, T-005's `CommandQueue.ApplyDue` already
+               allocates nothing: it walks
+               a pointer over the sorted log, the handler lookup is a
+               `switch` over two fields, and `TickContext` is a struct.
+               The host loop already passes
+               `test_budget_step_with_no_systems_allocates_nothing` and
+               `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`.
+             - **Merged tests:** stay valid.
+               `test_command_queue_apply_due_allocates_zero_bytes` shows
+               only a difference between two hosts, for `SetServersOpen`
+               and `NoOp`, so it does not pin an absolute 0 or the
+               `ReassignStand` path.
+             - **Test-only follow-up (`tests/sim/core/**`):**
+               `test_command_queue_apply_due_of_every_kind_allocates_nothing`.
+               Recommended: a separate small test-only task, released
+               after T-042 merges, because both write `tests/sim/core/**`.
+               It is not folded into T-042. T-042's task file puts a
+               `Budget` test that asserts only allocation out of scope,
+               and this test asserts only allocation. Folding it in would
+               widen T-042's scope, and the Planner would have to edit its
+               task file.
+             - **T-021:** no change to its tests or code. Its `Step`-metered
+               allocation test can now attribute any nonzero result to
+               `sim.airside`.
+             - **Scope:** none added. No budget value changes.
+Signed off:  not required (measurement protocol and a `sim.core`
+             invariant that merged code already meets; no balance, scope
+             or `01`/`02` change).

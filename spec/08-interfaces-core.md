@@ -283,7 +283,10 @@ readonly struct TickContext {
 
 `Tick` must not allocate on the hot path (`07-conventions.md`), and neither
 may the system's command and event handlers (`03` "How a budget is
-measured", Q-061).
+measured", Q-061). On a tick that completes normally, the loop itself
+allocates nothing outside a checkpoint tick's phase 4 (Q-065). A tick that
+throws is broken, and wrapping its exception (§8.5a) may allocate. Its
+command application and its bus are pinned in §8.7 and §8.6.
 
 ### Fixed phase order
 
@@ -632,6 +635,47 @@ interface ICommandHandlerRegistry {
   tick. It is never thrown, following `07-conventions.md` "invalid states
   are data". `Apply` may publish events, which are dispatched in phase 3 as
   usual.
+
+**Allocation (Q-065).** On a tick that completes normally, applying
+commands allocates **nothing**. That covers `ApplyDue` and its dispatch to
+each handler: finding the due commands, skipping a `NoOp`, looking up the
+handler and its owner, setting the envelope `Source`, and calling `Apply`.
+It holds for every kind, for any number of commands due in one tick, and
+however many commands the log holds. It holds from the first tick after
+`Build`, and nothing is created lazily on the first application. A test may
+still warm the process up first, to keep one-time JIT and type setup out of
+the meter.
+
+A tick that throws does not complete normally. That includes an exception
+out of a handler's `Apply`, and a broken `sim.core` invariant such as
+§8.6's `MAX_EVENTS_PER_TICK` or cascade limit. The host wraps it in a new
+`SimInvariantException` (§8.5a), and that may allocate. The rule above does
+not cover such a tick. The run is broken anyway, so it is never in an
+allocation test's window.
+
+- **Growth happens at admission.** `TrySubmit` copies the payload and
+  inserts into the log. It runs outside `Step` (above), so the log grows
+  there and never inside a tick. `ApplyDue` only reads it.
+- **`Apply` receives the admitted command.** Its `Payload` is the copy made
+  at admission. `ApplyDue` makes no other copy, no list and no closure. A
+  handler that decodes the payload reads that array in place. Whatever the
+  handler allocates is its owner's, in the owner's update path (`03` "How a
+  budget is measured", Q-061).
+- **A module test needs no exclusion.** On a tick that completes normally,
+  `sim.core`'s own work allocates nothing outside a checkpoint tick's
+  phase 4: the loop (§8.5), command application (here) and the bus
+  (§8.6). An allocation test's window holds only such ticks, because a
+  tick that throws fails the test anyway. So an allocation test that
+  meters `ISimHost.Step` measures only the registered systems' code, and a
+  nonzero result in it never has a `sim.core` cause.
+
+Tests (Q-065, Test Author, `tests/sim/core/`):
+- `test_command_queue_apply_due_of_every_kind_allocates_nothing` meters
+  `ISimHost.Step` over non-checkpoint ticks, on a host with an
+  allocation-free probe handler for `SetServersOpen` at 4 and one for
+  `ReassignStand` at 3. Inside the window, some ticks have no due command
+  and some have several of each kind, with `NoOp`s among them. It asserts
+  exactly 0 bytes, not a difference between two hosts.
 
 ---
 

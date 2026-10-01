@@ -2107,3 +2107,40 @@ Answer:      Architecture. `01` leaves the split of its 6 ms to `03`, so
              into `RecordedCause` (Q-062), and `sim.turnaround`'s.
              `12` §12.12 and `13` §13.10 say so.
 Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)
+
+### Q-065 — `sim.core`: does applying a command allocate?
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    `12` §12.12 (Q-061) requires `sim.airside`'s allocation test
+             to meter `ISimHost.Step` with one `ReassignStand` applied and
+             one a no-op inside the window. `08` §8.6's zero-allocation
+             rule covers the bus only. §8.7 says nothing about the command
+             queue's own allocation when `ApplyDue` finds a due command
+             and dispatches it. Is command application allocation-free,
+             or how does a module test exclude it?
+Why it matters: If `ApplyDue` allocates, a module's allocation test fails
+             for a `sim.core` reason, and no module can fix it.
+Answer:      Architecture. On a tick that completes normally, command
+             application allocates nothing, and no module test excludes
+             anything. `08` §8.7 "Allocation" pins `ApplyDue` and its
+             dispatch (finding the due commands, skipping `NoOp`, the
+             handler lookup, setting `Source`, calling `Apply`) as
+             allocation-free for every kind, any number due per tick and
+             any log size, from the first tick after `Build`. Growth
+             happens only at admission, outside `Step`. `Apply` gets the
+             admitted payload copy, and nothing else is copied. §8.5 adds
+             that, on such a tick, the loop allocates nothing outside a
+             checkpoint tick's phase 4. The bound mirrors Q-035's on
+             §8.6. A tick that throws, from `Apply` or from a broken
+             `sim.core` limit, is wrapped by §8.5a in a new
+             `SimInvariantException`, which may allocate. That tick is
+             outside the rule and never in an allocation test's window.
+             `03`'s `Step` meter bullet says that it therefore excludes
+             nothing for `sim.core`. This matches merged T-005 code
+             (`CommandQueue.ApplyDue`), which is already allocation-free
+             on such a tick. The merged tests show it only as a
+             difference between two hosts, for `SetServersOpen` and
+             `NoOp`. So one new `tests/sim/core` test asserts exactly 0
+             for both kinds. It is a separate small test-only task after
+             T-042, not part of T-042.
+Status:      ANSWERED (spec/08-interfaces-core.md#87-commands)
