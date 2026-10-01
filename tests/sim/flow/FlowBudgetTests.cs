@@ -115,6 +115,7 @@ namespace AirportSim.Sim.Flow.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")]
         public void test_flow_budget_max_tier_within_two_and_a_half_ms_and_bounded_cohorts()
         {
             var clock = new FlowClock((int)SimConstants.TICKS_PER_SIM_DAY);
