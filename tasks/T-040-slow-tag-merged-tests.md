@@ -73,6 +73,6 @@ Not applicable. No timed or budgeted path changes; `ci/run-checks.sh` and
 
 No worker: test-only. Textual conflict risk with T-039's Test Author, who is
 adding a new file in `tests/sim/flow/`, is low because this task edits only
-existing files. T-009 writes `tests/sim/core/**` and `tools/SimHarness/**`:
-no overlap. If a method name is not found on `main`, stop and report; do not
+existing files. T-009 writes `tests/tools/simharness/**`, `tests/fixtures/harness/**` and
+`tools/SimHarness/**` (synced to `19` §19.6): no overlap. If a method name is not found on `main`, stop and report; do not
 tag a similar test.

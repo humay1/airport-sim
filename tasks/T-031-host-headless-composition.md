@@ -133,7 +133,9 @@ Binding, copied from `spec/16-interfaces-host.md`, not paraphrased:
 - **The scenario bundle** (§16.3): read by exact file name only, never by
   directory listing. Files: `bundle.json` (`schema_version`, `seed`,
   `systems`), `schedule.csv`, `airside.fixture`, `airside_rules.json`
-  (required whenever `sim.airside` is listed), `turnaround.fixture`,
+  (required whenever `sim.airside` is listed; the host parses it into
+  `AirsideRules`, "both keys, `boarding_hold_max_minutes` and
+  `doors_open_delay_minutes` (Q-047)", and the file is human-authored, T-046), `turnaround.fixture`,
   `flow.fixture`, `world.fixture` (T-012's `WalkGraph`),
   `render_layout.fixture`. A listed system with a missing file is a hard
   load failure naming the file. A system not listed is skipped, never
