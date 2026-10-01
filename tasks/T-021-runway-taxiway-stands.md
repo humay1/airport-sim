@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.airside` |
 | Assigned role | worker |
-| Depends on | T-003, T-005, T-008, T-026 |
+| Depends on | T-003 (merged #18), T-005 (merged #26), T-008 (merged #54), T-026 (merged #29); all merged |
 | Spec source | `spec/00-overview.md` build order #3; `spec/12-interfaces-airside.md` (answers Q-005; §12.8's boarding hold answers part of Q-007 §14.9, HD D6; §12.8a step order, §12.11 pending list, §12.2 capacities, §12.4 file format and `AirsideRules`, §12.10 no-op log line, §12.13 tests: PR #67, `8cf445c`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (PR #68) and "How a budget is measured" (Q-061, Q-064; PRs #73, #75); `spec/12-interfaces-airside.md` Q-060 to Q-063 (PRs #73, #75) |
 | Blocked by | — |
 

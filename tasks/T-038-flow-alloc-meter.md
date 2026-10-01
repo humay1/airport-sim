@@ -87,15 +87,15 @@ how existing zero-allocation assertions are measured.
 
 ## Worker notes
 
-**Release order (historical, resolved: this task merged as #60 after T-010 #56 and T-011 #59):** do not release this task until both of its
+**Release order, binding:** do not release this task until both of its
 dependencies are actually merged — **T-037 is now merged** (PR #51,
-`7bb30b5`); **T-010** has since merged (#56), as has this task (#60). T-010's worker branch
+`7bb30b5`); **T-010** is still not merged. T-010's worker branch
 (`worker/T-010-cohort-promotion-demotion`) and its Test Author's branch
 (`test-author/T-010-cohort-promotion-tests`) both carry T-010's own
-additions to `tests/sim/flow/**`, and the T-011 Test Author was concurrently
+additions to `tests/sim/flow/**`, and the T-011 Test Author is concurrently
 writing `tests/sim/flow/**` tests on
 `test-author/T-011-stress-30k-tests`. Releasing T-038 before T-010 merges
 risks a worker touching the same test files T-010 is about to land,
 producing conflicts or clobbering T-010's tests — this task's own writable
-path is exactly the shared surface those two are actively writing. (Check
-the queue for T-010's merge before starting: satisfied.)
+path is exactly the shared surface those two are actively writing. Check
+the queue for T-010's merge before starting. (historical, resolved: T-010 merged #56, T-011 #59, this task #60)

@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `app.render` (scene layer only) |
 | Assigned role | worker |
-| Depends on | T-009, T-010, T-021, T-023, T-026 |
+| Depends on | T-009 (merged #74), T-010 (merged #56), T-021, T-023 (merged #71), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md` build order; `spec/15-interfaces-render.md` (all §15.13 HUMAN DECISIONS now made: D1, D4, D5, D7; lane pips answer Q-010 item 5; §15.14 graphics quality, D10/Q-034) |
 | Blocked by | — |
 
@@ -371,7 +371,7 @@ This task's dependency list grew from T-009 alone to T-009, T-010, T-021,
 **and now T-023**: the scene layer compiles against
 `IFlowSystem.SetPromoted`/`AgentsAt` (T-010), `IAirsideSystem.Layout()`
 (T-021), and now `IFlowSystem.TryGetLaneState` for lane pips (T-023). Do
-not release this task before all four have merged.
+not release this task before all four have merged. (T-009 #74, T-010 #56 and T-023 #71 have merged; only T-021 is outstanding.)
 
 The backend (`src/app/render/Unity/**`) is now taskable as **T-032**, since
 every `§15.13` HUMAN DECISION is made — do not write anything under

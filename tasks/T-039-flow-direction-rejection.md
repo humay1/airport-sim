@@ -5,7 +5,7 @@
 | Status | MERGED (PR #63) |
 | Module | `sim.flow` |
 | Assigned role | worker |
-| Depends on | T-010 (PR #56, merged) |
+| Depends on | T-010 (PR #56, open) (historical, resolved: merged #56) |
 | Spec source | `spec/09-interfaces-flow.md` §9.6 "Only `Departing` cohorts exist at Phase 0/1 (Q-040)", §9.7 "Exceptions" check 4 (Q-040, spec PR #55, merged `3a6ba7c`) |
 | Blocked by | — |
 
@@ -110,11 +110,11 @@ outside the tick's update path.
 
 ## Worker notes
 
-**Depends on T-010 (PR #56, merged before this task was released).**
+**Depends on T-010 (PR #56, open as of this task's filing), not merged.** (historical, resolved: T-010 merged #56 before release; this task merged #63)
 T-010 also edits `src/sim/flow/FlowSystem.cs` (its own PR touches `Inject`'s
 neighbourhood along with the routing cache and promotion work) — releasing
 this task before T-010 merges risks a conflicting edit to the same file.
-(Historical: the task was not released until T-010 merged. Merged as #63.)
+Do not release until T-010 has actually merged. (historical, resolved: T-010 merged #56)
 
 This is a small, single-check addition: do not widen scope to any other
 part of `Inject`, `Absorb` or the routing/promotion code T-010 is landing.

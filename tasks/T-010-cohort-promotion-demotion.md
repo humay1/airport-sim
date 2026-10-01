@@ -17,7 +17,7 @@ src/sim/flow/**
 
 **Correction (Q-021):** `tests/**` is the Test Author's territory exclusively; the path guard already blocks a worker grant there. Dropped.
 
-Same directory as T-007; was not released concurrently with T-007 or T-011 (historical, resolved: all merged).
+Same directory as T-007; do not release concurrently with T-007 or T-011. (historical, resolved: all three merged)
 
 ## Readable specs
 

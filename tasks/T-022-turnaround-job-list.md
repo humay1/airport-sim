@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.turnaround` |
 | Assigned role | worker |
-| Depends on | T-008, T-021, T-026 |
+| Depends on | T-008 (merged #54), T-021 (not merged), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
 | Blocked by | — |
 
