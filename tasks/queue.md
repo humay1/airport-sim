@@ -73,6 +73,7 @@ Author branches, and the T-011 Test Author's branch, are all currently
 writing `tests/sim/flow/**`, the same directory this task writes.
 Releasing T-038 before T-010 actually merges risks clobbering or
 conflicting with their tests. See the T-038 row and its own worker notes.
+(historical, resolved: T-037 #51, T-010 #56, T-011 #59 and T-038 #60 are all merged)
 
 **T-011, this cycle:** its Test Author's PR (`test-author/T-011-stress-30k-
 tests`, `a885923`, `tests/sim/flow/StressDay.cs`/`FlowStressBudgetTests.cs`)
@@ -89,7 +90,7 @@ pass the budget against `main` today (mean `0.50`–`0.63` ms, p99
 `2.60`–`3.26` ms against `2.5`/`5.0`, `0` bytes allocated, peak `252` live
 cohorts), but merge only after **T-010** merges, same reasoning as T-038 —
 `tests/sim/flow/**` is shared with T-010's still-open branches. A worker is
-needed only if the budget fails once T-010's code lands.
+needed only if the budget fails once T-010's code lands. (historical, resolved: T-010 merged #56, T-011 merged #59, no worker was needed)
 
 **Q-040 (a), this cycle, spec PR #55 (merged, `3a6ba7c`):** at Phase 0/1
 there are no arriving or transferring passengers, so `Inject` must reject
@@ -100,10 +101,10 @@ checks. New task **T-039** (`src/sim/flow/**` only, depends on **T-010**,
 PR #56, open) closes the gap; the Test Author's own test is
 `test_inject_rejects_non_departing_direction` (`09` §9.7). **T-039 must not
 release before T-010 merges** — T-010's own PR also edits
-`FlowSystem.cs`. See the T-039 row and its release-order entry.
+`FlowSystem.cs`. See the T-039 row and its release-order entry. (historical, resolved: T-010 merged #56, T-039 merged #63)
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
-`architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
+`architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:** (historical, resolved: merged as PR #13)
 Q-016 (what counts as "green" before T-006 merges) is now a **HUMAN
 DECISION, owner, 2026-09-24**, not pending: until T-006 merges, green =
 `ci/run-checks.sh`'s `path-guard` and `build-and-test` (`--fast`) jobs,
@@ -158,45 +159,50 @@ to wave through a failing `determinism` check.
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | MERGED (PR #48) |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | MERGED (PR #54) |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | tools.simharness | T-006, T-007, T-008, T-012 | IN_PROGRESS (released 2026-09-29; task file synced to spec PR #66 2026-10-01: tests in `tests/tools/simharness/**` and `tests/fixtures/harness/**`, boarding stand-in at SystemId 3; its 100-day kill-gate test is Slow by L11a rule (a), so its PR needs the pre-merge `slow-tests` run) |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | tools.simharness | T-006, T-007, T-008, T-012 | MERGED (PR #74, `3ec3c59`, 2026-10-01) |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | MERGED (PR #56) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | MERGED (PR #59) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
-| T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED (synced 2026-10-01: tests in `tests/tools/simharness/**` and `tests/fixtures/soak/**`; spec gap closed by Q-057, PR #70, `b00adcb` (`soak --days D --golden P` / `--out P`, `19` §19.2b and §19.3); releasable after T-009 merges and tests are authored; golden `tests/golden/soak-500.hashes` committed only after merge, owner-confirmed) |
+| T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED (synced 2026-10-01: tests in `tests/tools/simharness/**` and `tests/fixtures/soak/**`; spec gap closed by Q-057, PR #70, `b00adcb` (`soak --days D --golden P` / `--out P`, `19` §19.2b and §19.3); releasable after T-009 merges and tests are authored (historical, resolved: T-009 merged #74; now ordered after T-030); golden `tests/golden/soak-500.hashes` committed only after merge, owner-confirmed) |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 | T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
 | T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | MERGED (PR #51, `7bb30b5`) |
 | T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | MERGED (PR #60, `e99bc0d`) |
-| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | IN_PROGRESS (released 2026-09-29) |
-| T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | QUEUED (released by the owner 2026-09-29 together with T-039 and T-009; test-author, own PR) |
+| T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | MERGED (PR #63, `e33570b`) |
+| T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | MERGED (PR #64, `83dd23c`) |
 | T-041 | `sim.world` budget test: per-tick mean and p99 (flake fix) | sim.world tests | — | QUEUED (owner-approved 2026-09-29; test-author, own PR; rewritten 2026-10-01 to the 14 400-sample window and `long` arithmetic of spec PR #68) |
 | T-042 | `sim.core` budget tests conform to `03` window and arithmetic (Q-044, Q-045) | sim.core tests | — | QUEUED (test-author, own PR) |
-| T-043 | `sim.flow` budget tests conform to `03` window and arithmetic (drop `Int128`) | sim.flow tests | T-039, T-040, T-023 | QUEUED (test-author, own PR; serialised after the three other `tests/sim/flow/**` writers) |
+| T-043 | `sim.flow` budget tests conform to `03` window, arithmetic and handler timing (drop `Int128`; Q-061 `Apply` in the allocation window; Q-064 handler timers) | sim.flow tests | T-039, T-040, T-023 | QUEUED (T-039, T-040, T-023 merged; releasable; test-author, own PR; the only `tests/sim/flow/**` writer while it runs) |
 | T-044 | `sim.schedule` budget tests conform to `03` window and arithmetic | sim.schedule tests | T-040 | QUEUED (test-author, own PR) |
-| T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009, T-013, T-014, T-030 | QUEUED (spec gap closed by Q-058, PR #70: `HarnessGates.BudgetFromSamples`; ordering unchanged, after T-009, T-013, T-014, T-030) |
+| T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009, T-013, T-014, T-030 | QUEUED (spec gap closed by Q-058, PR #70: `HarnessGates.BudgetFromSamples`; ordering unchanged, after T-009 (merged #74), T-013, T-014, T-030) |
 | T-046 | `balance.schema.json` requires `doors_open_delay_minutes` | content | T-028 | DONE by the owner (commit `3a00a78`, 2026-10-01): schema requires both keys, balance file has `doors_open_delay_minutes: 2` |
 
 **T-041 note (2026-09-29) — SUPERSEDED 2026-10-01** by spec PR #68 and the rewritten T-041 (14 400-sample window, nearest-rank p99 rule; both gaps below are closed):  `WorldBudgetTests` failed in CI three times in two days (102 us, 150 us, and a third on `main` after #64) and passed on every rerun, because it asserts one 2000-tick aggregate mean instead of `03`'s statistic (mean <= budget and p99 <= 2x budget over per-tick samples) and logs only on failure. T-041 writes only `tests/sim/world/**` and shares no path with T-009, T-039 or T-040. The budget value (100 us) is unchanged. Two spec gaps are recorded in the task file and go to the Architect, not to the Test Author: the test runs 2000 ticks, not `03`'s one full sim-day (14 400 ticks), and `03` does not define the p99 rank rule.
 
 **T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
 
-**Harness writers, one at a time (2026-10-01).** T-009, T-013, T-014, T-030 and T-045 all write `tools/SimHarness/**` and `tests/tools/simharness/**`. Order: T-009, then T-013, T-014, T-030 (any order among them, one at a time), then T-045 last. T-045 is last because nothing depends on its rounding (its former spec gap, Q-058, is closed). T-013, T-030 and T-014 tests are all in `tests/tools/simharness/**` (Q-041), so `tests/sim/core/**` is free for T-042.
+**Harness writers, one at a time (2026-10-01).** T-009, T-013, T-014, T-030 and T-045 all write `tools/SimHarness/**` and `tests/tools/simharness/**`. Order, binding: T-009 (merged, #74), then T-030, then T-013 and T-014 one at a time (either order, never together), then T-045 last. T-045 is last because nothing depends on its rounding (its former spec gap, Q-058, is closed). T-013, T-030 and T-014 tests are all in `tests/tools/simharness/**` (Q-041), so `tests/sim/core/**` is free for T-042.
 
 **Post-spec sync (2026-10-01), spec PRs #66, #67 and #68.**
 
 - **T-009 (#66, `6c4509c`).** Its tests move to `tests/tools/simharness/**` (`19` §19.6 Q-041); one Phase 0 composition, world (1), schedule (2), a boarding stand-in (3) that absorbs at `NodeId(9)` at STD and hashes `0` (owner accepted 2026-09-29), flow (4), built from Test Author fixtures including `tests/fixtures/harness/phase0-content.files`, never from `data/`. The kill gate is a whole-run wall-clock check under 60 s (§19.6(a)). The seven `EmptyCompositionFinalHash` expectations in `HarnessCliTests` become the kit's `FinalHash`.
 - **#68 (`7c9a373`) budget statistic.** `03` "Budget tests: window and arithmetic": exactly 14 400 consecutive per-tick samples after warm-up, non-overlapping windows, not day-aligned, `long`-only `u = min(ceil(d x 10^6 / f), B x n + 1)`, mean passes iff `Σu <= B x n`, p99 `= u[(99n + 99) / 100 - 1]` passes iff `<= 2B`. Non-conforming tests and their tasks: `sim.world` WorldBudgetTests (T-041, rewritten), `sim.airside` AirsideBudgetTests (T-021, requirement written in), `sim.core` BudgetTests x2 and CommandQueueTests x1 (**T-042**), `sim.flow` FlowBudgetTests, FlowStressBudgetTests (`Int128`) and PromotionBudgetTests (**T-043**), `sim.schedule` BudgetTests x2 (**T-044**), the harness's own `budget` subcommand (**T-045**).
-- **Release order for the budget rewrites.** T-041 and T-042 write disjoint paths and have no open dependency, so they may run now. T-043 waits for T-039, T-040 and T-023, which all write `tests/sim/flow/**`. T-044 waits for T-040 (`tests/sim/schedule/**`). T-045 waits for T-009, T-013, T-014 and T-030 (its seam, `HarnessGates.BudgetFromSamples`, is specified by Q-058). Each task carries its own L11a Slow-tag consideration; the `sim.flow` window at 2.5 ms is about 36 s, so Slow is expected there.
+- **Release order for the budget rewrites.** T-041 and T-042 write disjoint paths and have no open dependency, so they may run now. T-043 waits for T-039, T-040 and T-023, which all write `tests/sim/flow/**` (historical, resolved: merged #63, #64, #71). T-044 waits for T-040 (`tests/sim/schedule/**`) (historical, resolved: merged #64). T-045 waits for T-009 (merged #74), T-013, T-014 and T-030 (its seam, `HarnessGates.BudgetFromSamples`, is specified by Q-058). Each task carries its own L11a Slow-tag consideration; the `sim.flow` window at 2.5 ms is about 36 s, so Slow is expected there.
 - **T-041 and Slow.** One 14 400-tick window plus a warm-up of at most 14 400 ticks is under L11a rule (a)'s 144 000. At the 100 us budget a window is about 1.44 s, so about 2.9 s with the warm-up, under rule (b)'s 5 s. It starts untagged; the Test Author adds `Slow` only if the first CI measurement is over 5 s.
-- **T-023 (tests-only).** T-007 (PR #48) implemented the behaviour. T-023 writes `tests/sim/flow/**` only and is done when its ten coverage tests pass on `main`. It shares that path with T-039, T-040 and (later) T-043: release one at a time.
+- **T-023 (tests-only).** T-007 (PR #48) implemented the behaviour. T-023 writes `tests/sim/flow/**` only and is done when its ten coverage tests pass on `main`. It shares that path with T-039, T-040 and (later) T-043: release one at a time. (historical, resolved: T-039 #63, T-040 #64 and T-023 #71 are merged; only T-043 remains)
 - **T-021 (#67, `8cf445c`).** §12.8a step order S1 to S7, the §12.11 pending list with exact removal, `STAND_WAIT_CAPACITY` 1024, `PENDING_FLIGHTS_CAPACITY` 2048, `LogKey.AirsideReassignStandNoOp = 1` in `src/sim/core/LogKey.cs` (now a T-021 writable path), `DoorsOpenDelayMinutes` in `AirsideRules`, a door delay of 2 min (HUMAN DECISION, owner 2026-09-30), the least-queue runway stopgap the owner accepted, 17 new §12.13 tests and the fixture `tests/fixtures/airside/phase1-single-runway.json`. `src/sim/core/**` is a shared surface: do not release T-021 beside another task that writes it.
 - **T-046 (closed 2026-10-01).** The owner committed the schema change and `doors_open_delay_minutes: 2` together in `3a00a78`. T-031 can load `airside_rules.json`.
 - **Post-#70 sync (2026-10-01).** Spec PR #70 (`b00adcb`) closes Q-057 (`soak` in `19` §19.2b and §19.3, unblocking T-013), Q-058 (`HarnessGates.BudgetFromSamples`, unblocking T-045) and Q-059 (no `--report`; the owner removed it from `nightly.yml`, so there is no task).
+
+- **Post-#73/#75 sync (2026-10-01), Q-060..Q-064.** (#73 `7d14761`, #75 `33900f2`.) **T-021** cites `12` for Q-060 (taxi `Blocking`), Q-062 (handed-off arrival leaves tracked state, handoff only after `DoorsOpen`, hashed and saved `AircraftTrack.RecordedCause`) and Q-063 (runway `QueuePosition` 1-based, `Released` carries 0); its tests gain six §12.13 tests, an allocation test covering the handlers and `ReassignStand` `Apply` (Q-061), and `AirsideBudgetTests` with handler timers (Q-064). **T-022 and T-024** cite Q-061/Q-064; T-024's budget is LOW CONFIDENCE: `sim.delay`'s 0.40 ms now covers its handlers, and an overrun goes to the owner, not to a rule change. **Folded into T-043** (no new task ids): Q-061 puts the `SetServersOpen` `Apply` inside the lane-switching allocation test's window, and Q-064 adds handler timers to the flow timed tests (`FlowStressBudgetTests`, `SecurityLaneBudgetTests`, `PromotionBudgetTests`, `FlowBudgetTests`). T-043 is already serialised after the other `tests/sim/flow/**` writers (T-039, T-040; T-023 merged), so no two flow test writers run at once. T-009 and T-023 are MERGED.
+- **Releasable now (2026-10-01, corrected after T-039 #63 and T-040 #64 merged):** T-030 (T-009 merged; first of the harness writers), T-041 and T-042 (disjoint test paths, no dependency), T-044 (`tests/sim/schedule/**`, T-040 merged) and T-043 (`tests/sim/flow/**`, T-039, T-040, T-023 all merged). T-043 is the only `tests/sim/flow/**` writer left, so nothing else may write that path while it runs. Harness order stays T-030, then T-013 and T-014 one at a time, then T-045 last. **Not yet:** T-013/T-014 until T-030 merges; T-020 until T-021 merges (T-009, T-010, T-023 are done); T-021 until `test-author-t021` finishes the additions above; T-022 after T-021; T-024 after T-022.
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
 
 ### Release order within Phase 0 (respecting shared-path serialisation)
+
+**Historical (2026-10-01).** Items 1 to 14 below are the original release gates. Every gate through item 12b has resolved: T-007 (#48), T-008 (#54), T-009 (#74), T-010 (#56), T-011 (#59), T-038 (#60), T-039 (#63) and T-040 (#64) are all merged. Only items 13 and 14 still gate anything, and they are superseded by the "Harness writers" paragraph above (T-030, then T-013 and T-014 one at a time, then T-045). Read the present state from the table, not from "open" or "not yet" wording below.
 
 `src/sim/core/**` is a shared write surface across T-001–T-006 and T-026
 (the `sim.core` payload-type task, Phase 1-numbered but same directory), so
@@ -284,7 +290,7 @@ direct `Depends` edge. Order:
     serialised against it too — see Phase 1 below). **T-011's Test
     Author's tests are done and green against `main`** (see the T-011 note
     above), **but that PR does not merge before T-010** — both write
-    `tests/sim/flow/**`, and T-010 is still open. T-011's own writable
+    `tests/sim/flow/**`, and T-010 is still open. (historical, resolved: T-010 merged #56, T-011 merged #59) T-011's own writable
     paths now include `tests/sim/flow/**` (Q-021's worker restriction is
     unaffected; see T-011's task file), so its Test Author's branch can
     pass the path guard, the same fix T-038 needed for T-036/T-037.
@@ -293,17 +299,17 @@ direct `Depends` edge. Order:
     `tests/sim/flow/**` with T-010's and T-011's Test Author branches,
     currently open — release only once T-010 has actually merged, not
     merely once it is `QUEUED`/`IN_PROGRESS`, to avoid conflicting with
-    tests those branches are still writing.
+    tests those branches are still writing. (historical, resolved: T-010 merged #56, T-011 #59, T-038 #60)
 12b. **T-039** (`src/sim/flow/**` only, the `Inject` direction-rejection
     fix, Q-040) — after **T-010** merges (PR #56, open as of this cycle,
     also edits `src/sim/flow/FlowSystem.cs`). Release only once T-010 has
     actually merged, same reasoning as T-038/12a, to avoid a conflicting
-    edit to the same file.
-13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
+    edit to the same file. (historical, resolved: T-010 merged #56, T-039 merged #63)
+13. **T-013** (soak fixture) — after T-009 merges (historical, resolved: T-009 merged #74; now ordered after T-030, see "Harness writers"). Writes `tools/SimHarness/**`,
     shared with T-006/T-030/T-014 — do not release concurrently with any of
     them.
 14. **T-014** (harness promotion gate, Q-033 item e) — after T-009 **and**
-    T-010 both merge (amends `HarnessGates.Promotion` to call
+    T-010 both merge (historical, resolved: T-009 #74 and T-010 #56 merged; now ordered after T-030, see "Harness writers") (amends `HarnessGates.Promotion` to call
     `IFlowSystem.SetPromoted`, needing both `sim.flow` in the CLI
     composition and real promotion behaviour). Writes `tools/SimHarness/**`,
     shared with T-006/T-013/T-030 — do not release concurrently with any of
@@ -344,9 +350,9 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
 | T-020 | Minimal top-down renderer, flat colours (headless scene layer only) | app.render | T-009, T-010, T-021, T-023, T-026 | QUEUED |
-| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED (task file synced to spec PR #67/#68 on 2026-10-01; also writes `src/sim/core/LogKey.cs`; tests authored by `test-author-t021`) |
+| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED (task file synced to spec PR #67/#68 on 2026-10-01 and to Q-060..Q-064 (PRs #73, #75) the same day; also writes `src/sim/core/LogKey.cs`; tests authored by `test-author-t021`, who must add the six new §12.13 tests, the handler allocation test, `RecordedCause` in track helpers and handler timers in `AirsideBudgetTests` before release) |
 | T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-008, T-021, T-026 | QUEUED |
-| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` (**tests-only**) | sim.flow tests | T-005, T-007, T-026 | QUEUED (2026-10-01: T-007 already implemented the behaviour; test-author, writes `tests/sim/flow/**` only; done = the 10 coverage tests pass on `main`) |
+| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` (**tests-only**) | sim.flow tests | T-005, T-007, T-026 | MERGED (PR #71, 2026-10-01) |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023, T-026 | QUEUED |
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
 | T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | MERGED |
@@ -451,7 +457,7 @@ T-021 calls `IFlowSystem.Inject`/`Absorb`/`TryGetOutstanding` but writes
 only `src/sim/airside/**` — no file overlap with T-023's `src/sim/flow/**`.
 They may run concurrently once T-021's own dependencies (T-003, T-005,
 T-008, T-026) and T-023's dependencies (T-005, T-007, T-026) are merged.
-Neither blocks the other.
+Neither blocks the other. (historical, resolved: T-023 merged #71; T-021 is not yet released)
 
 ### Release order note: `sim.core` shared surface across Phase 0 and Phase 1
 
@@ -460,13 +466,13 @@ Neither blocks the other.
 other, regardless of numbering block — the numbering rule
 (`tasks/README.md`) governs id assignment, not release concurrency.
 
-### Q-013–Q-016 amendments (Architect batch, branch `architect/Q-013-solution-layout`, not yet on `main`)
+### Q-013–Q-016 amendments (Architect batch, branch `architect/Q-013-solution-layout`, not yet on `main`) (historical, resolved: merged as PR #13)
 
 The Architect answered Q-013 (solution layout/build/test framework, `07`
 "Solution layout and build"), Q-014 (the `sim.core` loop/host/bus contract
 at T-001's edges), Q-015 (`Fx` edge semantics and C# shape) and Q-016
 (no task before T-006 can pass the full `ci/run-checks.sh` — **left OPEN,
-PENDING HUMAN**, since it changes the CI gate definition, which is the
+PENDING HUMAN**, (historical, resolved: HUMAN DECISION, owner, 2026-09-24, see above) since it changes the CI gate definition, which is the
 human owner's call, not the Architect's or this Planner's). Applied this
 cycle:
 

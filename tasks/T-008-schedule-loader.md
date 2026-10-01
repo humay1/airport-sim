@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | TESTS_AUTHORED |
+| Status | MERGED (PR #54) |
 | Module | `sim.schedule` |
 | Assigned role | worker |
 | Depends on | T-001, T-003, T-026, T-007 |

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (blocked on T-010 merging first) |
+| Status | MERGED (PR #60) |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
 | Depends on | T-037 (merged, PR #51, `7bb30b5`), T-007 (merged) |
@@ -98,4 +98,4 @@ writing `tests/sim/flow/**` tests on
 risks a worker touching the same test files T-010 is about to land,
 producing conflicts or clobbering T-010's tests — this task's own writable
 path is exactly the shared surface those two are actively writing. Check
-the queue for T-010's merge before starting.
+the queue for T-010's merge before starting. (historical, resolved: T-010 merged #56, T-011 #59, this task #60)

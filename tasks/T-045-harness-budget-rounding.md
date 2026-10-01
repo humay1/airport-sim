@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (spec gap closed by Q-058, PR #70; releasable after T-009, T-013, T-014 and T-030 have merged and the Test Author's six tests are authored) |
+| Status | QUEUED (spec gap closed by Q-058, PR #70; releasable after T-009 (merged #74), T-013, T-014 and T-030 have merged and the Test Author's six tests are authored) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-009, T-013, T-014, T-030 |
+| Depends on | T-009 (merged #74), T-013, T-014, T-030 (the last three not merged) |
 | Spec source | `spec/19-interfaces-harness.md` §19.1, §19.4 and §19.7 (PR #68, `7c9a373`; Q-058, PR #70, `b00adcb`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-045); `spec/07-conventions.md` L11 |
 | Blocked by | — |
 
@@ -21,7 +21,7 @@ Test Author paths (the worker writes none of these):
 tests/tools/simharness/**
 ```
 
-Serialised after T-009, T-013, T-014 and T-030, which all write
+Serialised after T-009 (merged #74), T-013, T-014 and T-030, which all write
 `tools/SimHarness/**` and `tests/tools/simharness/**`. It goes last because it
 is the one at risk of a spec gap (Worker notes): if it were earlier it could
 stall the others, and later it holds nothing up. None of the others reads
@@ -107,7 +107,7 @@ Not applicable to the harness itself. The gate is 6 ms/tick whole-sim,
 
 **Spec gap closed (Q-058, spec PR #70, `b00adcb`).** The seam is
 `HarnessGates.BudgetFromSamples`, which gives the Test Author a deterministic
-done-test. The ordering after T-009, T-013, T-014 and T-030 is unchanged.
+done-test. The ordering after T-009 (merged #74), T-013, T-014 and T-030 is unchanged.
 
 Tests of the Phase 0 composition stay as T-009's Test Author wrote them
 (`test_harness_cli_budget_phase0_day_passes` is renamed there).

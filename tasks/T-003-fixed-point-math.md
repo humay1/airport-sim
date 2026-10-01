@@ -12,7 +12,7 @@
 **Status note:** released for this cycle; the Test Author is authoring
 `tests/sim/core/**` for this task now. Status stays `QUEUED` until those
 tests land, then moves to `TESTS_AUTHORED` and the worker may start. Do not
-begin implementation before that move.
+begin implementation before that move. (historical, resolved: T-003 is MERGED)
 
 ## Writable paths
 

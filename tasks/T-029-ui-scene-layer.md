@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `app.ui` (scene layer only) |
 | Assigned role | worker |
-| Depends on | T-005, T-020, T-023, T-026 |
+| Depends on | T-005 (merged #26), T-020 (not merged), T-023 (merged #71), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md`; `spec/17-interfaces-ui.md` (new file, D5; command plumbing answered by Q-010; §17.4a graphics settings panel, D10/Q-034) |
 | Blocked by | — |
 
