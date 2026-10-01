@@ -6,7 +6,7 @@
 | Module | `sim.world` tests |
 | Assigned role | test-author |
 | Depends on | none open (T-012 merged; T-037 merged) |
-| Spec source | `spec/03-module-map.md` "How a budget is measured" (Statistic, Measured); `spec/07-conventions.md` L11 |
+| Spec source | `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-044, Q-045; PR #68, `7c9a373`); `spec/07-conventions.md` L11, L11a |
 | Blocked by | — |
 
 ## Writable paths
@@ -37,58 +37,62 @@ states. This task makes it do so.
 
 ## What this task does
 
-Change only the measuring and asserting part of the test.
+Change only the measuring and asserting part of the test, to `03` "Budget
+tests: window and arithmetic" (PR #68). That section is binding and replaces
+this task's earlier 2000-tick design and its test-local p99 rank choice.
 
-1. **Measure each tick separately.** Take `Stopwatch.GetTimestamp()` before and
-   after each tick's work (`Tick` plus the queries) and store the per-tick
-   elapsed value in a pre-allocated `long[]` sized to the tick count. Use
-   `Stopwatch.Frequency` and `long` arithmetic only: no `TimeSpan`, no floating
-   point (L11). Sample storage is allocated before the measured loop.
-2. **Assert the spec's statistic** on the asserted pass:
-   - mean <= `BudgetMicrosPerTick` (100 us);
-   - p99 <= 2 x `BudgetMicrosPerTick` (200 us).
-   Compute both in `long` arithmetic from the stored samples. Keep the mean
-   as total elapsed over the tick count, converted once, so no per-tick
-   rounding is lost.
-3. **Log the result on every run, pass or fail.** Inject `ITestOutputHelper`
-   through the test class constructor (as `FlowStressBudgetTests` does) and
-   write the measured mean and p99 in microseconds, and the two limits, before
-   the assertions run, so a failing run and a passing run both show the margin.
-4. **Keep everything else unchanged:**
-   - `BudgetMicrosPerTick = 100`, and the two-pass structure with pass 0 as the
-     unasserted warm-up;
-   - the same graph, seed and query draws, and the same work per tick: 64
-     `CanReach`, 64 `CanReachVia` and 16 `PathVia` at max tier, plus `Tick`;
+1. **Window (Q-044).** "The samples are exactly `n = TICKS_PER_SIM_DAY`
+   (14 400) consecutive ticks, one sample per tick. Any 14 400 consecutive
+   ticks after warm-up form a window, and the window need **not** start on a
+   sim-day boundary." "No shorter window satisfies a budget." "Warm-up ticks
+   before the window are allowed and are not sampled." Keep the existing
+   unasserted warm-up pass, which the spec permits; the asserted pass is one
+   window of 14 400 ticks. If more than one window is measured, the pass
+   condition applies to each on its own, never to their union, and windows do
+   not overlap.
+2. **Measure each tick separately.** The raw sample `d` is "the
+   `Stopwatch.GetTimestamp()` difference around one tick's measured work"
+   (`Tick` plus the queries), stored in a `long[]` of 14 400 allocated before
+   the measured loop. No `TimeSpan`, no floating point, no `Int128` (L11).
+3. **Arithmetic (Q-045), `long` only.** With `f = Stopwatch.Frequency`,
+   `B = 100` and `n = 14 400`: `u` is `d` converted to whole microseconds
+   rounding up, capped at `C = B x n + 1`. "If `d > (long.MaxValue - f + 1) /
+   1 000 000`, then `u = C`. Otherwise `u = min((d x 1 000 000 + f - 1) / f,
+   C)`."
+   - **Mean:** "it passes iff `Σu <= B x n`."
+   - **p99:** nearest rank. "Sort the `u` ascending, and `p99 = u[(99 x n +
+     99) / 100 - 1]` in integer division." It "passes iff `p99 <= 2 x B`"
+     (200 us).
+4. **Log on every run, pass or fail.** Inject `ITestOutputHelper` through the
+   class constructor (as `FlowStressBudgetTests` does). Write the reported
+   mean `(Σu + n - 1) / n` and the reported p99 `p99`, with the two limits,
+   before the assertions run.
+5. **Keep everything else unchanged:**
+   - `BudgetMicrosPerTick = 100`, the same graph, seed and query draws, and
+     the same work per tick: 64 `CanReach`, 64 `CanReachVia` and 16 `PathVia`
+     at max tier, plus `Tick`;
    - the `sink > 0` assertion and the RNG-touch assertion
      (`Assert.Equal(0, rngService.Touches)`);
-   - test name, `[Fact]` and `[Trait("Category", "Budget")]`. Do not add a
-     `Slow` trait: 2000 ticks at about 100 us is far below L11a's limits.
-5. **Do not change any budget value.** Budgets are spec, not this task's to
-   change. Do not widen, average away, retry, or skip. A failure that survives
-   this change is a real failure and is reported, not tuned around.
+   - test name, `[Fact]` and `[Trait("Category", "Budget")]`.
+6. **Do not change any budget value.** Do not widen, average away, retry, or
+   skip. A failure that survives this change is a real failure and is
+   reported, not tuned around.
 
-## Spec mismatch: report, do not improvise
+## Slow tag (L11a)
 
-`03` says the statistic is taken "across the day's ticks" on "the max-tier
-fixture ... run for one full sim-day". A sim-day is 14 400 ticks
-(`08` `TICKS_PER_SIM_DAY`). This module test runs **2000** ticks of a
-caller-sized query batch, not a full day of `IWorldSystem` use. Also, `03` does
-not define how the 99th percentile is computed from N samples (the rank rule).
+Checked against the new window, not decided by the Test Author's guess:
 
-The Test Author must therefore:
-
-- keep the existing 2000 ticks per pass; do **not** resize the run to 14 400 or
-  any other count;
-- take p99 as the sample at zero-based index `ceil(0.99 * N) - 1` of the sorted
-  samples, in integer arithmetic (`(99 * N + 99) / 100 - 1`), and say so in a
-  one-line comment. This is a test-local choice, not a spec statement;
-- state both gaps (tick count versus one sim-day; percentile rank rule) in the
-  PR description and in the report, so the team lead can route them to the
-  Architect as an open question. Do not edit `spec/open-questions.md`.
-
-If the Test Author finds that keeping 2000 ticks cannot support a meaningful p99
-(for example the values are dominated by timer resolution), it stops and
-reports; it does not change the sample count on its own.
+- **Rule (a), work.** A Slow test steps "more than 144 000 ticks in total".
+  One 14 400-tick window plus a warm-up that is itself at most 14 400 ticks
+  is at most 28 800 ticks, well under 144 000. Not Slow by rule (a).
+- **Rule (b), time.** An untagged test is Slow only if the duration xUnit
+  reports in the PR's normal CI test job is "over 5 s". At the budget mean of
+  100 us a 14 400-tick window costs about 1.44 s, and the warm-up pass about
+  the same, so about 2.9 s at the budget limit and less for a healthy module.
+  So the test starts **untagged**. If the first authoritative CI measurement
+  is over 5 s, the Test Author adds `[Trait("Category", "Slow")]` in the same
+  PR (a test may carry both `Budget` and `Slow`), and never shortens the
+  window to avoid it, because "No shorter window satisfies a budget."
 
 ## Tests to pass
 
@@ -100,17 +104,17 @@ tests/sim/world/**
 
 ## Performance budget
 
-Unchanged: 0.10 ms/tick at max tier (`03`, `18` §18.4), asserted as mean, with
-p99 <= 0.20 ms. `tools/SimHarness budget` remains the authoritative measurement
+Unchanged: 0.10 ms/tick at max tier (`03`, `18` §18.4), asserted as `Σu <= B x n`
+over one 14 400-sample window, with p99 <= 0.20 ms. `tools/SimHarness budget` remains the authoritative measurement
 (L11).
 
 ## Done when
 
-- [ ] Per-tick samples via `Stopwatch.GetTimestamp`, `long` arithmetic, no `TimeSpan`, no floating point
-- [ ] Asserts mean <= 100 us and p99 <= 200 us; budget value and warm-up pass unchanged
-- [ ] Mean and p99 written to test output on every run, pass or fail
-- [ ] Same work per tick, same RNG-touch assertion, same name and traits
-- [ ] The tick-count and percentile-rank gaps stated in the PR body and the report
+- [ ] One window of exactly 14 400 per-tick samples after warm-up, `Stopwatch.GetTimestamp`, `long` arithmetic, no `TimeSpan`, floating point or `Int128`
+- [ ] `u` computed by the `03` Q-045 rule; passes iff `Σu <= B x n` and `u[(99 x n + 99) / 100 - 1] <= 2 x B`
+- [ ] Reported mean `(Σu + n - 1) / n` and p99 written to test output on every run, pass or fail
+- [ ] Same work per tick, same RNG-touch assertion, same name; budget value unchanged
+- [ ] Slow tag decided by the L11a rules above from the first CI measurement
 - [ ] `ci/run-checks.sh` green; the test passes on repeated CI runs
 - [ ] No writes outside `tests/sim/world/**`
 - [ ] Reviewer approved

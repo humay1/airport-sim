@@ -4,7 +4,7 @@
 |---|---|
 | Status | QUEUED |
 | Module | `sim.flow` |
-| Assigned role | worker |
+| Assigned role | test-author (tests-only; T-007 already implemented the behaviour) |
 | Depends on | T-005, T-007, T-026 |
 | Spec source | `spec/09-interfaces-flow.md` §9.4, §9.7a, §9.7b, §9.8, §9.9 (§9.7a answers D6, §9.7b answers Q-010 item 5) |
 | Blocked by | — |
@@ -12,13 +12,19 @@
 ## Writable paths
 
 ```
-src/sim/flow/**
+tests/sim/flow/**
 ```
 
-**Correction (Q-021):** `tests/**` is the Test Author's territory exclusively; the path guard already blocks a worker grant there. Dropped.
+Tests-only (team-lead, 2026-10-01): T-007 (PR #48) already implemented the
+behaviour below, so this task writes no `src/` path. The earlier grant of
+`src/sim/flow/**` is dropped. If a test written here fails against `main`
+because the behaviour is missing or wrong, that is a defect in `src/sim/flow`:
+the Test Author stops and reports it, and the Planner files a worker task.
+Never edit the code and never weaken a test.
 
-Same directory as T-007/T-010/T-011; do not release concurrently with any of
-them.
+Shares a directory with T-039 and T-040 (`tests/sim/flow/**`); do not release
+concurrently with either unless they write different files, and check for
+overlap before release.
 
 ## Readable specs
 
@@ -26,7 +32,7 @@ them.
 `spec/02-determinism.md`, `spec/03-module-map.md`, `spec/08-interfaces-core.md`,
 `spec/09-interfaces-flow.md`
 
-## Interface to implement
+## Interface under test (already implemented by T-007)
 
 ```
 readonly struct OutstandingPassengers { FlightId Flight; int32 Count; NodeId MostHeldAt }
@@ -103,7 +109,7 @@ Consumed: `SetServersOpen` command (via `ICommandQueue`, not the event bus)
 tests/sim/flow/**
 ```
 
-Written by the Test Author. Expect: a command submitted mid-day changes
+Written by the Test Author (10 coverage tests are ready). This task's whole deliverable is these tests, which must pass on `main`. Expect: a command submitted mid-day changes
 `ServersOpen` only at the next tick boundary (never mid-tick), a validate/apply
 split test (a length-9 payload is `MalformedPayload` at admission; an
 out-of-range `count` is admitted and clamped at `Apply`), a hysteresis test
@@ -111,7 +117,7 @@ that an oscillating wait time does not flood `QueueThresholdExceeded`/`Cleared`,
 a live-visibility test that `Population`/`PredictedWaitMinutes` reflect the
 change immediately after application, and `TryGetOutstanding`/`TryGetLaneState`
 tests (false for a `Gate`-only flight and for a non-`Queue` node
-respectively; correct `MostHeldAt` tie-break). **Do not edit them.**
+respectively; correct `MostHeldAt` tie-break). Once merged they are not edited to make a build pass.
 
 ## Performance budget
 
@@ -120,10 +126,9 @@ task adds command handling only, no new per-tick O(passengers) work.
 
 ## Done when
 
-- [ ] Interface matches spec exactly
-- [ ] All assigned tests pass
+- [ ] All assigned tests pass on `main` (no `src/` change)
 - [ ] `ci/run-checks.sh` green
-- [ ] Budget met
+- [ ] Budget unchanged
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved
 - [ ] Verifier gates green
