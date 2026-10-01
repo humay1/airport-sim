@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (do not release until T-009 has merged **and** the Test Author has confirmed a deterministic done-test exists; see Worker notes) |
+| Status | QUEUED (spec gap closed by Q-058, PR #70; releasable after T-009, T-013, T-014 and T-030 have merged and the Test Author's six tests are authored) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
 | Depends on | T-009, T-013, T-014, T-030 |
-| Spec source | `spec/19-interfaces-harness.md` §19.4 (PR #68, `7c9a373`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-045); `spec/07-conventions.md` L11 |
+| Spec source | `spec/19-interfaces-harness.md` §19.1, §19.4 and §19.7 (PR #68, `7c9a373`; Q-058, PR #70, `b00adcb`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-045); `spec/07-conventions.md` L11 |
 | Blocked by | — |
 
 ## Writable paths
@@ -56,8 +56,21 @@ brings it to the rule, in `long` arithmetic only:
 
 ## Interface to implement
 
-No new public interface. `HarnessCli.Run`'s `budget` subcommand behaviour and
-stdout line change only in the rounding and the verdict arithmetic.
+One new pure public member (Q-058, `19` §19.1 and §19.4):
+
+```
+HarnessGates.BudgetFromSamples(IReadOnlyList<int64> samples, int64 frequency) -> GateResult
+```
+
+It runs nothing and reads no clock. It applies the rule above with
+`B = 6000` and `n = samples.Count`; `Report` is the §19.3 budget line. It
+throws for a count other than `TICKS_PER_SIM_DAY`, a negative sample, or a
+frequency outside `03`'s bound, and does not modify `samples`.
+`budget --tier max` collects its 14 400 samples in tick order and makes
+exactly one call, with `Stopwatch.Frequency`; it prints `Report` and exits 0
+iff `Passed`, else 1. The CLI computes no part of the verdict or line itself
+(a Reviewer checks this). No CLI form passes samples in, and none may be
+added. `HarnessCli.Run`'s other behaviour is unchanged.
 
 ## Events
 
@@ -69,7 +82,11 @@ Emitted: none. Consumed: none.
 tests/tools/simharness/**
 ```
 
-Written by the Test Author, after T-009's tests. **Do not edit them.**
+Written by the Test Author, after T-009's tests: the six `19` §19.7 tests
+(five with an exact `Report`, one argument test), including
+`test_harness_gates_budget_from_samples_rounds_each_sample_up` (every sample
+60 001 ticks at 10^7 Hz, which fails under rounding up and passes under
+flooring). **Do not edit them.**
 
 ## Performance budget
 
@@ -78,7 +95,8 @@ Not applicable to the harness itself. The gate is 6 ms/tick whole-sim,
 
 ## Done when
 
-- [ ] `RunBudget` rounds each sample up and computes mean and p99 by the `03` Q-045 rule, in `long` arithmetic only
+- [ ] `HarnessGates.BudgetFromSamples` rounds each sample up and computes mean and p99 by the `03` Q-045 rule, in `long` arithmetic only
+- [ ] `RunBudget` makes exactly one `BudgetFromSamples` call and computes nothing itself
 - [ ] All assigned tests pass
 - [ ] `ci/run-checks.sh` green (not `--fast`)
 - [ ] No writes outside `tools/SimHarness/**`
@@ -87,16 +105,9 @@ Not applicable to the harness itself. The gate is 6 ms/tick whole-sim,
 
 ## Worker notes
 
-**Possible spec gap, reported to the team lead, not decided here.** `19` gives
-the harness no seam for injecting timer samples, and `19` §19.3 says no CLI seam
-is added beyond the form. A black-box test through `HarnessCli.Run` sees real
-timings only, so the floor-versus-ceiling difference is not reliably
-observable from it. If the Test Author cannot state a deterministic, passing
-test of the rounding without inventing a seam (for example an internal
-`BudgetStatistic` function that takes `long[]` samples and a frequency, which
-would need the Architect to name it and say whether tests may see it), this task
-becomes a spec gap for the Architect and is not released. The Test Author
-reports; it does not invent the seam.
+**Spec gap closed (Q-058, spec PR #70, `b00adcb`).** The seam is
+`HarnessGates.BudgetFromSamples`, which gives the Test Author a deterministic
+done-test. The ordering after T-009, T-013, T-014 and T-030 is unchanged.
 
 Tests of the Phase 0 composition stay as T-009's Test Author wrote them
 (`test_harness_cli_budget_phase0_day_passes` is renamed there).
