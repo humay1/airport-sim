@@ -1882,8 +1882,11 @@ Answer:      Architecture. `19` §19.2b and §19.3, matching the existing
                golden is authored. Committing it is governed by
                `tests/golden/README.md`;
              - `P` is either repository-relative, resolved from the
-               `AirportSim.sln` root, or rooted, which lets tests use a
-               temporary directory. The cwd is never used. There is no
+               `AirportSim.sln` root, or fully qualified
+               (`Path.IsPathFullyQualified`), which lets tests use a
+               temporary directory. A path that is rooted but not fully
+               qualified, such as `/x` or `C:x` on Windows, is a usage
+               error. The cwd is never used. There is no
                `--seed`, and `soak-500.meta.json` is never read;
              - `soak` times nothing. The 0.1 ms bound is checked by a
                whole-run sizing test (§19.7). Until the golden is
@@ -1914,7 +1917,8 @@ Answer:      Architecture. One pure public member,
              `03`'s bound. An internal function was rejected because `07` L5
              forbids `InternalsVisibleTo`. A CLI flag that injects samples
              was rejected because it would put a seam in the gate. §19.7
-             gives six tests with exact expected lines. In one of them,
+             gives six tests: five with an exact expected `Report`, and one
+             argument test. In one of the five,
              every sample is 60 001 ticks at 10^7 Hz, which fails under
              rounding up and passes under flooring.
 Status:      ANSWERED (spec/19-interfaces-harness.md#194-budget---tier-max-q-026)
@@ -1938,4 +1942,9 @@ Proposed:    (A) `--report` is accepted with `budget --tier max` and
              (B). Both are small, but which one is right depends on what
              the owner meant by the CI step, and `ci/` and `.github/` are
              the owner's.
-Status:      OPEN — owner
+Answer:      **HUMAN DECISION — owner, 2026-10-01: (B).** The owner
+             removes `--report` from `.github/workflows/nightly.yml`. The
+             spec does not change. §19.3 keeps no `--report` flag, so
+             `budget --tier max --report` stays a usage error. The
+             Architect recorded this and did not decide it.
+Status:      ANSWERED (spec/19-interfaces-harness.md#193-the-command-line-q-026) — HUMAN DECISION

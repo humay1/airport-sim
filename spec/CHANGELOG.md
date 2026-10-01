@@ -2615,7 +2615,7 @@ Reason:      While syncing task files (PR #69), the Planner found two gaps in
                `soak --out P` writes a dump to a new file, never
                overwriting, so that a golden can be authored. Paths are
                repository-relative from the `AirportSim.sln` root, or
-               rooted. `soak` times nothing. The 0.1 ms bound is a
+               fully qualified. `soak` times nothing. The 0.1 ms bound is a
                whole-run sizing test (§19.7). The invocation matches CI as
                it stands, so `ci/` and `.github/` need no change.
              - **Q-058:** no seam to test `budget`'s rounding. New pure
@@ -2623,8 +2623,8 @@ Reason:      While syncing task files (PR #69), the Planner found two gaps in
                frequency) -> GateResult`, which the CLI must call exactly
                once. `07` L5 rules out an internal function, and a CLI
                injection flag would be a seam in the gate. §19.7 gives
-               six tests with exact lines, one of which tells rounding up
-               apart from flooring.
+               five tests with an exact `Report` and one argument test.
+               One of the five tells rounding up apart from flooring.
              - **Q-059, filed OPEN for the owner.** The nightly
                "Performance trend" step runs `budget --tier max --report`,
                which is a usage error under §19.3. What the report means is
@@ -2650,9 +2650,34 @@ Impact:      - **Additive.** No merged code or test is invalidated. `soak`
              - **T-045:** its spec gap is closed. The worker adds
                `BudgetFromSamples` and routes `RunBudget` through it.
              - **Nightly CI:** after T-013 merges and until the golden is
-               committed, `soak` exits 3 instead of 2. Q-059 stays open.
+               committed, `soak` exits 3 instead of 2. For Q-059, see the
+               next entry.
              - Scope: one subcommand with two forms, one public member and
                one fixture set. All of these are tooling. No sim scope is
                added.
-Signed off:  not required (harness tooling, not balance). Q-059 needs the
-             owner.
+Revision:    after the PR #70 review, which approved `f1e1961` with
+             non-blocking notes:
+             - a path is used as given only if
+               `Path.IsPathFullyQualified`. `Path.IsPathRooted` would
+               accept `/x` and `C:x` on Windows, which resolve against the
+               cwd. A path that is rooted but not fully qualified is a
+               usage error;
+             - `soak` is dropped from the divergence line's `<gate>` list,
+               and kept for the pass line;
+             - the §19.7 prefix test keeps line `M`'s LF, and it states
+               the result if the LF is dropped;
+             - the test count reads five exact `Report`s plus one argument
+               test.
+Signed off:  not required (harness tooling, not balance). Q-059 was the
+             owner's, and the next entry records the decision.
+
+## 2026-10-01 — open-questions only — Q-059: nightly `budget --tier max --report` (HUMAN DECISION)
+Reason:      The owner chose option (B). The owner removes `--report` from
+             `.github/workflows/nightly.yml`. `19` §19.3 keeps no
+             `--report` flag, and no spec text changes.
+Raised by:   Q-059 (Architect, while answering Q-057)
+Impact:      None to the spec or to code. The nightly "Performance trend"
+             step stops failing with exit 2 once the owner's workflow edit
+             lands. Until then, `budget --tier max --report` stays a usage
+             error.
+Signed off:  owner, 2026-10-01

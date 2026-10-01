@@ -134,7 +134,7 @@ If every checkpoint agrees but the final hashes differ: `final`.
   divergence seam (§19.1) proves failure through `HarnessGates` instead, and
   no CLI seam is added. T-006's earlier statement that the first composing
   task makes them reachable is withdrawn. `soak` is the exception, because
-  its golden and output paths may be rooted paths outside the repository
+  its golden and output paths may be fully qualified paths outside the repository
   (§19.2b). A test reaches code 1 with an altered golden and code 3 with a
   missing one, both in a temporary directory (§19.7).
 
@@ -315,9 +315,12 @@ Writing a file does not make it a golden. Whether a dump is committed as
 `tests/golden/README.md` (no agent regenerates a golden, and the human
 owner confirms every change).
 
-**Paths.** `P` is not empty. If `Path.IsPathRooted(P)`, it is used as
-given. Otherwise it is a `/`-separated repository-relative path, joined to
-the root found as in §19.2a. The current working directory is never used.
+**Paths.** `P` is not empty. If `Path.IsPathFullyQualified(P)`, it is
+used as given. Otherwise it is a `/`-separated repository-relative path,
+joined to the root found as in §19.2a. `Path.IsPathRooted` is not the
+test. On Windows it also accepts `/x` and `C:x`, which resolve against the
+current drive or directory. A `P` that is rooted but not fully qualified
+is therefore a usage error. The current working directory is never used.
 So the nightly workflow's `--golden tests/golden/soak-500.hashes` names the
 committed golden from whatever directory the job runs in.
 
@@ -355,7 +358,9 @@ path (§19.2b).
 flag, a repeated flag, a value that does not parse, `D = 0`,
 `D × TICKS_PER_SIM_DAY` above `uint32`, `T = 0`, `K` outside `0 < K < T`,
 a `--tier` other than `max`, a `soak` with both or neither of `--golden`
-and `--out`, and an empty `P` are all usage errors.
+and `--out`, an empty `P`, and a `P` for which `Path.IsPathRooted` is
+true but `Path.IsPathFullyQualified` is false (§19.2b) are all usage
+errors.
 
 **Exit codes.**
 
@@ -387,8 +392,10 @@ soak written:  WROTE soak ticks=<n> checkpoints=<k> final=<hex16>
 soak differs:  FAIL soak line=<L>
 ```
 
-- `<gate>` is `determinism_same_process`, `determinism_save_load`,
-  `determinism_promotion` or `soak`.
+- In the pass line, `<gate>` is `determinism_same_process`,
+  `determinism_save_load`, `determinism_promotion` or `soak`. In the
+  divergence line, it is one of the first three only, because `soak`
+  reports a difference with its own line.
 - In the `soak` pass and written lines, `final` is the run's final
   `WorldStateHash()`. `<L>` is defined in §19.2b.
 - `<hex16>` is 16 lowercase hexadecimal digits.
@@ -548,7 +555,7 @@ Binding on T-009's Test Author.
 
 Binding on the Test Authors of T-013 and T-045. Every test is in
 `tests/tools/simharness/` (Q-041). No test writes a repository file. A
-`soak` path in a test is a rooted path in a fresh temporary directory
+`soak` path in a test is a fully qualified path in a fresh temporary directory
 that the test deletes. No xUnit test runs 500 days, since the nightly gate
 does that.
 
@@ -567,8 +574,11 @@ the soak set instead of the Phase 0 set.
   byte-identical.
 - **Differs.** The golden with one hexadecimal digit changed on its
   checkpoint line `L` exits 1 and prints `FAIL soak line=<L>`. The golden
-  cut after its line `M` (a prefix) exits 1 and prints
-  `FAIL soak line=<M + 1>`.
+  cut to its first `M` lines, with line `M`'s terminating LF kept, exits 1
+  and prints `FAIL soak line=<M + 1>`. That is a prefix of `R`, so `o` is
+  its length, and `R` has `M` LF bytes before `o`. If line `M`'s LF were
+  dropped too, the report would be `line=<M>`. The test uses the LF-kept
+  form.
 - **Path failures.** A `--golden` path that does not exist exits 3, and a
   `--out` path that already exists exits 3 and leaves that file unchanged.
   In both, stdout is empty.
@@ -588,8 +598,8 @@ the soak set instead of the Phase 0 set.
 
 **The budget statistic (T-045).** These tests call
 `HarnessGates.BudgetFromSamples` directly, with `n = 14 400` samples and
-`f = 10^7` unless stated otherwise. Each expected `Report` is given in
-full.
+`f = 10^7` unless stated otherwise. There are six: the five below, each
+with its exact `Report` in full, and one argument test.
 
 | Test | Samples | `Report` |
 |---|---|---|
