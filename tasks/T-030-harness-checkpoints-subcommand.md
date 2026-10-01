@@ -74,8 +74,10 @@ Emitted: none new. Consumed: none new.
 ## Tests to pass
 
 ```
-tests/sim/core/**
+tests/tools/simharness/**
 ```
+
+Synced 2026-10-01 to `19` §19.6 (Q-041): `07` L3 keeps `tests/sim/core` to `src/sim/core` references, and the harness CLI needs the factories, so these tests live in `tests/tools/simharness/`. The earlier `tests/sim/core/**` grant is dropped.
 
 Written by the Test Author. Expect at least:
 

@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`) |
 | Assigned role | worker |
-| Depends on | T-009 |
+| Depends on | T-009 (first of the later harness writers: T-013, then T-014, T-030, T-045; see `queue.md`) |
 | Spec source | `spec/00-overview.md`; `spec/02-determinism.md` "Gates" (`soak_500_days`); `spec/03-module-map.md` "The soak fixture" (answers Q-003, D3) |
 | Blocked by | — |
 
@@ -29,6 +29,8 @@ tools/SimHarness/**
 Test Author's territory exclusively; the path guard already blocks a worker
 grant there. The earlier grants of `tests/fixtures/soak/**` and
 `tests/sim/core/**` are dropped.
+
+This task does not write under `tests/`. Its tests are in `tests/tools/simharness/**` (see "Tests to pass").
 
 ## Readable specs
 
@@ -65,8 +67,12 @@ Emitted: none new. Consumed: none new.
 ## Tests to pass
 
 ```
-tests/sim/core/**
+tests/tools/simharness/**
+tests/fixtures/soak/**
+tests/golden/**
 ```
+
+Synced 2026-10-01 to `19` §19.6 (Q-041): `07` L3 lets `tests/sim/core` reference only `src/sim/core`, so a test that drives the harness CLI over the world, schedule and flow factories lives in `tests/tools/simharness/`. The fixture and golden locations are `03` "The soak fixture" (`tests/fixtures/soak/**`, `tests/golden/`). The earlier `tests/sim/core/**` grant is dropped.
 
 Written by the Test Author. Expect a `soak --days 500 --seed <n>` harness
 subcommand invocation, asserting: (a) mean tick cost under 0.1 ms on the
@@ -93,6 +99,13 @@ and escalate if that is not enough.
 - [ ] Verifier gates green
 
 ## Worker notes
+
+**Spec gap, reported to the team lead, not decided here.** `19` §19.2a says
+"Every CLI run, of every subcommand in §19.3, uses the Phase 0 composition",
+and §19.3 does not list a `soak` subcommand (a search of `19` finds none).
+So `soak`'s grammar, exit codes and composition (the Phase 0 one, or "every
+system registered in the build" per `03`) are unspecified. Do not release
+until the Architect settles it.
 
 Do not author this fixture's golden hash before `SIM_SECONDS_PER_TICK` and
 every registered module's own goldens are stable — D2 confirms
