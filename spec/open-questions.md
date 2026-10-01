@@ -2267,8 +2267,11 @@ Why it matters: The content index enters composition. Both sides of D7
 Answer:      Architecture. A required `--content C` names a content
              directory laid out like `data/`. The harness lists every
              file under it, and `08` §8.11's loader orders and filters
-             them. `--content data` is the player's content, and
-             `16` §16.9 step 1 now passes it. LOW CONFIDENCE: §19.2a
+             them. `--content data` is the player's content. `16` §16.9
+             step 1 passes the build step's copy of it,
+             `unity/AirportSim/Assets/StreamingAssets/Content`, beside
+             the build step's copy of the playtest bundle (review of #83
+             at `8df4681`). LOW CONFIDENCE: §19.2a
              uses a manifest, but there is none for `data/`, and here the
              directory is the whole input on both sides.
 Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
@@ -2306,12 +2309,15 @@ Blocking:    T-030
 Question:    `test_checkpoints_subcommand_composes_through_published_factories_only`
              has no checkable rule.
 Why it matters: A test with no rule asserts nothing.
-Answer:      Architecture. It is a static check by reflection: the
-             harness assembly references no `AirportSim.App.*` assembly,
-             so D7 compares two independent compositions, and no
-             `AirportSim.*` assembly it references carries
-             `InternalsVisibleTo`. The behavioural half is the byte
-             identity with the published-surface kit (§19.8). The
+Answer:      Architecture. Two parts, both in the test (§19.8).
+             Behavioural: the default invocation exits 0, and its file
+             is byte-identical to the published-surface kit's dump, so
+             the test fails without a working `checkpoints`. Static, by
+             reflection: the harness assembly references no
+             `AirportSim.App.*` assembly, so D7 compares two independent
+             compositions, and no `AirportSim.*` assembly it references
+             carries `InternalsVisibleTo`. The static part guards against
+             regression, and today's `main` already passes it. The
              Reviewer checks that no non-public member is reached by
              reflection.
 Status:      ANSWERED (spec/19-interfaces-harness.md#198-tests-of-checkpoints-q-074-to-q-076)
@@ -2337,12 +2343,12 @@ Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-
 ### Q-077 — `app.host`: the D7 test cannot reach the harness
 Raised by:   Architect, answering Q-066 to Q-076, 2026-10-01
 Blocking:    T-031 (`test_host_composition_matches_harness_checkpoints`)
-Question:    `07` L3 lets `tests/app/host` reference only
-             `src/app/host`, and §19.8 forbids the harness from
-             referencing `app.host`. No test project can therefore call
-             both `HarnessCli.Run` and `IHeadlessRun` in process, and
-             harness tests never spawn a process (Q-025). How does the
-             D7 test run both sides?
+Question:    `16` §16.8 runs the D7 test in process. `07` L3 lets
+             `tests/app/host` reference only `src/app/host`, and §19.8
+             forbids the harness from referencing `app.host`. No test
+             project can therefore call both `HarnessCli.Run` and
+             `IHeadlessRun` in process. How does the D7 test run both
+             sides?
 Why it matters: As specified, the test cannot be written.
 Proposed:    (A) An integration test project, for example
              `tests/integration/`, which is the one project allowed to
@@ -2353,8 +2359,12 @@ Proposed:    (A) An integration test project, for example
              test each compare with them. That needs no new project, but
              every hash-moving change re-authors them under
              `tests/golden/README.md`, with owner confirmation. (C) Spawn
-             the built harness from the host test. That conflicts with
-             Q-025's in-process rule and with the build layout. (D) Let
+             the built harness from the host test. Q-025 binds harness
+             tests only, so nothing forbids it outright. But it drops
+             §16.8's in-process run, and the host test would have to
+             locate a build output that its own project does not
+             reference, with its configuration and runtime, which
+             depends on the build layout. (D) Let
              the harness reference `app.host`, so that the harness test
              project sees it. That withdraws §19.8's static check, makes
              "two independent compositions" uncheckable, and pulls

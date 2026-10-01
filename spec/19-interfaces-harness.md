@@ -136,16 +136,20 @@ If every checkpoint agrees but the final hashes differ: `final`.
   `CoreHash` and `SystemHashes`, so it cannot differ while those agree. Both
   stay in the grammar as defensive reports. Exit codes 1 and 3 cannot be
   reached by a test through `HarnessCli.Run` either (Q-042), except by
-  `soak` (below). Code 1 needs a
+  `soak` and, for code 3, `checkpoints` (below). Code 1 needs a
   nondeterministic composition, and the Phase 0 composition is
   deterministic. Code 3 needs a missing or invalid repository fixture, which
   an in-process test cannot arrange without writing repository files. The
   divergence seam (§19.1) proves failure through `HarnessGates` instead, and
   no CLI seam is added. T-006's earlier statement that the first composing
-  task makes them reachable is withdrawn. `soak` is the exception, because
-  its golden and output paths may be fully qualified paths outside the repository
-  (§19.2b). A test reaches code 1 with an altered golden and code 3 with a
-  missing one, both in a temporary directory (§19.7).
+  task makes them reachable is withdrawn. `soak` and `checkpoints` are the
+  exceptions, because their paths may be fully qualified paths outside
+  the repository (§19.2b, §19.2c). A test reaches `soak`'s code 1 with an
+  altered golden and its code 3 with a missing one, both in a temporary
+  directory (§19.7). It reaches `checkpoints`'s code 3 with an existing
+  or parentless `--out`, a missing `--bundle` or a bundle without a
+  listed system's file, also in a temporary directory (§19.8).
+  `checkpoints` never returns 1.
 
 ## 19.2a The Phase 0 CLI composition (Q-042, Q-043)
 
@@ -842,21 +846,36 @@ registers no stand-in.
   equals every other batching, with no seam. No CLI flag selects a batch
   size, and none may be added.
 - `test_checkpoints_subcommand_composes_through_published_factories_only`
-  (Q-075). This is a static check, by reflection over loaded assemblies:
-  - the harness assembly `AirportSim.Tools.SimHarness` references no
+  (Q-075). It has two parts, and both must hold:
+  - **Behavioural.** The default invocation exits 0, and `<tmp>/a` is
+    byte-identical to the kit's dump, which is built through the
+    published surface only. This part fails without a working
+    `checkpoints`. It repeats the core of
+    `test_checkpoint_dump_format_is_byte_exact` on purpose, so that this
+    test cannot pass on its own against a harness that lacks the
+    subcommand.
+  - **Static,** by reflection over loaded assemblies. The harness
+    assembly `AirportSim.Tools.SimHarness` references no
     `AirportSim.App.*` assembly, `AirportSim.App.Host` in particular. So
     the harness cannot reuse `app.host`'s composer, and D7 compares two
-    independent compositions (`16` §16.4);
-  - no `AirportSim.*` assembly that the harness references carries an
-    `InternalsVisibleToAttribute` (`07` L5).
+    independent compositions (`16` §16.4). No `AirportSim.*` assembly
+    that the harness references carries an `InternalsVisibleToAttribute`
+    (`07` L5). These checks guard against regression, and today's `main`
+    already passes them.
 
-  Its behavioural half is the byte identity with the kit above, which
-  uses only the published surface. The Reviewer checks that the harness
-  reaches no non-public member by reflection, because a test cannot.
-- `test_checkpoints_rejects_usage_errors` (Q-066). Each of these exits 2
-  with stdout empty, and creates no file: each of the four flags missing
-  in turn; `--days` given twice; `--days 0`; `--days 298262`; `--seed 1`
-  added; `--bundle ""`; and, on Windows only, `--out C:a`.
+  The Reviewer checks that the harness reaches no non-public member by
+  reflection, because a test cannot.
+- `test_checkpoints_rejects_usage_errors` (Q-066). First, as its control,
+  the default invocation exits 0 and prints the `WROTE checkpoints` line.
+  A harness without the subcommand fails here, because an unknown
+  subcommand is also exit 2 (§19.3). Then each of these, with the same
+  arguments otherwise and a fresh `--out` path, exits 2 with stdout empty
+  and creates no file: each of the four flags missing in turn; `--days`
+  given twice; `--days 0`; `--days 298262`; `--seed 1` added;
+  `--bundle ""`; and, on Windows only, `--out C:a`. The control
+  establishes that `checkpoints` is recognised, so each 2 that follows
+  comes from the subcommand's own usage rules. stderr is free-form and
+  is not asserted.
 - `test_checkpoints_harness_failures_exit_3` (Q-067). Each of these exits
   3 with stdout empty: an `--out` path that already exists, which is left
   byte-unchanged; an `--out` path whose parent directory does not exist; a

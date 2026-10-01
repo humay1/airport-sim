@@ -2984,7 +2984,8 @@ Reason:      T-030's Test Author was blocked by eleven gaps. `16` §16.8
              - **Commands (Q-071):** neither side submits any.
              - **Content (Q-072):** a listed content directory, with the
                order fixed by `08` §8.11's loader. `16` §16.9 step 1
-               passes `--content data`.
+               passes the build step's copies of the playtest bundle and
+               of `data/` (see the review fixes below).
              - **Batch size (Q-074):** both sides pin `Days` calls of
                `Step(TICKS_PER_SIM_DAY)`. The test compares a
                published-surface kit, stepped three other ways, with the
@@ -3000,6 +3001,37 @@ Reason:      T-030's Test Author was blocked by eleven gaps. `16` §16.8
                failure by §16.4), and the Phase 1 half uses the
                `-phase1/` test bundle, because the playtest bundle is the
                Unity shell's, which follows T-031.
+             - **Review of #83 at `8df4681`, five fixes:**
+               1. `test_checkpoints_rejects_usage_errors` passed against
+                  a harness without the subcommand, because an unknown
+                  subcommand is also exit 2 with empty stdout. It now
+                  starts with a control: the valid invocation exits 0 and
+                  prints the `WROTE checkpoints` line. Then each usage
+                  error exits 2.
+               2. `test_checkpoints_subcommand_composes_through_published_factories_only`
+                  was only a static check that `main` already passes. It
+                  now has a behavioural part (exit 0, and the file is
+                  byte-identical to the published-surface kit's dump), and
+                  the static part is kept as a regression guard.
+               3. §19.2 "Untested by design" said code 3 is reachable only
+                  through `soak`. It now names `checkpoints` too (§19.8).
+               4. The first draft dropped "in-process" from §16.8's D7
+                  description with no record. It is restored. Q-077's
+                  framing is corrected: Q-025 binds harness tests only,
+                  so spawning the harness (C) is not forbidden. It is
+                  rejected because it drops §16.8's in-process run and
+                  depends on the build layout. #84, which answers Q-077,
+                  gets the same correction in its own entry.
+               5. §16.9 step 1's `--bundle B` named the playtest bundle,
+                  but `unity/AirportSim/Scenario/` holds only
+                  `bundle.json`, so §19.2c could not run it. Step 1 now
+                  reads the player build step's copies,
+                  `unity/AirportSim/Assets/StreamingAssets/Scenario` and
+                  `.../Content` (`16` §16.3), after the build step has
+                  run. The harness therefore reads the bytes the player
+                  reads. The §16.8 LOW CONFIDENCE marker that relies on
+                  that procedure was re-checked: it holds, and now says
+                  that step 1 reads the build copy.
 Raised by:   Q-066 to Q-076 (Test Author / T-030, via coordinator). Q-077
              was raised by the Architect while answering them.
 Impact:      - **Merged code:** none invalidated. No harness code for
@@ -3033,8 +3065,10 @@ Impact:      - **Merged code:** none invalidated. No harness code for
                but the Planner syncs its task file. **T-031 also stays
                blocked by Q-077 (OPEN):** `07` L3 leaves no test project
                that can call both sides.
-             - **T-035:** step 1 gains `--content data`. The Planner syncs
-               its task file.
+             - **T-035:** step 1 now runs `checkpoints` over
+               `unity/AirportSim/Assets/StreamingAssets/Scenario` and
+               `.../Content`, after the player build step. The Planner
+               syncs its task file. T-035 already depends on T-034.
              - **LOW CONFIDENCE:** the listed content directory (Q-072),
                and D7 on test bundles rather than the playtest bundle
                (§16.8).

@@ -387,8 +387,8 @@ invokes are unchanged. The harness's `soak` subcommand and its golden,
 
 **Equivalence with the harness (D7).**
 `test_host_composition_matches_harness_checkpoints` runs the harness
-`checkpoints` subcommand and `IHeadlessRun` (on `net8.0`) on the
-same bundle and content for one sim-day. The dumps must be byte-identical.
+`checkpoints` subcommand and `IHeadlessRun` (in-process, on `net8.0`) on
+the same bundle and content for one sim-day. The dumps must be byte-identical.
 It runs on two bundles (Q-069, Q-070, Q-076):
 
 - `tests/fixtures/harness/checkpoints-phase0/`, with content
@@ -409,12 +409,14 @@ playtest bundle is compared by §16.9's procedure.
 > Phase 1 test bundle, not on the shipped playtest bundle, because the
 > playtest bundle does not exist when the headless host merges. A
 > difference that only the playtest bundle's files expose is caught by
-> §16.9's procedure, by hand, until that gate is adopted.
+> §16.9's procedure, by hand, until that gate is adopted. That procedure
+> reads the build step's copy of the playtest bundle (§16.9 step 1), so
+> it can run as soon as the Unity shell task has committed the bundle.
 
-How this test reaches both the harness and `app.host` in one test
-project, when `07` L3 lets a test project reference only its own module's
-production project, is **OPEN** (Q-077). It does not block the harness
-side.
+`07` L3 lets a test project reference only its own module's production
+project, so no test project can call both sides in process. Which
+project holds this test is **OPEN** (Q-077). It does not block the
+harness side.
 
 ---
 
@@ -428,15 +430,23 @@ portability" can pass every one of those gates, for example a tie in
 
 **`determinism_cross_runtime`:**
 
-1. **CoreCLR:** `tools.simharness checkpoints --bundle B --content data
-   --days 10 --out a` (`19` §19.2c). `data` is the content that the
-   player's build step copies (§16.3).
+1. **CoreCLR:** `tools.simharness checkpoints --bundle
+   unity/AirportSim/Assets/StreamingAssets/Scenario --content
+   unity/AirportSim/Assets/StreamingAssets/Content --days 10 --out a`
+   (`19` §19.2c). It runs after the player build step (§16.3). That step
+   assembles the playtest bundle, meaning `bundle.json` and the fixtures
+   §16.3 names, in `Assets/StreamingAssets/Scenario/`, and copies `data/`
+   into `Assets/StreamingAssets/Content/`. So the harness reads exactly
+   the bytes the player reads. Both directories are build output and are
+   never committed. `unity/AirportSim/Scenario/` holds only `bundle.json`
+   and is not a complete bundle, so it is never passed as `--bundle`.
 2. **Mono:** the Unity player build of `unity/AirportSim/` (Mono backend,
-   §16.2), with `B` as its scenario, started as
+   §16.2), built by that same build step, started as
    `-batchmode -nographics -airportsim-checkpoints 10 b`.
 3. **Pass:** `a` and `b` are byte-identical (§16.8).
 
-`B` is the Phase 1 playtest bundle, with every Phase 1 system registered.
+`B`, the scenario that both sides run, is the Phase 1 playtest bundle,
+with every Phase 1 system registered.
 Ten days matches `determinism_cross_process`. The Mono side must be the
 **real player**. Unity ships its own fork of Mono and its own class
 libraries, so a pass on a standalone upstream Mono proves little about the
