@@ -1,12 +1,12 @@
-# T-043 — `sim.flow` budget tests: conform to the `03` window and arithmetic rule
+# T-043 — `sim.flow` budget tests: conform to the `03` window, arithmetic and handler-timing rules
 
 | Field | Value |
 |---|---|
 | Status | QUEUED |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
-| Depends on | T-039, T-040, T-023 (all three write `tests/sim/flow/**`; merge them first, no concurrent release) |
-| Spec source | `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-044, Q-045; PR #68, `7c9a373`); `spec/07-conventions.md` L11, L11a |
+| Depends on | T-039, T-040 (both write `tests/sim/flow/**`; merge them first, no concurrent release). T-023 merged (#71) |
+| Spec source | `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-044, Q-045; PR #68, `7c9a373`); `spec/07-conventions.md` L11, L11a; `spec/03-module-map.md` "How a budget is measured" (Q-061 update path, Q-064 handler timing; PRs #73, #75) |
 | Blocked by | — |
 
 ## Writable paths
@@ -27,10 +27,15 @@ confirms the list by reading every timed `Budget` test in `tests/sim/flow/**`
 and rewrites each that asserts a time. `PromotionAllocationTests` and any other
 test that asserts only allocation are out of scope.
 
-**Serialised after T-039, T-040 and T-023.** T-040 adds the `Slow` trait to
-`PromotionBudgetTests` and `FlowStressBudgetTests` methods, T-039 adds a file and
-T-023 (tests-only) adds coverage tests, all in `tests/sim/flow/**`. Never release
-two tasks that write the same paths.
+**Serialised after T-039 and T-040** (T-023 has merged). T-040 adds the `Slow`
+trait to `PromotionBudgetTests` and `FlowStressBudgetTests` methods and T-039
+adds a file, both in `tests/sim/flow/**`. Never release two tasks that write the
+same paths.
+
+**Folded in (2026-10-01, post-#73/#75 sync): two more `tests/sim/flow/**`
+rewrites that would otherwise need their own serialised tasks.** They touch the
+same files this task already rewrites, so a separate task would only add a
+fourth writer to the path. They are parts 5 and 6 below.
 
 ## What this task does
 
@@ -55,7 +60,29 @@ a budget."
    - p99: "Sort the `u` ascending, and `p99 = u[(99 × n + 99) / 100 − 1]` in
      integer division ... It passes iff `p99 ≤ 2 × B`";
    - report `(Σu + n − 1) / n` and the p99 to test output on every run.
-4. Keep names, fixtures, work per tick, allocation assertions and the budget
+4. **Handler timing (Q-064, `03` "Timing a module's handlers").** Add handler
+   timers to every timed `Budget` test in `FlowStressBudgetTests`,
+   `SecurityLaneBudgetTests` and `PromotionBudgetTests` (and `FlowBudgetTests`):
+   build `sim.flow` with a `SystemServices` whose `Events` and `Commands` wrap
+   each handler it registers, during construction, in a non-allocating timing
+   shim. Tick `t`'s sample is the sum of the `Stopwatch.GetTimestamp()`
+   differences around `Tick` and around every shimmed call in phases 1 to 3
+   (`SetServersOpen` `Apply` included); steps 1 to 3 then apply to that sum
+   unchanged. "No other way of timing handlers satisfies a budget." The shim
+   and its sample accumulator are allocated before the loop. If `sim.flow` has
+   no event handler, only the `Apply` is shimmed, and the test says so.
+5. **Allocation window covers `Apply` (Q-061, `03` "How a budget is
+   measured").** `test_security_lane_switching_every_tick_allocates_nothing_in_flow_tick`
+   meters only `sim.flow`'s `Tick` through the `Timed` wrapper
+   (`SecurityLaneBudgetTests.cs`), so the `SetServersOpen` `Apply` runs outside
+   it. Re-meter it so the command's `Apply` runs inside the metered window for
+   each `Step(1)` (the T-037 meter over the whole step, or a direct rig that
+   delivers the command in the window), after a warm-up that already ran it.
+   Assert exactly 0. Where another flow allocation test (`FlowBudgetTests`,
+   `FlowStressBudgetTests`, `PromotionAllocationTests`) leaves a flow handler or
+   `Apply` outside its window, widen it the same way; the Test Author lists
+   which in the PR. An allocation test needs no `Budget` trait (Q-061 revision).
+6. Keep names, fixtures, work per tick, allocation assertions and the budget
    values unchanged. Do not widen, average away, retry or skip. Sample
    storage is allocated before the measured loop.
 
@@ -88,7 +115,9 @@ Unchanged: `sim.flow` 2.5 ms/tick at max tier (`03`), asserted as `Σu ≤ B × 
 - [ ] Every timed `Budget` test in the owned paths samples per tick over exactly 14 400 consecutive ticks
 - [ ] `long` arithmetic only (no `Int128`, no floating point, no `TimeSpan`), per `03` Q-045; mean `Σu ≤ B × n`, p99 by nearest rank `≤ 2 × B`
 - [ ] Reported mean `(Σu + n − 1) / n` and p99 written on every run, pass or fail
-- [ ] Budget values, test names and allocation assertions unchanged
+- [ ] Handler timers in the timed flow tests (Q-064): each sample is `Tick` plus shimmed handler and `Apply` time
+- [ ] The `SetServersOpen` `Apply` runs inside the metered window of the lane-switching allocation test, asserting 0 (Q-061)
+- [ ] Budget values and test names unchanged; allocation assertions stay at exactly 0
 - [ ] Slow tag decided by L11a from CI duration
 - [ ] `ci/run-checks.sh` green; tests pass on repeated CI runs
 - [ ] No writes outside the owned paths

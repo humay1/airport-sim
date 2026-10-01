@@ -158,7 +158,7 @@ to wave through a failing `determinism` check.
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | MERGED (PR #48) |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | MERGED (PR #54) |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | tools.simharness | T-006, T-007, T-008, T-012 | IN_PROGRESS (released 2026-09-29; task file synced to spec PR #66 2026-10-01: tests in `tests/tools/simharness/**` and `tests/fixtures/harness/**`, boarding stand-in at SystemId 3; its 100-day kill-gate test is Slow by L11a rule (a), so its PR needs the pre-merge `slow-tests` run) |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | tools.simharness | T-006, T-007, T-008, T-012 | MERGED (PR #74, `3ec3c59`, 2026-10-01) |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | MERGED (PR #56) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | MERGED (PR #59) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
@@ -171,7 +171,7 @@ to wave through a failing `determinism` check.
 | T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | QUEUED (released by the owner 2026-09-29 together with T-039 and T-009; test-author, own PR) |
 | T-041 | `sim.world` budget test: per-tick mean and p99 (flake fix) | sim.world tests | — | QUEUED (owner-approved 2026-09-29; test-author, own PR; rewritten 2026-10-01 to the 14 400-sample window and `long` arithmetic of spec PR #68) |
 | T-042 | `sim.core` budget tests conform to `03` window and arithmetic (Q-044, Q-045) | sim.core tests | — | QUEUED (test-author, own PR) |
-| T-043 | `sim.flow` budget tests conform to `03` window and arithmetic (drop `Int128`) | sim.flow tests | T-039, T-040, T-023 | QUEUED (test-author, own PR; serialised after the three other `tests/sim/flow/**` writers) |
+| T-043 | `sim.flow` budget tests conform to `03` window, arithmetic and handler timing (drop `Int128`; Q-061 `Apply` in the allocation window; Q-064 handler timers) | sim.flow tests | T-039, T-040 | QUEUED (T-023 merged; test-author, own PR; serialised after the two other `tests/sim/flow/**` writers) |
 | T-044 | `sim.schedule` budget tests conform to `03` window and arithmetic | sim.schedule tests | T-040 | QUEUED (test-author, own PR) |
 | T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009, T-013, T-014, T-030 | QUEUED (spec gap closed by Q-058, PR #70: `HarnessGates.BudgetFromSamples`; ordering unchanged, after T-009, T-013, T-014, T-030) |
 | T-046 | `balance.schema.json` requires `doors_open_delay_minutes` | content | T-028 | DONE by the owner (commit `3a00a78`, 2026-10-01): schema requires both keys, balance file has `doors_open_delay_minutes: 2` |
@@ -192,6 +192,9 @@ to wave through a failing `determinism` check.
 - **T-021 (#67, `8cf445c`).** §12.8a step order S1 to S7, the §12.11 pending list with exact removal, `STAND_WAIT_CAPACITY` 1024, `PENDING_FLIGHTS_CAPACITY` 2048, `LogKey.AirsideReassignStandNoOp = 1` in `src/sim/core/LogKey.cs` (now a T-021 writable path), `DoorsOpenDelayMinutes` in `AirsideRules`, a door delay of 2 min (HUMAN DECISION, owner 2026-09-30), the least-queue runway stopgap the owner accepted, 17 new §12.13 tests and the fixture `tests/fixtures/airside/phase1-single-runway.json`. `src/sim/core/**` is a shared surface: do not release T-021 beside another task that writes it.
 - **T-046 (closed 2026-10-01).** The owner committed the schema change and `doors_open_delay_minutes: 2` together in `3a00a78`. T-031 can load `airside_rules.json`.
 - **Post-#70 sync (2026-10-01).** Spec PR #70 (`b00adcb`) closes Q-057 (`soak` in `19` §19.2b and §19.3, unblocking T-013), Q-058 (`HarnessGates.BudgetFromSamples`, unblocking T-045) and Q-059 (no `--report`; the owner removed it from `nightly.yml`, so there is no task).
+
+- **Post-#73/#75 sync (2026-10-01), Q-060..Q-064.** (#73 `7d14761`, #75 `33900f2`.) **T-021** cites `12` for Q-060 (taxi `Blocking`), Q-062 (handed-off arrival leaves tracked state, handoff only after `DoorsOpen`, hashed and saved `AircraftTrack.RecordedCause`) and Q-063 (runway `QueuePosition` 1-based, `Released` carries 0); its tests gain six §12.13 tests, an allocation test covering the handlers and `ReassignStand` `Apply` (Q-061), and `AirsideBudgetTests` with handler timers (Q-064). **T-022 and T-024** cite Q-061/Q-064; T-024's budget is LOW CONFIDENCE: `sim.delay`'s 0.40 ms now covers its handlers, and an overrun goes to the owner, not to a rule change. **Folded into T-043** (no new task ids): Q-061 puts the `SetServersOpen` `Apply` inside the lane-switching allocation test's window, and Q-064 adds handler timers to the flow timed tests (`FlowStressBudgetTests`, `SecurityLaneBudgetTests`, `PromotionBudgetTests`, `FlowBudgetTests`). T-043 is already serialised after the other `tests/sim/flow/**` writers (T-039, T-040; T-023 merged), so no two flow test writers run at once. T-009 and T-023 are MERGED.
+- **Releasable now (2026-10-01), dependencies merged and tests authored:** T-030 (T-009 merged; first of the harness writers), T-041 and T-042 (disjoint test paths, no dependency), and T-040 (no dependency, but it shares `tests/sim/flow/**` with the in-progress T-039, so release it only once T-039 merges). Harness order stays T-030, then T-013 and T-014 one at a time, then T-045 last. **Not yet:** T-013/T-014 until T-030 merges; T-020 until T-021 merges (T-009, T-010, T-023 are done); T-021 until `test-author-t021` finishes the additions above; T-022 after T-021; T-024 after T-022; T-043 after T-039 and T-040 merge; T-044 after T-040 merges.
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -344,9 +347,9 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
 | T-020 | Minimal top-down renderer, flat colours (headless scene layer only) | app.render | T-009, T-010, T-021, T-023, T-026 | QUEUED |
-| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED (task file synced to spec PR #67/#68 on 2026-10-01; also writes `src/sim/core/LogKey.cs`; tests authored by `test-author-t021`) |
+| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED (task file synced to spec PR #67/#68 on 2026-10-01 and to Q-060..Q-064 (PRs #73, #75) the same day; also writes `src/sim/core/LogKey.cs`; tests authored by `test-author-t021`, who must add the six new §12.13 tests, the handler allocation test, `RecordedCause` in track helpers and handler timers in `AirsideBudgetTests` before release) |
 | T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-008, T-021, T-026 | QUEUED |
-| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` (**tests-only**) | sim.flow tests | T-005, T-007, T-026 | QUEUED (2026-10-01: T-007 already implemented the behaviour; test-author, writes `tests/sim/flow/**` only; done = the 10 coverage tests pass on `main`) |
+| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` (**tests-only**) | sim.flow tests | T-005, T-007, T-026 | MERGED (PR #71, 2026-10-01) |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023, T-026 | QUEUED |
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
 | T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | MERGED |

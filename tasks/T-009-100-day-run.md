@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #74, `3ec3c59`) |
 | Module | `sim.core` (harness/integration, `tools/SimHarness`) |
 | Assigned role | worker |
 | Depends on | T-006, T-007, T-008, T-012 |

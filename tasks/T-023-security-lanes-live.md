@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #71) |
 | Module | `sim.flow` |
 | Assigned role | test-author (tests-only; T-007 already implemented the behaviour) |
 | Depends on | T-005, T-007, T-026 |

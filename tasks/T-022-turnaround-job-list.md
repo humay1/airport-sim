@@ -6,7 +6,7 @@
 | Module | `sim.turnaround` |
 | Assigned role | worker |
 | Depends on | T-008, T-021, T-026 |
-| Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006) |
+| Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
 | Blocked by | — |
 
 ## Writable paths
@@ -203,6 +203,19 @@ Expect at least:
   (the counterpart to T-021's fallback-only test; proves the §12.8 handshake
   works end to end with both modules registered)
 
+Added by Q-061 (`13` §13.11):
+
+- `test_turnaround_update_path_allocates_nothing_including_handlers` (with
+  `sim.airside` registered, every `sim.turnaround` handler runs inside the
+  metered window, after a warm-up that already ran it)
+
+**Handlers are in the update path and the budget (Q-061, Q-064).** The
+`OnStand` handler that creates jobs, and every other handler and `Apply`,
+allocate nothing and count toward the 0.50 ms: a budget test times `Tick` plus
+the shimmed handlers (`03` "Timing a module's handlers"). `13` §13.10 is the
+source. Also note `T-021` now hands the arrival off only after `DoorsOpen`
+(Q-062), so the handshake test's event order follows `12` §12.8 step 3.
+
 **Do not edit them.** If a test contradicts `spec/13-interfaces-turnaround.md`,
 file an open question and stop.
 
@@ -211,7 +224,8 @@ file an open question and stop.
 `0.50` ms/tick at max tier (`spec/03-module-map.md`,
 `spec/13-interfaces-turnaround.md` §13.10). Per-tick work is O(active jobs +
 blocked jobs + vehicles), never a scan proportional to flights not currently
-in turnaround. No allocation in the update path.
+in turnaround. No allocation in the update path, handlers included (Q-061).
+The 0.50 ms covers handlers as well as `Tick` (Q-064).
 
 ## Done when
 
