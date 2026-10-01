@@ -359,7 +359,8 @@ line names the checkpoint tick and the column names the system
 **The harness side.** `tools.simharness` gains one subcommand,
 `checkpoints --bundle <dir> --days <n> --out <path>`. It composes the bundle
 its own way and writes the same format. The existing subcommands that `ci/`
-invokes are unchanged.
+invokes are unchanged. The harness's `soak` subcommand and its golden,
+`tests/golden/soak-500.hashes`, use this format too (`19` §19.2b, Q-057).
 
 **Equivalence with the harness (D7).**
 `test_host_composition_matches_harness_checkpoints` runs the harness

@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | QUEUED (spec gap closed by Q-057; releasable after T-009 merges and tests are authored) |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`) |
 | Assigned role | worker |
 | Depends on | T-009 (first of the later harness writers: T-013, then T-014, T-030, T-045; see `queue.md`) |
-| Spec source | `spec/00-overview.md`; `spec/02-determinism.md` "Gates" (`soak_500_days`); `spec/03-module-map.md` "The soak fixture" (answers Q-003, D3) |
+| Spec source | `spec/19-interfaces-harness.md` §19.2b and §19.3 (Q-057, PR #70, `b00adcb`); `spec/00-overview.md`; `spec/02-determinism.md` "Gates" (`soak_500_days`); `spec/03-module-map.md` "The soak fixture" (answers Q-003, D3) |
 | Blocked by | — |
 
 ## Why this task exists
@@ -39,9 +39,37 @@ This task does not write under `tests/`. Its tests are in `tests/tools/simharnes
 
 ## Interface to implement
 
-No new interface. Drives the existing `ISimHost`/harness surface (T-001,
-T-004, T-006, T-009) against a new fixture and a new `soak` subcommand
-alongside the existing `determinism`/`saveload`/`promotion`/`budget` ones.
+No new `HarnessGates` member (`19` §19.1: `soak` is reached only through
+`HarnessCli.Run`). Adds the `soak` subcommand to `HarnessCli.Run`, alongside
+the existing `determinism`/`saveload`/`promotion`/`budget` ones, exactly as
+`19` §19.2b and §19.3 (Q-057) say. Binding, from those sections:
+
+- **Grammar.** `soak --days D --golden P` and `soak --days D --out P`, flags
+  in any order, each at most once. There is **no `--seed`**: the seed is
+  always 12345. `--golden` and `--out` together, or neither, is a usage error
+  (exit 2), as are `D = 0`, `D x TICKS_PER_SIM_DAY` above `uint32`, an empty
+  `P`, and a `P` that is rooted but not fully qualified.
+- **Run.** One run (§19.1) of `D x TICKS_PER_SIM_DAY` ticks, seed 12345,
+  the command script of `19` §19.2, and the §19.2a composer over the soak
+  fixture set. No second run. `soak` times nothing and reports no timing.
+- **Dump.** The checkpoint dump, version 1, of `16` §16.8, byte for byte
+  (`seed 12345`, the `systems` line, one line per checkpoint).
+- **`--golden P`.** Read all of `P` once, before the run (unreadable: exit 3).
+  Pass (exit 0) iff the dump and `P` are byte-identical; otherwise
+  `FAIL soak line=<L>` and exit 1.
+- **`--out P`.** If `P` exists or its parent directory does not: exit 3,
+  before the run. Never overwrites. After the run, create `P` and write the
+  dump (write failure: exit 3), exit 0.
+- **Paths.** `P` fully qualified is used as given. Otherwise it is a
+  `/`-separated path relative to the repository root (the `.sln` root found
+  as in §19.2a). The current working directory is never used.
+- **Exit codes.** 0 passed or `--out` written; 1 gate failed; 2 usage error
+  (stdout empty); 3 harness error (stdout empty). Otherwise stdout is exactly
+  one line (`19` §19.3).
+- **Fixtures** are loaded exactly as §19.2a loads the Phase 0 set, from
+  `tests/fixtures/soak/`: `soak-content.files` plus `soak-content/`,
+  `soak-landside.json`, `soak-landside.flow.json`, `soak.csv`. The Test
+  Author writes them; this task reads them and writes none.
 
 Binding, from `spec/03-module-map.md` "The soak fixture" (D3):
 
@@ -74,11 +102,19 @@ tests/golden/**
 
 Synced 2026-10-01 to `19` §19.6 (Q-041): `07` L3 lets `tests/sim/core` reference only `src/sim/core`, so a test that drives the harness CLI over the world, schedule and flow factories lives in `tests/tools/simharness/`. The fixture and golden locations are `03` "The soak fixture" (`tests/fixtures/soak/**`, `tests/golden/`). The earlier `tests/sim/core/**` grant is dropped.
 
-Written by the Test Author. Expect a `soak --days 500 --seed <n>` harness
-subcommand invocation, asserting: (a) mean tick cost under 0.1 ms on the
-reference machine, (b) a golden checkpoint hash that a second run
-reproduces exactly (`determinism_same_process`, at this fixture's scale),
-and (c) completion well inside CI's nightly window. **Do not edit them.**
+Written by the Test Author (`19` §19.7), including every file under
+`tests/fixtures/soak/**`. The tests drive `soak --days D --golden P` and
+`soak --days D --out P` through `HarnessCli.Run` and check the exit codes,
+the single stdout line and the path rules of `19` §19.2b and §19.3. The
+sizing test (§19.7) checks the 0.1 ms bound; `soak` itself times nothing.
+**Do not edit them.**
+
+**The golden `tests/golden/soak-500.hashes` is not a test input of this
+task.** It is committed only after the implementation has merged, as the
+`--out` dump of `soak --days 500`, and only with the owner's confirmation
+(`tests/golden/README.md`: no agent regenerates a golden). Until it is
+committed, the nightly `soak` exits 3, which `19` §19.2b says is correct.
+No agent writes it in this task.
 
 ## Performance budget
 
@@ -90,6 +126,7 @@ and escalate if that is not enough.
 ## Done when
 
 - [ ] All assigned tests pass
+- [ ] `tests/golden/soak-500.hashes` not written by this task (committed afterwards, owner-confirmed)
 - [ ] `ci/run-checks.sh` green (soak run may be nightly-only per existing CI
       wiring; confirm against `ci/run-checks.sh`'s own scheduling, which this
       task does not change)
@@ -100,14 +137,15 @@ and escalate if that is not enough.
 
 ## Worker notes
 
-**Spec gap, reported to the team lead, not decided here.** `19` §19.2a says
-"Every CLI run, of every subcommand in §19.3, uses the Phase 0 composition",
-and §19.3 does not list a `soak` subcommand (a search of `19` finds none).
-So `soak`'s grammar, exit codes and composition (the Phase 0 one, or "every
-system registered in the build" per `03`) are unspecified. Do not release
-until the Architect settles it.
+**Spec gap closed (Q-057, spec PR #70, `b00adcb`).** `19` §19.2b and §19.3
+now specify `soak` (grammar, exit codes, composition, golden handling). The
+hold on this task is lifted: it is releasable once T-009 has merged and the
+Test Author's tests and `tests/fixtures/soak/**` are authored. The nightly
+workflow's existing `soak --days 500 --golden tests/golden/soak-500.hashes`
+needs no change.
 
-Do not author this fixture's golden hash before `SIM_SECONDS_PER_TICK` and
+The golden hash is authored only after this task merges (see "Tests to
+pass"), and not before `SIM_SECONDS_PER_TICK` and
 every registered module's own goldens are stable — D2 confirms
 `SIM_SECONDS_PER_TICK = 6` and lifts the earlier "do not author goldens"
 restriction that older Phase 0 task files (T-001, T-009) carried; those
