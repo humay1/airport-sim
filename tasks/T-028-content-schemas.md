@@ -50,10 +50,17 @@ definition types and `04-data-schemas.md`'s field table exactly:
 | `queue_profiles.schema.json` | `service_rate_per_server_per_minute`: decimal string ≥ 0; `capacity_standing`: integer > 0; `threshold_wait_minutes`: decimal string; `hysteresis_minutes`: decimal string, `0 ≤ h < threshold`; `delay_category`: `"security_queue"` or `"immigration_queue"` |
 
 Plus `balance.schema.json`, validating
-`{ "schema_version": 1, "boarding_hold_max_minutes": <uint32> }`
-(`12-interfaces-airside.md` §12.4, D6) — this task writes the schema only;
-the balance file itself (`data/balance/airside_rules.json`, value `10`) is
-the human owner's to write, not this task's.
+`{ "schema_version": 1, "boarding_hold_max_minutes": <uint32>,
+"doors_open_delay_minutes": <uint32> }`, both keys required
+(`12-interfaces-airside.md` §12.4, D6, Q-047; `04-data-schemas.md`) — this
+task writes the schema only; the balance file itself
+(`data/balance/airside_rules.json`; `boarding_hold_max_minutes` 10,
+`doors_open_delay_minutes` 2, **HUMAN DECISION, owner, 2026-09-30**) is the
+human owner's to write, not this task's.
+
+**Amended after merge (PR #67, `8cf445c`):** this task merged with the
+one-key schema. The second key is added by **T-046**, which is held for the
+owner because the balance file and the schema must land together.
 
 A schema's file name must equal its directory's name
 (`04-data-schemas.md`) — `ci/validate-content.py` pairs them by name. This

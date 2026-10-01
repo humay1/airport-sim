@@ -112,9 +112,68 @@ the Test Author and the Verifier:
   that only shows up at the 07:00 bank, which is exactly when the player is
   watching.
 - **Measured:** the module's `Tick` only, excluding fixture setup and excluding
-  the checkpoint phase, which is billed separately above.
+  the checkpoint phase, which is billed separately above. There are two
+  exceptions:
+  - `sim.world` bills its callers' queries as well (`18` §18.4);
+  - `sim.core` has no `Tick` (Q-044). Its sample is one `ISimHost.Step(1)`
+    call on a host whose registered systems are the test's probes, with
+    checkpoint ticks included. The probes' own work counts, so a test keeps
+    it to what exercises the loop, commands and event dispatch.
 - **Allocation:** zero bytes allocated in the update path, asserted as well as
   timed. A GC pause does not appear in a mean and ruins a frame anyway.
+
+#### Budget tests: window and arithmetic (Q-044, Q-045)
+
+Binding on every xUnit test that asserts a time against a per-tick budget of
+the table above (`07` L11). It is also binding on `19` §19.4's harness gate,
+which uses the same pass condition. It does **not** bind:
+
+- a `Budget`-trait test that asserts only allocation (the bullet above), and
+  times nothing;
+- a whole-run wall-clock gate, such as T-009's 100-day kill gate (`19`
+  §19.6). That gate makes one `long` measurement against its own limit, and
+  it is not a per-module budget.
+
+Any other timed check that does not follow these rules carries no `Budget`
+trait, and it does not satisfy a budget.
+
+- **Window (Q-044).** The samples are exactly `n = TICKS_PER_SIM_DAY`
+  (14 400) consecutive ticks, one sample per tick. Any 14 400 consecutive
+  ticks after warm-up form a window, and the window need **not** start on a
+  sim-day boundary. Any such window covers every time of day exactly once,
+  the bank peak included. No shorter window satisfies a budget. Warm-up
+  ticks before the window are allowed and are not sampled. A test that
+  measures several windows applies the pass condition to each window on its
+  own, never to their union. The windows do not overlap. This
+  generalises `11` §11.9's rule (Q-031). Every module that has a budget
+  test has at least one that follows this.
+- **Arithmetic (Q-045).** Everything is `long`, per `07` L11, with no
+  `Int128`, no floating point and no `TimeSpan`. Let `f =
+  Stopwatch.Frequency` and let `B` be the budget in whole microseconds:
+  1. The raw sample `d` is the `Stopwatch.GetTimestamp()` difference
+     around one tick's measured work.
+  2. It is converted to whole microseconds **rounding up**, and capped at
+     `C = B × n + 1`. If `d > (long.MaxValue − f + 1) / 1 000 000`, then
+     `u = C`. Otherwise `u = min((d × 1 000 000 + f − 1) / f, C)`. Rounding
+     up is conservative, because it adds under 1 µs a tick. The cap
+     changes no verdict: one capped sample already fails the mean, and it
+     fails p99 whenever p99 reaches it, since `C > 2 × B`. The cap is what
+     keeps `Σu` within `long`, because `Σu ≤ n × C`. The guard's `u = C`
+     is at most the sample's true rounded-up value only while `f ≤
+     long.MaxValue / (C + 1)`. For the largest `B` in scope, `19` §19.4's
+     6000, that bound is about 1.07 × 10^11 Hz. Real `Stopwatch.Frequency`
+     values (10^7 on Windows, 10^9 elsewhere) are far below it, and a test
+     on a machine whose `f` exceeds it is outside this rule.
+  3. **Mean:** it passes iff `Σu ≤ B × n`.
+  4. **p99:** nearest rank. Sort the `u` ascending, and `p99 = u[(99 × n +
+     99) / 100 − 1]` in integer division, which is `⌈0.99 × n⌉ − 1`. It
+     passes iff `p99 ≤ 2 × B`.
+  5. **Reporting.** A reported mean is `(Σu + n − 1) / n`, rounded up, so
+     "reported mean ≤ `B`" is exactly the pass condition in step 3. A
+     reported p99 is `p99` itself.
+  The only product with a measured value is `d × 1 000 000` in step 2, and
+  the guard there keeps it within `long`. Every other product involves only
+  `B`, `n` and constants.
 
 Budgets are asserted in each module's own tests (`07-conventions.md`,
 "Performance"), so a regression fails the owning module's suite rather than an
