@@ -329,7 +329,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   composition is a pure function of the bundle's bytes (§16.4); frame order
   is UI, then promotion, then `Step`, then build (§16.6); the byte-exact
   checkpoint dump and the harness `checkpoints` subcommand (§16.8); exact
-  bundle file names and the composition steps (§16.3, §16.4), using the
+  bundle file names, with the playtest bundle's file-to-source table
+  (`world.fixture` included), and the composition steps (§16.3, §16.4),
+  using the
   Q-009 factories; content in the player comes from a copy of `data/`
   through `HostFactory.LoadContent` (§16.3); the graphics preference is
   read and written through `IPreferenceStore`, never in the bundle (§16.6,

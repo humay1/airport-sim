@@ -509,11 +509,12 @@ to stay equal to the Phase 0 set. Its content is
 files as its manifest. The Phase 1 checkpoints bundle,
 `tests/fixtures/harness/checkpoints-phase1/`, is written by the Phase 1
 stage's Test Author. Its `bundle.json` lists all six Phase 1 systems, with
-seed `"12345"`, and its files are byte copies of the Phase 1 fixtures that
-`16` §16.3 names, plus the walk graph that its flow fixture is validated
-against. It holds no `render_layout.fixture`. Its `airside_rules.json` is
-a byte copy of `data/balance/airside_rules.json`. Its content is
-`--content data`.
+seed `"12345"`. It holds `world.fixture`, `schedule.csv`,
+`airside.fixture`, `airside_rules.json`, `turnaround.fixture` and
+`flow.fixture`, each a byte copy of the source that `16` §16.3's
+playtest-bundle table gives for that name. That is one file for each
+listed system that needs one. It holds no `render_layout.fixture`, since
+`checkpoints` never reads it. Its content is `--content data`.
 
 ## 19.3 The command line (Q-026)
 

@@ -3029,9 +3029,44 @@ Reason:      T-030's Test Author was blocked by eleven gaps. `16` §16.8
                   `unity/AirportSim/Assets/StreamingAssets/Scenario` and
                   `.../Content` (`16` §16.3), after the build step has
                   run. The harness therefore reads the bytes the player
-                  reads. The §16.8 LOW CONFIDENCE marker that relies on
-                  that procedure was re-checked: it holds, and now says
-                  that step 1 reads the build copy.
+                  reads. The §16.8 LOW CONFIDENCE marker now says that
+                  step 1 reads the build copy. The first claim here that
+                  the marker "holds" was premature: see the next block.
+             - **Review of #83 at `a8e3edb`: the playtest bundle had no
+               walk graph.** §16.3's playtest-bundle list named no
+               `world.fixture`, but that bundle registers every Phase 1
+               system, `sim.world` included, which `sim.flow` needs. So
+               §19.2c, and the player, would fail with exit 3 for the
+               missing file. §19.2c's Phase 1 test bundle already added
+               "plus the walk graph", so §16.3, §16.9 and §19.2c
+               disagreed. This was a spec omission, not a content or
+               scope decision: the §16.3 table already required the file,
+               and `18` §18.6 already names
+               `tests/fixtures/world/phase0-landside.json` as the walk
+               graph that T-023's flow fixture shares. The fix:
+               - §16.3 adds the walk graph to the playtest bundle, with a
+                 table that gives each bundle file name and its source;
+               - the `world.fixture` row now says it is required whenever
+                 `sim.world` is listed, which §16.4 requires whenever
+                 `sim.flow` is;
+               - §16.9 step 1 points to that table, `world.fixture`
+                 included;
+               - §19.2c's Phase 1 test bundle names its six files and
+                 takes each from the same table.
+               Every bundle file list was re-checked against the systems
+               its bundle registers. The Phase 0 checkpoints bundle has
+               world, schedule and flow, with `world.fixture`,
+               `schedule.csv` and `flow.fixture`. The Phase 1 test bundle
+               has six files for the five systems that need one
+               (`sim.delay` needs none). The playtest bundle has those six
+               plus `render_layout.fixture` for presentation. §16.4 and
+               §16.8 name no file list of their own. The §16.8 LOW
+               CONFIDENCE marker's mitigation now holds, because the
+               build copy is a complete bundle. **T-034:** its task file
+               copies §16.3's old list, which has no walk graph. The
+               Planner syncs it to the new table. Its "Playtest bundle
+               names every file `bundle.json` lists" check then covers
+               `world.fixture`.
 Raised by:   Q-066 to Q-076 (Test Author / T-030, via coordinator). Q-077
              was raised by the Architect while answering them.
 Impact:      - **Merged code:** none invalidated. No harness code for

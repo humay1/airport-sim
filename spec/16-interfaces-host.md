@@ -104,7 +104,7 @@ interface IScenarioBundle {
 | File | Format | Consumed by |
 |---|---|---|
 | `bundle.json` | `{ "schema_version": 1, "seed": "<uint64 decimal>", "systems": [ "<module name>", ... ] }` | the host |
-| `world.fixture` | `18-interfaces-world.md` §18.2; required whenever `sim.flow` is listed | `IWalkGraphLoader.Load` |
+| `world.fixture` | `18-interfaces-world.md` §18.2; required whenever `sim.world` is listed, which it must be whenever `sim.flow` is (§16.4) | `IWalkGraphLoader.Load` |
 | `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader.Load` |
 | `airside.fixture` | `12-interfaces-airside.md` §12.4 "File format" (JSON, Q-046) | `IAirsideLayoutLoader.Parse` |
 | `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules`, both keys, `boarding_hold_max_minutes` and `doors_open_delay_minutes` (Q-047) |
@@ -143,9 +143,27 @@ name says nothing about the format.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
   `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, the `sim.flow`
-  fixture T-023 runs, and the human-authored `data/balance/airside_rules.json`
-  (D6). The build step copies them into
-  `Assets/StreamingAssets/Scenario/`. The copies are build output: the
+  fixture T-023 runs, the walk graph that fixture is validated against
+  (`18` §18.6, `tests/fixtures/world/phase0-landside.json`), and the
+  human-authored `data/balance/airside_rules.json`
+  (D6). Its `bundle.json` lists all six Phase 1 systems, so it needs one
+  file for each row of the table above. The build step copies each source
+  into `Assets/StreamingAssets/Scenario/` under that row's exact name:
+
+  | Bundle file | Source |
+  |---|---|
+  | `bundle.json` | `unity/AirportSim/Scenario/bundle.json` |
+  | `world.fixture` | `18` §18.6, `tests/fixtures/world/phase0-landside.json` |
+  | `schedule.csv` | `11` §11.10, `tests/fixtures/schedule/phase0-200.csv` |
+  | `airside.fixture` | `12` §12.13, `tests/fixtures/airside/phase1-single-runway.json` |
+  | `airside_rules.json` | `data/balance/airside_rules.json` |
+  | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-four-vehicles.*` |
+  | `flow.fixture` | the `sim.flow` fixture T-023 runs |
+  | `render_layout.fixture` | `15` §15.12's fixture, under `tests/fixtures/render/` |
+
+  (Q-069, review of #83 at `a8e3edb`: the walk graph was missing from this
+  list. The bundle lists `sim.world`, which needs `world.fixture`, and it
+  lists `sim.flow`, which needs `sim.world`.) The copies are build output: the
   fixtures stay test fixtures, beside their tests (`07-conventions.md`), and
   are not moved into `data/`.
 
@@ -434,8 +452,9 @@ portability" can pass every one of those gates, for example a tie in
    unity/AirportSim/Assets/StreamingAssets/Scenario --content
    unity/AirportSim/Assets/StreamingAssets/Content --days 10 --out a`
    (`19` §19.2c). It runs after the player build step (§16.3). That step
-   assembles the playtest bundle, meaning `bundle.json` and the fixtures
-   §16.3 names, in `Assets/StreamingAssets/Scenario/`, and copies `data/`
+   assembles the playtest bundle, meaning every file of §16.3's
+   playtest-bundle table, `world.fixture` included, in
+   `Assets/StreamingAssets/Scenario/`, and copies `data/`
    into `Assets/StreamingAssets/Content/`. So the harness reads exactly
    the bytes the player reads. Both directories are build output and are
    never committed. `unity/AirportSim/Scenario/` holds only `bundle.json`
