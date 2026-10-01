@@ -262,7 +262,9 @@ is an xUnit test with `[Trait("Category", "Budget")]`. It measures with
 `long` arithmetic only, with no `TimeSpan` and no floating point (`08` §8.3).
 A measured time is only ever asserted against. It never feeds a sim input.
 That is the only use of the clock that "Unit tests never use wall-clock time"
-permits. The authoritative budget measurement is still
+permits. The sample window, the rounding and the pass condition are `03`
+"Budget tests: window and arithmetic" (Q-044, Q-045), which stays within
+this `long`-only rule. The authoritative budget measurement is still
 `tools/SimHarness budget` (`ci/run-checks.sh`).
 
 **L11a. Slow tests.** HUMAN DECISION — owner, 2026-09-29. A long-running

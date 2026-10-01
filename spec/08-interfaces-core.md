@@ -321,7 +321,9 @@ in 1–14, is not 8, and is strictly greater than every earlier registration.
 Otherwise it throws `ArgumentException`, and a `null` system throws
 `ArgumentNullException`. After `Build`, it throws `InvalidOperationException`.
 `Name` is a diagnostic label and is not checked. Tests may register probe
-systems at any legal position whose module is not in that build.
+systems at any legal position whose module is not in that build. Outside
+tests, the only such system is the harness's boarding stand-in at position
+3, in its Phase 0 CLI composition only (`19` §19.2a, Q-043).
 
 ### The host interface
 
@@ -865,7 +867,8 @@ interface ISimLog {
 
 ```
 enum LogLevel : byte   { Debug = 0, Info = 1, Warning = 2, Error = 3 }
-enum LogKey   : uint16 { None = 0 }             // appended by amendment; never renumbered
+enum LogKey   : uint16 { None = 0,              // appended by amendment; never renumbered
+                         AirsideReassignStandNoOp = 1 }   // 12 §12.10, Q-056
 readonly struct LogArgs { int32 Count; int64 A0; int64 A1; int64 A2; int64 A3 }
 ```
 

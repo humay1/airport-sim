@@ -1332,3 +1332,528 @@ Answer:      **(a).** This is what the spec already implies. §9.6 defines
              merged three (§9.7), with the Test Author's test
              `test_inject_rejects_non_departing_direction`.
 Status:      ANSWERED (spec/09-interfaces-flow.md#96-corridors-and-routing)
+
+<!-- Q-046 to Q-056 (T-021, PR #67) are listed before Q-041 to Q-045, which merged first from PRs #66 and #68. -->
+
+### Q-046 — `sim.airside`: the layout fixture's file format
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    §12.13 made the format of
+             `tests/fixtures/airside/phase1-single-runway.*` "the worker's
+             choice". But only the Test Author writes `tests/fixtures`,
+             and `Parse` has no specified input.
+Answer:      Architecture. The format is pinned in §12.4 "File format":
+             `phase1-single-runway.json`, in `08` §8.11's strict JSON
+             subset under `18` §18.2's rules, with four arrays (`runways`,
+             `nodes`, `edges`, `stands`), exact keys, and `true` or
+             `false` only for `bidirectional`. The failures are
+             `FormatException` with the `sourceName: ` prefix, and
+             `line <n>` for syntax and shape. `Parse` calls `Load`.
+             `Load` now also checks node kinds, ranges and non-empty lists,
+             and returns lists sorted by id. `MaxAircraftSizeCategory` is
+             resolved in `CreateSystem`. Two new tests (§12.13).
+             Revision after the PR #67 review:
+             - `Load`'s checks run in a fixed order (ranges, non-empty,
+               unique ids, references, kinds, connected). Each names a
+               pinned field and id: the referring id and the missing node
+               for references, the lowest failing node for connectivity,
+               and the list name for an empty list;
+             - range failures (`"id": 0`) are `Load`'s, with no `line <n>`.
+               Only parse failures (syntax, shape, C#-type range) carry
+               it.
+             One more test.
+             Revision 2: check 1 covers each object's own `id` and its
+             value fields only. A `0` in a node-reference field fails at
+             check 4. Within one object, the first failing field in
+             file-format key order is named.
+Status:      ANSWERED (spec/12-interfaces-airside.md#file-format-q-046)
+
+### Q-047 — `sim.airside`: the `DoorsOpen` delay has no value or field
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021 (the field). The value blocks only a build that parses
+             `data/balance/airside_rules.json` with `sim.airside` (T-031).
+Question:    §12.3 says `DoorsOpen` is a "fixed door delay" after
+             `OnStand`, but no constant or content field holds it.
+Answer:      The field is architecture: `AirsideRules.DoorsOpenDelayMinutes`
+             (`uint32`, where 0 means the same tick). The JSON key is
+             `doors_open_delay_minutes` in `airside_rules.json`, and it is
+             required (`04`). `DoorsOpen` = `OnStand` +
+             `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, both planned and
+             actual. Under the §12.8 fallback it adds to every ground stay,
+             so it moves on-time performance, and the value is balance.
+             **HUMAN DECISION, owner, 2026-09-30: 2 sim-minutes.** The owner
+             writes it to `data/balance/airside_rules.json`. Tests use their
+             own fixture value. It is not a compiled constant, per §12.2's
+             rule that thresholds are content.
+Status:      ANSWERED (spec/12-interfaces-airside.md#124-layout-the-airside-graph)
+
+### Q-048 — `sim.airside`: `InboundAirborne` before tick 0
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    `InboundAirborne` is at `STA − 1200`. For a day-0 `STA < 1200`,
+             such as the 00:20 arrival in `phase0-200.csv`, that tick would
+             underflow.
+Answer:      Architecture. Clamp: `max(0, STA − CRUISE_LEAD_TICKS)` for both
+             `PlannedTick` and `ActualTick`, which is the same clamp as `11`
+             §11.6's show-up rule. Day 0 is materialised at construction,
+             so the flight is visible at tick 0 (§12.3, §12.6). One new
+             test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
+
+### Q-049 — `sim.airside`: which runway does a movement use?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021 (the max-tier budget layout has 3 runways)
+Question:    The spec routes per runway but never picks one.
+Answer:      Architecture stopgap. **HUMAN DECISION, owner, 2026-09-30:
+             accepted.** The Architect had marked it LOW CONFIDENCE. The
+             runway is chosen
+             once at the request point (an arrival at its `Landed` request
+             at `STA`, a departure at `Pushback`). It is the runway with
+             the fewest aircraft in its hold queue, ties to the lowest
+             `RunwayId` (§12.5 "Runway choice"). With one runway, nothing
+             changes. A real runway-allocation system (modes, segregation,
+             player control) is gameplay and is deferred to the owner, like
+             gate assignment.
+             Revision after the PR #67 review: the order of same-tick
+             runway work is pinned (§12.5, step S7 of §12.8a). The hold
+             queues go first, per runway in ascending `RunwayId`, then new
+             requests in ascending `FlightId`. Each arrival sees the queue
+             lengths left by the requests before it. One more test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
+
+### Q-050 — `sim.airside`: is a stand reserved during taxi-in?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    A stand is assigned at `OffRunway` but "occupies from
+             `OnStand`". Can another aircraft take it in between?
+Answer:      Architecture. No: assignment sets `StandState.Occupant` at
+             once, and the stand is held from assignment to `Pushback`
+             inclusive. Waiters form one airport-wide stand-wait queue,
+             with no head-of-line blocking. The queue is walked each tick
+             before new assignments, and it is hashed after stand state
+             (§12.7, §12.12).
+             Revision after the PR #67 review:
+             - the queue is in joining order, not `EventId` order, since a
+               departure entry has no event;
+             - same-tick new requests (arrivals at `OffRunway` and
+               rotation-less departures at their start tick, §12.11) are taken in
+               ascending `FlightId` (S5 of §12.8a);
+             - a waiting arrival is `HeldOnTaxiway` at its threshold node;
+             - the queue's cost is in §12.12.
+             Revision 2: the queue has a hard bound, `STAND_WAIT_CAPACITY =
+             1024`. It is preallocated and never grows, and overflow is
+             `SimInvariantException` (§12.2, §12.12).
+Status:      ANSWERED (spec/12-interfaces-airside.md#127-stands)
+
+### Q-051 — `sim.airside`: "earliest-declared, ties by ascending `StandId`"
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    Declaration order and id order can disagree, and ids are
+             unique, so there is never a tie to break.
+Answer:      Architecture. It becomes the compatible free stand with the
+             **lowest `StandId`**, and "earliest-declared" is dropped. `Load`
+             sorts stands by id, so declaration order is invisible (§12.4,
+             §12.7). The test name
+             `test_stand_assignment_prefers_lowest_id_among_compatible_free_stands`
+             already says this.
+Status:      ANSWERED (spec/12-interfaces-airside.md#127-stands)
+
+### Q-052 — `sim.airside`: when is a landing requested?
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    §12.6's "early aircraft holds off-graph with `queuePosition =
+             0`" implies a request before `STA`. When is `Landed` requested?
+Answer:      Architecture. At `STA`, exactly, in `sim.airside`'s `Tick`. A
+             departure requests `TakeoffRoll` on reaching its threshold
+             node. `InboundAirborne` is fixed at Phase 0/1, so no aircraft
+             is early and no `queuePosition = 0` hold is ever emitted. The
+             clause is removed until upstream delay exists (§12.5, §12.6).
+             Same-tick requests are ordered as in Q-049's revision.
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
+
+### Q-053 — `sim.airside`: a rotation-less departure with no free stand
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    It is created on a stand at `STD − MinTurnaround`. What if
+             none is free?
+Answer:      Architecture, **revised after the PR #67 review**. The first
+             design, a track in `AwaitingApproach` with no stand,
+             contradicted §12.3, §12.9 and `14` §14.6, and left the
+             fallback's `Absorb` without a sink. The new design:
+             - **no track until a stand is assigned.** The flight joins the
+               stand-wait queue as a departure entry, and emits nothing;
+             - in the S5 where it gets a stand, its track is created in
+               `OnStand` at that stand, and `OnStand` fires with the
+               planned tick unchanged (the due tick, `max(0, STD −
+               MinTurnaround)`) and the actual tick late;
+             - its "creation tick" is that actual `OnStand` tick. It
+               anchors the fallback's doors-close point and the boarding
+               hold, and `Absorb` uses that stand's sink;
+             - its lateness goes to `Unexplained` under `14` §14.6 step 3,
+               unchanged. Attributing it to stand shortage would need `14`
+               amended, and it is not proposed here.
+             §12.3's and §12.9's "a departure track starts in `OnStand`"
+             stays true. One test.
+             Revision 2: rotation-less departures are found without a scan,
+             through §12.11's pending list. That list is fed by a day-0
+             read at `CreateSystem` and a `FlightPlanPublished`
+             subscription, capped at `PENDING_FLIGHTS_CAPACITY`, and
+             hashed. The fallback chain after a late `OnStand` runs at
+             once, in S5 (§12.8a "Chains").
+             Revision 3, after the fourth PR #67 review:
+             - an entry leaves the pending list when it is taken at its
+               start tick: an arrival in S2, a rotation-less departure in
+               S5, whether it gets a stand or moves to the stand-wait
+               queue. So no flight is in both. The bound argument now
+               follows from that rule: a one-day window spanning two
+               calendar days holds at most 1 600 flights at max tier;
+             - a departure due at or before its publication starts at
+               `PublishTick + 1`. Its `OnStand` keeps `PlannedTick` = the
+               §12.3 formula and has a later `ActualTick`. §12.3, §12.7 and
+               §12.11 now agree;
+             - overflow in the day-0 read at `CreateSystem` throws
+               `ArgumentException`, since there is no tick for a
+               `SimInvariantException`.
+Status:      ANSWERED (spec/12-interfaces-airside.md#rotation-less-flights-no-rotation-counterpart)
+
+### Q-054 — `sim.airside`: same-tick release of a taxi edge and a stand
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    (a) Does a taxi hold release on the tick the blocker leaves
+             the edge? (b) Is `StandAssigned` for a waiter on the
+             `Pushback` tick, or the next tick?
+Answer:      Architecture. `sim.airside`'s `Tick` now has a pinned step
+             order, S1 to S7 (§12.8a, revised after the PR #67 review).
+             Both edges and stands read one start-of-tick snapshot, S1, as
+             `sim.flow`'s does (`09` §9.12):
+             - (a) an edge left during `t` is enterable, and its hold
+               released, at `t + 1`. A free edge goes to its queue head,
+               else to the lowest requesting `FlightId`, and the others
+               queue in ascending `FlightId`;
+             - (b) a stand vacated by `Pushback` at `t` is assigned at
+               `t + 1`. A stand vacated by `ReassignStand` at the boundary
+               of `t` is free at `t`.
+             An aircraft placed on the graph earlier in the tick (by
+             `OffRunway` in S3 or `Pushback` in S4) asks for an edge in S6
+             of the same tick. An aircraft holding at a node occupies no
+             edge. No cross-tick state results. Two new tests.
+             Revision 2:
+             - runways are the exception to S1. S7 reads them live, so a
+               runway cleared in S3 is claimable in S7;
+             - **chains.** An action that makes another action due at the
+               current tick runs it at once, in the same turn. That pins
+               zero `DoorsOpenDelayMinutes` and zero `MinTurnaround`, and
+               it keeps a departure created in an arrival's turn inside
+               that turn. One more test,
+               `test_zero_door_delay_and_turnaround_chain_in_one_tick`.
+Status:      ANSWERED (spec/12-interfaces-airside.md#128a-order-within-tick-q-054)
+
+### Q-055 — `sim.airside`: `AirsideRules` is not "two integers"
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    no
+Question:    §12.12a said "two integers", but the struct had one field.
+Answer:      With Q-047, `AirsideRules` has two fields,
+             `BoardingHoldMaxMinutes` and `DoorsOpenDelayMinutes`, so the
+             sentence is now true. §12.12a names both.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1212a-construction-q-009)
+
+### Q-056 — `sim.airside`: the `ReassignStand` no-op `LogKey`
+Raised by:   Test Author / T-021, via coordinator, 2026-09-29
+Blocking:    T-021
+Question:    `08` §8.7 says a no-op logs "with its own module's `LogKey`,
+             appended by amendment", but no airside key exists.
+Answer:      Architecture. `LogKey.AirsideReassignStandNoOp = 1` (`08`
+             §8.10). The line is `Info`, `SystemId(3)`, at the applying
+             tick, with `LogArgs(flight, newStand, reason)`. The reason is
+             1 (not tracked, not `OnStand`, or not its stand's current
+             occupant, which covers an arrival after handoff), 2
+             (occupied, including its own stand) or 3 (incompatible),
+             checked in that order (§12.10). `LogKey` is in `src/sim/core/LogKey.cs`, so T-021's
+             worker needs that one file added to its writable paths, as
+             `08` says: "appended with the module that writes it". The
+             Planner must serialise it with any open `src/sim/core/**`
+             task.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1210-commands-consumed)
+
+### Q-041 — T-009: where do the kill-gate tests live?
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    The task file says `tests/sim/core/**`. Under `07` L3, that
+             project may reference only `src/sim/core`, so it cannot see
+             `WorldFactory`, `ScheduleFactory`, `FlowFactory` or
+             `HarnessGates`. The Test Author put the tests in
+             `tests/tools/simharness` instead (branch
+             `test-author/T-009-100-day-gate-tests`, `f531ca7`). Is that
+             right?
+Answer:      **Confirmed.** Every T-009 test, the two kill-gate tests
+             included, is in `tests/tools/simharness/`. The harness test
+             project sees the three modules through
+             `tools/SimHarness`'s own `ProjectReference`s, which T-009's
+             worker adds (`07` L3, L8). `19` §19.6 now states it. No `07`
+             change is needed, since L3 already says it.
+             **The Planner corrects `tasks/T-009-100-day-run.md`:**
+             - "Tests to pass" becomes `tests/tools/simharness/**`;
+             - "Writable paths" gains `tests/tools/simharness/**` and
+               `tests/fixtures/harness/**`. The path guard checks a
+               `test-author/T-009-*` branch against T-009's writable
+               paths. This is the T-011 precedent, and it does not reopen
+               Q-021, because `protected_for_role` still blocks a worker
+               from `tests/`;
+             - the worker still writes `tools/SimHarness/**` only. That
+               includes the three new `ProjectReference`s in the harness
+               `.csproj` (`07` L8). `AirportSim.sln` does not change;
+             - "Readable specs" gains `07`, `12` §12.3 and §12.7, `18` and
+               `19`. The description gains the boarding stand-in at
+               registry position 3 (Q-043).
+Status:      ANSWERED (spec/19-interfaces-harness.md#196-tests-of-the-phase-0-composition-and-the-kill-gate-q-041-to-q-043)
+
+### Q-042 — T-009: the CLI composition once modules are composed
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    `19` §19.2 said the first task that composes modules into the
+             harness amends the CLI composition line, but it gave no
+             amendment. Which content and fixtures do `determinism --days
+             N` and the other subcommands use, and how does the harness
+             find them? What happens to T-006's `HarnessCliTests`, which
+             assert `EmptyCompositionFinalHash`?
+Answer:      `19` §19.2a, the smallest composition that closes it:
+             - **One composition for every subcommand.** `determinism`,
+               `saveload`, `promotion` and `budget` all use it. No flag,
+               option or environment variable selects another. The empty
+               composition is not kept behind an option. It stays reachable
+               only through `HarnessGates` with a composer that registers
+               nothing, which is how `HarnessGatesTests` already use it.
+             - **Four fixtures, all the Test Author's.** They are
+               `tests/fixtures/world/phase0-landside.json`,
+               `tests/fixtures/flow/phase0-landside.flow.json` and
+               `tests/fixtures/schedule/phase0-200.csv`, plus a **new**
+               content fixture: the manifest
+               `tests/fixtures/harness/phase0-content.files` over
+               `tests/fixtures/harness/phase0-content/`. That content is
+               loaded with `08` §8.11's `IContentLoader`, and it holds
+               only the definitions the other three reference. Its values
+               are fixture sizing. `data/` is never read, because `data/`
+               values are the owner's balance values. Binding CI hashes to
+               them would turn every balance edit into a harness-test
+               failure, and a slower security value could stop the queues
+               draining over 100 days.
+             - **Locating them.** `07`'s Q-031 rule, applied to the
+               harness: the nearest ancestor of `AppContext.BaseDirectory`
+               that holds `AirportSim.sln`. Never the working directory, a
+               flag or an environment variable. Usage errors (exit 2) are
+               decided before any file is read. Every load failure is exit
+               3.
+             - **Composition.** Construct world, flow, schedule, then the
+               stand-in (Q-043). Register world (1), schedule (2),
+               stand-in (3), flow (4), and nothing else.
+             - **`HarnessCliTests`.** Its expected hashes are **replaced**:
+               each `EmptyCompositionFinalHash(n)` for a CLI run becomes
+               `HarnessGates.FinalHash` of the Test Author's kit
+               composition (§19.6) at the same seed and ticks.
+               `test_harness_cli_hash_only_matches_final_hash_gate` becomes
+               the equivalence test between the kit and the CLI.
+               `test_harness_cli_budget_core_only_day_passes` is renamed
+               `test_harness_cli_budget_phase0_day_passes`. Nothing else
+               in `HarnessCliTests.cs` changes. `HarnessGatesTests.cs` and
+               `EmptyCompositionFinalHash` do not change at all.
+             - **Withdrawn.** §19.2 said the composing task would make exit
+               codes 1 and 3 reachable through the CLI. It does not. Code 1
+               needs a nondeterministic composition, and code 3 needs a
+               broken repository fixture. Both stay untested through the
+               CLI, and no seam is added.
+             - **`budget --tier max`** times day 0 of this composition,
+               which is far below max tier. The §19.4 LOW CONFIDENCE note
+               is updated.
+             The Test Author's `KillGateKit` builds its content in C#
+             today. It moves those values into the content fixture and
+             loads them through `ContentLoaderFactory`, so the CLI and the
+             kit read the same bytes.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043)
+
+### Q-043 — T-009: at Phase 0 nothing boards, so is the kill gate measuring anything real?
+Raised by:   Test Author / T-009, via coordinator, 2026-09-29
+Blocking:    T-009
+Question:    One 100-day run ran for more than 10 minutes (572 CPU-s) and
+             did not finish. The Test Author's guess: nothing calls
+             `Absorb` at Phase 0, because `sim.airside` and its boarding
+             hold are absent. So departing cohorts pile up on the `Gate`
+             for 100 days, while `Tick` is O(cohorts) (`09` §9.10). Is
+             that right? If it is, what does the kill gate measure at
+             Phase 0?
+Finding:     **Confirmed, from the spec and from `main`.**
+             - The spec: `Absorb` is the only removal, both boarding and
+               missed-flight (`09` §9.7). Its only production caller is
+               `sim.airside` at `DoorsClosed` (`12` §12.7, §12.8).
+               `sim.schedule` only injects (`11` §11.6), and T-009
+               composes no `sim.airside`. A `Gate` keeps what it holds
+               (§9.6, §9.12 "Gate and Sink: nothing leaves").
+             - The code: on `main` the only `Absorb` calls are in
+               `src/sim/flow` itself and in `tests/sim/flow`, where
+               T-011's `StressDay` calls it at STD from its own driver.
+               `src/sim/schedule` calls only `Inject`
+               (`ScheduleSystem.cs:281`).
+             - The growth: cohorts on the `Gate` merge only per
+               `CohortKey`, which is flight, profile, bag and assistance.
+               `phase0-200.csv` has 100 departures a day, and every one
+               has bag and assistance shares strictly between 0 and 1000,
+               so up to four classes each. The `Gate` gains up to about
+               400 cohorts a sim-day. That is about 40 000 by day
+               100, and the count grows without bound. `09` §9.10's
+               bounded-cohort premise fails.
+             - The cost: `FlowSystem.MergeNode` compares a node's cohorts
+               pairwise, which is about k²/2 comparisons a tick on the
+               `Gate`, around 8 × 10⁸ by day 100. The snapshot also sums
+               every cohort every tick. That explains the run that did not
+               finish. CI's `determinism --days 10` would stall the same
+               way, at about 4 000 cohorts.
+Options:     - (a) **A harness boarding stand-in.** A harness-internal
+               system in `sim.airside`'s empty slot, position 3, calls
+               `Absorb(sink, flight)` for each departure at its planned
+               doors-close tick, STD (`12` §12.3). It has no hold. It
+               hashes 0, and it is removed when `sim.airside` joins. It
+               follows T-011's `StressDay` driver, and it makes the gate
+               measure the cost that a build with `sim.airside` pays.
+             - (b) Keep nothing boarding, and make `sim.flow`'s merge
+               linear. The cohorts stay unbounded (about 40 000), a linear
+               pass over them for 1 440 000 ticks is still about 3 × 10¹⁰
+               cohort visits, and the gate would measure a state that no
+               build ever reaches. Rejected.
+             - (c) `sim.flow` clears the `Gate` itself on a timer. That
+               changes merged `sim.flow` behaviour and duplicates `12`
+               §12.7's responsibility, and once `sim.airside` exists it
+               would remove passengers twice. Rejected.
+             - (d) Shorten the gate, relax the 60 s, or wait for
+               `sim.airside` (T-021). Each changes the gate's scope, the
+               budget or the build order, which are the owner's. None is
+               needed.
+Answer:      **(a)**, specified in `19` §19.2a and tested per §19.6. The
+             kill gate at Phase 0 measures `sim.world`, `sim.schedule` and
+             `sim.flow` over the Phase 0 fixtures for 100 sim-days, with
+             departures boarded at STD. Its modules, fixtures, day count
+             and 60 s budget are unchanged. `08` §8.5 names the stand-in
+             as the only non-test probe, and `09` §9.10 now says that
+             `Absorb` bounds the keys. No `sim.flow` or `sim.schedule`
+             code changes, so no merged work is invalidated. The
+             `KillGateKit` load check "every injected passenger is still
+             on a node" becomes the conservation check of §19.6.
+             **HUMAN DECISION — owner, 2026-09-29: accepted.** The
+             boarding stand-in, decision (a), is a valid reading of the
+             kill gate. The gate's scope is unchanged. (The Architect had
+             marked this LOW CONFIDENCE, and the owner confirmed it.)
+             **Not decided, and flagged for the owner:** 60 s over
+             1 440 000 ticks is about 41.7 µs a tick for the whole
+             composition, about 1/144 of `01`'s 6 ms whole-sim tick. It
+             is unmeasured with the stand-in. If T-009's worker cannot
+             meet it, that is the task's "escalate to the human owner"
+             path, not an agent decision to relax it.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192a-the-phase-0-cli-composition-q-042-q-043)
+
+<!-- Q-046 to Q-056 appear above, before Q-041. -->
+
+### Q-044 — Budget tests: may a module test sample fewer ticks than one sim-day?
+Raised by:   Planner, filing T-041 (the `WorldBudgetTests` fix), via coordinator, 2026-09-29
+Blocking:    T-041
+Question:    `03` "How a budget is measured" takes the statistic over "one
+             full sim-day" (14 400 ticks). `WorldBudgetTests` samples 2 000
+             ticks. May a module test use a shorter window, and if so, what
+             is the minimum? And does the statistic bind `sim.core`, which
+             has no `Tick`?
+Answer:      Architecture (measurement protocol, not balance). In `03`'s
+             new "Budget tests: window and arithmetic":
+             - **No shorter window.** Exactly `TICKS_PER_SIM_DAY`
+               consecutive per-tick samples. Warm-up is allowed and not
+               sampled, and several days are judged day by day. This
+               generalises `11` §11.9 (Q-031). p99 exists to catch the
+               bank peak, and with 2 000 samples it is only the 20th-worst
+               tick of a window that may miss the bank.
+             - **Alignment (revision after the PR #68 review).** Any 14 400
+               consecutive ticks after warm-up form a window. It need not
+               start on a sim-day boundary, because 14 400 consecutive ticks
+               always span every hour of the day once.
+             - **Scope.** It binds every xUnit test that asserts a time
+               against a per-tick budget of `03`'s table, and `19` §19.4.
+               It does not bind allocation-only `Budget` tests, or a
+               whole-run wall-clock gate such as T-009's kill gate. Any
+               other timed check carries no `Budget` trait. There is no
+               "extra check" category.
+             - **`sim.core`: decided, it binds.** `03` gives `sim.core` 0.25
+               ms for "loop, commands, event dispatch". Its sample is one
+               `ISimHost.Step(1)` of a host whose systems are the test's
+               probes, with checkpoint ticks included (`03` "Measured").
+Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)
+
+### Q-045 — Budget tests: how is p99 computed from N samples?
+Raised by:   Planner, filing T-041, via coordinator, 2026-09-29
+Blocking:    T-041
+Question:    `03` does not define p99 for N samples. T-011's
+             `FlowStressBudgetTests` uses nearest rank at index ⌈0.99·N⌉−1.
+             Pin one definition for every budget test.
+Answer:      Architecture. `03` "Arithmetic", in `long` only as `07` L11
+             requires, with no `Int128`:
+             - each raw `Stopwatch` sample is rounded **up** to whole µs,
+               as `(d × 10^6 + f − 1) / f`, and capped at `B·n + 1`, with
+               an overflow guard. The cap changes no verdict for any
+               `f ≤ long.MaxValue / (B·n + 2)`, about 1.07 × 10^11 Hz at
+               `B = 6000`, far above real `Stopwatch` frequencies (10^7,
+               10^9). It keeps `Σu` within `long`;
+             - the mean passes iff `Σu ≤ B × n`;
+             - p99 is nearest rank, `u[(99n + 99)/100 − 1]` of the sorted
+               samples, and passes iff `p99 ≤ 2B`;
+             - a reported mean is rounded up, so the printed value and the
+               verdict always agree.
+             `19` §19.4 now uses exactly this condition, with `B = 6000`.
+             Its old flooring of the samples and the mean accepted a mean
+             just over 6000 µs, so it is replaced. There is one pass
+             condition, shared. §19.4's index rule is unchanged. The
+             rounding and the comparison are new.
+Conformance: checked against every `[Trait("Category", "Budget")]` method
+             on `main` (`273f2ce`), 26 in all:
+             - **Out of scope, 15.** These assert allocation only and time
+               nothing:
+               - `sim.core` `BudgetTests`:
+                 `test_budget_step_with_no_systems_allocates_nothing` and
+                 `test_budget_step_with_events_and_ids_allocates_nothing_in_steady_state`;
+               - `BusAllocationTests` (3);
+               - `CommandQueueTests.test_command_queue_apply_due_allocates_zero_bytes`;
+               - `FxTests` (2);
+               - `RandomServiceTests` (1);
+               - `RandomStreamTests` (1);
+               - `StateHasherTests` (1);
+               - `PromotionAllocationTests` (4).
+             - **Conforming, 2.** The `HarnessCliTests` budget tests,
+               `test_harness_cli_budget_max_prints_budget_line_consistent_with_exit`
+               and `test_harness_cli_budget_core_only_day_passes`. They
+               parse §19.4's line, and they hold under rounded-up
+               reporting. The harness code that prints the line must
+               change (Impact).
+             - **Non-conforming, 9.** Each needs a Test Author rewrite to
+               `03`'s rule:
+               - `sim.core` `BudgetTests.test_budget_day_with_no_systems_within_quarter_ms_per_tick`
+                 and `test_budget_day_with_busy_probes_within_quarter_ms_per_tick`:
+                 a whole-day total, floored, with no per-tick samples and
+                 no p99;
+               - `CommandQueueTests.test_command_queue_day_with_command_every_tick_within_core_budget`:
+                 a whole-day total, with no p99;
+               - `FlowBudgetTests.test_flow_budget_max_tier_within_two_and_a_half_ms_and_bounded_cohorts`:
+                 a one-hour total, floored, with no p99. It becomes a
+                 full-day per-tick test;
+               - `FlowStressBudgetTests.test_flow_stress_30k_day_tick_within_budget_and_bounded_cohorts`:
+                 the right window, but `Int128` arithmetic;
+               - `PromotionBudgetTests.test_promotion_budget_one_day_with_every_node_promoted`:
+                 the right window and index, but raw-tick rescaled
+                 comparisons instead of rounded-up µs;
+               - `sim.schedule` `BudgetTests.test_budget_one_day_mean_and_p99_within_budget_with_flow`
+                 and `test_budget_one_day_mean_and_p99_within_budget_without_flow`:
+                 the same as promotion;
+               - `WorldBudgetTests.test_world_budget_tick_and_queries_at_max_tier_within_point_one_ms`:
+                 2 000 ticks, a loop total, and no p99. This is T-041.
+             - **Open test branches (revised after the PR #68 review).**
+               - T-021's `AirsideBudgetTests`
+                 (`test-author/T-021-airside-tests`, `d10a9be`) is
+                 **non-conforming**. It uses rescaled raw-tick comparisons
+                 with no per-sample µs round-up, the same pattern as
+                 `PromotionBudgetTests`. The T-021 Test Author rewrites it
+                 to `03`'s rule before T-021 merges.
+               - T-009's kill-gate (a) is a whole-run gate, out of scope
+                 (`19` §19.6).
+Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)

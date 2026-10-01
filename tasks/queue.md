@@ -169,6 +169,9 @@ to wave through a failing `determinism` check.
 | T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | MERGED (PR #60, `e99bc0d`) |
 | T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | IN_PROGRESS (released 2026-09-29) |
 | T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | QUEUED (released by the owner 2026-09-29 together with T-039 and T-009; test-author, own PR) |
+| T-041 | `sim.world` budget test: per-tick mean and p99 (flake fix) | sim.world tests | — | QUEUED (owner-approved 2026-09-29; test-author, own PR) |
+
+**T-041 note (2026-09-29):** `WorldBudgetTests` failed in CI three times in two days (102 us, 150 us, and a third on `main` after #64) and passed on every rerun, because it asserts one 2000-tick aggregate mean instead of `03`'s statistic (mean <= budget and p99 <= 2x budget over per-tick samples) and logs only on failure. T-041 writes only `tests/sim/world/**` and shares no path with T-009, T-039 or T-040. The budget value (100 us) is unchanged. Two spec gaps are recorded in the task file and go to the Architect, not to the Test Author: the test runs 2000 ticks, not `03`'s one full sim-day (14 400 ticks), and `03` does not define the p99 rank rule.
 
 **T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
 
