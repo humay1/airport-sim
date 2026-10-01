@@ -176,7 +176,7 @@ rule for.
 | Event | Fields | Delay category | Phase |
 |---|---|---|---|
 | `AircraftHeldForRunway` / `Released` | `FlightId`, `RunwayId`, `int queuePosition` (1-based on the opening event, 0 on `Released`: `12` §12.5, Q-063) | `runway_congestion` | 1 |
-| `AircraftHeldOnTaxiway` / `Released` | `FlightId`, `TaxiEdgeId`, blocking `FlightId?` | `taxi_congestion` | 1 |
+| `AircraftHeldOnTaxiway` / `Released` | `FlightId`, `TaxiEdgeId`, blocking `FlightId?` (set on the opening event, null on `Released`: `12` §12.6, Q-060) | `taxi_congestion` | 1 |
 | `StandUnavailable` / `StandAssigned` | `FlightId`, `StandId?`, occupying `FlightId?` | `stand_unavailable` | 1 |
 | `DepartureHeldForPassengers` / `Released` | `FlightId`, `int outstanding`, `NodeId? heldAt` (set on the opening event, null on `Released`) | `passenger_late` | 1 |
 | `RunwayDirectionChanged` | `RunwayId`, `int headingDeg`, `SimMinutes settleTime` | `weather` | 2 |
@@ -298,7 +298,7 @@ event FlowUnblocked          { CohortId Cohort; NodeId Held; NodeId BlockedBy }
 event AircraftHeldForRunway              { FlightId Flight; RunwayId Runway; int32 QueuePosition }   // 12
 event AircraftHeldForRunwayReleased      { FlightId Flight; RunwayId Runway; int32 QueuePosition }   // QueuePosition 0
 event AircraftHeldOnTaxiway              { FlightId Flight; TaxiEdgeId Edge; FlightId? Blocking }
-event AircraftHeldOnTaxiwayReleased      { FlightId Flight; TaxiEdgeId Edge; FlightId? Blocking }
+event AircraftHeldOnTaxiwayReleased      { FlightId Flight; TaxiEdgeId Edge; FlightId? Blocking }   // Blocking null
 event StandUnavailable                   { FlightId Flight; StandId? Stand; FlightId? Occupying }
 event StandAssigned                      { FlightId Flight; StandId? Stand; FlightId? Occupying }
 event DepartureHeldForPassengers         { FlightId Flight; int32 Outstanding; NodeId? HeldAt }

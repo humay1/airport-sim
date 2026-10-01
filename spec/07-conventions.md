@@ -440,6 +440,8 @@ review.
 
 ## Performance
 
-- Allocation in the per-tick hot path is a rejection criterion.
+- Allocation in the per-tick hot path is a rejection criterion. The hot path,
+  or "update path", includes a module's command and event handlers as well
+  as its `Tick` (`03` "How a budget is measured", Q-061).
 - Budget assertions live in tests, not in comments.
 - Optimise only against a measurement. "This looked slow" is not a reason.

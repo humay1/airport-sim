@@ -7,10 +7,12 @@ using static AirportSim.Tools.SimHarness.Tests.HarnessTestKit;
 namespace AirportSim.Tools.SimHarness.Tests
 {
     /// <summary>
-    /// T-006. HarnessCli.Run in process, against 19-interfaces-harness.md §19.3 and
-    /// §19.4 (Q-026): the exact invocations ci/run-checks.sh uses, exit codes
-    /// 0/1/2/3, and the one-line stdout formats. The CLI composition registers no
-    /// systems (§19.2), so exact hashes follow from 08 §8.9 and the NoOp script.
+    /// T-006, amended by T-009. HarnessCli.Run in process, against
+    /// 19-interfaces-harness.md §19.3 and §19.4 (Q-026): the exact invocations
+    /// ci/run-checks.sh uses, exit codes 0/1/2/3, and the one-line stdout formats.
+    /// Every CLI run uses the Phase 0 composition (§19.2, §19.2a), so each expected
+    /// hash is HarnessGates.FinalHash of the kit content and kit composer, with the
+    /// invocation's seed and tick count (§19.6).
     /// </summary>
     public sealed class HarnessCliTests
     {
@@ -29,7 +31,7 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("determinism", "--days", "1", "--seed", "12345");
             Assert.Equal(0, r.Exit);
             Assert.Equal("PASS determinism_same_process ticks=14400 checkpoints=24 final="
-                + Hex16(EmptyCompositionFinalHash(TicksPerDay)) + "\n", r.Stdout);
+                + KillGateKit.FinalHash(12345UL, TicksPerDay) + "\n", r.Stdout);
             AssertOneLfLine(r);
         }
 
@@ -39,7 +41,7 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("determinism", "--days", "2", "--seed", "7");
             Assert.Equal(0, r.Exit);
             Assert.Equal("PASS determinism_same_process ticks=28800 checkpoints=48 final="
-                + Hex16(EmptyCompositionFinalHash(2 * TicksPerDay)) + "\n", r.Stdout);
+                + KillGateKit.FinalHash(7UL, 2 * TicksPerDay) + "\n", r.Stdout);
         }
 
         [Fact]
@@ -47,7 +49,7 @@ namespace AirportSim.Tools.SimHarness.Tests
         {
             CliResult r = Cli("determinism", "--days", "1", "--seed", "12345", "--hash-only");
             Assert.Equal(0, r.Exit);
-            Assert.Equal(Hex16(EmptyCompositionFinalHash(TicksPerDay)) + "\n", r.Stdout);
+            Assert.Equal(KillGateKit.FinalHash(12345UL, TicksPerDay) + "\n", r.Stdout);
             AssertOneLfLine(r);
         }
 
@@ -66,7 +68,9 @@ namespace AirportSim.Tools.SimHarness.Tests
         public void test_harness_cli_hash_only_matches_final_hash_gate()
         {
             CliResult r = Cli("determinism", "--days", "1", "--seed", "99", "--hash-only");
-            string gate = HarnessGates.FinalHash(new EmptyContent(), NoSystems, 99UL, TicksPerDay);
+            // 19 §19.6: ties the kit to the CLI, so the kill-gate tests built on the kit
+            // measure the CLI composition.
+            string gate = HarnessGates.FinalHash(KillGateKit.Content(), new KillGateKit.Phase0Composer().Compose, 99UL, TicksPerDay);
             Assert.Equal(gate + "\n", r.Stdout);
         }
 
@@ -91,7 +95,7 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("saveload", "--ticks", "1000", "--save-at", "500");
             Assert.Equal(0, r.Exit);
             Assert.Equal("PASS determinism_save_load ticks=1000 checkpoints=2 final="
-                + Hex16(EmptyCompositionFinalHash(1000)) + "\n", r.Stdout);
+                + KillGateKit.FinalHash(12345UL, 1000) + "\n", r.Stdout);
             AssertOneLfLine(r);
         }
 
@@ -101,7 +105,7 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("promotion", "--days", "1");
             Assert.Equal(0, r.Exit);
             Assert.Equal("PASS determinism_promotion ticks=14400 checkpoints=24 final="
-                + Hex16(EmptyCompositionFinalHash(TicksPerDay)) + "\n", r.Stdout);
+                + KillGateKit.FinalHash(12345UL, TicksPerDay) + "\n", r.Stdout);
             AssertOneLfLine(r);
         }
 
@@ -119,7 +123,7 @@ namespace AirportSim.Tools.SimHarness.Tests
         {
             CliResult r = Cli("determinism", "--days", "1", "--seed", "18446744073709551615", "--hash-only");
             Assert.Equal(0, r.Exit);
-            Assert.Equal(Hex16(EmptyCompositionFinalHash(TicksPerDay)) + "\n", r.Stdout);
+            Assert.Equal(KillGateKit.FinalHash(18446744073709551615UL, TicksPerDay) + "\n", r.Stdout);
         }
 
         // ------------------------------------------------------------ budget
@@ -143,9 +147,10 @@ namespace AirportSim.Tools.SimHarness.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
-        public void test_harness_cli_budget_core_only_day_passes()
+        public void test_harness_cli_budget_phase0_day_passes()
         {
-            // At T-006 the CLI composition is core alone (§19.4), far inside 6 ms/tick.
+            // From T-009 the CLI composition is the Phase 0 composition (§19.2a), and
+            // budget --tier max times its first sim-day against 6 ms/tick (§19.4).
             CliResult r = Cli("budget", "--tier", "max");
             Assert.Equal(0, r.Exit);
             Assert.StartsWith("PASS budget ticks=14400 ", r.Stdout);
@@ -226,7 +231,7 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("saveload", "--ticks", "2", "--save-at", "1");
             Assert.Equal(0, r.Exit);
             Assert.Equal("PASS determinism_save_load ticks=2 checkpoints=1 final="
-                + Hex16(EmptyCompositionFinalHash(2)) + "\n", r.Stdout);
+                + KillGateKit.FinalHash(12345UL, 2) + "\n", r.Stdout);
         }
     }
 }
