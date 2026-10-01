@@ -101,9 +101,11 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.True(pushback > due, "fixture assumption: S1 is still held at D9's due tick");
             ulong got = pushback + 1UL;
 
-            List<Rec> mine = rig.Rec.All.FindAll(r => r.Flight == d9);
+            // sim.airside's own events only: sim.schedule's PlanPublished for D9
+            // at tick 0 (11 §11.5) is not sim.airside's, and says nothing here.
+            List<Rec> mine = rig.Rec.All.FindAll(r => r.FromAirside && r.Flight == d9);
             Assert.NotEmpty(mine);
-            Assert.All(mine, r => Assert.True(r.Tick >= got, "event before D9 got a stand: " + r));
+            Assert.All(mine, r => Assert.True(r.Tick >= got, "sim.airside event for D9 before it got a stand: " + r));
             Assert.Empty(rig.Rec.Of<StandUnavailable>(d9));
 
             Rec onStand = rig.Rec.Milestone(d9, FlightMilestone.OnStand);

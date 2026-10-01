@@ -808,10 +808,13 @@ namespace AirportSim.Sim.Airside.Tests
 
     /// <summary>
     /// Registered in sim.airside's place (same SystemId, 3), so the real host
-    /// and bus drive it, phase-3 handlers included. It measures the inner
-    /// Tick only (03 "Measured: the module's Tick only"): time and bytes
-    /// allocated on this thread. It can also hand the inner Tick a trap RNG
-    /// in place of the host's, so any RNG use is sim.airside's own.
+    /// and bus drive it, phase-3 handlers included. 03 "Measured" (Q-064)
+    /// times a module's Tick plus the bodies of its handlers and Apply. This
+    /// probe times the Tick part only. The handler part comes from the
+    /// TimingBus and TimingRegistry shims, and a budget sample is the sum of
+    /// the two. It can also hand the inner Tick a trap RNG in place of the
+    /// host's, so any RNG use is sim.airside's own. It measures no
+    /// allocation: allocation tests use the T-037 meter over Step (03, Q-061).
     /// </summary>
     internal sealed class AirsideProbe : ISimSystem
     {
@@ -824,9 +827,7 @@ namespace AirportSim.Sim.Airside.Tests
 
         public IRandomService? Rng;
         public bool Timing;
-        public bool Allocations;
         public long LastElapsed;
-        public long LastBytes;
 
         public SystemId Id => _inner.Id;
 
@@ -835,13 +836,7 @@ namespace AirportSim.Sim.Airside.Tests
         public void Tick(in TickContext ctx)
         {
             TickContext inner = Rng == null ? ctx : new TickContext(ctx.Tick, ctx.Clock, ctx.Events, Rng, ctx.Content, ctx.Log);
-            if (Allocations)
-            {
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                _inner.Tick(inner);
-                LastBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-            }
-            else if (Timing)
+            if (Timing)
             {
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
                 _inner.Tick(inner);

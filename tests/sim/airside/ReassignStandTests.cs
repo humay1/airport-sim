@@ -57,7 +57,9 @@ namespace AirportSim.Sim.Airside.Tests
             ulong x1 = rig.Id("X1");
             rig.RunTo(4000UL);
             Assert.Equal(x1, rig.Occupant(FixtureLayout.S1)!.Value.Value);
-            int eventsBefore = rig.Rec.All.FindAll(r => r.Flight == x1).Count;
+            // sim.airside's events only (12 §12.10 "no milestone re-fires").
+            int eventsBefore = rig.Rec.All.FindAll(r => r.FromAirside && r.Flight == x1).Count;
+            Assert.Equal(5, eventsBefore);
 
             Assert.True(rig.Submit(Payload.ReassignCommand(4001UL, x1, FixtureLayout.S4), out CommandRejection reason));
             Assert.Equal(CommandRejection.None, reason);
@@ -72,7 +74,7 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.DoesNotContain(FixtureLayout.S4, rig.Free());
 
             rig.RunTo(AirConst.TicksPerDay);
-            Assert.Equal(eventsBefore, rig.Rec.All.FindAll(r => r.Flight == x1).Count);
+            Assert.Equal(eventsBefore, rig.Rec.All.FindAll(r => r.FromAirside && r.Flight == x1).Count);
             Assert.Equal(x1, rig.Occupant(FixtureLayout.S4)!.Value.Value);
         }
 
