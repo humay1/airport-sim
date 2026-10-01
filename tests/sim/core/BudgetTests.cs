@@ -1,24 +1,27 @@
 using System;
-using System.Diagnostics;
 using AirportSim.Sim.Core;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace AirportSim.Sim.Core.Tests
 {
     /// <summary>
     /// sim.core's budget, 0.25 ms/tick (03-module-map.md "Performance", task
-    /// T-001), measured per 07 L11 with Stopwatch timestamps in long
-    /// arithmetic. 07 "Performance": allocation in the per-tick hot path is a
-    /// rejection criterion. Checkpoint ticks are excluded from the allocation
-    /// check, because 08 §8.9 requires a fresh SystemHashes array there.
+    /// T-001), measured per 07 L11 and 03 "Budget tests: window and
+    /// arithmetic" (BudgetWindow). 07 "Performance": allocation in the
+    /// per-tick hot path is a rejection criterion. Checkpoint ticks are
+    /// excluded from the allocation check, because 08 §8.9 requires a fresh
+    /// SystemHashes array there.
     /// </summary>
     public sealed class BudgetTests
     {
-        private const long BudgetMicrosPerTick = 250;
+        private const long BudgetMicrosPerTick = BudgetWindow.CoreBudgetMicros;
 
-        private static long ElapsedMicros(long start, long end)
+        private readonly ITestOutputHelper _output;
+
+        public BudgetTests(ITestOutputHelper output)
         {
-            return (end - start) * 1_000_000L / Stopwatch.Frequency;
+            _output = output;
         }
 
         /// <summary>
@@ -103,34 +106,36 @@ namespace AirportSim.Sim.Core.Tests
         [Trait("Category", "Budget")]
         public void test_budget_day_with_no_systems_within_quarter_ms_per_tick()
         {
+            // A day on another host warms up the code paths and is not
+            // sampled. The window is the fresh host's ticks 0..14399, one
+            // Step(1) per tick with its 24 checkpoint ticks included (03
+            // "Measured", Q-044).
             Harness.Build(new CountingCheckpointSink()).Step(14400);
 
             var sink = new CountingCheckpointSink();
             ISimHost host = Harness.Build(sink);
-            long start = Stopwatch.GetTimestamp();
-            host.Step(14400);
-            long end = Stopwatch.GetTimestamp();
+            long[] raw = BudgetWindow.StepWindow(host);
 
             Assert.Equal(24, sink.Count);
-            long micros = ElapsedMicros(start, end);
-            Assert.True(micros <= 14400L * BudgetMicrosPerTick, $"empty day took {micros} us, budget {14400L * BudgetMicrosPerTick} us");
+            BudgetWindow.AssertWithin(raw, BudgetMicrosPerTick, "sim.core Step(1), empty day", _output);
         }
 
         [Fact]
         [Trait("Category", "Budget")]
         public void test_budget_day_with_busy_probes_within_quarter_ms_per_tick()
         {
+            // A day on another host warms up the code paths and is not
+            // sampled. The window is the fresh host's ticks 0..14399, one
+            // Step(1) per tick with its 24 checkpoint ticks included (03
+            // "Measured", Q-044).
             BuildBusyHost(new CountingCheckpointSink()).Step(14400);
 
             var sink = new CountingCheckpointSink();
             ISimHost host = BuildBusyHost(sink);
-            long start = Stopwatch.GetTimestamp();
-            host.Step(14400);
-            long end = Stopwatch.GetTimestamp();
+            long[] raw = BudgetWindow.StepWindow(host);
 
             Assert.Equal(24, sink.Count);
-            long micros = ElapsedMicros(start, end);
-            Assert.True(micros <= 14400L * BudgetMicrosPerTick, $"busy day took {micros} us, budget {14400L * BudgetMicrosPerTick} us");
+            BudgetWindow.AssertWithin(raw, BudgetMicrosPerTick, "sim.core Step(1), busy day", _output);
         }
     }
 }
