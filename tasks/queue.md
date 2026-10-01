@@ -162,7 +162,7 @@ to wave through a failing `determinism` check.
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | MERGED (PR #56) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | MERGED (PR #59) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
-| T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED |
+| T-013 | Soak fixture + golden, mid-tier, under 0.1 ms/tick | tools.simharness | T-009 | QUEUED (synced 2026-10-01: tests in `tests/tools/simharness/**`; **do not release**: `19` has no `soak` subcommand, spec gap reported) |
 | T-014 | Harness: make `determinism_promotion` promote a real node | tools.simharness | T-009, T-010 | QUEUED |
 | T-036 | `sim.core`: `IEventBus` zero-allocation fix (Q-035) | sim.core | T-001 | MERGED (PR #47) |
 | T-037 | Shared allocation-measurement helper for zero-allocation tests | sim.core / sim.world tests | T-036 | MERGED (PR #51, `7bb30b5`) |
@@ -173,12 +173,14 @@ to wave through a failing `determinism` check.
 | T-042 | `sim.core` budget tests conform to `03` window and arithmetic (Q-044, Q-045) | sim.core tests | — | QUEUED (test-author, own PR) |
 | T-043 | `sim.flow` budget tests conform to `03` window and arithmetic (drop `Int128`) | sim.flow tests | T-039, T-040, T-023 | QUEUED (test-author, own PR; serialised after the three other `tests/sim/flow/**` writers) |
 | T-044 | `sim.schedule` budget tests conform to `03` window and arithmetic | sim.schedule tests | T-040 | QUEUED (test-author, own PR) |
-| T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009 | QUEUED, **not releasable yet**: possible spec gap, no test seam for the rounding (see T-045 note) |
+| T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009, T-013, T-014, T-030 | QUEUED, **not releasable yet**: possible spec gap, no test seam for the rounding (see T-045 note) |
 | T-046 | `balance.schema.json` requires `doors_open_delay_minutes` | content | T-028 | HOLD for the owner: the balance file and the schema must land together |
 
-**T-041 note (2026-09-29):** `WorldBudgetTests` failed in CI three times in two days (102 us, 150 us, and a third on `main` after #64) and passed on every rerun, because it asserts one 2000-tick aggregate mean instead of `03`'s statistic (mean <= budget and p99 <= 2x budget over per-tick samples) and logs only on failure. T-041 writes only `tests/sim/world/**` and shares no path with T-009, T-039 or T-040. The budget value (100 us) is unchanged. Two spec gaps are recorded in the task file and go to the Architect, not to the Test Author: the test runs 2000 ticks, not `03`'s one full sim-day (14 400 ticks), and `03` does not define the p99 rank rule.
+**T-041 note (2026-09-29) — SUPERSEDED 2026-10-01** by spec PR #68 and the rewritten T-041 (14 400-sample window, nearest-rank p99 rule; both gaps below are closed):  `WorldBudgetTests` failed in CI three times in two days (102 us, 150 us, and a third on `main` after #64) and passed on every rerun, because it asserts one 2000-tick aggregate mean instead of `03`'s statistic (mean <= budget and p99 <= 2x budget over per-tick samples) and logs only on failure. T-041 writes only `tests/sim/world/**` and shares no path with T-009, T-039 or T-040. The budget value (100 us) is unchanged. Two spec gaps are recorded in the task file and go to the Architect, not to the Test Author: the test runs 2000 ticks, not `03`'s one full sim-day (14 400 ticks), and `03` does not define the p99 rank rule.
 
 **T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
+
+**Harness writers, one at a time (2026-10-01).** T-009, T-013, T-014, T-030 and T-045 all write `tools/SimHarness/**` and `tests/tools/simharness/**`. Order: T-009, then T-013, T-014, T-030 (any order among them, one at a time), then T-045 last. T-045 is last because it may be held by a spec gap and nothing depends on its rounding. T-013, T-030 and T-014 tests are all in `tests/tools/simharness/**` (Q-041), so `tests/sim/core/**` is free for T-042.
 
 **Post-spec sync (2026-10-01), spec PRs #66, #67 and #68.**
 
@@ -350,7 +352,7 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | T-027 | `sim.core`: strict content loader | sim.core | T-001, T-003, T-026 | MERGED |
 | T-028 | Content: Phase 0/1 schemas, size-category and aircraft data | content | — | MERGED |
 | T-029 | `app.ui` scene layer: pacing, lane click, production lane sink | app.ui | T-005, T-020, T-023, T-026 | QUEUED |
-| T-030 | `tools.simharness`: `checkpoints` subcommand | tools.simharness | T-004, T-006, T-009 | QUEUED |
+| T-030 | `tools.simharness`: `checkpoints` subcommand | tools.simharness | T-004, T-006, T-009 | QUEUED (synced 2026-10-01: tests in `tests/tools/simharness/**`) |
 | T-031 | `app.host`: headless composition root, frame loop, checkpoint run | app.host | T-008, T-012, T-020, T-021, T-022, T-023, T-024, T-026, T-027, T-029, T-030 | QUEUED |
 | T-032 | `app.render` Unity backend | app.render | T-020, T-031 | QUEUED |
 | T-033 | `app.ui` Unity backend | app.ui | T-029, T-031 | QUEUED |

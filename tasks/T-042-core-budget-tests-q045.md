@@ -16,9 +16,9 @@ tests/sim/core/**
 ```
 
 No other file. No `src/`, `spec/`, `ci/` or `.github/` edit. The Test Author
-opens its own PR. `tests/sim/core/**` has no other open writer (T-009's tests
-moved to `tests/tools/simharness/**`, `19` §19.6); check the queue before
-release anyway.
+opens its own PR. `tests/sim/core/**` has no other open writer: T-009's, T-013's and
+T-030's tests moved to `tests/tools/simharness/**` (`19` §19.6, Q-041; synced
+2026-10-01). Check the queue before release anyway.
 
 ## Why this task exists
 

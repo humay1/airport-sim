@@ -5,7 +5,7 @@
 | Status | QUEUED (do not release until T-009 has merged **and** the Test Author has confirmed a deterministic done-test exists; see Worker notes) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-009 |
+| Depends on | T-009, T-013, T-014, T-030 |
 | Spec source | `spec/19-interfaces-harness.md` §19.4 (PR #68, `7c9a373`); `spec/03-module-map.md` "Budget tests: window and arithmetic" (Q-045); `spec/07-conventions.md` L11 |
 | Blocked by | — |
 
@@ -21,8 +21,11 @@ Test Author paths (the worker writes none of these):
 tests/tools/simharness/**
 ```
 
-Serialised after T-009, which writes both `tools/SimHarness/**` and
-`tests/tools/simharness/**`. Never release the two together.
+Serialised after T-009, T-013, T-014 and T-030, which all write
+`tools/SimHarness/**` and `tests/tools/simharness/**`. It goes last because it
+is the one at risk of a spec gap (Worker notes): if it were earlier it could
+stall the others, and later it holds nothing up. None of the others reads
+`budget`'s rounding. Never release two of these together.
 
 ## Why this task exists
 
