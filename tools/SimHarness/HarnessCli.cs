@@ -182,7 +182,7 @@ namespace AirportSim.Tools.SimHarness
                 long start = Stopwatch.GetTimestamp();
                 host.Step(1);
                 long end = Stopwatch.GetTimestamp();
-                samplesUs[i] = (((end - start) * 1_000_000L) + frequency - 1) / frequency; // rounded up (03, Q-045)
+                samplesUs[i] = ((end - start) * 1_000_000L) / frequency;
             }
 
             long sum = 0;
@@ -190,7 +190,7 @@ namespace AirportSim.Tools.SimHarness
             {
                 sum += samplesUs[i];
             }
-            long meanUs = (sum + samplesUs.Length - 1) / samplesUs.Length;
+            long meanUs = sum / samplesUs.Length;
 
             long[] sorted = (long[])samplesUs.Clone();
             Array.Sort(sorted);
