@@ -1857,3 +1857,253 @@ Conformance: checked against every `[Trait("Category", "Budget")]` method
                - T-009's kill-gate (a) is a whole-run gate, out of scope
                  (`19` §19.6).
 Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)
+
+<!-- Q-060 to Q-062 (T-021, PR #73) are listed before Q-057 to Q-059, which merged first from PR #70. -->
+
+### Q-060 — `sim.airside`: which flight does a taxi hold's `Blocking` name?
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    An edge is free in the S1 snapshot, but in S6.2 it is granted
+             to another asker, for example a lower `FlightId`. Does the
+             held flight's `AircraftHeldOnTaxiway.Blocking` name the
+             grantee, or is it null? `Blocking` is an event payload, so it
+             is logged and must be pinned exactly.
+Why it matters: The two readings give different payloads, and `sim.delay`
+             copies the value into `DelayExplanation.B`.
+Answer:      Architecture. A hold is only emitted in S6.2, and `Blocking`
+             names the flight that denied the grant. It is never null at
+             Phase 1:
+             - edge occupied in the snapshot: the snapshot occupant, even
+               if it left the edge in S6.1 of the same tick;
+             - edge free in the snapshot: this step's grantee, the queue
+               head or else the lowest-`FlightId` asker, whatever its id
+               relative to the held flight.
+             `Blocking` is fixed at emission. On
+             `AircraftHeldOnTaxiwayReleased`, `Blocking` is always null,
+             as `HeldAt` is on `DepartureHeldForPassengersReleased`,
+             because `sim.delay` reads the opening event and a copy would
+             need new per-hold state. `10` §10.6 and
+             `14` §14.3 now say so. Two new tests in §12.13.
+Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
+
+### Q-061 — Does "no allocation in the update path" include event handlers?
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    `03` times a module's `Tick` only, so the phase-3
+             `FlightPlanPublished` handler that appends to the
+             preallocated pending list is outside the allocation test.
+             Does "no allocation in the update path" (`08` §8.6, `03`)
+             cover handlers, and how is it measured?
+Why it matters: Without a rule, a handler can allocate on every
+             publication and every test still passes. `sim.delay` does
+             nearly all of its work in handlers.
+Answer:      Yes, for every module. `03` "How a budget is measured" now
+             defines a module's update path as all of its code that runs
+             in phases 1 to 3: command `Apply`, `Tick`, event handlers,
+             and its queries called by other systems then. Outside it are
+             construction, `Build`, `Validate` at admission, phase 4, and
+             ticks the module's spec allows to allocate (`11` §11.9).
+             Q-061 itself left timing unchanged. Q-064 later extends
+             "Measured" to the same handler work.
+             An allocation test, with or without the `Budget` trait,
+             asserts exactly 0 with the T-037 meter. It meters either
+             `ISimHost.Step` windows with no
+             checkpoint and no allocating tick, or a direct rig that also
+             delivers the module's commands and events in the same
+             window. Every module with a handler has at least one such
+             test in which each handler runs inside the window, after a
+             warm-up that already ran it. `07` "Performance", `08` §8.6,
+             `09` §9.10, `12` §12.12 and `14` §14.13 point to it, and
+             `13` §13.11 names T-022's test.
+             Revision, after the PR #73 review: the trait is not required.
+             `07` L11 binds timed assertions, and an allocation test times
+             nothing. So `sim.flow`'s existing untagged allocation tests
+             count.
+Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)
+
+### Q-062 — `sim.airside`: the handed-off arrival's track
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    §12.10's reason 1 covers an arrival whose stand was handed
+             off to its departure. But nothing pins that arrival track's
+             phase or `Stand` once the departure pushes back and the
+             stand is reused.
+Why it matters: The track is hashed (§12.12 item 4), drawn by `15` §15.4,
+             and scanned every tick. If it stayed, it would grow without
+             bound and draw a second aircraft at the stand.
+Answer:      Architecture. At the handoff, on either path, the arrival
+             leaves tracked state, as a departure does at `Airborne`. `10`
+             §10.3 rule 2 already treats the handoff as the arrival's exit.
+             The order is: create the departure's track, reassign the
+             occupant, remove the arrival's track, fire the departure's
+             `OnStand`. After that, `TryGetTrack(arrival)` is false and the
+             arrival is not hashed, so it has no phase or stand to pin.
+             `ReassignStand` naming it fails check 1, "not tracked". The
+             "not its stand's occupant" clause stays, but nothing reaches
+             it now. To keep every arrival milestone before the removal,
+             the handshake's handoff never runs before the arrival's
+             `DoorsOpen`. If `DeboardComplete` comes first, the handoff
+             chains right after `DoorsOpen` (§12.8a "Chains"). A
+             rotation-less arrival is never handed off, and stays tracked.
+             Revision, after the PR #73 review:
+             - the wait for `DoorsOpen` keeps a consumed `DeboardComplete`
+               across ticks and checkpoints, together with the `EventRef`
+               that becomes the departure `OnStand`'s `Cause`. That is now
+               explicit state: a new `AircraftTrack.RecordedCause`, set by
+               the phase-3 handler, cleared by the action it waits for,
+               and hashed and saved with the track. The same field holds a
+               `BoardingComplete` for its one-tick wait, which closes the
+               older, unhashed gap. Q-060 still adds no per-hold state,
+               because no behaviour reads a copied blocker;
+             - §12.8a S4, which governs, now runs `DoorsOpen` first, and
+               the handoff only once `DoorsOpen` has fired. §12.3 and
+               the §12.11 table say the same.
+Status:      ANSWERED (spec/12-interfaces-airside.md#the-handed-off-arrival-q-062)
+
+<!-- Q-060 to Q-062 appear above, before Q-057. -->
+
+### Q-057 — `tools.simharness`: no `soak` subcommand
+Raised by:   Planner, syncing task files (PR #69), via coordinator, 2026-10-01
+Blocking:    T-013
+Question:    §19.2a says every §19.3 subcommand uses the Phase 0
+             composition, but §19.3 has no `soak`. Its grammar, exit codes,
+             composition and golden handling are unspecified. The nightly
+             workflow already runs `soak --days 500 --golden
+             tests/golden/soak-500.hashes` and fails with "unknown
+             subcommand 'soak'".
+Why it matters: T-013 cannot be written, and the nightly `soak_500_days`
+             gate (`02`) cannot pass.
+Answer:      Architecture. `19` §19.2b and §19.3, matching the existing
+             nightly invocation, so `ci/` and `.github/` need no change:
+             - `soak --days D --golden P` makes one run of `D` sim-days with
+               the §19.2a composer over a separate **soak fixture set**
+               under `tests/fixtures/soak/` (`03`), with seed 12345 and the
+               §19.2 command script. It passes iff the run's `16` §16.8
+               checkpoint dump is byte-identical to `P`. Otherwise it
+               prints `FAIL soak line=<L>`, with exit 1;
+             - `soak --days D --out P` writes that dump to a new file. It
+               exits 3 if `P` exists, so it never overwrites. This is how a
+               golden is authored. Committing it is governed by
+               `tests/golden/README.md`;
+             - `P` is either repository-relative, resolved from the
+               `AirportSim.sln` root, or fully qualified
+               (`Path.IsPathFullyQualified`), which lets tests use a
+               temporary directory. A path that is rooted but not fully
+               qualified, such as `/x` or `C:x` on Windows, is a usage
+               error. The cwd is never used. There is no
+               `--seed`, and `soak-500.meta.json` is never read;
+             - `soak` times nothing. The 0.1 ms bound is checked by a
+               whole-run sizing test (§19.7). Until the golden is
+               committed, the nightly job exits 3, never 0.
+             The soak set's flow-graph `Sink` is `NodeId(9)`, so one
+             stand-in constant serves both sets. The stand-in's `Name` is
+             in the golden's `systems` line, so whatever T-009 merges is
+             then kept.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192b-soak-the-soak-fixture-set-and-the-golden-q-057)
+
+### Q-058 — `tools.simharness`: no timer seam to test `budget` rounding
+Raised by:   Planner, filing T-045 (PR #69), via coordinator, 2026-10-01
+Blocking:    T-045
+Question:    §19.4 (Q-045) makes `budget` round each sample up, but `19`
+             gives the harness no seam for injecting samples. Through
+             `HarnessCli.Run`, real timings cannot tell rounding up apart
+             from flooring.
+Why it matters: T-045 has no deterministic done-test. A test of the real
+             line passes under both rules.
+Answer:      Architecture. One pure public member,
+             `HarnessGates.BudgetFromSamples(IReadOnlyList<int64> samples,
+             int64 frequency) -> GateResult` (§19.1, §19.4). It applies
+             `03`'s rule with `B = 6000`, and its `Report` is the §19.3
+             budget line. `budget --tier max` makes exactly one call with
+             its 14 400 samples and `Stopwatch.Frequency`, prints `Report`,
+             and exits on `Passed`. It throws for a count other than
+             `TICKS_PER_SIM_DAY`, a negative sample, or a frequency outside
+             `03`'s bound. An internal function was rejected because `07` L5
+             forbids `InternalsVisibleTo`. A CLI flag that injects samples
+             was rejected because it would put a seam in the gate. §19.7
+             gives six tests: five with an exact expected `Report`, and one
+             argument test. In one of the five,
+             every sample is 60 001 ticks at 10^7 Hz, which fails under
+             rounding up and passes under flooring.
+Status:      ANSWERED (spec/19-interfaces-harness.md#194-budget---tier-max-q-026)
+
+### Q-059 — `tools.simharness`: nightly `budget --tier max --report`
+Raised by:   Architect, answering Q-057, 2026-10-01
+Blocking:    no (the nightly "Performance trend" step only)
+Question:    `.github/workflows/nightly.yml`'s "Performance trend" step runs
+             `budget --tier max --report`. `19` §19.3 has no `--report`
+             flag, so this is a usage error, exit 2. It is not reached
+             today only because the soak step before it fails first.
+             `ci/gates.md` lists a nightly "Performance trend report", but
+             nothing says what that report contains, where it goes, or
+             whether a budget over 6 ms should fail the nightly job.
+Why it matters: Once the soak passes, this step will fail every night.
+Proposed:    (A) `--report` is accepted with `budget --tier max` and
+             changes nothing: the same run, line and exit code. The trend
+             is then the nightly log's budget line. (B) The owner removes
+             `--report` from the workflow. (C) The owner specifies a trend
+             report, which is new scope. The Architect recommends (A) or
+             (B). Both are small, but which one is right depends on what
+             the owner meant by the CI step, and `ci/` and `.github/` are
+             the owner's.
+Answer:      **HUMAN DECISION — owner, 2026-10-01: (B).** The owner
+             removes `--report` from `.github/workflows/nightly.yml`. The
+             spec does not change. §19.3 keeps no `--report` flag, so
+             `budget --tier max --report` stays a usage error. The
+             Architect recorded this and did not decide it.
+Status:      ANSWERED (spec/19-interfaces-harness.md#193-the-command-line-q-026) — HUMAN DECISION
+
+<!-- Q-060 to Q-062 (PR #73) appear above, before Q-057. -->
+
+### Q-063 — `sim.airside`: the base of `queuePosition`, and its value on `Released`
+Raised by:   Architect, while answering Q-060 (PR #73), 2026-10-01
+Blocking:    T-021
+Question:    `AircraftHeldForRunway.QueuePosition` has no base. Is it 0-
+             or 1-based, does it count the flight itself, and does it
+             count pacing and occupancy holds together? Nothing says what
+             `AircraftHeldForRunwayReleased.QueuePosition` carries.
+Why it matters: Both are event payloads, so they are logged and must be
+             exact. `sim.delay` copies the opening value into
+             `DelayExplanation.B`.
+Answer:      Architecture. It is 1-based and counts the flight itself. It
+             is the runway's one hold queue's length just after the
+             flight joins, which is what `RunwayQueueLength` reports then,
+             so `1` means nobody was ahead. The retired "early aircraft
+             with `queuePosition = 0`" case (Q-052) already treated 0 as
+             "not in the queue". The value is fixed at emission. On
+             `Released` it is always 0, the field's empty value, as `HeldAt`
+             is null on `DepartureHeldForPassengersReleased`. `sim.delay`
+             reads the opener. A released flight is always the head, and
+             copying the opening value would need per-hold state. `10`
+             §10.6 and `14` §14.3 say so. One new §12.13 test.
+Status:      ANSWERED (spec/12-interfaces-airside.md#125-the-runway-model)
+
+### Q-064 — Budgets: handler work that `03` does not time
+Raised by:   Architect, while answering Q-061 (PR #73), 2026-10-01
+Blocking:    T-024
+Question:    `03` "Measured" times a module's `Tick` only. `sim.delay`
+             does nearly all of its work in phase-3 event handlers
+             (`14` §14.4–§14.8), so its 0.40 ms budget would time almost
+             nothing. Whose budget does handler time belong to, and how
+             is it timed?
+Why it matters: A budget that does not time the work cannot fail, and the
+             6 ms frame total would be under-counted by every handler.
+Answer:      Architecture. `01` leaves the split of its 6 ms to `03`, so
+             this is the Architect's apportionment, and no budget value
+             changes. A module's measured time is now its `Tick` plus the
+             bodies of its command `Apply`s and event handlers. The bus's
+             call into a handler stays `sim.core`'s "event dispatch". To
+             time them, the test builds the module with a
+             `SystemServices` whose `Events` and `Commands` wrap each
+             registered handler in a non-allocating timing shim. The
+             tick's sample is the sum of the differences around `Tick`
+             and every shimmed call, and `03`'s arithmetic applies to the
+             sum. A module with no handler is timed as before. Marked LOW
+             CONFIDENCE so the owner sees that `sim.delay`'s 0.40 ms now
+             covers its handlers. If T-024 measures over, the remedies
+             are the reserve or the owner reopening `01`'s split.
+             After #73 merged: the rule also covers `sim.airside`'s
+             handlers, which now append to the pending list and record
+             into `RecordedCause` (Q-062), and `sim.turnaround`'s.
+             `12` §12.12 and `13` §13.10 say so.
+Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)

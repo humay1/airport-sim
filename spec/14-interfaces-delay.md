@@ -142,8 +142,8 @@ readonly struct FlightDelay {                // the per-flight record, as querie
 |---|---|---|
 | `FlightTotal` | 0 | 0 |
 | `InboundAircraft` | inbound `FlightId.Value` | 0 |
-| `RunwayHold` | `RunwayId.Value` | `queuePosition` at the hold's opening |
-| `TaxiwayHold` | `TaxiEdgeId.Value` | blocking `FlightId.Value`, or `FLIGHT_ID_NONE` |
+| `RunwayHold` | `RunwayId.Value` | `queuePosition` at the hold's opening, 1-based (`12` §12.5, Q-063) |
+| `TaxiwayHold` | `TaxiEdgeId.Value` | the opening event's blocking `FlightId.Value` (never null at Phase 1, `12` §12.6, Q-060), or `FLIGHT_ID_NONE` if null |
 | `StandUnavailable` | `StandId.Value + 1`, or 0 when the event's stand is null (always, at Phase 1: `12-interfaces-airside.md` §12.7) | occupying `FlightId.Value`, or `FLIGHT_ID_NONE` |
 | `TurnaroundJobWait` | `JobKind` ordinal | `ResourceKind` ordinal |
 | `Unexplained` | 0 | 0 |
@@ -577,7 +577,10 @@ the event stream. The module declares no stream and contributes no stream
 state to its hash, the same posture as `sim.schedule`, `sim.airside` and
 `sim.turnaround`.
 
-Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). The shape:
+Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). It covers the
+module's event handlers as well as its `Tick`, since nearly all of its work
+runs in handlers. A budget test times them with `03`'s handler shims
+("Timing a module's handlers", Q-064). The shape:
 
 - Per event, O(1) amortised: intervals arrive in `OpenerId` order, so the
   retained-interval store is append-ordered and needs no sort; lookup of an
@@ -589,7 +592,10 @@ Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). The shape:
   allocate.
 - No allocation in the update path (`07-conventions.md`): records, intervals
   and nodes live in pooled, index-stable storage; a removed leaf's slot is
-  reused, its id is not.
+  reused, its id is not. The update path includes the event handlers, where
+  most of this module's work runs, so its allocation test runs every
+  handler inside the metered window (`03` "How a budget is measured",
+  Q-061).
 
 ---
 

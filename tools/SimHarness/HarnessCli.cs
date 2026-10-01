@@ -94,15 +94,16 @@ namespace AirportSim.Tools.SimHarness
             ulong seed = ParseUnsignedDecimal(RequireValue(values, "--seed"), "--seed");
             bool hashOnly = present.Contains("--hash-only");
 
-            var content = CliContent();
+            var composition = Phase0Composition.Load();
+            var content = composition.Content;
             if (hashOnly)
             {
-                string hash = HarnessGates.FinalHash(content, NoSystems, seed, ticks);
+                string hash = HarnessGates.FinalHash(content, composition.Compose, seed, ticks);
                 stdout.Write(hash + "\n");
                 return 0;
             }
 
-            GateResult r = HarnessGates.SameProcess(content, NoSystems, seed, ticks);
+            GateResult r = HarnessGates.SameProcess(content, composition.Compose, seed, ticks);
             stdout.Write(r.Report + "\n");
             return r.Passed ? 0 : 1;
         }
@@ -130,8 +131,9 @@ namespace AirportSim.Tools.SimHarness
             }
             uint saveAt = (uint)rawSaveAt;
 
-            var content = CliContent();
-            GateResult r = HarnessGates.SaveLoad(content, NoSystems, FixedSeed, ticks, saveAt);
+            var composition = Phase0Composition.Load();
+            var content = composition.Content;
+            GateResult r = HarnessGates.SaveLoad(content, composition.Compose, FixedSeed, ticks, saveAt);
             stdout.Write(r.Report + "\n");
             return r.Passed ? 0 : 1;
         }
@@ -146,8 +148,9 @@ namespace AirportSim.Tools.SimHarness
 
             uint ticks = ParseDaysAsTicks(RequireValue(values, "--days"));
 
-            var content = CliContent();
-            GateResult r = HarnessGates.Promotion(content, NoSystems, FixedSeed, ticks);
+            var composition = Phase0Composition.Load();
+            var content = composition.Content;
+            GateResult r = HarnessGates.Promotion(content, composition.Compose, FixedSeed, ticks);
             stdout.Write(r.Report + "\n");
             return r.Passed ? 0 : 1;
         }
@@ -166,9 +169,10 @@ namespace AirportSim.Tools.SimHarness
                 throw new UsageException("--tier must be 'max'");
             }
 
-            var content = CliContent();
+            var composition = Phase0Composition.Load();
+            var content = composition.Content;
             var checkpoints = new NullCheckpointSink();
-            ISimHost host = HarnessRunner.BuildOne(content, NoSystems, FixedSeed, checkpoints);
+            ISimHost host = HarnessRunner.BuildOne(content, composition.Compose, FixedSeed, checkpoints);
 
             uint ticks = TicksPerDay;
             long[] samplesUs = new long[ticks];
@@ -219,11 +223,7 @@ namespace AirportSim.Tools.SimHarness
             return 0;
         }
 
-        private static void NoSystems(ISimHostBuilder builder)
-        {
-        }
-
-        /// <summary>§19.2: the CLI composition's content is <c>ContentIndexFactory.Create</c> of an empty list.</summary>
+        /// <summary>T-001's no-argument run keeps the empty content (§19.1).</summary>
         private static IContentIndex CliContent()
         {
             return ContentIndexFactory.Create(Array.Empty<IContentDefinition>());

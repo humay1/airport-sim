@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | HOLD (needs the owner: see Worker notes; not a spec gap) |
+| Status | DONE by the owner (commit `3a00a78`, 2026-10-01); no worker release |
 | Module | content (not `src/sim/**`, not `src/app/**`) |
 | Assigned role | worker |
 | Depends on | T-028 (merged) |
@@ -52,13 +52,11 @@ Change `data/schemas/balance.schema.json` (merged by T-028 with one key):
 
 ## Worker notes
 
-**Sequencing problem for the owner.** `data/balance/airside_rules.json` today is
-`{ "schema_version": 1, "boarding_hold_max_minutes": 10 }`. With this schema
-change it fails validation, and `04` says "Until then, that file fails the
-schema, and no build that parses it can register `sim.airside`". Equally, the
-owner adding `doors_open_delay_minutes: 2` first fails the current schema
-(`additionalProperties: false`). So the schema PR and the owner's balance edit
-must land together, or the owner's edit must land first on a branch that also
-carries this schema change. Agents may not edit the balance file, so this task is
-held until the owner chooses how to land it. Needed before T-031 can load
-`airside_rules.json` and before T-021's host wiring is exercised.
+**Done by the owner, not by an agent.** Commit `3a00a78` ("balance change")
+landed the schema change and the balance edit together, which is the
+sequencing the earlier note asked for. `data/schemas/balance.schema.json`
+now requires `schema_version`, `boarding_hold_max_minutes` and
+`doors_open_delay_minutes`, and `data/balance/airside_rules.json` is
+`{ "schema_version": 1, "boarding_hold_max_minutes": 10,
+"doors_open_delay_minutes": 2 }`. Do not release this task. T-031 and
+T-021's host wiring no longer wait on it.

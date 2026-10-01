@@ -2601,3 +2601,295 @@ Revision:    after the PR #68 review (rejected at ae74944):
                window, with no alignment to a sim-day boundary;
              - the `19` §19.6 cite resolves, now that PR #66 is on `main`.
 Signed off:  not required (measurement protocol, not balance).
+
+## 2026-10-01 — spec/12 §12.3, §12.6, §12.8 (+ "The handed-off arrival", new), §12.8a, §12.9, §12.10, §12.11, §12.12, §12.13; 03 "How a budget is measured"; 07 "Performance"; 08 §8.5, §8.6; 09 §9.10; 10 §10.6; 13 §13.11; 14 §14.3, §14.13; INDEX; open-questions — Q-060 to Q-062: T-021 airside gaps, round 2
+Reason:      T-021's Test Author found three gaps in the merged `12` (#67):
+             - **Q-060:** which flight a taxi hold's `Blocking` names when
+               the edge was free in the snapshot but granted earlier in
+               the same step. It is the snapshot occupant if there is
+               one, even one that left in S6.1, else this step's
+               grantee. It is never null on the hold, and always null on
+               `AircraftHeldOnTaxiwayReleased`, like `HeldAt` on
+               `DepartureHeldForPassengersReleased`;
+             - **Q-061:** whether event handlers are in the "update
+               path". They are, for every module. `03` now defines the
+               update path as phases 1 to 3: command `Apply`, `Tick`,
+               event handlers, and queries called then. It also says how
+               an allocation test meters it: `Step` windows without a
+               checkpoint, or a direct rig that delivers the handlers'
+               input in the same window. Every module with a handler
+               has one test that runs each handler inside the window.
+               Q-061 left timing unchanged. Q-064 (PR #75) later
+               extends "Measured" to the same handler work;
+             - **Q-062:** the handed-off arrival's track. It leaves
+               tracked state at the handoff, on both paths, so it has no
+               phase or stand left to pin, and it is no longer hashed or
+               drawn. `10` §10.3 rule 2 already treated the handoff as
+               the arrival's exit. So that `DoorsOpen` always fires
+               first, the handshake's handoff never runs before the
+               arrival's `DoorsOpen`. When `DeboardComplete` comes first,
+               the handoff chains right after `DoorsOpen`.
+Raised by:   Q-060 to Q-062 (Test Author, T-021, via coordinator)
+Impact:      - **`sim.airside` is not merged**, so no merged `src/` breaks.
+               `src/sim/core/AircraftHeldOnTaxiway*.cs` already carry
+               `FlightId? Blocking`, so no payload type changes.
+             - **T-021 test branch** (`test-author/T-021-airside-tests`,
+               `432c081`):
+               - add the five new §12.13 tests (two for Q-060, one for
+                 Q-061, two for Q-062);
+               - `TaxiEdgeTests` already expects the snapshot occupant
+                 (`d1`), which is consistent. No test asserts a
+                 non-null release `Blocking`;
+               - `ReassignStandTests`' handed-off case still logs
+                 reason 1. Its comment "R_A's track stays OnStand" is
+                 now wrong, and should say the track is gone.
+                 `HandshakeTests`' `TrackedFlights` subset check still
+                 holds;
+               - the airside allocation test must also meter the
+                 `FlightPlanPublished` handler, `ReassignStand`'s
+                 `Apply`, and, with a position-5 probe, the
+                 `FlightMilestoneReached` handler (§12.12).
+             - **Q-061 on merged modules' tests** (`main`, `84c754d`):
+               - `sim.schedule` and `sim.world` register no handler, so
+                 `ScheduleTickTests`' `Tick`-only meter conforms, and so
+                 does `WorldQueriesTests`;
+               - `sim.core`'s allocation tests cover the loop and the
+                 bus, and are unaffected;
+               - `sim.flow` meters `Step` windows in
+                 `FlowBudgetTests.test_flow_budget_update_path_allocates_nothing`,
+                 `BoardingTests.test_boarding_thousands_of_clean_flights_allocate_nothing_and_leave_no_state`
+                 and `PromotionAllocationTests`. None of these carries the
+                 `Budget` trait, and none needs it: `03` counts any test
+                 that asserts zero allocation (revision below). They
+                 include its six no-op event handlers whenever those
+                 events fire in the window, which the Test Author
+                 confirms. **No metered window applies a
+                 `SetServersOpen`**, so `sim.flow` has no conforming
+                 test for its command handler. T-023's merged
+                 `SecurityLaneBudgetTests.test_security_lane_switching_every_tick_allocates_nothing_in_flow_tick`
+                 (#71) switches lanes every tick but meters `sim.flow`'s
+                 `Tick` alone, so phase 1's `Apply` is outside its meter.
+                 Metering each `Step(1)` instead, with the submits left
+                 between `Step`s, makes it conform. Like the others, it
+                 needs no `Budget` trait. The Planner files that as a
+                 test-only task under `tests/sim/flow/**`. No `src/`
+                 change is expected;
+               - T-022 (`13`) and T-024 (`14`, whose work is mostly in
+                 handlers) must meet the rule. `13` §13.11 names
+                 T-022's test, and `14` §14.13 says so.
+             - **Q-062 and the T-021 worker:** the handoff removes the
+               arrival's track, and the handshake waits for `DoorsOpen`.
+               The removal also bounds the tracked set, which would
+               otherwise grow by one track per rotation arrival, forever.
+             - **`tasks/T-021-runway-taxiway-stands.md`** (Planner): if
+               it restates the handoff or the allocation scope, it must
+               cite `12` instead.
+             - **Not decided here, flagged:** `03` "Measured" times
+               `Tick` only. A module that works in its handlers, chiefly
+               `sim.delay`, therefore has almost nothing timed against
+               its budget. Changing that is a budget-protocol decision
+               that Q-061 did not ask. It is filed as its own question,
+               Q-064, in a separate PR, before T-024.
+             - **Merge note:** PR #70 (Q-057 to Q-059) merged first. This
+               branch merged `main` (`84c754d`) and kept both sides of
+               the `open-questions.md` and `CHANGELOG.md` conflicts.
+               Q-060 to Q-062 are listed before Q-057 there.
+             - **Scope:** none added.
+Revision:    after the PR #73 review (rejected at `fccf76a`):
+             - **Determinism, hash and save (Q-062).** Waiting for
+               `DoorsOpen` kept a consumed `DeboardComplete`, and its
+               `EventRef`, across ticks and checkpoints with no hashed
+               home. It is now explicit state. `AircraftTrack` gains
+               `EventRef RecordedCause` (§12.9). It is set only by the
+               `DeboardComplete` and `BoardingComplete` handlers, and
+               only for a tracked flight in `OnStand` with no record yet.
+               A `DeboardComplete` is also recorded only for an arrival
+               with a rotation. The action the record waits for clears
+               it. It is fed with the track, as `HasValue`, `Id.Tick`
+               and `Id.Sequence`, and it is saved with it. The departure
+               `OnStand`'s `Cause` is read from it. This also closes the
+               older one-tick gap for both consumed events, which crossed
+               a phase-4 checkpoint unhashed. §12.12 now says the
+               handlers write only to items 4 and 5. Q-060 is unchanged:
+               state is added where behaviour reads it, and a copied
+               release blocker would be read by nothing;
+             - **§12.8a governs (Q-062).** S4 now runs `DoorsOpen` first,
+               then the handoff only once `DoorsOpen` has fired. A
+               handoff made due by this tick's `DoorsOpen` runs right
+               after it. §12.3, §12.8 steps 3 and 5, the §12.11 consumed
+               table, the TryGetRotation note and "Chains" all say the
+               same;
+             - **Q-061 conformance.** `03` and §12.12 no longer say
+               "`Budget`-trait allocation test". An allocation test is
+               any test that asserts zero allocation, with or without
+               the trait, since `07` L11 binds timed assertions. The
+               impact note above names the untagged `sim.flow` tests it
+               counts;
+             - **Impact added.** `AircraftTrack` gains a field, so T-021's
+               worker implements and hashes it. Test code that builds or
+               prints tracks (`Show.Track`) may add it. The §12.13
+               handoff-wait test also checks the record and the hash. No
+               merged `src/` reads `AircraftTrack`.
+Signed off:  not required (interface precision; no balance, scope, or
+             `01`/`02` change).
+
+## 2026-10-01 — spec/19 §19.1, §19.2, §19.2a, new §19.2b, §19.3, §19.4, new §19.7; 03 "The soak fixture", "Budget tests: window and arithmetic"; 16 §16.8; INDEX; open-questions — Q-057, Q-058 (Q-059 filed): `soak` subcommand, budget statistic seam
+Reason:      While syncing task files (PR #69), the Planner found two gaps in
+             `19`:
+             - **Q-057:** no `soak` subcommand, although the nightly
+               workflow already runs `soak --days 500 --golden
+               tests/golden/soak-500.hashes`. New §19.2b: one run of the
+               §19.2a composer over a separate soak fixture set in
+               `tests/fixtures/soak/`, with seed 12345. It passes iff the
+               run's `16` §16.8 dump is byte-identical to the golden, and
+               otherwise prints `FAIL soak line=<L>` with exit 1.
+               `soak --out P` writes a dump to a new file, never
+               overwriting, so that a golden can be authored. Paths are
+               repository-relative from the `AirportSim.sln` root, or
+               fully qualified. `soak` times nothing. The 0.1 ms bound is a
+               whole-run sizing test (§19.7). The invocation matches CI as
+               it stands, so `ci/` and `.github/` need no change.
+             - **Q-058:** no seam to test `budget`'s rounding. New pure
+               public member `HarnessGates.BudgetFromSamples(samples,
+               frequency) -> GateResult`, which the CLI must call exactly
+               once. `07` L5 rules out an internal function, and a CLI
+               injection flag would be a seam in the gate. §19.7 gives
+               five tests with an exact `Report` and one argument test.
+               One of the five tells rounding up apart from flooring.
+             - **Q-059, filed OPEN for the owner.** The nightly
+               "Performance trend" step runs `budget --tier max --report`,
+               which is a usage error under §19.3. What the report means is
+               the owner's, so this change does not answer it.
+Raised by:   Q-057, Q-058 (Planner, PR #69, via coordinator); Q-059
+             (Architect)
+Impact:      - **Additive.** No merged code or test is invalidated. `soak`
+               was an unknown subcommand, so nothing implements it.
+               `BudgetFromSamples` is a new member. The existing `budget`
+               tests in `HarnessCliTests` are unchanged.
+             - **T-009 (in progress):** none. The stand-in's `Name` stays
+               free, and the value T-009 merges is kept once the soak
+               golden exists. §19.2a's rules are restated to apply to
+               either fixture set, with no change for the Phase 0 set.
+             - **T-013:** its task file must follow §19.2b and §19.7. It
+               names `soak --days 500 --seed <n>`, but there is no `--seed`
+               (seed 12345). Its tests go in `tests/tools/simharness/`. The
+               Test Author writes `tests/fixtures/soak/**`. The 500-day
+               golden can only be generated with `soak --out` once T-013's
+               worker code exists, so the Planner must sequence the
+               golden commit after the implementation, under
+               `tests/golden/README.md` (the owner confirms).
+             - **T-045:** its spec gap is closed. The worker adds
+               `BudgetFromSamples` and routes `RunBudget` through it.
+             - **Nightly CI:** after T-013 merges and until the golden is
+               committed, `soak` exits 3 instead of 2. For Q-059, see the
+               next entry.
+             - Scope: one subcommand with two forms, one public member and
+               one fixture set. All of these are tooling. No sim scope is
+               added.
+Revision:    after the PR #70 review, which approved `f1e1961` with
+             non-blocking notes:
+             - a path is used as given only if
+               `Path.IsPathFullyQualified`. `Path.IsPathRooted` would
+               accept `/x` and `C:x` on Windows, which resolve against the
+               cwd. A path that is rooted but not fully qualified is a
+               usage error;
+             - `soak` is dropped from the divergence line's `<gate>` list,
+               and kept for the pass line;
+             - the §19.7 prefix test keeps line `M`'s LF, and it states
+               the result if the LF is dropped;
+             - the test count reads five exact `Report`s plus one argument
+               test.
+Signed off:  not required (harness tooling, not balance). Q-059 was the
+             owner's, and the next entry records the decision.
+
+## 2026-10-01 — open-questions only — Q-059: nightly `budget --tier max --report` (HUMAN DECISION)
+Reason:      The owner chose option (B). The owner removes `--report` from
+             `.github/workflows/nightly.yml`. `19` §19.3 keeps no
+             `--report` flag, and no spec text changes.
+Raised by:   Q-059 (Architect, while answering Q-057)
+Impact:      None to the spec or to code. The nightly "Performance trend"
+             step stops failing with exit 2 once the owner's workflow edit
+             lands. Until then, `budget --tier max --report` stays a usage
+             error.
+Signed off:  owner, 2026-10-01
+
+## 2026-10-01 — spec/12 §12.5, §12.12, §12.13; 03 "How a budget is measured" ("Measured", new "Timing a module's handlers", arithmetic step 1, Q-061's update-path sentence); 10 §10.6; 13 §13.10; 14 §14.3, §14.13; INDEX; open-questions (Q-061 wording) — Q-063, Q-064: runway `queuePosition`, timing handler work
+Reason:      Two gaps the Architect found while answering Q-060 and Q-061
+             (PR #73):
+             - **Q-063:** `AircraftHeldForRunway.QueuePosition` had no
+               base, and its `Released` value was unspecified. It is now
+               1-based and counts the flight itself: the runway's one
+               hold queue's length just after the flight joins. It is
+               fixed at emission, and it is always 0 on `Released`;
+             - **Q-064:** `03` timed `Tick` only, so `sim.delay`, whose
+               work is nearly all in event handlers, had almost nothing
+               timed against its 0.40 ms. A module's measured time is
+               now its `Tick` plus its command and event handler bodies.
+               It is timed through non-allocating shims that the test
+               installs in the module's `SystemServices`, summed per
+               tick. The bus's call into a handler stays `sim.core`'s.
+Raised by:   Q-063, Q-064 (Architect, during PR #73, via coordinator)
+Impact:      - **Q-063:** `sim.airside` is not merged. The payload types in
+               `src/sim/core/AircraftHeldForRunway*.cs` are unchanged.
+               T-021's test branch prints the value, and no test there
+               asserts it. One new §12.13 test. Q-060 (PR #73) gives the
+               taxi family the same "empty on `Released`" rule.
+             - **Q-064 on merged timed budget tests** (`main`, `84c754d`):
+               - **Unaffected:** `sim.schedule`'s `BudgetTests` and
+                 `WorldBudgetTests`, whose modules register no handler,
+                 and `sim.core`'s `BudgetTests` and `CommandQueueTests`,
+                 which sample `Step(1)`;
+               - **Non-conforming:** `sim.flow` registers six event
+                 handlers and `SetServersOpen`. Three of its timed tests
+                 time `Tick` alone: `FlowStressBudgetTests` and
+                 `SecurityLaneBudgetTests` through `StressDay`'s
+                 `TimedSystem`, and `PromotionBudgetTests` between
+                 probes at positions 3 and 5. `SecurityLaneBudgetTests`
+                 says outright that phase 1 is outside its sample,
+                 although it applies three `SetServersOpen` every tick.
+                 The fourth, `FlowBudgetTests`' max-tier test, times
+                 whole `Step`s over one hour. It was already listed as
+                 non-conforming under Q-044, and it becomes a per-tick
+                 test with shims. A test-only task
+                 (Planner, `tests/sim/flow/**`) adds the shims to the
+                 shared rigs. The event handlers have empty bodies today,
+                 so only `SecurityLaneBudgetTests` is expected to measure
+                 materially more. No `src/` change is expected;
+               - **Open branch:** T-021's `AirsideBudgetTests` must shim
+                 `sim.airside`'s handlers before T-021 merges. Since #73
+                 (Q-062) they are real work. The `FlightPlanPublished`
+                 handler appends to the pending list. The
+                 `FlightMilestoneReached` handler filters every milestone
+                 on the bus, the module's own included. With
+                 `sim.turnaround` registered it also calls
+                 `TryGetRotation` and writes `RecordedCause` for each
+                 `DeboardComplete` and `BoardingComplete`. The
+                 `ReassignStand` `Apply` is shimmed too. T-021's max-tier
+                 test runs the fallback build, so it times the first two
+                 handlers' work, filtering included, and `Apply` whenever
+                 a command is in the window. The recording path is timed
+                 in a build with `turnaroundRegistered` true. That is
+                 T-022's integration budget, with both modules shimmed,
+                 or a T-021 test with a position-5 probe whose publishing
+                 is not in `sim.airside`'s sample, because the shims time
+                 only `sim.airside`'s code.
+             - **T-022, T-024:** their budget tests use the shims. For
+               T-024 this is the whole point. `14` §14.13 says so. `12`
+               §12.12 and `13` §13.10 now say that their budgets cover
+               handlers too.
+             - **PR #73 reconciled.** This branch merged `main`
+               (`7d14761`, #73). #73's `03` sentence "This is wider than
+               "Measured" above, which bills time to `Tick` alone" now
+               says that the update path covers the same work as
+               "Measured" plus the module's queries. #73's CHANGELOG and
+               Q-061 text "Timing is unchanged" now says that Q-061 left
+               timing unchanged and Q-064 extends it.
+             - **Scope:** none added. **No budget value changes.**
+             - **LOW CONFIDENCE (Q-064):** billing handler time to the
+               subscriber means `sim.delay`'s 0.40 ms, from `01`, now
+               covers its handlers. If T-024 measures over, the remedy is
+               the reserve, by amendment, or the owner reopening `01`'s
+               split.
+Signed off:  not required (event payload precision and measurement
+             protocol; no balance, scope or `01`/`02` change). The owner
+             should review the Q-064 LOW CONFIDENCE marker before T-024.
