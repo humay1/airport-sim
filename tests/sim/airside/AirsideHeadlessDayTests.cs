@@ -155,6 +155,19 @@ namespace AirportSim.Sim.Airside.Tests
                 {
                     return at + "boarding hold without sim.flow: " + Show.Track(tr);
                 }
+
+                // 12 §12.9 (Q-062): always EventRef.None with turnaroundRegistered false.
+                if (tr.RecordedCause.HasValue)
+                {
+                    return at + "RecordedCause set in the fallback: " + Show.Track(tr);
+                }
+
+                // 12 §12.8 (Q-062): an arrival leaves tracked state at its handoff,
+                // so it is never tracked beside its departure.
+                if (tr.Kind == MovementKind.Arrival && rec.HasRotation && a.TryGetTrack(rec.Rotation, out _))
+                {
+                    return at + "arrival " + tr.Flight.Value + " still tracked after its handoff to " + rec.Rotation.Value;
+                }
             }
 
             IReadOnlyList<StandId> free = a.FreeStands();
@@ -195,6 +208,24 @@ namespace AirportSim.Sim.Airside.Tests
 
             // 12 §12.13: the declared capacity makes AircraftHeldForRunway fire in one day.
             Assert.NotEmpty(rec.Of<AircraftHeldForRunway>());
+
+            // 12 §12.5 (Q-063): queuePosition is the queue's length just after
+            // the flight joins (1-based), and 0 on every release. One runway,
+            // so the queue length is the holds open in event order.
+            int queued = 0;
+            foreach (Rec r in rec.All)
+            {
+                if (r.Payload is AircraftHeldForRunway h)
+                {
+                    queued++;
+                    Assert.True(h.QueuePosition == queued, "queuePosition " + h.QueuePosition + ", expected " + queued + ": " + r);
+                }
+                else if (r.Payload is AircraftHeldForRunwayReleased rel)
+                {
+                    queued--;
+                    Assert.True(rel.QueuePosition == 0, "release queuePosition " + rel.QueuePosition + ": " + r);
+                }
+            }
 
             // Arrivals first, so a departure can check against its arrival.
             var ids = new SortedSet<ulong>();
@@ -351,11 +382,12 @@ namespace AirportSim.Sim.Airside.Tests
                         "runway release not immediately before Landed/TakeoffRoll: " + r);
                 }
 
-                foreach (var (h, _) in taxi)
+                foreach (var (h, r) in taxi)
                 {
+                    // 12 §12.6 (Q-060): set on the opener, naming another flight; null on the release.
                     var held = (AircraftHeldOnTaxiway)h.Payload;
-                    // Blocking is FlightId? (10 §10.6); when set it names another flight.
-                    Assert.True(!held.Blocking.HasValue || held.Blocking.Value.Value != f, "taxi hold blocked by itself: " + h);
+                    Assert.True(held.Blocking.HasValue && held.Blocking.Value.Value != f, "taxi hold without another blocking flight: " + h);
+                    Assert.False(((AircraftHeldOnTaxiwayReleased)r.Payload).Blocking.HasValue, "taxi release carries a blocker: " + r);
                 }
 
                 foreach ((Rec h, Rec r) in stand)

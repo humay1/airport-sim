@@ -8,7 +8,8 @@ namespace AirportSim.Sim.Airside.Tests
     /// <summary>
     /// 12 §12.12 and 03 "How a budget is measured": B = 800 µs/tick at max
     /// tier (800 daily movements, 60 stands, 3 runways), timing sim.airside's
-    /// Tick only. 03 "Budget tests: window and arithmetic" (Q-044, Q-045):
+    /// Tick plus the bodies of the handlers it registers, through 03's timing
+    /// shims (Q-064). 03 "Budget tests: window and arithmetic" (Q-044, Q-045):
     /// one window of exactly n = TICKS_PER_SIM_DAY consecutive ticks after
     /// warm-up, each sample converted to whole microseconds rounding up and
     /// capped at C = B × n + 1, everything in long. Pass iff Σu ≤ B × n and
@@ -43,14 +44,18 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(800, Csv.Ids(load).Count);
 
             // In a real host, so day 1's flights reach the pending list through
-            // the FlightPlanPublished handler; AirsideProbe times the Tick only.
+            // the FlightPlanPublished handler. AirsideProbe times Tick; the
+            // services' timing shims (03 Q-064) time every handler sim.airside
+            // registered. A tick's raw sample is the sum of both.
             var flow = new RuleFlow();
-            var rig = new HostRig(load, layout: layout, flow: flow, record: false, probe: true);
+            var handlers = new HandlerTimer();
+            var rig = new HostRig(load, layout: layout, flow: flow, record: false, probe: true, handlerTimer: handlers);
 
             // Day 0 warms every path and is not sampled. The window is the
             // next 14 400 consecutive ticks, one sample each.
             rig.RunTo(AirConst.TicksPerDay);
             long absorbsBefore = flow.AbsorbCalls;
+            long callsBefore = handlers.Calls;
             rig.Probe!.Timing = true;
             long f = Stopwatch.Frequency;
             long cap = (BudgetMicros * N) + 1L;
@@ -58,13 +63,16 @@ namespace AirportSim.Sim.Airside.Tests
             long sum = 0L;
             for (int i = 0; i < N; i++)
             {
+                handlers.Elapsed = 0L;
                 rig.Host.Step(1);
-                u[i] = Micros(rig.Probe.LastElapsed, f, cap);
+                u[i] = Micros(rig.Probe.LastElapsed + handlers.Elapsed, f, cap);
                 sum += u[i];
             }
 
-            // About 400 departures close their doors in any one-day window.
+            // About 400 departures close their doors in any one-day window, and
+            // day 2's flights are published into the pending list during it.
             Assert.True(flow.AbsorbCalls - absorbsBefore > 100L, "the measured window did too little work");
+            Assert.True(handlers.Calls - callsBefore > 400L, "the handlers ran too rarely to be timed");
 
             Array.Sort(u);
             long p99 = u[((99 * N) + 99) / 100 - 1];
@@ -80,6 +88,21 @@ namespace AirportSim.Sim.Airside.Tests
                 f);
             Assert.True(sum <= BudgetMicros * N, "mean over budget: " + report);
             Assert.True(p99 <= 2L * BudgetMicros, "p99 over budget: " + report);
+        }
+
+        [Fact]
+        public void test_airside_budget_handler_shims_forward_without_changing_the_run()
+        {
+            // The shims only time: a shimmed run is event for event, and hash
+            // for hash, the run without them, and the handlers did run.
+            var handlers = new HandlerTimer();
+            var shimmed = new HostRig(ScheduleFixture.Bytes(), flow: new RuleFlow(), handlerTimer: handlers);
+            var plain = new HostRig(ScheduleFixture.Bytes(), flow: new RuleFlow());
+            shimmed.RunTo(AirConst.TicksPerDay);
+            plain.RunTo(AirConst.TicksPerDay);
+            Assert.True(handlers.Calls > 0L);
+            Assert.Equal(plain.Rec.Trace(), shimmed.Rec.Trace());
+            Assert.Equal(plain.Sink.Describe(), shimmed.Sink.Describe());
         }
 
         [Fact]

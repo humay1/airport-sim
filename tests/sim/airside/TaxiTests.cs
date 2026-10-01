@@ -71,5 +71,63 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(1, ((AircraftHeldOnTaxiway)pairs[0].Hold.Payload).Edge.Value);
             Assert.Equal(3651UL, pairs[0].Release.Tick);
         }
+
+        /// <summary>Two stands 20 ticks from junction J, one edge (1) from J to T.</summary>
+        private static AirsideLayout TwoStands()
+        {
+            return new LayoutBuilder()
+                .Runway(1, 1, 15, 10)
+                .Node(1, TaxiNodeKind.RunwayThreshold).Node(2, TaxiNodeKind.Junction)
+                .Node(11, TaxiNodeKind.StandPosition).Node(12, TaxiNodeKind.StandPosition)
+                .Edge(1, 1, 2, 30).Edge(2, 2, 11, 20).Edge(3, 2, 12, 20)
+                .Stand(1, 11, AirsideContent.Super, 901).Stand(2, 12, AirsideContent.Super, 902)
+                .Load();
+        }
+
+        [Fact]
+        public void test_taxi_hold_blocking_names_same_step_grantee_and_release_blocking_is_null()
+        {
+            // 12 §12.6 (Q-060): edge 1 is free in the 3620 snapshot; D1 and D2
+            // both ask for it. D1 (lower FlightId) is granted it in this step,
+            // so D2's hold names D1. The release carries null.
+            var rig = new HostRig(Csv.Of(Csv.Row("D2", "D", "06:35"), Csv.Row("D1", "D", "06:35")), layout: TwoStands());
+            ulong d1 = rig.Id("D1");
+            ulong d2 = rig.Id("D2");
+            rig.RunTo(3700UL);
+
+            List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, d2);
+            Assert.Single(pairs);
+            var hold = (AircraftHeldOnTaxiway)pairs[0].Hold.Payload;
+            Assert.Equal(3620UL, pairs[0].Hold.Tick);
+            Assert.True(hold.Blocking.HasValue, "Blocking is never null on the opening event");
+            Assert.Equal(d1, hold.Blocking!.Value.Value);
+            var release = (AircraftHeldOnTaxiwayReleased)pairs[0].Release.Payload;
+            Assert.Equal(1, release.Edge.Value);
+            Assert.False(release.Blocking.HasValue, "Blocking is null on the release (10 §10.6)");
+        }
+
+        [Fact]
+        public void test_taxi_hold_blocking_names_snapshot_occupant_that_left_this_tick()
+        {
+            // 12 §12.6 (Q-060): D1 (rotation-less) is on E1 (J1 -> T) from 3620
+            // and reaches T at 3650, leaving E1 in S6.1. A1 lands at 3640 and
+            // leaves the runway at 3650, asking for E1 in S6.2 of the same
+            // tick: E1 is occupied in the snapshot, so A1 holds, naming D1,
+            // and enters at 3651.
+            var rig = new HostRig(Csv.Of(Csv.Row("A1", "A", "06:04"), Csv.Row("D1", "D", "06:35")));
+            ulong a1 = rig.Id("A1");
+            ulong d1 = rig.Id("D1");
+            rig.RunTo(3700UL);
+
+            Assert.Equal(3650UL, rig.Rec.Milestone(a1, FlightMilestone.OffRunway).Tick);
+            List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, a1);
+            Assert.Single(pairs);
+            var hold = (AircraftHeldOnTaxiway)pairs[0].Hold.Payload;
+            Assert.Equal(3650UL, pairs[0].Hold.Tick);
+            Assert.Equal(FixtureLayout.E1, hold.Edge.Value);
+            Assert.Equal(d1, hold.Blocking!.Value.Value);
+            Assert.Equal(3651UL, pairs[0].Release.Tick);
+            Assert.False(((AircraftHeldOnTaxiwayReleased)pairs[0].Release.Payload).Blocking.HasValue);
+        }
     }
 }

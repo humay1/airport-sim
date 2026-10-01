@@ -51,12 +51,21 @@ namespace AirportSim.Sim.Airside.Tests
             probe.Script.Add((Deboard, ra, FlightMilestone.DeboardComplete));
             probe.Script.Add((Deboard, x1, FlightMilestone.DeboardComplete));
 
+            rig.RunTo(Deboard);
+            Assert.False(rig.Track(ra).RecordedCause.HasValue, "RecordedCause set before any consumed event");
             rig.RunTo(Deboard + 1UL);
             Assert.True(rig.Rec.Milestone(ra, FlightMilestone.DoorsOpen).Tick < Deboard, "fixture assumption: R_A's doors open before the scripted DeboardComplete");
             Assert.Empty(rig.Rec.Milestones(rd));
             Assert.Equal(ra, rig.Occupant(FixtureLayout.S1)!.Value.Value);
 
+            // 12 §12.8 step 3 (Q-062): the phase-3 handler records the event on the arrival.
+            AircraftTrack waiting = rig.Track(ra);
+            Assert.True(waiting.RecordedCause.HasValue);
+            Assert.Equal(probe.Published.Find(p => p.Flight == ra).Id, waiting.RecordedCause.Id);
+            Assert.False(rig.Track(x1).RecordedCause.HasValue, "a rotation-less arrival records nothing");
+
             rig.RunTo(Deboard + 2UL);
+            Assert.False(rig.Airside.TryGetTrack(new FlightId(ra), out _), "the arrival leaves tracked state at the handoff");
             Rec onStand = rig.Rec.Milestone(rd, FlightMilestone.OnStand);
             Assert.Equal(Deboard + 1UL, onStand.Milestone.ActualTick);
             Assert.Equal(AirConst.At(8, 0) - (35UL * AirConst.TicksPerMinute), onStand.Milestone.PlannedTick);
@@ -87,8 +96,18 @@ namespace AirportSim.Sim.Airside.Tests
             ulong rd = rig.Id("R_D");
             probe.Script.Add((Deboard, ra, FlightMilestone.DeboardComplete));
             probe.Script.Add((Boarding, rd, FlightMilestone.BoardingComplete));
-            rig.RunTo(AirConst.TicksPerDay);
+            rig.RunTo(Deboard + 2UL);
+            Assert.False(rig.Track(rd).RecordedCause.HasValue, "the handoff leaves the departure's RecordedCause unset");
 
+            // 12 §12.8 step 5 (Q-062): recorded on the departure, cleared at the doors-close point.
+            rig.RunTo(Boarding + 1UL);
+            AircraftTrack waiting = rig.Track(rd);
+            Assert.True(waiting.RecordedCause.HasValue);
+            Assert.Equal(probe.Published.Find(p => p.Flight == rd).Id, waiting.RecordedCause.Id);
+            rig.RunTo(Boarding + 2UL);
+            Assert.False(rig.Track(rd).RecordedCause.HasValue, "the doors-close point clears RecordedCause");
+
+            rig.RunTo(AirConst.TicksPerDay);
             Rec closed = rig.Rec.Milestone(rd, FlightMilestone.DoorsClosed);
             Assert.Equal(Boarding + 1UL, closed.Milestone.ActualTick);
             Assert.Equal(AirConst.At(8, 0), closed.Milestone.PlannedTick);

@@ -226,7 +226,8 @@ namespace AirportSim.Sim.Airside.Tests
     internal sealed class TurnaroundProbe : ISimSystem
     {
         public readonly List<(ulong Tick, ulong Flight, FlightMilestone Milestone)> Script = new List<(ulong Tick, ulong Flight, FlightMilestone Milestone)>();
-        public readonly List<(ulong Flight, FlightMilestone Milestone, EventId Id)> Published = new List<(ulong Flight, FlightMilestone Milestone, EventId Id)>();
+        // Preallocated, so a script of up to 64 entries publishes without allocating.
+        public readonly List<(ulong Flight, FlightMilestone Milestone, EventId Id)> Published = new List<(ulong Flight, FlightMilestone Milestone, EventId Id)>(64);
 
         public SystemId Id => new SystemId(AirConst.TurnaroundSystemId);
 
@@ -269,6 +270,113 @@ namespace AirportSim.Sim.Airside.Tests
         public ulong ComputeStateHash()
         {
             return 0UL;
+        }
+    }
+
+    /// <summary>Counts lines by key without allocating.</summary>
+    internal sealed class CountingLog : ISimLog
+    {
+        public int ReassignNoOps;
+        public int Other;
+
+        public void Write(ulong tick, LogLevel level, SystemId system, LogKey key, in LogArgs args)
+        {
+            if (key == LogKey.AirsideReassignStandNoOp)
+            {
+                ReassignNoOps++;
+            }
+            else
+            {
+                Other++;
+            }
+        }
+    }
+
+    /// <summary>The handler time of the current tick, summed by the shims below.</summary>
+    internal sealed class HandlerTimer
+    {
+        public long Elapsed;
+        public long Calls;
+    }
+
+    /// <summary>
+    /// 03 "Timing a module's handlers" (Q-064): forwards to the real bus, and
+    /// wraps each handler the module subscribes, at subscription, in a shim
+    /// that adds the timestamp difference around the real handler to the
+    /// timer. The shim is created once, during construction, and allocates
+    /// nothing per call.
+    /// </summary>
+    internal sealed class TimingBus : IEventBus
+    {
+        private readonly IEventBus _real;
+        private readonly HandlerTimer _timer;
+
+        public TimingBus(IEventBus real, HandlerTimer timer)
+        {
+            _real = real;
+            _timer = timer;
+        }
+
+        public EventId Publish<T>(in T evt, in EventRef cause) where T : struct, ISimEvent
+        {
+            return _real.Publish(evt, cause);
+        }
+
+        public void Subscribe<T>(SystemId subscriber, SimEventHandler<T> handler) where T : struct, ISimEvent
+        {
+            HandlerTimer timer = _timer;
+            _real.Subscribe<T>(subscriber, (in EventEnvelope env, in T evt, in TickContext ctx) =>
+            {
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                handler(env, evt, ctx);
+                timer.Elapsed += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+                timer.Calls++;
+            });
+        }
+    }
+
+    /// <summary>The same for command handlers: Apply is timed, Validate (admission) is not (03).</summary>
+    internal sealed class TimingRegistry : ICommandHandlerRegistry
+    {
+        private readonly ICommandHandlerRegistry _real;
+        private readonly HandlerTimer _timer;
+
+        public TimingRegistry(ICommandHandlerRegistry real, HandlerTimer timer)
+        {
+            _real = real;
+            _timer = timer;
+        }
+
+        public void Register(SystemId owner, ICommandHandler handler)
+        {
+            _real.Register(owner, new Timed(handler, _timer));
+        }
+
+        private sealed class Timed : ICommandHandler
+        {
+            private readonly ICommandHandler _inner;
+            private readonly HandlerTimer _timer;
+
+            public Timed(ICommandHandler inner, HandlerTimer timer)
+            {
+                _inner = inner;
+                _timer = timer;
+            }
+
+            public CommandKind Kind => _inner.Kind;
+
+            public CommandRejection Validate(ReadOnlySpan<byte> payload)
+            {
+                return _inner.Validate(payload);
+            }
+
+            public void Apply(in Command cmd, in TickContext ctx)
+            {
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                _inner.Apply(cmd, ctx);
+                _timer.Elapsed += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+                _timer.Calls++;
+            }
         }
     }
 
@@ -512,7 +620,8 @@ namespace AirportSim.Sim.Airside.Tests
             bool record = true,
             ISimLog? log = null,
             uint doorDelayMinutes = AirConst.FixtureDoorDelayMinutes,
-            bool probe = false)
+            bool probe = false,
+            HandlerTimer? handlerTimer = null)
         {
             Ids = Csv.Ids(csv);
             ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, AirsideContent.Index(), Sink, log ?? new NullLog()));
@@ -520,7 +629,15 @@ namespace AirportSim.Sim.Airside.Tests
             Schedule = ScheduleFactory.CreateSystem(b.Services, table, null);
             Layout = layout ?? FixtureLayout.Layout();
             Flow = flow;
-            Airside = AirsideFactory.CreateSystem(b.Services, Layout, new AirsideRules(holdMinutes, doorDelayMinutes), Schedule, flow, turnaroundRegistered);
+            SystemServices services = b.Services;
+            if (handlerTimer != null)
+            {
+                // 03 Q-064: only sim.airside's handlers are shimmed.
+                services = new SystemServices(
+                    new TimingBus(services.Events, handlerTimer), services.Ids, services.Content, new TimingRegistry(services.Commands, handlerTimer));
+            }
+
+            Airside = AirsideFactory.CreateSystem(services, Layout, new AirsideRules(holdMinutes, doorDelayMinutes), Schedule, flow, turnaroundRegistered);
             b.Register(Schedule);
             if (probe)
             {

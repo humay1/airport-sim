@@ -119,8 +119,8 @@ namespace AirportSim.Sim.Airside.Tests
         [Fact]
         public void test_reassign_stand_no_op_logs_key_and_reason()
         {
-            // Reason 1: unknown flight; flight not OnStand; and an arrival that
-            // is OnStand but whose stand was handed to its departure.
+            // Reason 1: unknown flight; flight not OnStand; and an arrival
+            // whose stand was handed to its departure, which is no longer tracked.
             var log = new CapturingLog();
             HostRig rig = Rig(log);
             ulong x1 = rig.Id("X1");
@@ -156,7 +156,9 @@ namespace AirportSim.Sim.Airside.Tests
             AssertNoOpLogged(log3, 0, 4001UL, only.Id("X2"), FixtureLayout.S1, 3L);
 
             // Reason 1, handed-off arrival: a boarding hold keeps R_D on S1 after
-            // the handoff at DoorsOpen + 35 min, while R_A's track stays OnStand.
+            // the handoff at DoorsOpen + 35 min. R_A's track was removed at the
+            // handoff (12 §12.8 "The handed-off arrival", Q-062), so check 1
+            // fails as "not tracked".
             var logH = new CapturingLog();
             var handed = new HostRig(Csv.Of(Csv.Pair("R_A", "R_D", "06:30", "08:00")), flow: ScriptedFlow.For(2UL, 200UL, 3, 77U), log: logH);
             ulong ra = handed.Id("R_A");
@@ -166,6 +168,7 @@ namespace AirportSim.Sim.Airside.Tests
             ulong handoff = handed.Rec.Milestone(rd, FlightMilestone.OnStand).Tick;
             Assert.True(handoff < 4399UL);
             Assert.Equal(rd, handed.Occupant(FixtureLayout.S1)!.Value.Value);
+            Assert.False(handed.Airside.TryGetTrack(new FlightId(ra), out _));
             handed.Submit(Payload.ReassignCommand(4401UL, ra, FixtureLayout.S4), out _);
             handed.RunTo(4402UL);
             AssertNoOpLogged(logH, 0, 4401UL, ra, FixtureLayout.S4, 1L);

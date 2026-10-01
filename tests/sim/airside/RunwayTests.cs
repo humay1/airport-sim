@@ -169,11 +169,34 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Single(held);
             Assert.Equal(3600UL, held[0].Rec.Tick);
             Assert.Equal(1, held[0].Evt.Runway.Value);
+            Assert.Equal(1, held[0].Evt.QueuePosition);
             Rec l2 = rig.Rec.Milestone(a2, FlightMilestone.Landed);
             Assert.Equal(3640UL, l2.Tick);
             Assert.Equal(1, l2.Track.Runway!.Value.Value);
             Assert.Empty(rig.Rec.Of<AircraftHeldForRunway>(a1));
             Assert.Empty(rig.Rec.Of<AircraftHeldForRunway>(a3));
+        }
+
+        [Fact]
+        public void test_runway_hold_queue_position_is_one_based_and_release_carries_zero()
+        {
+            // 12 §12.5 (Q-063). A1 claims the 3600 slot; A2 (3610) joins the
+            // empty queue at position 1, A3 (3620) behind it at 2. Fixed at
+            // emission; each release carries 0.
+            var rig = new HostRig(Csv.Of(Csv.Row("A1", "A", "06:00"), Csv.Row("A2", "A", "06:01"), Csv.Row("A3", "A", "06:02")));
+            rig.RunTo(3800UL);
+
+            var h2 = rig.Rec.Of<AircraftHeldForRunway>(rig.Id("A2"));
+            var h3 = rig.Rec.Of<AircraftHeldForRunway>(rig.Id("A3"));
+            Assert.Single(h2);
+            Assert.Single(h3);
+            Assert.Equal(1, h2[0].Evt.QueuePosition);
+            Assert.Equal(2, h3[0].Evt.QueuePosition);
+
+            var releases = rig.Rec.Of<AircraftHeldForRunwayReleased>();
+            Assert.Equal(2, releases.Count);
+            Assert.All(releases, r => Assert.Equal(0, r.Evt.QueuePosition));
+            Assert.All(releases, r => Assert.Equal(FixtureLayout.Runway, r.Evt.Runway.Value));
         }
     }
 }
