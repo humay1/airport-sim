@@ -479,7 +479,7 @@ Test Author's. Additional §12.13 tests:
 
 - `test_taxi_hold_blocking_names_same_step_grantee_and_release_blocking_is_null` (Q-060)
 - `test_taxi_hold_blocking_names_snapshot_occupant_that_left_this_tick` (Q-060)
-- `test_airside_update_path_allocates_nothing_including_handlers` (Q-061, §12.12)
+- `test_airside_update_path_allocates_nothing_including_handlers` (Q-061, §12.12). It meters `ISimHost.Step` and subtracts nothing for `sim.core`: it relies on Q-065 (merged #77, `08` §8.7 "Allocation"), which pins command application as allocation-free on ticks that complete normally. Test PR #78 is open.
 - `test_handed_off_arrival_leaves_tracked_state_at_handoff` (Q-062)
 - `test_handoff_waits_for_arrival_doors_open_when_deboard_completes_first` (Q-062; probe at position 5, `turnaroundRegistered` true)
 - `test_runway_hold_queue_position_is_one_based_and_release_carries_zero` (Q-063)
