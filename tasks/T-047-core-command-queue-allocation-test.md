@@ -40,7 +40,7 @@ Per `08` §8.7 "Tests (Q-065)":
 
 - It meters `ISimHost.Step` over **non-checkpoint ticks**.
 - The host has an allocation-free probe handler for `SetServersOpen` at
-  payload length 4, and one for `ReassignStand` at payload length 3.
+  registry position 4, and one for `ReassignStand` at registry position 3 (`08` §8.7; the owner column of the payload table mapped to registry positions, §8.7 handler registration).
 - Inside the window, some ticks have no due command and some have several of
   each kind, with `NoOp`s among them.
 - It asserts **exactly 0 bytes**, not a difference between two hosts.
@@ -67,7 +67,7 @@ Not applicable (allocation assertion only, no timing).
 ## Done when
 
 - [ ] `test_command_queue_apply_due_of_every_kind_allocates_nothing` exists and asserts exactly 0 bytes
-- [ ] It meters `ISimHost.Step` over non-checkpoint ticks with the two probe handlers (4-byte `SetServersOpen`, 3-byte `ReassignStand`), empty ticks, multi-command ticks and `NoOp`s in the window
+- [ ] It meters `ISimHost.Step` over non-checkpoint ticks with the two probe handlers (`SetServersOpen` at registry position 4, `ReassignStand` at registry position 3, per `08` §8.7), empty ticks, multi-command ticks and `NoOp`s in the window
 - [ ] Passes against the merged `sim.core` with no `src/` change
 - [ ] No existing test edited
 - [ ] `ci/run-checks.sh` green; passes on repeated CI runs
