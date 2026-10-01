@@ -53,13 +53,9 @@ merged (#56; this task merged as #59). The Test Author's tests are done
 `tests/sim/flow/StressDay.cs`, `FlowStressBudgetTests.cs`) and **pass the
 budget against `main` today** — mean `0.50`–`0.63` ms, p99 `2.60`–`3.26` ms
 against the `2.5`/`5.0` ms budget, `0` bytes allocated, a peak of `252` live
-cohorts. That PR merges only after **T-010** merges, same as every other
-open `tests/sim/flow/**` branch (see `tasks/queue.md`'s T-038 release-order
-note) — do not merge it ahead of T-010 even though it is green today,
-since T-010 itself lands in this same directory. **A worker is needed only
-if the budget fails once T-010's code is in** — as things measure now, on
-pre-T-010 `main`, it holds with margin, but T-010 changes `sim.flow`'s own
-update path (cohort→agent promotion/demotion) and could change the cost.
+cohorts. (Historical, resolved: that PR merged after T-010 (#56), same as
+every other `tests/sim/flow/**` branch of the time, because T-010 landed in
+this same directory; T-011 merged as #59 and no worker was needed.)
 
 ## Readable specs
 

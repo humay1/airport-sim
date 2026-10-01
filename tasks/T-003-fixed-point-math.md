@@ -9,7 +9,7 @@
 | Spec source | `spec/02-determinism.md` rule 4; `spec/08-interfaces-core.md` §8.3 (as amended, Q-015); `spec/07-conventions.md` "Solution layout and build" L2, L8 (Q-013) |
 | Blocked by | — |
 
-**Status note:** released for this cycle; the Test Author is authoring
+**Status note (historical, resolved: merged):** released for that cycle; the Test Author is authoring
 `tests/sim/core/**` for this task now. Status stays `QUEUED` until those
 tests land, then moves to `TESTS_AUTHORED` and the worker may start. Do not
 begin implementation before that move.

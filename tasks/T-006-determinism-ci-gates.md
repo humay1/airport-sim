@@ -102,7 +102,7 @@ but finals differ, `final`.
 |---|---|---|
 | `SameProcess` | two runs of `ticks`, one process | the two runs compare equal |
 | `SaveLoad` | **U**: one run of `ticks`. **A**: a run of `saveAt` ticks, then `CommandLogSince(0)` plus the run's inputs as its "save". **B**: a fresh run from those inputs, resubmitting every logged command in log order instead of the script, stepping `saveAt` then `ticks − saveAt` | B's hash at `saveAt` equals A's (else `reload`), and B compares equal to U |
-| `Promotion` | two runs of `ticks`; the second is "camera parked" | the two runs compare equal (vacuous pass until T-010 — see below) |
+| `Promotion` | two runs of `ticks`; the second is "camera parked" | the two runs compare equal (vacuous pass until T-010 (merged #56) and T-014 — see below) |
 
 - **`SaveLoad`, interim replay (Q-027, HUMAN DECISION, owner-approved):** no
   save seam exists yet. The save is the seed, content, composition and
@@ -216,6 +216,6 @@ low single-digit minutes (`spec/01-architecture.md` "Why the sim is a plain
 `SaveLoad` and `Promotion` are real, in full, at this task's own scope —
 they are not partial stubs. What is partial is their *load*: `SaveLoad`
 replays a log instead of a snapshot until `sim.save` exists (Q-027), and
-`Promotion` compares for real but has nothing to promote until T-010. Do
+`Promotion` compares for real but has nothing to promote until T-010 (historical, resolved: T-010 merged #56; the harness itself promotes for real only after T-014). Do
 not fabricate a snapshot seam or a promotion path here; both are named
 amendment points for later tasks, per §19.2 and §19.5.

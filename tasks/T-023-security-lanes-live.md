@@ -22,9 +22,8 @@ because the behaviour is missing or wrong, that is a defect in `src/sim/flow`:
 the Test Author stops and reports it, and the Planner files a worker task.
 Never edit the code and never weaken a test.
 
-Shares a directory with T-039 and T-040 (`tests/sim/flow/**`); do not release
-concurrently with either unless they write different files, and check for
-overlap before release.
+Shared a directory with T-039 and T-040 (`tests/sim/flow/**`) (historical,
+resolved: T-039 #63, T-040 #64 and this task #71 are all merged).
 
 ## Readable specs
 

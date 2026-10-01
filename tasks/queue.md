@@ -68,11 +68,11 @@ carries three of its own zero-allocation assertions
 `GC.GetAllocatedBytesForCurrentThread` directly, outside T-037's writable
 paths, so they get the same flake and their own task, **T-038**
 (`tests/sim/flow/**` only, depends on T-037 and T-007). **Release order,
-binding:** T-037 has merged; **T-010 has not** — T-010's worker and Test
-Author branches, and the T-011 Test Author's branch, are all currently
-writing `tests/sim/flow/**`, the same directory this task writes.
-Releasing T-038 before T-010 actually merges risks clobbering or
-conflicting with their tests. See the T-038 row and its own worker notes.
+binding:** (historical, resolved: T-037 merged #51, T-010 merged #56, T-011
+merged #59 and T-038 merged #60, so no branch is writing `tests/sim/flow/**`
+for those tasks any more.) At the time, T-010's worker and Test Author
+branches and the T-011 Test Author's branch were all writing that directory,
+which this task also writes, so T-038 waited for T-010. See the T-038 row.
 
 **T-011, this cycle:** its Test Author's PR (`test-author/T-011-stress-30k-
 tests`, `a885923`, `tests/sim/flow/StressDay.cs`/`FlowStressBudgetTests.cs`)
@@ -87,9 +87,9 @@ gate)" heading and **Gate:** note below, not a spec section; T-011's task
 file is corrected to cite `tasks/queue.md`, not `00-overview.md`. The tests
 pass the budget against `main` today (mean `0.50`–`0.63` ms, p99
 `2.60`–`3.26` ms against `2.5`/`5.0`, `0` bytes allocated, peak `252` live
-cohorts), but merge only after **T-010** merges, same reasoning as T-038 —
-`tests/sim/flow/**` is shared with T-010's still-open branches. A worker is
-needed only if the budget fails once T-010's code lands.
+cohorts). (Historical, resolved: that PR merged after T-010, same reasoning
+as T-038, because `tests/sim/flow/**` was shared with T-010's branches; T-010
+merged #56 and T-011 merged #59. No worker was needed.)
 
 **Q-040 (a), this cycle, spec PR #55 (merged, `3a6ba7c`):** at Phase 0/1
 there are no arriving or transferring passengers, so `Inject` must reject
@@ -103,7 +103,7 @@ released before T-010 merged (it has since merged, #63)** — T-010's own PR als
 `FlowSystem.cs`. See the T-039 row and its release-order entry.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
-`architect/Q-013-solution-layout`, not yet on `main`) applied this cycle:**
+`architect/Q-013-solution-layout`; historical, resolved: merged as PR #13) applied that cycle:**
 Q-016 (what counts as "green" before T-006 merges) is now a **HUMAN
 DECISION, owner, 2026-09-24**, not pending: until T-006 merges, green =
 `ci/run-checks.sh`'s `path-guard` and `build-and-test` (`--fast`) jobs,
@@ -295,8 +295,8 @@ direct `Depends` edge. Order:
     pass the path guard, the same fix T-038 needed for T-036/T-037.
 12a. **T-038** (`tests/sim/flow/**` only, the flow flake fix) — **T-037 has
     merged** (PR #51, `7bb30b5`); T-010 has since merged too. Shares
-    `tests/sim/flow/**` with T-010's and T-011's Test Author branches,
-    (RESOLVED: T-010 merged #56 and T-038 merged #60.)
+    `tests/sim/flow/**` with T-010's and T-011's Test Author branches.
+    (RESOLVED: T-010 merged #56, T-011 merged #59 and T-038 merged #60.)
 12b. **T-039** (`src/sim/flow/**` only, the `Inject` direction-rejection
     fix, Q-040) — RESOLVED: T-010 merged (#56) and T-039 merged (#63).
 13. **T-013** (soak fixture) — T-009 has merged; now ordered after T-030 (see "Harness writers"). Writes `tools/SimHarness/**`,
@@ -367,7 +367,7 @@ proceed on hope. No agent may mark this task complete.
 ### Phase 1 releasability
 
 Every Phase 0/1 spec question is answered (Q-002 through Q-012), including
-all nine owner decisions (D1–D9). Every row above is `QUEUED`, subject only
+all nine owner decisions (D1–D9). Every row above was `QUEUED` when this section was written (statuses are in the table; T-021 and later rows are the live ones), subject only
 to the ordinary merge-order and shared-path rules below — **T-025 excepted**,
 which is a permanent human-only gate regardless of what merges beneath it.
 
@@ -449,9 +449,10 @@ Nothing else depends on T-035, and it does not gate T-025.
 
 T-021 calls `IFlowSystem.Inject`/`Absorb`/`TryGetOutstanding` but writes
 only `src/sim/airside/**` — no file overlap with T-023's `src/sim/flow/**`.
-They may run concurrently once T-021's own dependencies (T-003, T-005,
-T-008, T-026) and T-023's dependencies (T-005, T-007, T-026) are merged.
-Neither blocks the other.
+They could run concurrently once T-021's own dependencies (T-003, T-005,
+T-008, T-026) and T-023's dependencies (T-005, T-007, T-026) were merged.
+Neither blocks the other. (Resolved: T-023 merged #71; T-021 is not yet
+released.)
 
 ### Release order note: `sim.core` shared surface across Phase 0 and Phase 1
 
@@ -460,13 +461,13 @@ Neither blocks the other.
 other, regardless of numbering block — the numbering rule
 (`tasks/README.md`) governs id assignment, not release concurrency.
 
-### Q-013–Q-016 amendments (Architect batch, branch `architect/Q-013-solution-layout`, not yet on `main`)
+### Q-013–Q-016 amendments (Architect batch, branch `architect/Q-013-solution-layout`; historical, resolved: merged as PR #13)
 
 The Architect answered Q-013 (solution layout/build/test framework, `07`
 "Solution layout and build"), Q-014 (the `sim.core` loop/host/bus contract
 at T-001's edges), Q-015 (`Fx` edge semantics and C# shape) and Q-016
 (no task before T-006 can pass the full `ci/run-checks.sh` — **left OPEN,
-PENDING HUMAN**, since it changes the CI gate definition, which is the
+PENDING HUMAN** at that time; historical, resolved: HUMAN DECISION, owner, 2026-09-24, see above, since it changes the CI gate definition, which is the
 human owner's call, not the Architect's or this Planner's). Applied this
 cycle:
 
