@@ -167,6 +167,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
+  **on a tick that completes normally, applying commands, and the loop
+  outside a checkpoint's phase 4, allocate nothing, so a module's `Step`
+  allocation meter excludes nothing for `sim.core`; wrapping a thrown tick
+  (§8.5a) may allocate (§8.5, §8.7, Q-065)**;
   **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
   Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);

@@ -168,7 +168,11 @@ the Test Author and the Verifier:
   `Allocation.Since()` meter (T-037), and it meters one of two things:
   - `ISimHost.Step` over ticks that contain no checkpoint tick and no tick
     allowed to allocate. That meters phases 1 to 3 of every registered
-    system, so any probes in the build must allocate nothing;
+    system, so any probes in the build must allocate nothing. It also
+    meters `sim.core`'s loop, command application and bus. On a tick that
+    completes normally, within §8.6's limits, these allocate nothing there
+    (`08` §8.5, §8.6, §8.7, Q-065). A tick that throws fails the test
+    anyway, so the test excludes nothing for them;
   - a direct rig that, inside one metered window, calls `Tick` and also
     delivers to the module's handlers the commands and events it would
     receive in phases 1 and 3.

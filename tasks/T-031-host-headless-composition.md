@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `app.host` (headless side only) |
 | Assigned role | worker |
-| Depends on | T-008 (merged #54), T-012 (merged #39), T-020, T-021, T-022, T-023 (merged #71), T-024, T-026 (merged #29), T-027 (merged #37), T-029, T-030 (not merged) |
+| Depends on | T-008 (merged #54), T-012 (merged #39), T-020 (not merged), T-021 (not merged), T-022 (not merged), T-023 (merged #71), T-024 (not merged), T-026 (merged #29), T-027 (merged #37), T-029 (not merged), T-030 (not merged) |
 | Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8, §16.10 (new module, D7; graphics preference and frame-loop steps 2/4/5, D10/Q-034) |
 | Blocked by | — |
 
