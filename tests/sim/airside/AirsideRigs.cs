@@ -251,6 +251,77 @@ namespace AirportSim.Sim.Airside.Tests
         }
     }
 
+    /// <summary>
+    /// A stand-in for sim.turnaround at position 5, for the max-tier budget
+    /// run with turnaroundRegistered true (T-021 "AirsideBudgetTests times
+    /// handlers"). It answers each arrival's DoorsOpen with a DeboardComplete
+    /// <see cref="DeboardTicks"/> later, and each departure's OnStand with a
+    /// BoardingComplete <see cref="BoardingTicks"/> later, so rotations turn
+    /// around and sim.airside's FlightMilestoneReached handler runs on both.
+    /// Its own work is not sim.airside's and is not timed.
+    /// </summary>
+    internal sealed class StandInTurnaround : ISimSystem
+    {
+        public const ulong DeboardTicks = 100UL;
+        public const ulong BoardingTicks = 250UL;
+
+        private readonly List<(ulong Due, ulong Flight, FlightMilestone Milestone)> _due = new List<(ulong Due, ulong Flight, FlightMilestone Milestone)>(4096);
+        public long Published;
+
+        public SystemId Id => new SystemId(AirConst.TurnaroundSystemId);
+
+        public string Name => "probe.turnaround";
+
+        public void Subscribe(IEventBus bus)
+        {
+            var self = this;
+            bus.Subscribe<FlightMilestoneReached>(Id, (in EventEnvelope env, in FlightMilestoneReached evt, in TickContext ctx) =>
+            {
+                if (env.Source.Value != AirConst.AirsideSystemId)
+                {
+                    return;
+                }
+
+                // Only arrivals get InboundAirborne (12 §12.3), so an OnStand
+                // for a flight never seen there is a departure's.
+                if (evt.Milestone == FlightMilestone.InboundAirborne)
+                {
+                    self._arrivals.Add(evt.Flight.Value);
+                }
+                else if (evt.Milestone == FlightMilestone.DoorsOpen)
+                {
+                    self._due.Add((ctx.Tick + DeboardTicks, evt.Flight.Value, FlightMilestone.DeboardComplete));
+                }
+                else if (evt.Milestone == FlightMilestone.OnStand && !self._arrivals.Contains(evt.Flight.Value))
+                {
+                    self._due.Add((ctx.Tick + BoardingTicks, evt.Flight.Value, FlightMilestone.BoardingComplete));
+                }
+            });
+        }
+
+        private readonly HashSet<ulong> _arrivals = new HashSet<ulong>();
+
+        public void Tick(in TickContext ctx)
+        {
+            for (int i = 0; i < _due.Count; i++)
+            {
+                if (_due[i].Due == ctx.Tick)
+                {
+                    ctx.Events.Publish(new FlightMilestoneReached(new FlightId(_due[i].Flight), _due[i].Milestone, ctx.Tick, ctx.Tick), EventRef.None);
+                    Published++;
+                }
+            }
+
+            ulong now = ctx.Tick;
+            _due.RemoveAll(d => d.Due <= now);
+        }
+
+        public ulong ComputeStateHash()
+        {
+            return 0UL;
+        }
+    }
+
     /// <summary>A system at a legal registry position whose module is absent (08 §8.5).</summary>
     internal sealed class ProbeSystem : ISimSystem
     {
@@ -621,7 +692,8 @@ namespace AirportSim.Sim.Airside.Tests
             ISimLog? log = null,
             uint doorDelayMinutes = AirConst.FixtureDoorDelayMinutes,
             bool probe = false,
-            HandlerTimer? handlerTimer = null)
+            HandlerTimer? handlerTimer = null,
+            StandInTurnaround? standIn = null)
         {
             Ids = Csv.Ids(csv);
             ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, AirsideContent.Index(), Sink, log ?? new NullLog()));
@@ -656,6 +728,11 @@ namespace AirportSim.Sim.Airside.Tests
             if (turnaround != null)
             {
                 b.Register(turnaround);
+            }
+            else if (standIn != null)
+            {
+                standIn.Subscribe(b.Services.Events);
+                b.Register(standIn);
             }
 
             if (record)

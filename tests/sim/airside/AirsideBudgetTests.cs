@@ -21,6 +21,13 @@ namespace AirportSim.Sim.Airside.Tests
         private const long BudgetMicros = 800L;
         private const int N = (int)AirConst.TicksPerDay;
 
+        private readonly Xunit.Abstractions.ITestOutputHelper _output;
+
+        public AirsideBudgetTests(Xunit.Abstractions.ITestOutputHelper output)
+        {
+            _output = output;
+        }
+
         /// <summary>03 Q-045 step 2: whole microseconds, rounded up, capped at C.</summary>
         internal static long Micros(long d, long f, long cap)
         {
@@ -47,15 +54,20 @@ namespace AirportSim.Sim.Airside.Tests
             // the FlightPlanPublished handler. AirsideProbe times Tick; the
             // services' timing shims (03 Q-064) time every handler sim.airside
             // registered. A tick's raw sample is the sum of both.
+            // turnaroundRegistered is true, with a stand-in at position 5
+            // driving the handshake, so the FlightMilestoneReached handler's
+            // recording into RecordedCause is in the window (12 §12.12, T-021).
             var flow = new RuleFlow();
             var handlers = new HandlerTimer();
-            var rig = new HostRig(load, layout: layout, flow: flow, record: false, probe: true, handlerTimer: handlers);
+            var standIn = new StandInTurnaround();
+            var rig = new HostRig(load, layout: layout, flow: flow, turnaroundRegistered: true, record: false, probe: true, handlerTimer: handlers, standIn: standIn);
 
             // Day 0 warms every path and is not sampled. The window is the
             // next 14 400 consecutive ticks, one sample each.
             rig.RunTo(AirConst.TicksPerDay);
             long absorbsBefore = flow.AbsorbCalls;
             long callsBefore = handlers.Calls;
+            long standInBefore = standIn.Published;
             rig.Probe!.Timing = true;
             long f = Stopwatch.Frequency;
             long cap = (BudgetMicros * N) + 1L;
@@ -73,6 +85,7 @@ namespace AirportSim.Sim.Airside.Tests
             // day 2's flights are published into the pending list during it.
             Assert.True(flow.AbsorbCalls - absorbsBefore > 100L, "the measured window did too little work");
             Assert.True(handlers.Calls - callsBefore > 400L, "the handlers ran too rarely to be timed");
+            Assert.True(standIn.Published - standInBefore > 400L, "the handshake was barely exercised in the window");
 
             Array.Sort(u);
             long p99 = u[((99 * N) + 99) / 100 - 1];
@@ -86,6 +99,9 @@ namespace AirportSim.Sim.Airside.Tests
                 2L * BudgetMicros,
                 u[N - 1],
                 f);
+
+            // 03 Q-045 step 5 / T-021: the mean and p99 are reported on every run.
+            _output.WriteLine(report);
             Assert.True(sum <= BudgetMicros * N, "mean over budget: " + report);
             Assert.True(p99 <= 2L * BudgetMicros, "p99 over budget: " + report);
         }
