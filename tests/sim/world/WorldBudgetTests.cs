@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using AirportSim.Sim.Core;
 using AirportSim.Sim.World;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace AirportSim.Sim.World.Tests
 {
@@ -12,15 +14,40 @@ namespace AirportSim.Sim.World.Tests
     /// Tick, so each measured tick is one Tick plus a caller-sized batch of
     /// queries against a max-tier graph (about 200 landside nodes, §18.3).
     /// Route precomputation is load time and is not measured.
+    ///
+    /// Window and arithmetic per 03 "Budget tests: window and arithmetic"
+    /// (Q-044, Q-045): one window of TICKS_PER_SIM_DAY consecutive per-tick
+    /// samples after an unsampled warm-up, each rounded up to whole
+    /// microseconds and capped, passing iff the sum is at most B x n and the
+    /// nearest-rank p99 at most 2 x B. sim.world registers no handler, so a
+    /// sample is its Tick plus the queries (03 "Measured", Q-064).
     /// </summary>
     public sealed class WorldBudgetTests
     {
         private const long BudgetMicrosPerTick = 100;
         private const int MaxTierNodes = 200;
+        private const int Window = (int)SimConstants.TICKS_PER_SIM_DAY;
+        private const int WarmUpTicks = Window;
 
-        private static long ElapsedMicros(long start, long end)
+        private readonly ITestOutputHelper _output;
+
+        public WorldBudgetTests(ITestOutputHelper output)
         {
-            return (end - start) * 1_000_000L / Stopwatch.Frequency;
+            _output = output;
+        }
+
+        /// <summary>
+        /// 03 Q-045 step 2: a raw Stopwatch difference to whole microseconds,
+        /// rounded up and capped at <paramref name="cap"/>, in long only.
+        /// </summary>
+        private static long RoundedUpMicros(long d, long f, long cap)
+        {
+            if (d > (long.MaxValue - f + 1) / 1_000_000L)
+            {
+                return cap;
+            }
+
+            return Math.Min((d * 1_000_000L + f - 1) / f, cap);
         }
 
         /// <summary>
@@ -83,13 +110,17 @@ namespace AirportSim.Sim.World.Tests
             var rngService = new CountingRandom();
             var events = new CountingPublisher();
             TickContext ctx = WorldKit.Context(1, rngService, events);
-            const int Ticks = 2000;
+            long[] d = new long[Window];
             long sink = 0;
+
+            // Pass 0 is the unsampled warm-up (JIT tiering, caches); pass 1
+            // is the one asserted window, one sample per tick.
             for (int pass = 0; pass < 2; pass++)
             {
-                long start = Stopwatch.GetTimestamp();
-                for (int t = 0; t < Ticks; t++)
+                int ticks = pass == 0 ? WarmUpTicks : Window;
+                for (int t = 0; t < ticks; t++)
                 {
+                    long start = Stopwatch.GetTimestamp();
                     world.Tick(ctx);
                     for (int i = 0; i < Queries; i++)
                     {
@@ -114,18 +145,36 @@ namespace AirportSim.Sim.World.Tests
                             sink += path[p].Value;
                         }
                     }
-                }
 
-                long end = Stopwatch.GetTimestamp();
-
-                // Pass 0 is warm-up (JIT, caches); pass 1 is asserted.
-                if (pass == 1)
-                {
-                    long perTick = ElapsedMicros(start, end) / Ticks;
-                    Assert.True(perTick <= BudgetMicrosPerTick, "sim.world tick + queries took " + perTick + " us/tick, budget " + BudgetMicrosPerTick);
+                    long end = Stopwatch.GetTimestamp();
+                    if (pass == 1)
+                    {
+                        d[t] = end - start;
+                    }
                 }
             }
 
+            const long B = BudgetMicrosPerTick;
+            const long n = Window;
+            const long C = B * n + 1;
+            long f = Stopwatch.Frequency;
+            long[] u = new long[Window];
+            long sum = 0;
+            for (int t = 0; t < Window; t++)
+            {
+                u[t] = RoundedUpMicros(d[t], f, C);
+                sum += u[t];
+            }
+
+            Array.Sort(u);
+            long p99 = u[(99 * n + 99) / 100 - 1];
+            long reportedMean = (sum + n - 1) / n;
+            string report = "sim.world tick + queries over " + n + " ticks: mean " + reportedMean + " us (limit " + B
+                + "), p99 " + p99 + " us (limit " + (2 * B) + "), max " + u[Window - 1] + " us; Stopwatch.Frequency " + f;
+            _output.WriteLine(report);
+
+            Assert.True(sum <= B * n, "mean over budget. " + report);
+            Assert.True(p99 <= 2 * B, "p99 over twice the budget. " + report);
             Assert.True(sink > 0);
             Assert.Equal(0, rngService.Touches);
         }

@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using Xunit;
+using Xunit.Abstractions;
 using static AirportSim.Sim.Core.Tests.CommandTestSupport;
 
 namespace AirportSim.Sim.Core.Tests
@@ -16,6 +16,13 @@ namespace AirportSim.Sim.Core.Tests
     public sealed class CommandQueueTests
     {
         private const uint TicksPerDay = (uint)SimConstants.TICKS_PER_SIM_DAY;
+
+        private readonly ITestOutputHelper _output;
+
+        public CommandQueueTests(ITestOutputHelper output)
+        {
+            _output = output;
+        }
 
         // ------------------------------------------------------------ admission window
 
@@ -711,21 +718,19 @@ namespace AirportSim.Sim.Core.Tests
         public void test_command_queue_day_with_command_every_tick_within_core_budget()
         {
             // sim.core's 0.25 ms/tick (03 "Performance"), with one command due per tick
-            // and a handler that does nothing, measured over a whole day.
+            // and a handler that does nothing. The warm-up host is not sampled. The
+            // window is the fresh host's ticks 0..14399, one Step(1) per tick, in 03
+            // "Budget tests: window and arithmetic" (Q-044, Q-045).
             var warm = new CountingRig();
             for (ulong t = 1; t < 2000; t++) Admit(warm.Host, Flow(t, 1, 1));
             warm.Host.Step(2000);
 
             var rig = new CountingRig();
             for (ulong t = 1; t < TicksPerDay; t++) Admit(rig.Host, Flow(t, 1, 1));
-            long start = Stopwatch.GetTimestamp();
-            rig.Host.Step(TicksPerDay);
-            long elapsed = Stopwatch.GetTimestamp() - start;
+            long[] raw = BudgetWindow.StepWindow(rig.Host);
 
-            // 0.25 ms = Frequency / 4000 ticks of the stopwatch, per sim tick.
-            long budget = Stopwatch.Frequency * TicksPerDay / 4000;
             Assert.Equal((int)TicksPerDay - 1, rig.Handler.Applied);
-            Assert.True(elapsed <= budget, "day took " + elapsed + " stopwatch ticks; budget " + budget);
+            BudgetWindow.AssertWithin(raw, BudgetWindow.CoreBudgetMicros, "sim.core Step(1), one command applied per tick", _output);
         }
 
         // ------------------------------------------------------------ helpers
