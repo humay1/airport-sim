@@ -158,7 +158,7 @@ to wave through a failing `determinism` check.
 | T-006 | Determinism gates in CI (`tools.simharness` CLI + gates) | tools.simharness | T-004, T-005 | MERGED |
 | T-007 | Statistical flow nodes: queue with throughput model | sim.flow | T-003, T-012, T-026, T-036 | MERGED (PR #48) |
 | T-008 | Schedule loader from CSV fixture, 200 movements | sim.schedule | T-001, T-003, T-026, T-007 | MERGED (PR #54) |
-| T-009 | Run 100 sim-days in under 60s, identical across runs | sim.core | T-006, T-007, T-008, T-012 | IN_PROGRESS (released 2026-09-29; its 100-day kill-gate test is Slow by L11a rule (a), so its PR needs the pre-merge `slow-tests` run) |
+| T-009 | Run 100 sim-days in under 60s, identical across runs | tools.simharness | T-006, T-007, T-008, T-012 | IN_PROGRESS (released 2026-09-29; task file synced to spec PR #66 2026-10-01: tests in `tests/tools/simharness/**` and `tests/fixtures/harness/**`, boarding stand-in at SystemId 3; its 100-day kill-gate test is Slow by L11a rule (a), so its PR needs the pre-merge `slow-tests` run) |
 | T-010 | Cohort→agent promotion + demotion, outcome-neutral | sim.flow | T-007 | MERGED (PR #56) |
 | T-011 | Stress: 30,000 daily passengers within frame budget | sim.flow | T-010 | MERGED (PR #59) |
 | T-012 | `sim.world`: fixed landside walk graph | sim.world | T-001, T-003, T-026 | MERGED |
@@ -169,11 +169,26 @@ to wave through a failing `determinism` check.
 | T-038 | `sim.flow` tests: switch to the forced-GC allocation meter | sim.flow tests | T-037, T-007 | MERGED (PR #60, `e99bc0d`) |
 | T-039 | `sim.flow`: `Inject` rejects non-`Departing` direction (Q-040) | sim.flow | T-010 | IN_PROGRESS (released 2026-09-29) |
 | T-040 | Tag six merged tests `Slow` (L11a rule (b)) | sim.flow / sim.schedule tests | — | QUEUED (released by the owner 2026-09-29 together with T-039 and T-009; test-author, own PR) |
-| T-041 | `sim.world` budget test: per-tick mean and p99 (flake fix) | sim.world tests | — | QUEUED (owner-approved 2026-09-29; test-author, own PR) |
+| T-041 | `sim.world` budget test: per-tick mean and p99 (flake fix) | sim.world tests | — | QUEUED (owner-approved 2026-09-29; test-author, own PR; rewritten 2026-10-01 to the 14 400-sample window and `long` arithmetic of spec PR #68) |
+| T-042 | `sim.core` budget tests conform to `03` window and arithmetic (Q-044, Q-045) | sim.core tests | — | QUEUED (test-author, own PR) |
+| T-043 | `sim.flow` budget tests conform to `03` window and arithmetic (drop `Int128`) | sim.flow tests | T-039, T-040, T-023 | QUEUED (test-author, own PR; serialised after the three other `tests/sim/flow/**` writers) |
+| T-044 | `sim.schedule` budget tests conform to `03` window and arithmetic | sim.schedule tests | T-040 | QUEUED (test-author, own PR) |
+| T-045 | `tools.simharness` `budget --tier max` rounds up to the `03` rule (`19` §19.4) | tools.simharness | T-009 | QUEUED, **not releasable yet**: possible spec gap, no test seam for the rounding (see T-045 note) |
+| T-046 | `balance.schema.json` requires `doors_open_delay_minutes` | content | T-028 | HOLD for the owner: the balance file and the schema must land together |
 
 **T-041 note (2026-09-29):** `WorldBudgetTests` failed in CI three times in two days (102 us, 150 us, and a third on `main` after #64) and passed on every rerun, because it asserts one 2000-tick aggregate mean instead of `03`'s statistic (mean <= budget and p99 <= 2x budget over per-tick samples) and logs only on failure. T-041 writes only `tests/sim/world/**` and shares no path with T-009, T-039 or T-040. The budget value (100 us) is unchanged. Two spec gaps are recorded in the task file and go to the Architect, not to the Test Author: the test runs 2000 ticks, not `03`'s one full sim-day (14 400 ticks), and `03` does not define the p99 rank rule.
 
 **T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
+
+**Post-spec sync (2026-10-01), spec PRs #66, #67 and #68.**
+
+- **T-009 (#66, `6c4509c`).** Its tests move to `tests/tools/simharness/**` (`19` §19.6 Q-041); one Phase 0 composition, world (1), schedule (2), a boarding stand-in (3) that absorbs at `NodeId(9)` at STD and hashes `0` (owner accepted 2026-09-29), flow (4), built from Test Author fixtures including `tests/fixtures/harness/phase0-content.files`, never from `data/`. The kill gate is a whole-run wall-clock check under 60 s (§19.6(a)). The seven `EmptyCompositionFinalHash` expectations in `HarnessCliTests` become the kit's `FinalHash`.
+- **#68 (`7c9a373`) budget statistic.** `03` "Budget tests: window and arithmetic": exactly 14 400 consecutive per-tick samples after warm-up, non-overlapping windows, not day-aligned, `long`-only `u = min(ceil(d x 10^6 / f), B x n + 1)`, mean passes iff `Σu <= B x n`, p99 `= u[(99n + 99) / 100 - 1]` passes iff `<= 2B`. Non-conforming tests and their tasks: `sim.world` WorldBudgetTests (T-041, rewritten), `sim.airside` AirsideBudgetTests (T-021, requirement written in), `sim.core` BudgetTests x2 and CommandQueueTests x1 (**T-042**), `sim.flow` FlowBudgetTests, FlowStressBudgetTests (`Int128`) and PromotionBudgetTests (**T-043**), `sim.schedule` BudgetTests x2 (**T-044**), the harness's own `budget` subcommand (**T-045**).
+- **Release order for the budget rewrites.** T-041 and T-042 write disjoint paths and have no open dependency, so they may run now. T-043 waits for T-039, T-040 and T-023, which all write `tests/sim/flow/**`. T-044 waits for T-040 (`tests/sim/schedule/**`). T-045 waits for T-009, and further for the Test Author to confirm a deterministic test exists. Each task carries its own L11a Slow-tag consideration; the `sim.flow` window at 2.5 ms is about 36 s, so Slow is expected there.
+- **T-041 and Slow.** One 14 400-tick window plus a warm-up of at most 14 400 ticks is under L11a rule (a)'s 144 000. At the 100 us budget a window is about 1.44 s, so about 2.9 s with the warm-up, under rule (b)'s 5 s. It starts untagged; the Test Author adds `Slow` only if the first CI measurement is over 5 s.
+- **T-023 (tests-only).** T-007 (PR #48) implemented the behaviour. T-023 writes `tests/sim/flow/**` only and is done when its ten coverage tests pass on `main`. It shares that path with T-039, T-040 and (later) T-043: release one at a time.
+- **T-021 (#67, `8cf445c`).** §12.8a step order S1 to S7, the §12.11 pending list with exact removal, `STAND_WAIT_CAPACITY` 1024, `PENDING_FLIGHTS_CAPACITY` 2048, `LogKey.AirsideReassignStandNoOp = 1` in `src/sim/core/LogKey.cs` (now a T-021 writable path), `DoorsOpenDelayMinutes` in `AirsideRules`, a door delay of 2 min (HUMAN DECISION, owner 2026-09-30), the least-queue runway stopgap the owner accepted, 17 new §12.13 tests and the fixture `tests/fixtures/airside/phase1-single-runway.json`. `src/sim/core/**` is a shared surface: do not release T-021 beside another task that writes it.
+- **T-046.** The merged `balance.schema.json` has one key. `data/balance/airside_rules.json` is human-only and is one-key today, so the schema change and the owner's edit must land together. Held for the owner. T-031 needs both before it can load `airside_rules.json`.
 
 **Gate:** if T-011 cannot meet budget, the architecture is redesigned here — not
 later. Escalate to the human owner.
@@ -326,9 +341,9 @@ schemas plus ordinary (non-balance) `size_categories`/`aircraft` data;
 | ID | Task | Module | Depends | Status |
 |---|---|---|---|---|
 | T-020 | Minimal top-down renderer, flat colours (headless scene layer only) | app.render | T-009, T-010, T-021, T-023, T-026 | QUEUED |
-| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED |
+| T-021 | One runway, taxiway graph, four contact stands, boarding hold | sim.airside | T-003, T-005, T-008, T-026 | QUEUED (task file synced to spec PR #67/#68 on 2026-10-01; also writes `src/sim/core/LogKey.cs`; tests authored by `test-author-t021`) |
 | T-022 | Turnaround as job list, 4 vehicles, driver assignment | sim.turnaround | T-008, T-021, T-026 | QUEUED |
-| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` | sim.flow | T-005, T-007, T-026 | QUEUED |
+| T-023 | Security lanes live; `TryGetOutstanding`/`TryGetLaneState` (**tests-only**) | sim.flow tests | T-005, T-007, T-026 | QUEUED (2026-10-01: T-007 already implemented the behaviour; test-author, writes `tests/sim/flow/**` only; done = the 10 coverage tests pass on `main`) |
 | T-024 | Delay clock per flight + naive attribution log | sim.delay | T-022, T-023, T-026 | QUEUED |
 | T-025 | Playtest build, 20 external testers | — | T-024, T-031, T-032, T-033, T-034 | BLOCKED (human gate — never agent-completable) |
 | T-026 | `sim.core`: Phase 1 payload types (airside/turnaround/delay/world/content) | sim.core | T-001, T-003 | MERGED |
