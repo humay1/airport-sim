@@ -45,21 +45,21 @@ namespace AirportSim.Sim.Flow.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")]
         public void test_security_lane_switching_every_tick_keeps_flow_within_budget()
         {
             // 03 "How a budget is measured": sim.flow's Tick only (TimedSystem),
             // one full sim-day after a day's warm-up, mean <= budget and
             // p99 <= 2x budget. Command application is phase 1, outside it.
-            // Q-044/Q-045: exactly 14 400 consecutive per-tick samples (day 1;
-            // day 0's warm-up is not sampled), p99 the nearest-rank sample at
-            // index (99n + 99) / 100 - 1 of the raw Stopwatch differences,
-            // compared in exact integer arithmetic.
+            // 03 "Budget tests: window and arithmetic": exactly
+            // TICKS_PER_SIM_DAY consecutive per-tick samples (Q-044; day 1, and
+            // day 0's warm-up is not sampled), in long arithmetic only (Q-045).
             StressDay s = StressDay.Create(Seed, 2);
             Day(s);
             s.Timed.Recording = true;
             Day(s);
             s.Timed.Recording = false;
-            Assert.Equal(14400, s.Timed.Count);
+            Assert.Equal((int)SimConstants.TICKS_PER_SIM_DAY, s.Timed.Count);
 
             // The day carried the load and the commands took effect.
             Assert.Equal(2L * StressDay.DailyPassengers, s.Injected);
@@ -68,22 +68,28 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.Equal(12, last.ServerCount);
             Assert.Contains(last.ServersOpen, new[] { 9, 10 });
 
-            long[] samples = new long[s.Timed.Count];
-            Array.Copy(s.Timed.Samples, samples, samples.Length);
-            Int128 total = 0;
-            foreach (long x in samples)
+            // Q-045 step 2: each raw Stopwatch difference d in whole
+            // microseconds, rounded up and capped at C = B x n + 1.
+            long n = s.Timed.Count;
+            long f = Stopwatch.Frequency;
+            long cap = BudgetMicros * n + 1;
+            long[] u = new long[n];
+            long sum = 0;
+            for (long i = 0; i < n; i++)
             {
-                total += x;
+                long d = s.Timed.Samples[i];
+                u[i] = d > (long.MaxValue - f + 1) / 1_000_000 ? cap : Math.Min((d * 1_000_000 + f - 1) / f, cap);
+                sum += u[i];
             }
 
-            Array.Sort(samples);
-            int n = samples.Length;
-            long p99 = samples[(99 * n + 99) / 100 - 1];
-            Int128 freq = Stopwatch.Frequency;
+            // Steps 3 to 5: mean iff sum <= B x n; p99 nearest rank; mean
+            // reported rounded up.
+            Array.Sort(u);
+            long p99 = u[(99 * n + 99) / 100 - 1];
             string report = "sim.flow Tick over " + n + " ticks with every lane switched every tick: mean "
-                + (total * 1_000_000 / freq / n) + " us, p99 " + ((Int128)p99 * 1_000_000 / freq) + " us";
-            Assert.True(total * 1_000_000 <= BudgetMicros * freq * n, "mean over budget " + BudgetMicros + " us. " + report);
-            Assert.True((Int128)p99 * 1_000_000 <= P99BudgetMicros * freq, "p99 over " + P99BudgetMicros + " us. " + report);
+                + ((sum + n - 1) / n) + " us, p99 " + p99 + " us, max " + u[n - 1] + " us; Stopwatch.Frequency " + f;
+            Assert.True(sum <= BudgetMicros * n, "mean over budget " + BudgetMicros + " us. " + report);
+            Assert.True(p99 <= P99BudgetMicros, "p99 over " + P99BudgetMicros + " us. " + report);
         }
 
         [Fact]
