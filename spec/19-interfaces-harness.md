@@ -5,7 +5,8 @@ codes and output, and the public surface that the harness's own test project
 compiles against. It answers `open-questions.md` Q-025, Q-026 and Q-027,
 and, for T-009's Phase 0 composition, Q-041 to Q-043. For T-013's `soak`
 subcommand, which the nightly workflow invokes (`.github/workflows/`), it
-answers Q-057, and for T-045's budget statistic Q-058.
+answers Q-057, and for T-045's budget statistic Q-058. For T-030's
+`checkpoints` subcommand it answers Q-066 to Q-076.
 Notation is as in `08-interfaces-core.md`. Where this file appears to
 contradict `01-architecture.md` or `02-determinism.md`, those win and it is a
 spec bug. `ci/**` is the human owner's. This file describes what the harness
@@ -14,9 +15,10 @@ never asks for a change there.
 
 Reading order for a harness worker: `01`, `02`, `07`, `08` §8.5, §8.5a,
 §8.7, §8.9 and §8.11a, then this file. For §19.2a, also `09` §9.7 and
-§9.11, `11` §11.7 and §11.9, `12` §12.3 and §12.7, and `18`. The
-`checkpoints` subcommand is
-`16` §16.8, and nothing here changes it.
+§9.11, `11` §11.7 and §11.9, `12` §12.3 and §12.7, and `18`. For the
+`checkpoints` subcommand, read `16` §16.3, §16.4 and §16.8, then §19.2c.
+`16` §16.8 owns the dump format. §19.2c owns the invocation, the
+composition and the failures.
 
 ---
 
@@ -69,12 +71,15 @@ HarnessGates.BudgetFromSamples(IReadOnlyList<int64> samples, int64 frequency) ->
 - `BudgetFromSamples` runs nothing. It is the pure §19.4 statistic, and
   its argument rules are in §19.4. It is the only member that takes
   timings. No CLI form passes samples in, and none may be added.
-- `soak` (§19.2b) has no `HarnessGates` member. It is reached only through
-  `HarnessCli.Run`.
+- `soak` (§19.2b) and `checkpoints` (§19.2c) have no `HarnessGates`
+  member. They are reached only through `HarnessCli.Run`. `checkpoints`
+  takes no `SimComposer` and submits no command script (§19.2c), so the
+  "One run" bullet above applies to it only as far as §19.2c says.
 
 ## 19.2 What each gate does (Q-026, Q-027)
 
-**The command script.** Every run submits, before its first `Step`, one
+**The command script.** Every run except a `checkpoints` run (§19.2c,
+Q-071) submits, before its first `Step`, one
 `NoOp` command for each tick `t` with `1 ≤ t < ticks` and `t % 100 == 0`.
 Here `ticks` is always the **gate's** `ticks` argument, for every run of
 the gate, including a run that steps fewer ticks (A in `SaveLoad`). So A's
@@ -112,15 +117,19 @@ If every checkpoint agrees but the final hashes differ: `final`.
   only. The harness task depends on T-010 and on the CLI composition
   including `sim.flow`, and the Planner creates it (Q-033). Until then, a
   harness that stubs the comparison is wrong.
-- **The CLI composition.** Every CLI run, of every subcommand in §19.3,
-  uses the composer of §19.2a (Q-042, from T-009). `soak` runs it over the
+- **The CLI composition.** Every CLI run, of every subcommand in §19.3
+  except `checkpoints`, uses the composer of §19.2a (Q-042, from T-009).
+  `soak` runs it over the
   soak fixture set (§19.2b, Q-057), and every other subcommand over the
   Phase 0 fixture set. It replaces
   T-006's empty composition, which no CLI form selects any more. The empty
   composition stays reachable only through `HarnessGates` with a composer
   that registers nothing, as the gate tests already use it. No option,
   flag or environment variable selects a composition or a fixture set. The
-  subcommand alone decides the set.
+  subcommand alone decides the set. `checkpoints` is the one exception
+  (Q-069). It composes the bundle that `--bundle` names, over the content
+  that `--content` names, by `16` §16.4's rules (§19.2c). It never uses
+  the §19.2a composer, either fixture set or the boarding stand-in.
 - **Untested by design (Q-029).** `at=world` and `at=count` cannot be
   reached. Runs of one gate step the same ticks at the same checkpoint
   cadence, so their counts match. A world hash is a function of the tick,
@@ -247,9 +256,10 @@ no stand and no milestone.
   from `MovementsBetween(t, next day boundary, Departure)` filtered to
   `ScheduledTick ≥ t`, or snapshot and hash it.
 - **Scope.** It exists only in this composition. The amendment that adds
-  `sim.airside` to the harness removes it in the same change. No
-  production composition (`16`) registers it. `08` §8.5's probe-system
-  allowance covers it.
+  `sim.airside` to this composer removes it in the same change. No
+  production composition (`16`) registers it, and neither does
+  `checkpoints` (§19.2c, Q-070). `08` §8.5's probe-system allowance covers
+  it.
 
 **`budget --tier max`** times the first sim-day of this composition, over
 the Phase 0 set (§19.4).
@@ -330,19 +340,186 @@ committed golden from whatever directory the job runs in.
 pass.
 
 **When the composition changes.** The soak registers what the §19.2a
-composer registers, which is every system the harness composes (`03`).
+composer registers, which is every system the harness's CLI composition
+composes (`03`). `checkpoints`'s bundle composition (§19.2c) is not part
+of that: the harness referencing a module for `checkpoints` does not, by
+itself, add it to the §19.2a composer or to the soak.
 The amendment that adds a system to that composer, such as `sim.airside`
 replacing the stand-in, changes the soak's hashes, and its golden is
 re-authored under the README's rules.
+
+## 19.2c `checkpoints`: a bundle's checkpoint dump (Q-066 to Q-076)
+
+Binding on T-030, on its Test Author, and on the harness task that adds
+the Phase 1 systems (below). This is the harness side of `16` §16.8 (D7).
+`16` §16.8 owns the dump format, and nothing here changes it.
+
+**What it does.** `checkpoints --bundle B --content C --days D --out P`
+composes the scenario bundle in directory `B` by `16` §16.4's rules, over
+the content in directory `C`. It steps the result for `D` sim-days and
+writes the run's checkpoint dump to the new file `P`. It is not a gate. It
+compares nothing, and it never exits 1. It does not use the §19.2a
+composer, either fixture set, the boarding stand-in or the §19.2 command
+script.
+
+**Paths (Q-068).** `B`, `C` and `P` each follow §19.2b "Paths": not empty;
+a fully qualified path is used as given; any other path is a
+`/`-separated repository-relative path joined to the root, which is found
+as in §19.2a; a path that is rooted but not fully qualified is a usage
+error. The root is looked for only when at least one of the three is
+repository-relative, and not finding it is exit 3. The current working
+directory is never used. `B` and `C` are directories. `P` is never
+overwritten. The harness writes nothing except `P`.
+
+**The bundle.** The harness reads bundle files by exact name, as `B`
+joined with a `16` §16.3 file name. It never lists `B`. It reads
+`bundle.json`, and then exactly the files of the listed systems, from the
+§16.3 table:
+
+| Listed system | Files read |
+|---|---|
+| `sim.world` | `world.fixture` |
+| `sim.schedule` | `schedule.csv` |
+| `sim.airside` | `airside.fixture`, `airside_rules.json` |
+| `sim.flow` | `flow.fixture` |
+| `sim.turnaround` | `turnaround.fixture` |
+| `sim.delay` | none |
+
+It reads no other file in `B`, `render_layout.fixture` included, because
+the run has no presentation. `bundle.json` follows `16` §16.3's rules,
+including its strict form (Q-069).
+
+**The content (Q-072).** `C` is a content directory laid out like `data/`.
+The harness's `IContentSource` returns from `Files()` the path of every
+file under `C`, at any depth, relative to `C` and `/`-separated, in any
+order. `ReadAll` returns that file's bytes. The content is loaded once,
+before the run, with `ContentLoaderFactory.Create().Load(source)` and then
+`ContentIndexFactory.Create` of the result (`08` §8.11). The loader reads
+in ordinal path order and ignores the directories it does not map, so the
+listing decides which files exist and never their order. So
+`--content data` loads what the player ships (`16` §16.3), and a fixture
+directory such as `tests/fixtures/harness/phase0-content` works the same
+way. This is the only directory the harness ever lists. §19.2a's rule
+that the harness never reads `data/` binds the §19.2a composition only.
+
+> **LOW CONFIDENCE — a listed content directory.** §19.2a uses a manifest
+> so that a stray file cannot change the content. Here the directory is
+> the whole content input, as it is for the player, whose content is a
+> copy of `data/`. A manifest would need one for `data/`, which no module
+> owns. A stray `*.json` in a kind directory changes both sides of a
+> comparison alike, or it fails the load.
+
+**The composition (Q-069, Q-070, Q-073).** Exactly `16` §16.4's
+`Compose`, steps 1 to 4, written in the harness's own code (§16.4's last
+rule):
+
+1. `SimHostFactory.CreateBuilder` with `MasterSeed` = the bundle's seed,
+   `Content` = the content index, `Checkpoints` = a harness-internal sink
+   that records every checkpoint in order, and `Log` = a harness-internal
+   log that discards everything (as in §19.1).
+2. Each listed system's file is loaded with its module's loader (the
+   Construction sections named in `16`), with `sourceName` exactly the
+   bundle file name, for example `schedule.csv` (Q-073). The harness
+   parses `airside_rules.json` into `AirsideRules` itself, by
+   `04-data-schemas.md`, since no sim module parses it (`12` §12.12a).
+3. The listed systems are constructed in §16.4's dependency order, each
+   with `builder.Services`, its data, and its downward interfaces or
+   `null`. `turnaroundRegistered` is whether `sim.turnaround` is listed.
+4. They are registered in registry order (`08` §8.5), and then `Build` is
+   called.
+
+Nothing else is registered: no boarding stand-in and no probe (Q-070). So
+the harness's dump of a bundle is byte-identical to `IHeadlessRun`'s dump
+of the same bundle and content (`16` §16.8, D7).
+
+**Which systems it composes (Q-069). Staged.**
+
+- **T-030** composes `sim.world`, `sim.schedule` and `sim.flow`, whose
+  factories the harness already references (T-009). A bundle that lists
+  `sim.airside`, `sim.turnaround` or `sim.delay` is exit 3, and stderr
+  names the system. It is not a usage error, because the bundle is read
+  only after usage has been decided. No test asserts this rejection,
+  because the next stage removes it.
+- **The Phase 1 stage** is the harness task that adds `sim.airside`,
+  `sim.turnaround` and `sim.delay`, together with their `ProjectReference`s
+  (`07` L8). It is released after T-021, T-022 and T-024 merge. It removes
+  the rejection, so that all six Phase 1 systems are composed. It must
+  merge before T-031, whose D7 test needs it (`16` §16.8). If the Planner
+  instead orders T-030 itself after T-021, T-022 and T-024, then T-030 is
+  both stages, and the first bullet never applies.
+- Neither stage changes the §19.2a composer, the soak or the stand-in
+  (§19.2b, "When the composition changes").
+
+**The run (Q-071, Q-074).** One run. It submits **no command**, since
+§19.2's script does not apply and `IHeadlessRun` submits none either
+(`16` §16.8). The queue still enters every hash (`08` §8.7). It is empty on
+both sides. The run calls `Step(TICKS_PER_SIM_DAY)` exactly `D` times,
+which is the stepping `16` §16.8 pins for both sides. `08` §8.2
+("Chunking is invisible") already makes any other batching equal, and the
+test of §19.8 checks that against this run. After the last `Step`, `final`
+is `WorldStateHash()`.
+
+**The dump.** From the run's recorded checkpoints, the harness builds the
+checkpoint dump, version 1, of `16` §16.8, byte for byte, as `soak` does
+(§19.2b): `seed` is the bundle's seed, and the `systems` line holds the
+registered systems' `Name`s in registry order. Call its bytes `R`.
+
+**When things happen, and failures (Q-067).**
+
+1. A usage error (exit 2) is decided before any file is touched.
+2. Then, before the run: the root is found if it is needed. If `P` exists,
+   or its parent directory does not, that is exit 3. `bundle.json` is read
+   and checked (`16` §16.3), every listed system is checked to be
+   composable (above) with its downward interfaces listed (`16` §16.4),
+   each listed system's files are read, and the content is loaded.
+3. Composition and the run. Loader failures surface here, in step 2 of
+   the composition.
+4. `P` is created as a new file, and `R` is written to it.
+
+A failure in steps 2 to 4 is exit 3, with stdout empty, and stderr
+carries one message naming the file and the failure, or, for an
+exception, the exception's `ToString()` (§19.3). These are exit 3: a
+missing `B` or `C`; a missing `bundle.json`, or one that breaks `16`
+§16.3; a listed system that this stage does not compose; a listed system
+whose downward interface is not listed; a listed system whose file is
+missing; a content or loader failure; any exception during the run,
+`SimInvariantException` included; and an `--out` path that exists, has no
+parent directory or cannot be written. `P` is created only in step 4, so
+an exit 3 from steps 2 or 3 leaves no file. A write failure in step 4 may
+leave a partial file, and no test depends on it. On success, the exit code
+is 0 and stdout is the `checkpoints written` line of §19.3.
+
+**The fixture (Q-076).** The Phase 0 checkpoints bundle is the directory
+`tests/fixtures/harness/checkpoints-phase0/`, written by T-030's Test
+Author (`07` L8). It holds exactly four files:
+
+- `bundle.json`: `schema_version` 1, `seed` `"12345"`, `systems`
+  `[ "sim.world", "sim.schedule", "sim.flow" ]`;
+- `world.fixture`, `flow.fixture` and `schedule.csv`, which are byte copies
+  of the Phase 0 set's walk graph, flow graph and schedule (§19.2a) at the
+  time they are written.
+
+They are separate files, as the soak set is (§19.2b), and are not required
+to stay equal to the Phase 0 set. Its content is
+`--content tests/fixtures/harness/phase0-content`, which has the same
+files as its manifest. The Phase 1 checkpoints bundle,
+`tests/fixtures/harness/checkpoints-phase1/`, is written by the Phase 1
+stage's Test Author. Its `bundle.json` lists all six Phase 1 systems, with
+seed `"12345"`, and its files are byte copies of the Phase 1 fixtures that
+`16` §16.3 names, plus the walk graph that its flow fixture is validated
+against. It holds no `render_layout.fixture`. Its `airside_rules.json` is
+a byte copy of `data/balance/airside_rules.json`. Its content is
+`--content data`.
 
 ## 19.3 The command line (Q-026)
 
 Exactly these forms. The first five are the ones `ci/run-checks.sh` uses.
 `soak --golden` is the one the nightly workflow uses (Q-057), and
-`soak --out` is used by no CI job. The flags
+`soak --out` is used by no CI job, and neither is `checkpoints` (Q-066),
+which T-031's D7 test and `16` §16.9's procedure use. The flags
 after the subcommand may come in any order. Each is given at most once.
-Each value is a decimal integer without a sign, except `P`, which is a
-path (§19.2b).
+Each value is a decimal integer without a sign, except `B`, `C` and `P`,
+which are paths (§19.2b, §19.2c).
 
 | Invocation | Does | Seed |
 |---|---|---|
@@ -353,6 +530,7 @@ path (§19.2b).
 | `budget --tier max` | §19.4 | 12345 |
 | `soak --days D --golden P` | §19.2b, the run's dump compared with `P` | 12345 |
 | `soak --days D --out P` | §19.2b, the run's dump written to `P` | 12345 |
+| `checkpoints --bundle B --content C --days D --out P` | §19.2c, the bundle's dump written to `P` | the bundle's |
 
 **Usage errors.** A missing subcommand or flag, an unknown subcommand or
 flag, a repeated flag, a value that does not parse, `D = 0`,
@@ -360,25 +538,31 @@ flag, a repeated flag, a value that does not parse, `D = 0`,
 a `--tier` other than `max`, a `soak` with both or neither of `--golden`
 and `--out`, an empty `P`, and a `P` for which `Path.IsPathRooted` is
 true but `Path.IsPathFullyQualified` is false (§19.2b) are all usage
-errors.
+errors. For `checkpoints`, all four flags are required, and `B` and `C`
+are under the same two path rules as `P` (Q-066). It has no `--seed` and
+no `--golden`, so either is an unknown flag. The `D` rules are the same
+as for every other `--days`: `D = 0` and `D × TICKS_PER_SIM_DAY` above
+`uint32` (`D > 298 261`) are usage errors.
 
 **Exit codes.**
 
 | Code | Meaning |
 |---|---|
-| 0 | the gate passed, or `soak --out` wrote its dump |
-| 1 | the gate failed: a divergence, a budget exceeded, or a `soak` dump that differs from its golden |
+| 0 | the gate passed, or `soak --out` or `checkpoints` wrote its dump |
+| 1 | the gate failed: a divergence, a budget exceeded, or a `soak` dump that differs from its golden. `checkpoints` never returns 1 |
 | 2 | usage error. Nothing runs, and stdout stays empty |
-| 3 | harness error: any exception during the run, `SimInvariantException` included, a §19.2a fixture failure before the first run, or a §19.2b path failure (a golden that cannot be read, or an `--out` path that exists, has no parent directory or cannot be written) |
+| 3 | harness error: any exception during the run, `SimInvariantException` included, a §19.2a fixture failure before the first run, a §19.2b path failure (a golden that cannot be read, or an `--out` path that exists, has no parent directory or cannot be written), or any §19.2c failure of steps 2 to 4 (Q-067) |
 
 For codes 2 and 3, stdout is empty, and stderr carries one human-readable
 message. For 3 that is the exception's `ToString()`, or, for a pre-run
 fixture or path failure that is not an exception, a message naming the file
 and the failure. No other exit code is
 returned. There is no "not implemented" code: `determinism`, `saveload`,
-`promotion` and `budget` are T-006's in full, `soak` is T-013's, and a
+`promotion` and `budget` are T-006's in full, `soak` is T-013's,
+`checkpoints` is T-030's, and a
 subcommand that cannot run fails as code 3, never as 0. Until T-013
-merges, `soak` is an unknown subcommand, which is code 2.
+merges, `soak` is an unknown subcommand, which is code 2, and so is
+`checkpoints` until T-030 merges.
 
 **Stdout.** UTF-8 without a BOM, LF, invariant formatting, single spaces.
 There is **exactly one line**, followed by a newline:
@@ -390,7 +574,12 @@ divergence:    FAIL <gate> tick=<t> at=<where>
 budget:        <PASS|FAIL> budget ticks=<n> mean_us=<m> p99_us=<p>
 soak written:  WROTE soak ticks=<n> checkpoints=<k> final=<hex16>
 soak differs:  FAIL soak line=<L>
+checkpoints written: WROTE checkpoints ticks=<n> checkpoints=<k> final=<hex16>
 ```
+
+- In the `checkpoints written` line (Q-067), `<n>` is
+  `D × TICKS_PER_SIM_DAY`, `<k>` is the number of checkpoint lines in the
+  dump, and `final` is the run's final `WorldStateHash()`.
 
 - In the pass line, `<gate>` is `determinism_same_process`,
   `determinism_save_load`, `determinism_promotion` or `soak`. In the
@@ -614,3 +803,72 @@ the result does not. `samples` is unchanged after each call. One more test,
 `test_harness_gates_budget_from_samples_rejects_bad_arguments`, checks the
 §19.4 argument rules: `null`, 14 399 samples, one sample of `-1`, and
 `frequency` 0. The existing `HarnessCliTests` budget tests are unchanged.
+
+## 19.8 Tests of `checkpoints` (Q-074 to Q-076)
+
+Binding on T-030's Test Author. Every test is in `tests/tools/simharness/`
+(Q-041), calls the harness in process through `HarnessCli.Run` (`07` L3),
+and writes no repository file. Each `--out` path is a fully qualified path
+in a fresh temporary directory that the test deletes, as in §19.7. Unless
+stated otherwise, the invocation is `checkpoints --bundle
+tests/fixtures/harness/checkpoints-phase0 --content
+tests/fixtures/harness/phase0-content --days 1 --out <tmp>/a`.
+
+**The checkpoints kit.** The test composes the same bundle itself, from
+the same files and content, through the published surface only:
+`ContentLoaderFactory` over its own `IContentSource` of the content
+directory, `SimHostFactory`, and the world, flow and schedule factories
+and loaders. It follows §19.2c's composition exactly, with the same
+`sourceName`s, registers nothing else, and submits no command. It records
+the checkpoints with its own sink and renders the expected dump with its
+own code, from `16` §16.8's format and the registered systems' `Name`s.
+Unlike §19.6's kit, it has no probe at position 3, because §19.2c
+registers no stand-in.
+
+- `test_checkpoint_dump_format_is_byte_exact`. The invocation exits 0 and
+  prints `WROTE checkpoints ticks=14400 checkpoints=24 final=<hex16>`.
+  `<tmp>/a` is byte-identical to the kit's dump with one
+  `Step(TICKS_PER_SIM_DAY)`. Its first three lines are exactly
+  `airport-sim-checkpoints 1`, `seed 12345` and
+  `systems sim.world sim.schedule sim.flow`. `final` equals the kit's
+  final `WorldStateHash()`. Byte identity with a dump the test renders
+  itself is what checks the format: no BOM, LF only, a final newline,
+  single spaces, decimal ticks and 16 lowercase hexadecimal digits.
+- `test_checkpoints_result_independent_of_step_batch_size` (Q-074). The
+  kit is run three times: 14 400 calls of `Step(1)`; one call of
+  `Step(14 400)`; and `Step(997)` 14 times, then `Step(442)`. The three
+  dumps are byte-identical to each other and to the CLI's `<tmp>/a`. The
+  CLI's batching is pinned (§19.2c), so this proves that the pinned run
+  equals every other batching, with no seam. No CLI flag selects a batch
+  size, and none may be added.
+- `test_checkpoints_subcommand_composes_through_published_factories_only`
+  (Q-075). This is a static check, by reflection over loaded assemblies:
+  - the harness assembly `AirportSim.Tools.SimHarness` references no
+    `AirportSim.App.*` assembly, `AirportSim.App.Host` in particular. So
+    the harness cannot reuse `app.host`'s composer, and D7 compares two
+    independent compositions (`16` §16.4);
+  - no `AirportSim.*` assembly that the harness references carries an
+    `InternalsVisibleToAttribute` (`07` L5).
+
+  Its behavioural half is the byte identity with the kit above, which
+  uses only the published surface. The Reviewer checks that the harness
+  reaches no non-public member by reflection, because a test cannot.
+- `test_checkpoints_rejects_usage_errors` (Q-066). Each of these exits 2
+  with stdout empty, and creates no file: each of the four flags missing
+  in turn; `--days` given twice; `--days 0`; `--days 298262`; `--seed 1`
+  added; `--bundle ""`; and, on Windows only, `--out C:a`.
+- `test_checkpoints_harness_failures_exit_3` (Q-067). Each of these exits
+  3 with stdout empty: an `--out` path that already exists, which is left
+  byte-unchanged; an `--out` path whose parent directory does not exist; a
+  `--bundle` directory that does not exist; and a bundle in a temporary
+  directory, made of the Phase 0 bundle's `bundle.json` and
+  `world.fixture` and `flow.fixture` but no `schedule.csv`. In the last
+  three, no file is created at `P`.
+
+The Phase 1 stage's Test Author adds one test,
+`test_checkpoints_phase1_bundle_composes_every_phase1_system`: over
+`tests/fixtures/harness/checkpoints-phase1` with `--content data` and
+`--days 1`, the `systems` line is `systems sim.world sim.schedule
+sim.airside sim.flow sim.turnaround sim.delay`, and the file is
+byte-identical to a Phase 1 checkpoints kit's dump, built as above with
+all six factories.

@@ -2952,3 +2952,97 @@ Impact:      - **Merged code:** none invalidated. On a tick that
 Signed off:  not required (measurement protocol and a `sim.core`
              invariant that merged code already meets; no balance, scope
              or `01`/`02` change).
+
+## 2026-10-01 — spec/19 (new §19.2c, §19.8; §19.1, §19.2, §19.2a, §19.2b, §19.3); 16 §16.3, §16.4, §16.8, §16.9; INDEX; open-questions — Q-066 to Q-076: the harness `checkpoints` subcommand; Q-077 filed OPEN
+Reason:      T-030's Test Author was blocked by eleven gaps. `16` §16.8
+             pinned only the dump bytes, and `19` never defined the
+             subcommand, while `19` §19.2 and §19.2a contradicted it
+             (no flag selects a composition, and the boarding stand-in
+             is in every CLI composition). The smallest closure is a new
+             §19.2c that applies `16` §16.4's composition rules in the
+             harness's own code, and §19.8 tests with no new seam.
+             - **Grammar (Q-066):** `checkpoints --bundle B --content C
+               --days D --out P`. All four flags required, in any order,
+               once each. `D` follows every other `--days`. `--content`
+               is new (Q-072).
+             - **Output and failures (Q-067):** `WROTE checkpoints
+               ticks=<n> checkpoints=<k> final=<hex16>`, exit 0. It never
+               exits 1. Every later failure is exit 3, in a fixed order,
+               and `P` is created only after the run.
+             - **Paths (Q-068):** §19.2b's rules for `B`, `C` and `P`.
+               `P` is never overwritten. `B` is read by exact name and
+               never listed.
+             - **Composition (Q-069, Q-070, Q-073):** `16` §16.4 steps 1
+               to 4, with no stand-in, no probe, and `sourceName` = the
+               bundle file name on both sides. **Staged:** T-030 composes
+               world, schedule and flow, and any other Phase 1 system is
+               exit 3. A Phase 1 stage harness task adds airside,
+               turnaround and delay, after T-021, T-022 and T-024 and
+               before T-031. `16` §16.3 gets a strict `bundle.json`
+               form, and each system's `Name` is its module name (merged
+               world, schedule and flow already comply).
+             - **Commands (Q-071):** neither side submits any.
+             - **Content (Q-072):** a listed content directory, with the
+               order fixed by `08` §8.11's loader. `16` §16.9 step 1
+               passes `--content data`.
+             - **Batch size (Q-074):** both sides pin `Days` calls of
+               `Step(TICKS_PER_SIM_DAY)`. The test compares a
+               published-surface kit, stepped three other ways, with the
+               CLI's file.
+             - **Factories only (Q-075):** a reflection check. The harness
+               references no `AirportSim.App.*` assembly, and its
+               `AirportSim.*` references carry no `InternalsVisibleTo`.
+             - **Fixtures (Q-076):**
+               `tests/fixtures/harness/checkpoints-phase0/` (T-030's Test
+               Author) and `-phase1/` (the Phase 1 stage's Test Author).
+             - **§16.8 D7:** the Phase 0 bundle now lists `sim.world`
+               (the old "only `sim.schedule` and `sim.flow`" was a load
+               failure by §16.4), and the Phase 1 half uses the
+               `-phase1/` test bundle, because the playtest bundle is the
+               Unity shell's, which follows T-031.
+Raised by:   Q-066 to Q-076 (Test Author / T-030, via coordinator). Q-077
+             was raised by the Architect while answering them.
+Impact:      - **Merged code:** none invalidated. No harness code for
+               `checkpoints` exists. Merged `sim.world`, `sim.schedule`
+               and `sim.flow` already return their module names as
+               `Name`. The §19.2a composition, the soak, the stand-in and
+               every existing subcommand are unchanged, and so are their
+               tests.
+             - **T-030:** its interface line gains `--content <dir>`.
+               The Planner syncs the task file: the grammar, §19.2c and
+               §19.8 as spec sources, the five §19.8 tests, and the Test
+               Author's grant of
+               `tests/fixtures/harness/checkpoints-phase0/**`. Its
+               writable paths stay `tools/SimHarness/**`. Its
+               dependencies are enough for its stage.
+             - **New task (Planner):** the Phase 1 stage of
+               `checkpoints`, writing `tools/SimHarness/**`, with its
+               Test Author writing `tests/fixtures/harness/checkpoints-phase1/**`
+               and one §19.8 test. It depends on T-021, T-022, T-024 and
+               T-030, and T-031 depends on it. This is a pure ordering
+               choice for the Planner. The alternative is to move T-030
+               itself after T-021, T-022 and T-024. The Architect
+               recommends the split, because T-013, T-014 and T-045
+               queue behind T-030 as harness writers, and the nightly
+               soak waits on T-013.
+             - **T-031:** `IHeadlessRun` submits no command and steps one
+               sim-day per `Step`. Its batch-size test composes through
+               `ISimComposer` with no seam. Its D7 test uses the two test
+               bundles, not the playtest bundle. `bundle.json` gets a
+               strict form. T-031 is not started, so nothing is reworked,
+               but the Planner syncs its task file. **T-031 also stays
+               blocked by Q-077 (OPEN):** `07` L3 leaves no test project
+               that can call both sides.
+             - **T-035:** step 1 gains `--content data`. The Planner syncs
+               its task file.
+             - **LOW CONFIDENCE:** the listed content directory (Q-072),
+               and D7 on test bundles rather than the playtest bundle
+               (§16.8).
+             - **Scope:** none added. The subcommand was already planned
+               (D7, T-030). `--content` and the stage split refine it.
+             - **PENDING HUMAN:** none. Ordering is the Planner's, and
+               Q-077 is architecture, recommended (A), left OPEN for its
+               own review.
+Signed off:  not required (harness interface detail and test protocol;
+             no balance, scope or `01`/`02` change). The owner should
+             review the two LOW CONFIDENCE markers.

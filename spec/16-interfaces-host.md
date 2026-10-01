@@ -117,10 +117,21 @@ module's spec pins, or, where no spec pins one, the format its worker
 chose. `airside.fixture` is `12` §12.4's JSON, despite its extension. The
 name says nothing about the format.
 
-- `systems` lists module names (`ISimSystem.Name`). A listed system whose
+- `systems` lists module names (`ISimSystem.Name`). Each Phase 1
+  system's `Name` is exactly its module name from `08` §8.5's registry
+  table, for example `sim.world` (Q-069). A listed system whose
   file is missing is a hard load failure naming the file
   (`07-conventions.md`). A system not listed is not registered: it is skipped,
   never reordered (`08` §8.5). `sim.delay` needs no file of its own.
+- **Strict form (Q-069).** `bundle.json` is read with `08` §8.11's strict
+  JSON subset, so a duplicate, unknown or missing key is a load failure.
+  It has exactly the three keys above, and `schema_version` is `1`.
+  `seed` is a string of 1 to 20 ASCII digits, with no sign and no leading
+  zero except for `"0"` itself, and its value fits in `uint64`. `systems`
+  is a non-empty array of distinct strings, each one of the six Phase 1
+  module names (§16.4). Their order in the array does not matter, since
+  registration follows the registry (§16.4). Anything else is a load
+  failure naming `bundle.json`.
 - The seed is parsed with the invariant culture (`07-conventions.md`,
   "Runtime portability" rule 4).
 - The content is part of the input as well. The composer takes it as
@@ -167,7 +178,9 @@ interface ISimComposer {
 1. Parse `bundle.json`, then
    `SimHostFactory.CreateBuilder({ seed, ContentIndexFactory.Create(content), checkpoints, log })`.
    The log sink is the host's (`08` §8.10).
-2. Load each listed module's file with that module's loader (§16.3).
+2. Load each listed module's file with that module's loader (§16.3). The
+   `sourceName` passed to a loader is exactly the bundle file name, for
+   example `schedule.csv` (Q-073).
 3. Construct the listed systems **in dependency order**, each with
    `builder.Services`, its data, and its downward interfaces or `null`:
    world; flow(world); schedule(flow); airside(schedule, flow,
@@ -189,10 +202,11 @@ Rules:
 - Every checkpoint (`08` §8.9) goes to the given sink.
 - A listed system whose required downward interface is not listed (flow
   without world, airside or turnaround without schedule) is a load failure.
-- `tools.simharness`'s `checkpoints` subcommand (§16.8) uses the **same
-  factories**. It may wire them in its own code, which is what the
-  equivalence test compares, but it must not construct any system another
-  way.
+- `tools.simharness`'s `checkpoints` subcommand (§16.8, `19` §19.2c) uses
+  the **same factories**. It may wire them in its own code, which is what
+  the equivalence test compares, but it must not construct any system
+  another way. It does not reference `app.host` (a test checks this, `19`
+  §19.8), and `app.host` does not reference it.
 
 ---
 
@@ -335,10 +349,16 @@ interface IHeadlessRun {
 ```
 
 `Run` composes the bundle (§16.4) with a sink that records every checkpoint.
-It then calls `Step` until `Days × TICKS_PER_SIM_DAY` ticks have run, with no
-presentation at all (no promotion, no pacer), and writes the dump. The step
+It submits **no command** (Q-071). It then calls `Step(TICKS_PER_SIM_DAY)`
+exactly `Days` times, so that `Days × TICKS_PER_SIM_DAY` ticks run, with no
+presentation at all (no promotion, no pacer), and writes the dump. The
+harness side steps the same way (`19` §19.2c, Q-074). The step
 batch size must not change the result, because the tick is fixed
-(`02-determinism.md` rule 1). A test asserts that anyway.
+(`02-determinism.md` rule 1, `08` §8.2). A test asserts that anyway. It
+has no seam: `test_headless_run_result_independent_of_step_batch_size`
+composes the same bundle with `ISimComposer.Compose`, steps it in other
+batches, renders that run's dump with its own code, and compares it with
+`Run`'s file, as `19` §19.8 does for the harness.
 
 **Checkpoint dump, version 1.** UTF-8 without a BOM, LF line endings, a
 final newline, single spaces, and invariant formatting throughout:
@@ -357,17 +377,44 @@ line names the checkpoint tick and the column names the system
 (`02-determinism.md`, "State hashing").
 
 **The harness side.** `tools.simharness` gains one subcommand,
-`checkpoints --bundle <dir> --days <n> --out <path>`. It composes the bundle
-its own way and writes the same format. The existing subcommands that `ci/`
+`checkpoints --bundle <dir> --content <dir> --days <n> --out <path>`
+(Q-066, Q-072). It composes the bundle in its own code, by §16.4's rules,
+over the content in the `--content` directory, and writes the same format.
+Its grammar, paths, composition, stages and failures are `19` §19.2c and
+§19.3. The existing subcommands that `ci/`
 invokes are unchanged. The harness's `soak` subcommand and its golden,
 `tests/golden/soak-500.hashes`, use this format too (`19` §19.2b, Q-057).
 
 **Equivalence with the harness (D7).**
 `test_host_composition_matches_harness_checkpoints` runs the harness
-`checkpoints` subcommand and `IHeadlessRun` (in-process, on `net8.0`) on the
-same bundle for one sim-day. The dumps must be byte-identical. It runs on two
-bundles: the Phase 1 playtest bundle (§16.3), and a Phase 0 bundle with only
-`sim.schedule` and `sim.flow`, the composition T-009 runs.
+`checkpoints` subcommand and `IHeadlessRun` (on `net8.0`) on the
+same bundle and content for one sim-day. The dumps must be byte-identical.
+It runs on two bundles (Q-069, Q-070, Q-076):
+
+- `tests/fixtures/harness/checkpoints-phase0/`, with content
+  `tests/fixtures/harness/phase0-content/`. It lists `sim.world`,
+  `sim.schedule` and `sim.flow`. That is T-009's composition **without**
+  its boarding stand-in, which only the harness's CLI composition
+  registers (`19` §19.2a). A flow without a world is a load failure
+  (§16.4), so `sim.world` is listed;
+- `tests/fixtures/harness/checkpoints-phase1/`, with content `data/`. It
+  lists all six Phase 1 systems over the Phase 1 fixtures (`19` §19.2c,
+  "The fixture").
+
+The Phase 1 playtest bundle itself (§16.3) belongs to the Unity shell
+task, which follows the headless host, so this test cannot use it. The
+playtest bundle is compared by §16.9's procedure.
+
+> **LOW CONFIDENCE — the D7 bundles.** D7's equivalence is tested on a
+> Phase 1 test bundle, not on the shipped playtest bundle, because the
+> playtest bundle does not exist when the headless host merges. A
+> difference that only the playtest bundle's files expose is caught by
+> §16.9's procedure, by hand, until that gate is adopted.
+
+How this test reaches both the harness and `app.host` in one test
+project, when `07` L3 lets a test project reference only its own module's
+production project, is **OPEN** (Q-077). It does not block the harness
+side.
 
 ---
 
@@ -381,7 +428,9 @@ portability" can pass every one of those gates, for example a tie in
 
 **`determinism_cross_runtime`:**
 
-1. **CoreCLR:** `tools.simharness checkpoints --bundle B --days 10 --out a`.
+1. **CoreCLR:** `tools.simharness checkpoints --bundle B --content data
+   --days 10 --out a` (`19` §19.2c). `data` is the content that the
+   player's build step copies (§16.3).
 2. **Mono:** the Unity player build of `unity/AirportSim/` (Mono backend,
    §16.2), with `B` as its scenario, started as
    `-batchmode -nographics -airportsim-checkpoints 10 b`.
