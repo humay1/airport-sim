@@ -1858,6 +1858,109 @@ Conformance: checked against every `[Trait("Category", "Budget")]` method
                  (`19` §19.6).
 Status:      ANSWERED (spec/03-module-map.md#budget-tests-window-and-arithmetic-q-044-q-045)
 
+<!-- Q-060 to Q-062 (T-021, PR #73) are listed before Q-057 to Q-059, which merged first from PR #70. -->
+
+### Q-060 — `sim.airside`: which flight does a taxi hold's `Blocking` name?
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    An edge is free in the S1 snapshot, but in S6.2 it is granted
+             to another asker, for example a lower `FlightId`. Does the
+             held flight's `AircraftHeldOnTaxiway.Blocking` name the
+             grantee, or is it null? `Blocking` is an event payload, so it
+             is logged and must be pinned exactly.
+Why it matters: The two readings give different payloads, and `sim.delay`
+             copies the value into `DelayExplanation.B`.
+Answer:      Architecture. A hold is only emitted in S6.2, and `Blocking`
+             names the flight that denied the grant. It is never null at
+             Phase 1:
+             - edge occupied in the snapshot: the snapshot occupant, even
+               if it left the edge in S6.1 of the same tick;
+             - edge free in the snapshot: this step's grantee, the queue
+               head or else the lowest-`FlightId` asker, whatever its id
+               relative to the held flight.
+             `Blocking` is fixed at emission. On
+             `AircraftHeldOnTaxiwayReleased`, `Blocking` is always null,
+             as `HeldAt` is on `DepartureHeldForPassengersReleased`,
+             because `sim.delay` reads the opening event and a copy would
+             need new per-hold state. `10` §10.6 and
+             `14` §14.3 now say so. Two new tests in §12.13.
+Status:      ANSWERED (spec/12-interfaces-airside.md#126-the-taxiway-model)
+
+### Q-061 — Does "no allocation in the update path" include event handlers?
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    `03` times a module's `Tick` only, so the phase-3
+             `FlightPlanPublished` handler that appends to the
+             preallocated pending list is outside the allocation test.
+             Does "no allocation in the update path" (`08` §8.6, `03`)
+             cover handlers, and how is it measured?
+Why it matters: Without a rule, a handler can allocate on every
+             publication and every test still passes. `sim.delay` does
+             nearly all of its work in handlers.
+Answer:      Yes, for every module. `03` "How a budget is measured" now
+             defines a module's update path as all of its code that runs
+             in phases 1 to 3: command `Apply`, `Tick`, event handlers,
+             and its queries called by other systems then. Outside it are
+             construction, `Build`, `Validate` at admission, phase 4, and
+             ticks the module's spec allows to allocate (`11` §11.9).
+             Timing is unchanged: "Measured" still bills `Tick` only.
+             An allocation test, with or without the `Budget` trait,
+             asserts exactly 0 with the T-037 meter. It meters either
+             `ISimHost.Step` windows with no
+             checkpoint and no allocating tick, or a direct rig that also
+             delivers the module's commands and events in the same
+             window. Every module with a handler has at least one such
+             test in which each handler runs inside the window, after a
+             warm-up that already ran it. `07` "Performance", `08` §8.6,
+             `09` §9.10, `12` §12.12 and `14` §14.13 point to it, and
+             `13` §13.11 names T-022's test.
+             Revision, after the PR #73 review: the trait is not required.
+             `07` L11 binds timed assertions, and an allocation test times
+             nothing. So `sim.flow`'s existing untagged allocation tests
+             count.
+Status:      ANSWERED (spec/03-module-map.md#how-a-budget-is-measured)
+
+### Q-062 — `sim.airside`: the handed-off arrival's track
+Raised by:   Test Author / T-021, via coordinator, 2026-10-01
+Blocking:    T-021
+Question:    §12.10's reason 1 covers an arrival whose stand was handed
+             off to its departure. But nothing pins that arrival track's
+             phase or `Stand` once the departure pushes back and the
+             stand is reused.
+Why it matters: The track is hashed (§12.12 item 4), drawn by `15` §15.4,
+             and scanned every tick. If it stayed, it would grow without
+             bound and draw a second aircraft at the stand.
+Answer:      Architecture. At the handoff, on either path, the arrival
+             leaves tracked state, as a departure does at `Airborne`. `10`
+             §10.3 rule 2 already treats the handoff as the arrival's exit.
+             The order is: create the departure's track, reassign the
+             occupant, remove the arrival's track, fire the departure's
+             `OnStand`. After that, `TryGetTrack(arrival)` is false and the
+             arrival is not hashed, so it has no phase or stand to pin.
+             `ReassignStand` naming it fails check 1, "not tracked". The
+             "not its stand's occupant" clause stays, but nothing reaches
+             it now. To keep every arrival milestone before the removal,
+             the handshake's handoff never runs before the arrival's
+             `DoorsOpen`. If `DeboardComplete` comes first, the handoff
+             chains right after `DoorsOpen` (§12.8a "Chains"). A
+             rotation-less arrival is never handed off, and stays tracked.
+             Revision, after the PR #73 review:
+             - the wait for `DoorsOpen` keeps a consumed `DeboardComplete`
+               across ticks and checkpoints, together with the `EventRef`
+               that becomes the departure `OnStand`'s `Cause`. That is now
+               explicit state: a new `AircraftTrack.RecordedCause`, set by
+               the phase-3 handler, cleared by the action it waits for,
+               and hashed and saved with the track. The same field holds a
+               `BoardingComplete` for its one-tick wait, which closes the
+               older, unhashed gap. Q-060 still adds no per-hold state,
+               because no behaviour reads a copied blocker;
+             - §12.8a S4, which governs, now runs `DoorsOpen` first, and
+               the handoff only once `DoorsOpen` has fired. §12.3 and
+               the §12.11 table say the same.
+Status:      ANSWERED (spec/12-interfaces-airside.md#the-handed-off-arrival-q-062)
+
+<!-- Q-060 to Q-062 appear above, before Q-057. -->
+
 ### Q-057 — `tools.simharness`: no `soak` subcommand
 Raised by:   Planner, syncing task files (PR #69), via coordinator, 2026-10-01
 Blocking:    T-013

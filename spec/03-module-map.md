@@ -121,6 +121,35 @@ the Test Author and the Verifier:
     it to what exercises the loop, commands and event dispatch.
 - **Allocation:** zero bytes allocated in the update path, asserted as well as
   timed. A GC pause does not appear in a mean and ruins a frame anyway.
+  **The update path (Q-061)** of a module is all of its code that runs in
+  phases 1 to 3 of a tick (`08` §8.5):
+  - its command handlers' `Apply`, in phase 1;
+  - its `Tick`, in phase 2;
+  - its event handlers, in phase 3;
+  - its queries, when another system calls them in those phases.
+
+  This is wider than "Measured" above, which bills time to `Tick` alone.
+  Outside the update path are construction and `Build`, `Validate` at
+  admission, phase 4, and any tick the module's own spec names as allowed
+  to allocate, such as `11` §11.9's day materialisation.
+
+  An **allocation test** is any xUnit test that asserts the update path
+  allocates exactly 0 bytes. It may carry the `Budget` trait, but it need
+  not, because `07` L11 binds timed assertions, and an allocation test
+  times nothing. It uses the test kit's `Allocation.Start()` and
+  `Allocation.Since()` meter (T-037), and it meters one of two things:
+  - `ISimHost.Step` over ticks that contain no checkpoint tick and no tick
+    allowed to allocate. That meters phases 1 to 3 of every registered
+    system, so any probes in the build must allocate nothing;
+  - a direct rig that, inside one metered window, calls `Tick` and also
+    delivers to the module's handlers the commands and events it would
+    receive in phases 1 and 3.
+
+  Every module that registers a command or event handler has at least one
+  allocation test in which each of those handlers runs at least once
+  inside the metered window, after a warm-up that has already run it. A
+  test that meters `Tick` alone satisfies this only for a module that
+  registers no handler.
 
 #### Budget tests: window and arithmetic (Q-044, Q-045)
 

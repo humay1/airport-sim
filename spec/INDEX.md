@@ -82,7 +82,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   one sim-day of per-tick samples, rounded up to µs in `long` arithmetic,
   with mean `Σu ≤ B·n` and nearest-rank p99 `≤ 2B`. Allocation-only tests and
   whole-run gates are exempt, and `sim.core` samples `Step(1)` (Q-044,
-  Q-045)**.
+  Q-045)**; **the update path, which must allocate nothing, is phases 1 to 3:
+  command `Apply`, `Tick`, event handlers and queries called then. Every
+  module with a handler has an allocation test, with or without the
+  `Budget` trait, that runs each handler inside the metered window
+  (Q-061)**.
 - LC: the checkpoint-hashing ceiling (20 ms) and the snapshot-write ceiling
   (250 ms).
 - Read if: planning; any budget test ("How a budget is measured"); the soak
@@ -155,7 +159,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   harness's boarding stand-in at 3 (§8.5, Q-043)**; FIFO event dispatch with
   handlers in registry order (§8.6); **the bus allocates nothing after
   `Build`, with no warm-up, and a type with no subscriber stores nothing
-  (§8.6, Q-035)**; commands admitted only at ≥ 1 tick of
+  (§8.6, Q-035)**, while a handler's allocations count against its
+  subscriber's update path (Q-061); commands admitted only at ≥ 1 tick of
   lead and never re-dated (§8.7); **command kinds, `PlayerId`, the
   little-endian payload table and `ICommandHandler` dispatch, with a pure
   `Validate` at admission and a logged no-op at `Apply` (§8.7, Q-010)**;
@@ -251,7 +256,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
   `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
   `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
-  `ArgumentException` (§12.2, §12.11, §12.12)**.
+  `ArgumentException` (§12.2, §12.11, §12.12)**; **a taxi hold's `Blocking`
+  is the snapshot occupant, or else this step's grantee, and is null on
+  `Released` (§12.6, Q-060)**; **handlers are in the update path and
+  allocate nothing (§12.12, Q-061)**; **a handed-off arrival leaves tracked
+  state at the handoff, which never runs before its `DoorsOpen` (§12.8,
+  §12.8a S4, Q-062)**; **a consumed `DeboardComplete` or `BoardingComplete`
+  awaiting action is hashed state, in `AircraftTrack.RecordedCause` (§12.9,
+  §12.12, Q-062)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8).
