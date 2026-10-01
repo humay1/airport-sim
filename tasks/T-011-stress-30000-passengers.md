@@ -47,8 +47,8 @@ against this task only if the Test Author's budget test fails against
 needed to meet it. Do not add a new fixture or test file under `tests/**`
 yourself, no matter how tempting — file back to the Test Author instead.
 
-**Release order, binding (this cycle):** T-011 depends on T-010, which is
-not yet merged. The Test Author's tests are done
+**Release order, binding (this cycle):** T-011 depends on T-010, which has since
+merged (#56; this task merged as #59). The Test Author's tests are done
 (`test-author/T-011-stress-30k-tests`, `a885923`:
 `tests/sim/flow/StressDay.cs`, `FlowStressBudgetTests.cs`) and **pass the
 budget against `main` today** — mean `0.50`–`0.63` ms, p99 `2.60`–`3.26` ms
@@ -105,7 +105,7 @@ architecture is redesigned here — not later. Escalate to the human owner."
 **Measured on `main`, this cycle** (`test-author/T-011-stress-30k-tests`,
 `a885923`): mean `0.50`–`0.63` ms, p99 `2.60`–`3.26` ms, `0` bytes
 allocated, peak `252` live cohorts. Well inside budget as of today; T-010
-has not yet merged, so this is not the final measurement — see the Release
+had not merged then, so this was not the final measurement — see the Release
 order note above.
 
 ## Done when

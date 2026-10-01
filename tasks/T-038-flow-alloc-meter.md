@@ -89,7 +89,7 @@ how existing zero-allocation assertions are measured.
 
 **Release order, binding:** do not release this task until both of its
 dependencies are actually merged — **T-037 is now merged** (PR #51,
-`7bb30b5`); **T-010** is still not merged. T-010's worker branch
+`7bb30b5`); **T-010** has since merged (#56), as has this task (#60). T-010's worker branch
 (`worker/T-010-cohort-promotion-demotion`) and its Test Author's branch
 (`test-author/T-010-cohort-promotion-tests`) both carry T-010's own
 additions to `tests/sim/flow/**`, and the T-011 Test Author is concurrently

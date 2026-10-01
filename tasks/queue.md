@@ -97,9 +97,9 @@ there are no arriving or transferring passengers, so `Inject` must reject
 unknown-`at`/not-a-`Source`/`count<=0`. Merged T-007 code
 (`src/sim/flow/FlowSystem.cs` `Inject`) implements only the first three
 checks. New task **T-039** (`src/sim/flow/**` only, depends on **T-010**,
-PR #56, open) closes the gap; the Test Author's own test is
-`test_inject_rejects_non_departing_direction` (`09` §9.7). **T-039 must not
-release before T-010 merges** — T-010's own PR also edits
+PR #56, since merged) closes the gap; the Test Author's own test is
+`test_inject_rejects_non_departing_direction` (`09` §9.7). **T-039 was not
+released before T-010 merged (it has since merged, #63)** — T-010's own PR also edits
 `FlowSystem.cs`. See the T-039 row and its release-order entry.
 
 **Architect batch 2–5 (Q-016–Q-022, commit `db78df0` on
@@ -180,7 +180,7 @@ to wave through a failing `determinism` check.
 
 **T-040 note (2026-09-29):** T-040 adds `[Trait("Category", "Slow")]` to six merged tests named in L11a's CHANGELOG entry, writing only `tests/sim/flow/**` and `tests/sim/schedule/**`. It shares no file with T-039 (a new file in `tests/sim/flow/`) or T-009 (`tests/sim/core/**`, `tools/SimHarness/**`); the conflict risk with T-039 is textual and low. T-009's kill-gate test is Slow by rule (a): its PR needs the manual pre-merge `slow-tests` run green on its head before the Integrator merges.
 
-**Harness writers, one at a time (2026-10-01).** T-009, T-013, T-014, T-030 and T-045 all write `tools/SimHarness/**` and `tests/tools/simharness/**`. Order: T-009, then T-013, T-014, T-030 (any order among them, one at a time), then T-045 last. T-045 is last because nothing depends on its rounding (its former spec gap, Q-058, is closed). T-013, T-030 and T-014 tests are all in `tests/tools/simharness/**` (Q-041), so `tests/sim/core/**` is free for T-042.
+**Harness writers, one at a time (2026-10-01).** T-009, T-013, T-014, T-030 and T-045 all write `tools/SimHarness/**` and `tests/tools/simharness/**`. Order, binding: T-009 (merged, #74), then T-030, then T-013 and T-014 one at a time (either order, never together), then T-045 last. T-045 is last because nothing depends on its rounding (its former spec gap, Q-058, is closed). T-013, T-030 and T-014 tests are all in `tests/tools/simharness/**` (Q-041), so `tests/sim/core/**` is free for T-042.
 
 **Post-spec sync (2026-10-01), spec PRs #66, #67 and #68.**
 
@@ -200,6 +200,8 @@ to wave through a failing `determinism` check.
 later. Escalate to the human owner.
 
 ### Release order within Phase 0 (respecting shared-path serialisation)
+
+**Historical (2026-10-01).** Items 1 to 14 below are the original release gates. Every gate through item 12b has resolved: T-007 (#48), T-008 (#54), T-009 (#74), T-010 (#56), T-011 (#59), T-038 (#60), T-039 (#63) and T-040 (#64) are all merged. Only items 13 and 14 still gate anything, and they are superseded by the "Harness writers" paragraph above (T-030, then T-013 and T-014 one at a time, then T-045). Read the present state from the table, not from "open" or "not yet" wording below.
 
 `src/sim/core/**` is a shared write surface across T-001–T-006 and T-026
 (the `sim.core` payload-type task, Phase 1-numbered but same directory), so
@@ -284,29 +286,24 @@ direct `Depends` edge. Order:
     with a still-open T-006).
 12. **T-010, T-011** — releasable once T-007 merges, in `src/sim/flow/**`
     sequence after T-007 (and, since T-023 also lands in that directory,
-    serialised against it too — see Phase 1 below). **T-011's Test
-    Author's tests are done and green against `main`** (see the T-011 note
-    above), **but that PR does not merge before T-010** — both write
-    `tests/sim/flow/**`, and T-010 is still open. T-011's own writable
+    serialised against it too — see Phase 1 below). **RESOLVED:** T-010
+    (#56) and T-011 (#59) have merged. T-011's Test Author's tests were
+    done and green against `main`, and that PR merged after T-010 because
+    both write `tests/sim/flow/**`. T-011's own writable
     paths now include `tests/sim/flow/**` (Q-021's worker restriction is
     unaffected; see T-011's task file), so its Test Author's branch can
     pass the path guard, the same fix T-038 needed for T-036/T-037.
 12a. **T-038** (`tests/sim/flow/**` only, the flow flake fix) — **T-037 has
-    merged** (PR #51, `7bb30b5`); still waiting on **T-010**. Shares
+    merged** (PR #51, `7bb30b5`); T-010 has since merged too. Shares
     `tests/sim/flow/**` with T-010's and T-011's Test Author branches,
-    currently open — release only once T-010 has actually merged, not
-    merely once it is `QUEUED`/`IN_PROGRESS`, to avoid conflicting with
-    tests those branches are still writing.
+    (RESOLVED: T-010 merged #56 and T-038 merged #60.)
 12b. **T-039** (`src/sim/flow/**` only, the `Inject` direction-rejection
-    fix, Q-040) — after **T-010** merges (PR #56, open as of this cycle,
-    also edits `src/sim/flow/FlowSystem.cs`). Release only once T-010 has
-    actually merged, same reasoning as T-038/12a, to avoid a conflicting
-    edit to the same file.
-13. **T-013** (soak fixture) — after T-009 merges. Writes `tools/SimHarness/**`,
+    fix, Q-040) — RESOLVED: T-010 merged (#56) and T-039 merged (#63).
+13. **T-013** (soak fixture) — T-009 has merged; now ordered after T-030 (see "Harness writers"). Writes `tools/SimHarness/**`,
     shared with T-006/T-030/T-014 — do not release concurrently with any of
     them.
-14. **T-014** (harness promotion gate, Q-033 item e) — after T-009 **and**
-    T-010 both merge (amends `HarnessGates.Promotion` to call
+14. **T-014** (harness promotion gate, Q-033 item e) — T-009 and T-010
+    have both merged; now ordered after T-030 (see "Harness writers"). (Amends `HarnessGates.Promotion` to call
     `IFlowSystem.SetPromoted`, needing both `sim.flow` in the CLI
     composition and real promotion behaviour). Writes `tools/SimHarness/**`,
     shared with T-006/T-013/T-030 — do not release concurrently with any of
