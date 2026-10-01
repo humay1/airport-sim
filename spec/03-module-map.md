@@ -158,8 +158,9 @@ which uses the same pass condition. It does **not** bind:
 - a `Budget`-trait test that asserts only allocation (the bullet above), and
   times nothing;
 - a whole-run wall-clock gate, such as T-009's 100-day kill gate (`19`
-  §19.6). That gate makes one `long` measurement against its own limit, and
-  it is not a per-module budget.
+  §19.6) or T-013's soak sizing test (`19` §19.7). That gate makes one
+  `long` measurement against its own limit, and it is not a per-module
+  budget.
 
 Any other timed check that does not follow these rules carries no `Budget`
 trait, and it does not satisfy a budget.
@@ -227,6 +228,13 @@ the max-tier one:
   never shortened, sampled or disabled.
 - The fixture lives at `tests/fixtures/soak/**` and its golden hash at
   `tests/golden/`.
+- **How the harness runs it (Q-057).** `tools/SimHarness soak --days 500
+  --golden tests/golden/soak-500.hashes`, as the nightly workflow invokes
+  it, is `19` §19.2b. It is one run of the `19` §19.2a composer over the
+  soak fixture set, with seed 12345. It passes iff the run's `16` §16.8
+  checkpoint dump is byte-identical to the golden. The golden is that dump,
+  written by `soak --out`. The 0.1 ms bound is checked by a whole-run
+  sizing test (`19` §19.7), not by the gate.
 
 ## Module brief template
 

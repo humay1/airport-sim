@@ -59,8 +59,8 @@ task writes the schema only; the balance file itself
 human owner's to write, not this task's.
 
 **Amended after merge (PR #67, `8cf445c`):** this task merged with the
-one-key schema. The second key is added by **T-046**, which is held for the
-owner because the balance file and the schema must land together.
+one-key schema. The second key was added by the owner in commit `3a00a78`
+(2026-10-01), together with the balance file edit; **T-046** is closed.
 
 A schema's file name must equal its directory's name
 (`04-data-schemas.md`) — `ci/validate-content.py` pairs them by name. This
