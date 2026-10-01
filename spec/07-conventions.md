@@ -114,9 +114,10 @@ enforces "Comments and documentation" mechanically.
 
 **L3. Test project file, byte for byte.** `tests/sim/core/AirportSim.Sim.Core.Tests.csproj`
 is exactly the text below, with the same encoding rules as L2. Every other test
-project in L1 is this file with the two names and the one `ProjectReference`
-changed. A test project references **only** the production project of the
-module it tests, except the integration test project (below). The other modules it sees come through that project's own
+project in L1, except the integration test project (below), is this file
+with the two names and the one `ProjectReference` changed. A test project
+references **only** the production project of the module it tests, with the
+same exception. The other modules it sees come through that project's own
 references. For the harness's test project, that one reference is
 `../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
 tests call the harness in process, through its public surface (`19`
