@@ -33,8 +33,15 @@ namespace AirportSim.Sim.Flow.Tests
         public int Count;
         public bool Recording;
 
+        /// <summary>Most event handlers a shimmed build may register; the per-handler counts are sized by it before Build.</summary>
+        public const int MaxEventHandlers = 16;
+
         public int EventHandlers;
         public int CommandHandlers;
+
+        /// <summary>Per shimmed event handler, in registration order: its event type and its calls so far.</summary>
+        public readonly string[] HandlerEvents = new string[MaxEventHandlers];
+        public readonly long[] HandlerCalls = new long[MaxEventHandlers];
         public long EventCalls;
         public long ApplyCalls;
 
@@ -105,10 +112,18 @@ namespace AirportSim.Sim.Flow.Tests
             public void Subscribe<T>(SystemId subscriber, SimEventHandler<T> handler) where T : struct, ISimEvent
             {
                 FlowClock clock = _clock;
-                clock.EventHandlers++;
+                int index = clock.EventHandlers++;
+                if (index >= MaxEventHandlers)
+                {
+                    throw new InvalidOperationException("more than " + MaxEventHandlers + " sim.flow event handlers; raise FlowClock.MaxEventHandlers");
+                }
+
+                clock.HandlerEvents[index] = typeof(T).Name;
+                long[] calls = clock.HandlerCalls;
                 _real.Subscribe<T>(subscriber, (in EventEnvelope env, in T evt, in TickContext ctx) =>
                 {
                     clock.EventCalls++;
+                    calls[index]++;
                     if (clock.MeterAllocation)
                     {
                         long metered = Allocation.Start();
