@@ -108,5 +108,240 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.False(rig.Airside.TryGetTrack(new FlightId(d1), out _));
             Assert.DoesNotContain(new FlightId(d1), rig.Airside.TrackedFlights());
         }
+
+        /// <summary>What a flight's own sim.airside events say so far, for the phase table.</summary>
+        private sealed class Seen
+        {
+            public ulong? Inbound;
+            public ulong? Landed;
+            public ulong? OffRunway;
+            public ulong? OnStand;
+            public ulong? DoorsOpen;
+            public ulong? TakeoffRoll;
+            public ulong? TaxiHold;
+            public ulong? RunwayHold;
+            public ulong? StandAssigned;
+            public bool WaitedForStand;
+            public ushort? Stand;
+        }
+
+        [Fact]
+        public void test_track_fields_follow_phase_table()
+        {
+            // 12 §12.9 "Track fields by phase" (Q-081), at the end of every tick
+            // of the fixture day: phase0-200.csv on the §12.13 layout, the
+            // fallback (turnaroundRegistered false), a flow fake that holds
+            // departures, hold max 10 minutes, door delay 2. No command, so a
+            // flight's Stand never changes once set.
+            const ulong holdTicks = 10UL * AirConst.TicksPerMinute;
+            var rig = new HostRig(ScheduleFixture.Bytes(), flow: new RuleFlow());
+            var edges = new Dictionary<ushort, TaxiEdgeDef>();
+            foreach (TaxiEdgeDef e in rig.Layout.Edges)
+            {
+                edges.Add(e.Id.Value, e);
+            }
+
+            var seen = new Dictionary<ulong, Seen>();
+            int scanned = 0;
+            var phases = new HashSet<(MovementKind, AircraftLegPhase)>();
+            rig.StepEach(AirConst.TicksPerDay, t =>
+            {
+                for (; scanned < rig.Rec.All.Count; scanned++)
+                {
+                    Rec r = rig.Rec.All[scanned];
+                    if (!r.FromAirside)
+                    {
+                        continue;
+                    }
+
+                    if (!seen.TryGetValue(r.Flight, out Seen? s))
+                    {
+                        s = new Seen();
+                        seen.Add(r.Flight, s);
+                    }
+
+                    switch (r.Payload)
+                    {
+                        case FlightMilestoneReached m:
+                            switch (m.Milestone)
+                            {
+                                case FlightMilestone.InboundAirborne: s.Inbound = r.Tick; break;
+                                case FlightMilestone.Landed: s.Landed = r.Tick; break;
+                                case FlightMilestone.OffRunway: s.OffRunway = r.Tick; break;
+                                case FlightMilestone.OnStand: s.OnStand = r.Tick; break;
+                                case FlightMilestone.DoorsOpen: s.DoorsOpen = r.Tick; break;
+                                case FlightMilestone.TakeoffRoll: s.TakeoffRoll = r.Tick; break;
+                            }
+
+                            break;
+                        case AircraftHeldOnTaxiway _: s.TaxiHold = r.Tick; break;
+                        case AircraftHeldForRunway _: s.RunwayHold = r.Tick; break;
+                        case StandUnavailable _: s.WaitedForStand = true; break;
+                        case StandAssigned _: s.StandAssigned = r.Tick; break;
+                    }
+                }
+
+                foreach (FlightId f in rig.Airside.TrackedFlights())
+                {
+                    Assert.True(rig.Airside.TryGetTrack(f, out AircraftTrack tr));
+                    string why = Check(rig, t, tr, seen[f.Value], edges, holdTicks);
+                    Assert.True(why.Length == 0, "t=" + t.ToString(CultureInfo.InvariantCulture) + ": " + why + " | " + Show.Track(tr));
+                    phases.Add((tr.Kind, tr.Phase));
+                }
+            });
+
+            // The day reached every row of the table.
+            foreach (AircraftLegPhase p in new[] { AircraftLegPhase.AwaitingApproach, AircraftLegPhase.HeldForRunway, AircraftLegPhase.OnRunway, AircraftLegPhase.HeldOnTaxiway, AircraftLegPhase.Taxiing, AircraftLegPhase.OnStand })
+            {
+                Assert.Contains((MovementKind.Arrival, p), phases);
+            }
+
+            foreach (AircraftLegPhase p in new[] { AircraftLegPhase.OnStand, AircraftLegPhase.Taxiing, AircraftLegPhase.HeldForRunway, AircraftLegPhase.OnRunway })
+            {
+                Assert.Contains((MovementKind.Departure, p), phases);
+            }
+        }
+
+        /// <summary>One track against its row; "" when it matches.</summary>
+        private static string Check(HostRig rig, ulong t, in AircraftTrack tr, Seen s, Dictionary<ushort, TaxiEdgeDef> edges, ulong holdTicks)
+        {
+            const ulong none = AirConst.TickUnscheduled;
+            AirportSim.Sim.Schedule.FlightRecord fr = rig.Flight(tr.Flight.Value);
+            bool arrival = tr.Kind == MovementKind.Arrival;
+
+            // Stand: once set, never changed (no command here), and kept after Pushback.
+            if (tr.Stand.HasValue)
+            {
+                if (s.Stand.HasValue && s.Stand.Value != tr.Stand.Value.Value)
+                {
+                    return "Stand changed from " + s.Stand.Value;
+                }
+
+                s.Stand = tr.Stand.Value.Value;
+            }
+            else if (s.Stand.HasValue)
+            {
+                return "Stand cleared after it was set";
+            }
+
+            // Runway: set at the choice and never cleared while tracked (one runway).
+            bool runwayExpected = !(arrival && tr.Phase == AircraftLegPhase.AwaitingApproach) && !(!arrival && tr.Phase == AircraftLegPhase.OnStand);
+            if (runwayExpected != tr.Runway.HasValue || (tr.Runway.HasValue && tr.Runway.Value.Value != FixtureLayout.Runway))
+            {
+                return "Runway should be " + (runwayExpected ? "runway 1" : "unset");
+            }
+
+            // EdgeProgress: Fx.FromRatio(t - PhaseEnteredAt, TraversalTicks) on an edge, Zero off it.
+            if (tr.OnEdge.HasValue)
+            {
+                if (tr.Phase != AircraftLegPhase.Taxiing)
+                {
+                    return "OnEdge set outside Taxiing";
+                }
+
+                uint traversal = edges[tr.OnEdge.Value.Value].TraversalTicks;
+                if (tr.EdgeProgress != Fx.FromRatio((long)(t - tr.PhaseEnteredAt), traversal))
+                {
+                    return "EdgeProgress is not (t - PhaseEnteredAt) / TraversalTicks";
+                }
+
+                if (tr.DueAt != tr.PhaseEnteredAt + traversal || tr.PhaseEnteredAt > t)
+                {
+                    return "Taxiing PhaseEnteredAt/DueAt";
+                }
+            }
+            else if (tr.EdgeProgress != Fx.Zero)
+            {
+                return "EdgeProgress nonzero off an edge";
+            }
+
+            switch (tr.Phase)
+            {
+                case AircraftLegPhase.AwaitingApproach:
+                    if (!arrival || tr.AtNode.HasValue || tr.OnEdge.HasValue || tr.Stand.HasValue)
+                    {
+                        return "AwaitingApproach: off-graph, no stand";
+                    }
+
+                    return tr.PhaseEnteredAt == s.Inbound && tr.DueAt == fr.ScheduledTick ? string.Empty : "AwaitingApproach: entered at InboundAirborne, due at STA";
+                case AircraftLegPhase.HeldForRunway:
+                    if (arrival)
+                    {
+                        if (tr.AtNode.HasValue || tr.OnEdge.HasValue || tr.Stand.HasValue)
+                        {
+                            return "arrival HeldForRunway: off-graph, no stand";
+                        }
+
+                        return tr.PhaseEnteredAt == fr.ScheduledTick && tr.DueAt == none ? string.Empty : "arrival HeldForRunway: entered at STA, DueAt unscheduled";
+                    }
+
+                    if (tr.OnEdge.HasValue || tr.AtNode != new TaxiNodeId(FixtureLayout.Threshold) || !tr.Stand.HasValue)
+                    {
+                        return "departure HeldForRunway: at the threshold, Stand kept";
+                    }
+
+                    return tr.PhaseEnteredAt == s.RunwayHold && tr.DueAt == none ? string.Empty : "departure HeldForRunway: entered when it reached the threshold";
+                case AircraftLegPhase.OnRunway:
+                    if (tr.AtNode.HasValue || tr.OnEdge.HasValue || tr.Stand.HasValue != !arrival)
+                    {
+                        return "OnRunway: off-graph; Stand unset (arrival) or kept (departure)";
+                    }
+
+                    ulong? entered = arrival ? s.Landed : s.TakeoffRoll;
+                    return tr.PhaseEnteredAt == entered && tr.DueAt == entered + FixtureLayout.OccupancyTicks ? string.Empty : "OnRunway: entered at the movement, due after OccupancyTicks";
+                case AircraftLegPhase.HeldOnTaxiway:
+                    if (tr.OnEdge.HasValue || !tr.AtNode.HasValue || tr.DueAt != none)
+                    {
+                        return "HeldOnTaxiway: at a node, DueAt unscheduled";
+                    }
+
+                    if (arrival && !tr.Stand.HasValue)
+                    {
+                        // Waiting for a stand at its threshold.
+                        return tr.AtNode == new TaxiNodeId(FixtureLayout.Threshold) && tr.PhaseEnteredAt == s.OffRunway ? string.Empty : "waiting for a stand: at the threshold since OffRunway";
+                    }
+
+                    // Held for an edge; an arrival that waited for a stand keeps its OffRunway tick.
+                    bool keptOffRunway = arrival && s.WaitedForStand && s.StandAssigned == s.TaxiHold;
+                    ulong? expected = keptOffRunway ? s.OffRunway : s.TaxiHold;
+                    return tr.PhaseEnteredAt == expected ? string.Empty : "held for an edge: PhaseEnteredAt";
+                case AircraftLegPhase.Taxiing:
+                    return tr.OnEdge.HasValue && tr.AtNode.HasValue && tr.Stand.HasValue ? string.Empty : "Taxiing: on an edge with its entry node and Stand";
+                case AircraftLegPhase.OnStand:
+                    if (tr.OnEdge.HasValue || !tr.Stand.HasValue || tr.AtNode != new TaxiNodeId(FixtureLayout.StandNode(tr.Stand.Value.Value)))
+                    {
+                        return "OnStand: at its stand's node";
+                    }
+
+                    if (tr.PhaseEnteredAt != s.OnStand)
+                    {
+                        return "OnStand: entered at its OnStand";
+                    }
+
+                    if (arrival)
+                    {
+                        ulong due;
+                        if (!s.DoorsOpen.HasValue)
+                        {
+                            due = s.OnStand!.Value + AirConst.FixtureDoorDelayTicks;
+                        }
+                        else if (fr.HasRotation)
+                        {
+                            due = s.DoorsOpen.Value + ((ulong)Fx.Floor(fr.MinTurnaround) * AirConst.TicksPerMinute);
+                        }
+                        else
+                        {
+                            due = none;
+                        }
+
+                        return tr.DueAt == due ? string.Empty : "arrival OnStand: DueAt";
+                    }
+
+                    ulong depDue = tr.PassengerHoldSince != none ? tr.PassengerHoldSince + holdTicks : none;
+                    return tr.DueAt == depDue ? string.Empty : "departure OnStand: DueAt is the hold deadline, else unscheduled";
+                default:
+                    return "reserved phase " + tr.Phase + " is never set at Phase 0/1";
+            }
+        }
     }
 }

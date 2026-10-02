@@ -118,11 +118,21 @@ namespace AirportSim.Sim.Airside.Tests
                     Rec? released = Find(mine, x => x.Flight == r.Flight && x.Tick == r.Tick && x.Payload is AircraftHeldForRunwayReleased);
                     return released != null ? new EventRef(released.Id, true) : EventRef.None;
                 case FlightMilestone.OnStand:
-                    if (fr.Kind == MovementKind.Arrival || fr.HasRotation)
+                    if (fr.Kind == MovementKind.Arrival)
                     {
-                        // Arrival: after edges. Handoff in the fallback: MinTurnaround > 0.
-                        Assert.True(fr.Kind == MovementKind.Arrival || Fx.Floor(fr.MinTurnaround) > 0);
+                        // After its edges (TraversalTicks >= 1): None.
                         return EventRef.None;
+                    }
+
+                    if (fr.HasRotation)
+                    {
+                        // Fallback handoff at the arrival's DoorsOpen + the arrival's
+                        // MinTurnaround (12 §12.8): None when that is nonzero, else the
+                        // DoorsOpen just emitted.
+                        FlightRecord arrival = rig.Flight(fr.Rotation.Value);
+                        return Fx.Floor(arrival.MinTurnaround) > 0
+                            ? EventRef.None
+                            : new EventRef(Find(mine, x => x.Flight == arrival.Id.Value && x.Tick == r.Tick && x.IsMilestone(FlightMilestone.DoorsOpen))!.Id, true);
                     }
 
                     // Rotation-less: a new request at its start tick has None; from the

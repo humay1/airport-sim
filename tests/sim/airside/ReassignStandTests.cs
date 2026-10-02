@@ -181,6 +181,49 @@ namespace AirportSim.Sim.Airside.Tests
         }
 
         [Fact]
+        public void test_reassign_stand_before_doors_open_is_no_op_reason_one()
+        {
+            // 12 §12.10 check 1 (Q-083): an arrival whose DoorsOpen has not fired,
+            // PhaseEnteredAt + DoorsOpenDelayMinutes × 10 >= tick, is reason 1.
+            // X1 is OnStand at 3660 with the suite's 2-minute delay, so DoorsOpen
+            // is at 3680: commands applied at the boundaries of 3670 and 3680 are
+            // no-ops; the same command at 3681 moves it.
+            var log = new CapturingLog();
+            var rig = new HostRig(Csv.Of(Csv.Row("X1", "A", "06:00")), log: log);
+            ulong x1 = rig.Id("X1");
+            ulong onStand = AirConst.At(6, 0) + FixtureLayout.OccupancyTicks + FixtureLayout.RouteTicks(FixtureLayout.S1);
+            ulong doorsOpen = onStand + AirConst.FixtureDoorDelayTicks;
+            Assert.True(rig.Submit(Payload.ReassignCommand(onStand + 10UL, x1, FixtureLayout.S4), out _));
+            Assert.True(rig.Submit(Payload.ReassignCommand(doorsOpen, x1, FixtureLayout.S4), out _));
+            Assert.True(rig.Submit(Payload.ReassignCommand(doorsOpen + 1UL, x1, FixtureLayout.S4), out _));
+
+            rig.RunTo(onStand + 10UL);
+            int mark = log.Entries.Count;
+            rig.RunTo(onStand + 11UL);
+            AssertNoOpLogged(log, mark, onStand + 10UL, x1, FixtureLayout.S4, 1L);
+            Assert.Equal(x1, rig.Occupant(FixtureLayout.S1)!.Value.Value);
+
+            mark = log.Entries.Count;
+            rig.RunTo(doorsOpen + 1UL);
+            AssertNoOpLogged(log, mark, doorsOpen, x1, FixtureLayout.S4, 1L);
+            Assert.Equal(x1, rig.Occupant(FixtureLayout.S1)!.Value.Value);
+
+            // DoorsOpen kept the planned tick of the stand reached: planned OnStand + delay.
+            Rec planned = rig.Rec.Milestone(x1, FlightMilestone.OnStand);
+            Rec open = rig.Rec.Milestone(x1, FlightMilestone.DoorsOpen);
+            Assert.Equal(doorsOpen, open.Tick);
+            Assert.Equal(planned.Milestone.PlannedTick + AirConst.FixtureDoorDelayTicks, open.Milestone.PlannedTick);
+
+            // After DoorsOpen the command applies.
+            mark = log.Entries.Count;
+            rig.RunTo(doorsOpen + 3UL);
+            Assert.DoesNotContain(log.Entries.GetRange(mark, log.Entries.Count - mark), e => e.Key == LogKey.AirsideReassignStandNoOp);
+            Assert.Equal(x1, rig.Occupant(FixtureLayout.S4)!.Value.Value);
+            Assert.False(rig.Occupant(FixtureLayout.S1).HasValue);
+            Assert.Equal(FixtureLayout.S4, rig.Track(x1).Stand!.Value.Value);
+        }
+
+        [Fact]
         public void test_reassign_stand_to_incompatible_stand_is_no_op()
         {
             // X2 is heavy; S1 takes medium at most, and is free here.
