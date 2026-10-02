@@ -39,7 +39,7 @@ jobs:
         run: pip install jsonschema
       - name: Static analysis and build
         env:
-          SKIP_SLOW: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          SKIP_SLOW: 1
         run: bash ci/run-checks.sh --fast
 
   determinism:

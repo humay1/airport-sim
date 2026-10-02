@@ -51,6 +51,34 @@ capacity event, not nothing. `06-delay-attribution.md` rule 1 — one parent per
 minute — is only achievable if emitters are honest here, and a cause chain deeper
 than `MAX_ATTRIBUTION_DEPTH` terminates as `root_cause: propagated` (rule 5).
 
+What "knows" means (Q-078), binding on every emitter's interface file:
+
+- **The trigger.** `Cause` names the event whose action made this emission
+  due: in the same tick, the event published earlier whose action this one
+  follows from (a chain); or the event id that the emitter's file keeps in
+  hashed state for it (as `12` §12.9's `RecordedCause`, `OpenHold` and
+  `VacatedBy`). When such an event exists, `Cause` **must** name it.
+- **Not kept just to be named.** An emitter keeps an event id across a tick
+  boundary only where its file says so. When what made an emission due is a
+  schedule time, a duration running out, or an event from an earlier tick
+  that the file does not keep, `Cause` is `EventRef.None`.
+- **Conditions are not triggers.** What stops a subject is named through
+  `Cause` only when an event announces that condition itself, as the
+  capacity event above would. A condition with no event of its own, such
+  as an occupied runway, edge or stand, or a slot that another flight's
+  milestone has just taken, is named in the payload where the catalogue
+  has a field for it (`AircraftHeldOnTaxiway`'s `blocking`), and otherwise
+  not at all. Another subject's event can still be a trigger: the event
+  that frees a resource and so ends a wait, such as `StandAssigned`'s
+  freeing `Pushback` (`12` §12.7) or `TurnaroundJobUnblocked`'s
+  vehicle-freeing `TurnaroundJobCompleted` (`13` §13.5).
+- **Declared per event, by the spec.** These rules bind the emitter's
+  interface file, which declares each event's `Cause` (as `11` §11.5,
+  `12` §12.11 and `13` §13.5, §13.6 do). An implementation follows the
+  file and does not apply the rules itself. An event whose file declares
+  no `Cause` is a root, `EventRef.None`, until the file is amended. That
+  is what merged `sim.flow` does for every event of `09`.
+
 Every event also carries a `LocalisedKey` plus integer/`Fx` parameters where the
 table says "explanation". No literal text ever (`04-data-schemas.md`).
 
@@ -71,6 +99,11 @@ the `sim.core` budget and keep the delay tree bounded.
    across a day boundary — a job that never gets a vehicle stays blocked
    indefinitely by design (`13-interfaces-turnaround.md` §13.4), and
    `sim.delay` carries such intervals forward (`14-interfaces-delay.md` §14.8).
+   A pair is matched by subject and kind, in `EventId` order, and **never by
+   `Cause`** (Q-078). A closing event's `Cause` is whatever its emitter's
+   file declares for that family (`12-interfaces-airside.md` §12.11,
+   `13-interfaces-turnaround.md` §13.5), and it need not be the opening
+   event.
 3. **Emit at the transition tick**, not at the next convenient one. Deferring
    shifts minutes into the wrong interval and quietly corrupts attribution.
 4. **Deduplicate at the source.** Threshold events use hysteresis, declared in

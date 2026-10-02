@@ -349,7 +349,8 @@ same tie-break rule as `06-delay-attribution.md` §10.5 rule 3), and emits
 re-evaluated once per tick, in queue order, and the head is released the first
 tick both constraints pass, emitting `AircraftHeldForRunwayReleased`
 immediately before the milestone (`Cause` set to the hold event —
-`10-events.md` §10.2).
+`10-events.md` §10.2). The hold event's id is kept in the track's
+`OpenHold` from the hold to the release (§12.9, Q-079).
 
 **`queuePosition` (Q-063).** It is **1-based**, and it counts the flight
 itself. It is the runway's hold-queue length just after the flight joins,
@@ -362,9 +363,9 @@ always **0**, because the flight is no longer in the queue. It is the
 field's empty value, as `HeldAt` is null on
 `DepartureHeldForPassengersReleased` (`10` §10.6). `sim.delay` reads the
 position from the opening event (`14` §14.3). Copying the opening value
-onto the release would need per-hold state that `AircraftTrack` does not
-carry, and a released flight is always the head, so its current position
-says nothing.
+onto the release would need per-hold state beyond the opening event's id
+in `OpenHold` (§12.9), and a released flight is always the head, so its
+current position says nothing.
 
 **When a movement is requested (Q-052).** An arrival requests `Landed` in
 its `Tick` at `STA`, exactly. A departure requests `TakeoffRoll` in the
@@ -410,7 +411,8 @@ Single-lane: each `TaxiEdgeDef` holds `TAXI_EDGE_CAPACITY` (1) aircraft. An
 aircraft ready to enter an edge that is occupied **holds**, ordered by ascending
 `EventId` of the hold request, and emits
 `AircraftHeldOnTaxiway { Flight, EdgeId, blocking: <occupant FlightId> }`. On
-release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
+release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event,
+whose id the track keeps in `OpenHold` meanwhile (§12.9, Q-079).
 
 - **The blocker named (Q-060).** A hold is only ever emitted in S6.2
   (§12.8a), while that edge is being decided. Its `Blocking` is the flight
@@ -428,8 +430,8 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
   while the flight waits. `AircraftHeldOnTaxiwayReleased.Blocking` is
   always **null**, as `DepartureHeldForPassengersReleased.HeldAt` is
   (`10` §10.6). `sim.delay` reads the explanation from the opening event
-  (`14` §14.3), and copying the blocker onto the release would need new
-  per-hold state that `AircraftTrack` does not carry.
+  (`14` §14.3), and copying the blocker onto the release would need
+  per-hold state beyond the opening event's id in `OpenHold` (§12.9).
 
 - Entering an edge sets `PhaseEnteredAt = tick`, `DueAt = tick +
   TraversalTicks`. On or after `DueAt` the aircraft advances to the edge's `To`
@@ -516,7 +518,10 @@ release, `AircraftHeldOnTaxiwayReleased`, `Cause` set to the hold event.
     node with `Phase = HeldOnTaxiway`, `AtNode` = that node, `Stand` unset
     and `DueAt = TICK_UNSCHEDULED`. On success it emits `StandAssigned {
     Flight, Stand, occupying: null }`. Its `Cause` is the `Pushback` that
-    freed that stand, or `EventRef.None` if a `ReassignStand` freed it.
+    freed that stand, or `EventRef.None` if a `ReassignStand` freed it. It
+    is read from that stand's `StandState.VacatedBy` (§12.9, Q-079), and it
+    is **never** the `StandUnavailable` (Q-078): the opening event says
+    that the flight waited, and the release says what ended the wait.
     Then it asks for its first edge in S6 of the same tick;
   - a **rotation-less departure** (below). It has no track and emits no
     event while it waits.
@@ -705,7 +710,10 @@ the fallback, go on to its doors-close point.
   because behaviour depends on it: when the handoff runs, and the
   `Cause` of the departure's `OnStand`. Q-060 adds no per-hold state for
   a different reason. There the copied value would only decorate a
-  release payload, and no behaviour reads it.
+  release payload, and no behaviour reads it. Q-079's `OpenHold` and
+  `VacatedBy` are added for the same reason as `RecordedCause`: a later
+  event's `Cause` is output, and it must not depend on whether a save
+  and load happened in between.
 
 - From that action on, `TryGetTrack(arrival)` returns false, and the
   arrival is not in `TrackedFlights()`. It is never tracked again, and
@@ -741,8 +749,9 @@ it:
   heldAt = o.MostHeldAt }`, with `Cause` set to the event that led to the
   doors-close point (`BoardingComplete`, or the departure's `OnStand` in the
   fallback);
-- sets the track's `PassengerHoldSince = tick` and
-  `DueAt = tick + BoardingHoldMaxMinutes × TICKS_PER_SIM_MINUTE`.
+- sets the track's `PassengerHoldSince = tick`,
+  `DueAt = tick + BoardingHoldMaxMinutes × TICKS_PER_SIM_MINUTE`, and
+  `OpenHold` to the hold event (§12.9, Q-079).
 
 On every later `Tick`, each held departure is re-evaluated, in ascending
 `FlightId`. When `TryGetOutstanding` returns false (everyone has reached the
@@ -751,8 +760,9 @@ gate), or when `tick >= DueAt` (the hold has run out), that tick
 
 1. emits `DepartureHeldForPassengersReleased { Flight, outstanding }`, where
    `outstanding` is the count still upstream (0 if everyone arrived), with
-   `Cause` set to the hold event;
-2. clears `PassengerHoldSince` to `TICK_UNSCHEDULED`;
+   `Cause` set to the hold event, read from `OpenHold`;
+2. clears `PassengerHoldSince` to `TICK_UNSCHEDULED` and `OpenHold` to
+   `EventRef.None`;
 3. proceeds exactly as at an unheld doors-close point: `Absorb`,
    `DoorsClosed`, then `Pushback`.
 
@@ -911,10 +921,52 @@ readonly struct AircraftTrack {
   Tick             DueAt               // TICK_UNSCHEDULED (11 §11.2) while holding indefinitely; the hold deadline during a boarding hold
   Tick             PassengerHoldSince  // §12.8 boarding hold start; TICK_UNSCHEDULED unless held
   EventRef         RecordedCause       // §12.8 steps 3 and 5, Q-062; EventRef.None (10 §10.2) unless a consumed event awaits action
+  EventRef         OpenHold            // Q-079: the open runway, taxiway or passenger hold event; EventRef.None unless one is open
 }
 
-readonly struct StandState { StandId Id; FlightId? Occupant }
+readonly struct StandState {
+  StandId  Id
+  FlightId? Occupant
+  EventRef VacatedBy                   // Q-079: the Pushback that last freed the stand; EventRef.None while occupied
+}
 ```
+
+**`OpenHold` (Q-079).** It is the opening event of the flight's open hold
+of one of three families: `AircraftHeldForRunway` (§12.5),
+`AircraftHeldOnTaxiway` (§12.6) and `DepartureHeldForPassengers` (§12.8).
+It is `EventRef.None` otherwise. `StandUnavailable` does not set it,
+because `StandAssigned`'s `Cause` is not the hold (§12.7, Q-078).
+
+- **Set** to the `EventId` that `Publish` returns for the opening event,
+  in the action that emits it.
+- **Read** as the `Cause` of the matching `*Released`, and **cleared** to
+  `EventRef.None` in that same action, after the release is published.
+- A flight has at most one such hold open at a time. The holds of one
+  flight are sequential: a runway hold ends before `Landed` or
+  `TakeoffRoll`, a taxi hold before the edge is entered, and a passenger
+  hold before `DoorsClosed`. A release is never in the tick of its hold
+  (§12.5 S7, §12.6 Q-054, §12.8 "every later `Tick`"), so the field
+  always crosses at least one tick boundary.
+- It is fed in field order (§12.12 item 4), encoded exactly as
+  `RecordedCause` below.
+
+**`VacatedBy` (Q-079).** It is the `Pushback` milestone event that freed
+the stand, from that `Pushback` until the stand is next occupied.
+
+- **Set** to the `EventId` that `Publish` returns for the `Pushback`, in
+  the action that vacates the stand (§12.8a S4, or a chain).
+- **Cleared** to `EventRef.None` whenever `Occupant` is set, by any path:
+  an S5 grant, a rotation-less departure's claim, or `ReassignStand`'s new
+  stand. An entry of the stand-wait queue that gets the stand reads it
+  first, as the `Cause` of its `StandAssigned` (arrival) or of its
+  `OnStand` (rotation-less departure), §12.11. A new request in S5 does
+  not read it.
+- A stand freed by `ReassignStand` keeps `EventRef.None`, because an
+  occupied stand always has `EventRef.None`. At construction every stand
+  has `EventRef.None`. The handoff (§12.8) never frees a stand, so it does
+  not touch the field.
+- So `VacatedBy.HasValue` implies `Occupant` unset. It is fed after
+  `Occupant` (§12.12 item 3), encoded exactly as `RecordedCause` below.
 
 **`RecordedCause` (Q-062).** It is the consumed `sim.turnaround` event that
 a phase-3 handler recorded and that has not been acted on yet. On an
@@ -943,7 +995,17 @@ fixture a second time on its own.
 `AircraftLegPhase` is reused across both legs of a rotation: the sequence for
 an `Arrival` runs left to right through `OnStand`, and a handed-off arrival
 then leaves tracked state (§12.8, Q-062); a `Departure` resumes from
-`OnStand` (set directly, no approach) through `Departed`. There is no mutating
+`OnStand` (set directly, no approach) through `OnRunway`, and leaves tracked
+state at `Airborne` (§12.6).
+
+**Reserved phases.** `AwaitingPushbackClearance` and `Departed` are
+**never** set at Phase 0/1. `Pushback` follows `DoorsClosed` at once, with
+no clearance step (§12.3), and a departure's track is removed at
+`Airborne` rather than kept as `Departed`. Both values stay in the enum, in
+place, so that a later amendment (an ATC pushback clearance, or keeping a
+departed track) changes no ordinal. A track in either phase is a bug.
+
+There is no mutating
 entry point besides the one command in §12.10 — everything else is
 tick-driven.
 
@@ -1005,6 +1067,72 @@ Full field lists in `10-events.md` §10.6 except where this file adds a
 | `AircraftHeldOnTaxiway` / `AircraftHeldOnTaxiwayReleased` | §12.6 |
 | `StandUnavailable` / `StandAssigned` | §12.7 |
 | `DepartureHeldForPassengers` / `DepartureHeldForPassengersReleased` | §12.8, the boarding hold |
+
+### The `Cause` of each emitted event (Q-078)
+
+Binding. Every event `sim.airside` publishes has the `Cause` given here
+and no other. The table applies `10` §10.2's rule for what an emitter knows: `Cause`
+is the event that made the emission due, if it was published earlier in
+the same tick or is kept in hashed state, and `EventRef.None` otherwise.
+"None" is `EventRef.None`. "Just emitted" means published earlier in the
+same tick by the action or step (§12.8a) this event follows from, for the
+same flight or, at a handoff, for its arrival. Every `Cause` is either
+published in the same tick or read from hashed state: from
+`RecordedCause` or `OpenHold` (§12.12 item 4), or from `VacatedBy` (item
+3). Nothing else is kept across ticks for it.
+
+| Event | `Cause` |
+|---|---|
+| `AircraftHeldForRunway` | None |
+| `AircraftHeldForRunwayReleased` | the hold event, from `OpenHold` |
+| `AircraftHeldOnTaxiway` | for the flight's first edge request after it was placed at a node in this tick, the event that placed it, just emitted: its `Pushback` (departure), its `StandAssigned` (arrival from the stand-wait queue) or its `OffRunway` (arrival granted a stand in S5 of its `OffRunway` tick). None for a request at a node the flight reached along its route |
+| `AircraftHeldOnTaxiwayReleased` | the hold event, from `OpenHold` |
+| `StandUnavailable` | the arrival's `OffRunway`, just emitted (S3, then S5 of the same tick) |
+| `StandAssigned` | the stand's `VacatedBy`: the freeing `Pushback`, or None if a `ReassignStand` freed it (§12.7) |
+| `DepartureHeldForPassengers` | the event that led to the doors-close point: the `BoardingComplete` from `RecordedCause` (handshake), or the departure's `OnStand`, just emitted (fallback) (§12.8) |
+| `DepartureHeldForPassengersReleased` | the hold event, from `OpenHold` |
+| `InboundAirborne`, `OffRunway`, arrival `OnStand`, `Airborne` | None |
+| `DoorsOpen` | the arrival's `OnStand`, just emitted, when `DoorsOpenDelayMinutes = 0` (§12.8a "Chains"). Otherwise None |
+| `Landed`, `TakeoffRoll` | the `AircraftHeldForRunwayReleased` just emitted if the movement was held, else None |
+| departure `OnStand`, handoff | handshake: the arrival's `RecordedCause`, the `DeboardComplete` (§12.8 step 3), also when the handoff chains right after a `DoorsOpen`. Fallback: the arrival's `DoorsOpen`, just emitted, when `MinTurnaround = 0`; otherwise None |
+| departure `OnStand`, rotation-less | from the stand-wait queue: the stand's `VacatedBy`, read before the claim clears it (the freeing `Pushback`, or None after a `ReassignStand`). As a new request at its start tick: None |
+| `DoorsClosed` | the `DepartureHeldForPassengersReleased` just emitted after a boarding hold. Otherwise what `DepartureHeldForPassengers` would have had: the `BoardingComplete` from `RecordedCause`, read before the doors-close point clears it, or the departure's `OnStand`, just emitted, in the fallback |
+| `Pushback` | the `DoorsClosed` just emitted |
+
+- **Closing events.** Only the three hold families above close with
+  `Cause` = their opening event. The stand family closes with the event
+  that ended the wait. Pairing never uses `Cause`, either here, in a test
+  of pairing, or in `sim.delay` (`14` §14.5): a pair is the opening and the
+  next closing event of the same kind for the same flight, in `EventId`
+  order (`10` §10.3 rule 2).
+- **None means nothing in hand.** Each None row is a schedule time
+  (`InboundAirborne`, an unheld `Landed`, a rotation-less departure's
+  start tick), a duration of at least one tick (`OffRunway` and `Airborne`
+  after `OccupancyTicks ≥ 1`, an arrival's `OnStand` and an unheld
+  `TakeoffRoll` after edges of `TraversalTicks ≥ 1`, a nonzero door delay
+  or `MinTurnaround`), or a stand freed by a command. The earlier event is
+  then from an earlier tick, and keeping its id only to name it is what
+  `10` §10.2 rules out. Where a zero delay makes the same action run in
+  the same turn (§12.8a "Chains"), the row names the event instead.
+- **Opening holds name their trigger, not their blocker.**
+  `AircraftHeldForRunway` is requested at `STA` or on reaching the
+  threshold, neither of which is an event, so it is None. The occupied
+  runway, edge or stand, or the slot another flight has just taken, is a
+  condition (`10` §10.2): `AircraftHeldOnTaxiway` names it in `blocking`,
+  and the others do not name it.
+- **No capacity event exists yet.** `10` §10.2's example, a runway hold
+  that references a declared-capacity event, names an event the
+  catalogue does not have at Phase 0/1. `AircraftHeldForRunway` names
+  such an event once it is added by amendment.
+
+> **LOW CONFIDENCE — not keeping an earlier tick's cause.** A milestone
+> that a nonzero duration made due (`OffRunway`, `DoorsOpen`, `Airborne`, a
+> fallback handoff) could name the milestone that started the duration, if
+> its id were kept across ticks. That is not done: it would add a field
+> per duration, and nothing reads such a `Cause` at Phase 0/1, because
+> `sim.delay` does not follow `Cause` (`14` §14.7). When `sim.delay` starts
+> following `Cause` chains, this table and `10` §10.2's "Not kept just to
+> be named" are the first things to revisit.
 
 **Consumed:**
 
@@ -1101,7 +1229,8 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
    in queue order (each entry's `FlightId`).
 2. Taxi edge state, ascending `TaxiEdgeId`: `Occupant`, hold queue in queue
    order.
-3. Stand state, ascending `StandId`: `Occupant`. Then the stand-wait queue
+3. Stand state, ascending `StandId`: `Occupant`, then `VacatedBy`
+   (§12.9, Q-079). Then the stand-wait queue
    (§12.7, Q-050), in queue order: each entry's `FlightId`, preceded by the
    queue length.
 4. Tracked aircraft, ascending `FlightId`: every field of `AircraftTrack`.
@@ -1110,20 +1239,25 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
    `OnStand` to `Airborne` for a departure. The fields include
    `RecordedCause`, encoded as §12.9 says, so a consumed
    `DeboardComplete` or `BoardingComplete` awaiting action is hashed and
-   saved (Q-062).
+   saved (Q-062). The last field is `OpenHold`, encoded the same way, so
+   an open hold's event id is hashed and saved (Q-079).
 5. The pending list (§12.11): its length, then each entry's `FlightId`, in
    ascending `FlightId`.
 
 §12.8a's S1 snapshot leaves no state across ticks, so nothing more is
 hashed for it. The phase-3 handlers keep nothing outside these five items:
 they write only to the pending list (item 5) and to `RecordedCause` (item
-4).
+4). `Tick` keeps nothing outside them either (Q-079). In particular, every
+event id it later uses as a `Cause` (§12.11 "The `Cause` of each emitted
+event") is in `RecordedCause` or `OpenHold` (item 4) or in `VacatedBy`
+(item 3), and never in a side table, a queue entry or a field of the
+system object.
 
 Not hashed, because derived: `FreeStands()`, `RunwayQueueLength()`, the
 precomputed routing table (§12.4, fixed at load and part of the loaded layout,
 not runtime state). `AirsideRules` is load-time data and not hashed either.
-The hold state is hashed through `AircraftTrack.PassengerHoldSince` and
-`DueAt`.
+The boarding-hold state is hashed through `AircraftTrack.PassengerHoldSince`,
+`DueAt` and `OpenHold`.
 
 **RNG: none at Phase 0/1.** Every choice in this file (stand assignment,
 routing, hold-queue order) is a declared deterministic rule; the module
@@ -1272,6 +1406,17 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_runway_hold_queue_position_is_one_based_and_release_carries_zero`
   (Q-063): the first flight held on an empty queue has `queuePosition` 1,
   and the next has 2. Each release carries 0.
+- `test_airside_event_causes_follow_cause_table` (Q-078): over the
+  fixture day, every event `sim.airside` publishes has the `Cause` of
+  §12.11 "The `Cause` of each emitted event". Each `StandAssigned` names
+  the `Pushback` that freed its stand, and is never caused by its
+  `StandUnavailable`.
+- `test_open_hold_and_vacated_by_track_cross_tick_causes` (Q-079): from a
+  runway hold, a taxi hold and a boarding hold to their releases, the
+  track's `OpenHold` names the hold event, and it is `EventRef.None`
+  before and after. From a `Pushback` to the stand's next assignment, the
+  stand's `VacatedBy` names that `Pushback`, and it is `EventRef.None`
+  while the stand is occupied.
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task

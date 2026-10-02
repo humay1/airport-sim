@@ -215,7 +215,9 @@ An interval is opened by one event and closed by its pair (`10-events.md`
 §10.3 rule 2). `sim.delay` keys intervals as below and never pairs by `Cause`
 (the emitters' `Cause` conventions differ between families, e.g.
 `StandAssigned`'s `Cause` is the freeing `Pushback`, not the
-`StandUnavailable`).
+`StandUnavailable`: `12-interfaces-airside.md` §12.11, Q-078). Nothing in
+this file reads a closing event's `Cause`, so no family's convention
+changes an interval.
 
 | Family | Opens | Closes | Key | Category | `DelaySource` |
 |---|---|---|---|---|---|
