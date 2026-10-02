@@ -15,11 +15,16 @@ namespace AirportSim.Tools.SimHarness.Tests
     /// T-013. The harness `soak` subcommand, in process through HarnessCli.Run,
     /// against 19 §19.2b, §19.3 and §19.7 (Q-057), 16 §16.8's dump format and
     /// 03 "The soak fixture". Every soak path is fully qualified, in a fresh
-    /// temporary directory that the test deletes, except one repository-relative
-    /// --golden that only reads a fixture. No test writes a repository file, and
-    /// none runs 500 days. Every test makes at least one CLI run that must
-    /// succeed, so none passes against a harness without `soak` (an unknown
-    /// subcommand is exit 2, §19.3) or against one that returns a fixed code.
+    /// temporary directory that the test deletes (§19.7). No test writes a
+    /// repository file, and none runs 500 days. Every test depends on a
+    /// `soak --out` run that must exit 0 and write a dump equal to the soak kit's
+    /// (<see cref="AssertMatchesKit"/>): its own, or the one-day dump that the
+    /// class makes once and shares (<see cref="SharedDay"/>). So none passes
+    /// against a harness without `soak` (an unknown subcommand is exit 2,
+    /// §19.3), one that returns a fixed code, or one that writes an empty or
+    /// constant file. The relative-path rule of §19.2b is not tested here, since
+    /// §19.7 allows only fully qualified paths. The nightly job's own
+    /// `--golden tests/golden/soak-500.hashes` exercises it.
     /// </summary>
     public sealed class SoakTests
     {
@@ -33,11 +38,27 @@ namespace AirportSim.Tools.SimHarness.Tests
         /// <summary>A checkpoint line of the soak composition: tick, world hash, four system hashes (16 §16.8).</summary>
         private static readonly Regex CheckpointLine = new Regex("^(0|[1-9][0-9]*)( [0-9a-f]{16}){5}$");
 
+        private static DayDump? _sharedDay;
+
         private readonly ITestOutputHelper _output;
 
         public SoakTests(ITestOutputHelper output)
         {
             _output = output;
+        }
+
+        /// <summary>A `soak --days 1 --out` dump and the final hash of its WROTE line.</summary>
+        private sealed class DayDump
+        {
+            public DayDump(byte[] bytes, string final)
+            {
+                Bytes = bytes;
+                Final = final;
+            }
+
+            public byte[] Bytes { get; }
+
+            public string Final { get; }
         }
 
         private static string[] SoakOut(string days, string path)
@@ -50,7 +71,11 @@ namespace AirportSim.Tools.SimHarness.Tests
             return new[] { "soak", "--days", days, "--golden", path };
         }
 
-        /// <summary>`soak --days 1 --out <paramref name="path"/>`, which must write its dump. Returns its final hash.</summary>
+        /// <summary>
+        /// `soak --days 1 --out <paramref name="path"/>`, which must exit 0, print
+        /// the WROTE line and write a dump equal to the soak kit's. Returns its
+        /// final hash.
+        /// </summary>
         private static string WriteDay(string path)
         {
             CliResult r = Cli(SoakOut("1", path));
@@ -58,7 +83,29 @@ namespace AirportSim.Tools.SimHarness.Tests
             Match m = WroteDay.Match(r.Stdout);
             Assert.True(m.Success, "soak --days 1 --out printed '" + r.Stdout + "'");
             Assert.True(File.Exists(path), "soak --days 1 --out exited 0 but wrote no " + path);
-            return m.Groups[1].Value;
+            string final = m.Groups[1].Value;
+            AssertMatchesKit(File.ReadAllBytes(path), final);
+            return final;
+        }
+
+        /// <summary>
+        /// One `soak --days 1 --out` run, made by the first test that needs it in a
+        /// temporary directory that is deleted at once, and checked by
+        /// <see cref="WriteDay"/>. The run is deterministic and the assembly runs
+        /// its tests one at a time, so later tests reuse its bytes. If it fails, it
+        /// is not kept, and every test that needs it fails.
+        /// </summary>
+        private static DayDump SharedDay()
+        {
+            if (_sharedDay == null)
+            {
+                using var tmp = new CheckpointsKit.TempDir();
+                string a = tmp.File("a");
+                string final = WriteDay(a);
+                _sharedDay = new DayDump(File.ReadAllBytes(a), final);
+            }
+
+            return _sharedDay;
         }
 
         private static string[] DumpLines(byte[] dump)
@@ -68,6 +115,56 @@ namespace AirportSim.Tools.SimHarness.Tests
             Assert.DoesNotContain("\r", text);
             Assert.EndsWith("\n", text);
             return text.Substring(0, text.Length - 1).Split('\n');
+        }
+
+        /// <summary>
+        /// §19.7 "Equivalence" and §19.2b "The dump". <paramref name="final"/>
+        /// equals HarnessGates.FinalHash of the soak kit, seed 12345, 14 400 ticks.
+        /// <paramref name="dump"/> is a 16 §16.8 dump: the version line,
+        /// `seed 12345`, a systems line with four names, and 24 checkpoint lines at
+        /// 0, 600, ..., 13 800, in which the stand-in (system 3) hashes 0
+        /// (§19.2a). Every line equals the kit's own one-day dump (built by the
+        /// test with the same host, composer, NoOp script and 16 §16.8
+        /// rendering), except the stand-in's Name in the systems line. That Name is
+        /// whatever T-009 merged (§19.2a), which the spec does not fix, so only its
+        /// position is checked.
+        /// </summary>
+        private static void AssertMatchesKit(byte[] dump, string final)
+        {
+            string gate = SoakKit.DayFinalHash();
+            SoakKit.KitDump kit = SoakKit.DayDump();
+            Assert.Equal(DayCheckpoints, kit.Checkpoints);
+            Assert.Equal(gate, Hex16(kit.Final));
+            Assert.Equal(gate, final);
+
+            string[] lines = DumpLines(dump);
+            Assert.Equal(HeaderLines + DayCheckpoints, lines.Length);
+            Assert.Equal(kit.Lines.Length, lines.Length);
+            Assert.Equal("airport-sim-checkpoints 1", lines[0]);
+            Assert.Equal("seed 12345", lines[1]);
+
+            string[] expected = kit.Lines[2].Split(' ');
+            string[] actual = lines[2].Split(' ');
+            Assert.Equal(5, actual.Length);
+            Assert.All(actual, name => Assert.NotEmpty(name));
+            for (int j = 0; j < expected.Length; j++)
+            {
+                if (j != 3)
+                {
+                    Assert.Equal(expected[j], actual[j]);
+                }
+            }
+
+            for (int i = 0; i < DayCheckpoints; i++)
+            {
+                string line = lines[HeaderLines + i];
+                Assert.Matches(CheckpointLine, line);
+                string[] cols = line.Split(' ');
+                Assert.Equal((i * 600).ToString(System.Globalization.CultureInfo.InvariantCulture), cols[0]);
+                Assert.Equal("0000000000000000", cols[4]);
+                Assert.True(kit.Lines[HeaderLines + i] == line,
+                    "line " + (HeaderLines + i + 1) + ": expected '" + kit.Lines[HeaderLines + i] + "', got '" + line + "'");
+            }
         }
 
         private static void AssertBytesEqual(byte[] expected, byte[] actual, string what)
@@ -88,11 +185,10 @@ namespace AirportSim.Tools.SimHarness.Tests
         // ------------------------------------------------------------ round trip
 
         /// <summary>
-        /// §19.7 "Round trip". `--out` writes a 16 §16.8 dump of one sim-day:
-        /// the version line, `seed 12345`, a systems line with the four registered
-        /// systems in registry order (§19.2a), and 24 checkpoint lines. `--golden`
-        /// on that file passes with the same counts and final hash, and reads the
-        /// golden without changing it.
+        /// §19.7 "Round trip". `--out` writes the one-day dump, which equals the
+        /// soak kit's (<see cref="AssertMatchesKit"/>). `--golden` on that file
+        /// passes with the same counts and final hash, and leaves the golden
+        /// unchanged.
         /// </summary>
         [Fact]
         public void test_soak_out_then_golden_round_trip_passes()
@@ -102,26 +198,6 @@ namespace AirportSim.Tools.SimHarness.Tests
 
             string final = WriteDay(a);
             byte[] dump = File.ReadAllBytes(a);
-            string[] lines = DumpLines(dump);
-
-            Assert.Equal(HeaderLines + DayCheckpoints, lines.Length);
-            Assert.Equal("airport-sim-checkpoints 1", lines[0]);
-            Assert.Equal("seed 12345", lines[1]);
-            string[] systems = lines[2].Split(' ');
-            Assert.Equal("systems", systems[0]);
-            Assert.Equal(5, systems.Length);
-            Assert.All(systems, name => Assert.NotEmpty(name));
-
-            for (int i = 0; i < DayCheckpoints; i++)
-            {
-                string line = lines[HeaderLines + i];
-                Assert.Matches(CheckpointLine, line);
-                string[] cols = line.Split(' ');
-                Assert.Equal((i * 600).ToString(System.Globalization.CultureInfo.InvariantCulture), cols[0]);
-
-                // §19.2a: the boarding stand-in, system 3, hashes 0.
-                Assert.Equal("0000000000000000", cols[4]);
-            }
 
             CliResult r = Cli(SoakGolden("1", a));
             Assert.True(r.Exit == 0, "soak --golden on its own dump: exit " + r.Exit + ", stdout '" + r.Stdout + "', stderr: " + r.Stderr);
@@ -135,55 +211,25 @@ namespace AirportSim.Tools.SimHarness.Tests
         /// <summary>
         /// §19.7 "Equivalence": the `--out` run's final equals HarnessGates.FinalHash
         /// of the soak kit, seed 12345, 14 400 ticks, which ties the soak kit to the
-        /// CLI. The dump itself equals the kit's own one-day dump (§19.2b "The run"
-        /// and "The dump"), built by the test with the same host, composer, NoOp
-        /// script and 16 §16.8 rendering, on every line, except for the stand-in's
-        /// Name in the systems line. That Name is whatever T-009 merged (§19.2a),
-        /// which the spec does not fix, so only its position is checked.
+        /// CLI, and the dump equals the kit's line by line
+        /// (<see cref="AssertMatchesKit"/>, applied by <see cref="WriteDay"/> to the
+        /// shared run and here once more, explicitly).
         /// </summary>
         [Fact]
         public void test_soak_dump_matches_soak_kit_and_final_hash_gate()
         {
-            string gate = SoakKit.FinalHash(TicksPerDay);
-            SoakKit.KitDump kit = SoakKit.RunDump(1);
-            Assert.Equal(DayCheckpoints, kit.Checkpoints);
-            Assert.Equal(gate, Hex16(kit.Final));
-
-            using var tmp = new CheckpointsKit.TempDir();
-            string a = tmp.File("a");
-            string final = WriteDay(a);
-            Assert.Equal(gate, final);
-
-            string[] lines = DumpLines(File.ReadAllBytes(a));
-            Assert.Equal(kit.Lines.Length, lines.Length);
-            for (int i = 0; i < lines.Length; i++)
-            {
-                if (i == 2)
-                {
-                    string[] expected = kit.Lines[2].Split(' ');
-                    string[] actual = lines[2].Split(' ');
-                    Assert.Equal(expected.Length, actual.Length);
-                    for (int j = 0; j < expected.Length; j++)
-                    {
-                        if (j != 3)
-                        {
-                            Assert.Equal(expected[j], actual[j]);
-                        }
-                    }
-
-                    continue;
-                }
-
-                Assert.True(kit.Lines[i] == lines[i], "line " + (i + 1) + ": expected '" + kit.Lines[i] + "', got '" + lines[i] + "'");
-            }
+            DayDump day = SharedDay();
+            Assert.Equal(SoakKit.DayFinalHash(), day.Final);
+            AssertMatchesKit(day.Bytes, day.Final);
         }
 
         // ------------------------------------------------------------ reproducible
 
         /// <summary>
         /// §19.7 "Reproducible": two `--out` runs of one day, to two files, are
-        /// byte-identical. The second gives its flags in the other order, which
-        /// §19.3 allows.
+        /// byte-identical, and each equals the soak kit's dump
+        /// (<see cref="AssertMatchesKit"/>), so a writer of a constant file fails.
+        /// The second gives its flags in the other order, which §19.3 allows.
         /// </summary>
         [Fact]
         public void test_soak_two_out_runs_write_byte_identical_dumps()
@@ -197,6 +243,8 @@ namespace AirportSim.Tools.SimHarness.Tests
             CliResult r = Cli("soak", "--out", b, "--days", "1");
             Assert.True(r.Exit == 0, "soak --out b --days 1: exit " + r.Exit + ", stderr: " + r.Stderr);
             Assert.Equal("WROTE soak ticks=14400 checkpoints=24 final=" + finalA + "\n", r.Stdout);
+            Assert.True(File.Exists(b), "soak --out b --days 1 exited 0 but wrote no " + b);
+            AssertMatchesKit(File.ReadAllBytes(b), finalA);
 
             AssertBytesEqual(File.ReadAllBytes(a), File.ReadAllBytes(b), "the two dumps");
             AssertEntries(tmp.Path, "a", "b");
@@ -207,7 +255,8 @@ namespace AirportSim.Tools.SimHarness.Tests
         /// <summary>
         /// §19.7 "Differs", with §19.2b's rule: `L` is 1 plus the LF bytes of the
         /// run's dump `R` before the first differing offset `o`, or before the
-        /// shorter length when one is a prefix of the other.
+        /// shorter length when one is a prefix of the other. The goldens are made
+        /// from the shared one-day dump, which is `R`.
         /// <list type="bullet">
         /// <item>One hex digit changed on line 14, a checkpoint line: `o` is on
         /// line 14, so `L` = 14.</item>
@@ -224,12 +273,11 @@ namespace AirportSim.Tools.SimHarness.Tests
         [Fact]
         public void test_soak_golden_differing_reports_first_differing_line()
         {
-            using var tmp = new CheckpointsKit.TempDir();
-            string a = tmp.File("a");
-            WriteDay(a);
-            byte[] dump = File.ReadAllBytes(a);
+            byte[] dump = SharedDay().Bytes;
             string[] lines = DumpLines(dump);
             Assert.Equal(HeaderLines + DayCheckpoints, lines.Length);
+
+            using var tmp = new CheckpointsKit.TempDir();
 
             // Line 14, its last character: the last system hash's last hex digit.
             var changed = (string[])lines.Clone();
@@ -259,40 +307,20 @@ namespace AirportSim.Tools.SimHarness.Tests
         // ------------------------------------------------------------ paths
 
         /// <summary>
-        /// §19.2b "Paths": a `P` that is not fully qualified is repository-relative,
-        /// joined to the AirportSim.sln root, never to the working directory. The
-        /// golden named here is the soak schedule fixture, which is readable and is
-        /// not a dump. It differs at offset 0 (`f` against `a`), so `L` = 1 and the
-        /// exit is 1. A harness that resolved it against the working directory, the
-        /// test's bin directory, would not find it, which is exit 3.
-        /// </summary>
-        [Fact]
-        public void test_soak_relative_golden_resolves_from_repository_root()
-        {
-            byte[] before = KillGateKit.Fixture(SoakKit.SchedulePath);
-            Assert.Equal((byte)'f', before[0]);
-
-            CliResult r = Cli(SoakGolden("1", SoakKit.SchedulePath));
-            Assert.True(r.Exit == 1, "relative golden: exit " + r.Exit + ", stdout '" + r.Stdout + "', stderr: " + r.Stderr);
-            Assert.Equal("FAIL soak line=1\n", r.Stdout);
-            Assert.Equal(before, KillGateKit.Fixture(SoakKit.SchedulePath));
-        }
-
-        /// <summary>
         /// §19.7 "Path failures" and §19.2b: a `--golden` that does not exist or
         /// cannot be read, an `--out` that already exists, and an `--out` whose
         /// parent directory does not exist are exit 3 with stdout empty. The
-        /// existing file is left unchanged, and no file is created. The control
-        /// write comes first, so each 3 comes from the case, not from a `soak` that
-        /// always fails.
+        /// existing file is left unchanged, and no file is created. The shared
+        /// one-day run must succeed first, and its dump is the existing file, so
+        /// each 3 comes from the case, not from a `soak` that always fails.
         /// </summary>
         [Fact]
         public void test_soak_path_failures_exit_3()
         {
+            byte[] before = SharedDay().Bytes;
             using var tmp = new CheckpointsKit.TempDir();
             string a = tmp.File("a");
-            WriteDay(a);
-            byte[] before = File.ReadAllBytes(a);
+            File.WriteAllBytes(a, before);
 
             var cases = new List<(string Label, string[] Args)>
             {
@@ -317,17 +345,17 @@ namespace AirportSim.Tools.SimHarness.Tests
 
         /// <summary>
         /// §19.7 "Usage" and §19.3's usage errors, each exit 2 with stdout empty
-        /// and no file created. The control write comes first, and its dump is the
-        /// `--golden` of the cases, so a harness that ignored the bad part and ran
-        /// would exit 0 there instead.
+        /// and no file created. The shared one-day run must succeed first, and its
+        /// dump is the `--golden` of the cases, so a harness that ignored the bad
+        /// part and ran would exit 0 there instead.
         /// </summary>
         [Fact]
         public void test_soak_rejects_usage_errors()
         {
+            byte[] before = SharedDay().Bytes;
             using var tmp = new CheckpointsKit.TempDir();
             string a = tmp.File("a");
-            WriteDay(a);
-            byte[] before = File.ReadAllBytes(a);
+            File.WriteAllBytes(a, before);
             string b = tmp.File("b");
 
             var cases = new List<(string Label, string[] Args)>
@@ -358,18 +386,34 @@ namespace AirportSim.Tools.SimHarness.Tests
 
             if (OperatingSystem.IsWindows())
             {
-                // Rooted but not fully qualified (§19.2b "Paths"): a usage error.
-                foreach (string rooted in new[] { "C:b", "\\b" })
+                // Rooted but not fully qualified (§19.2b "Paths"): a usage error. Both
+                // forms are built so that, resolved against the current directory and
+                // drive, they land inside tmp: the working directory is tmp for the
+                // duration (the assembly runs its tests one at a time), "X:c" is
+                // relative to it on its own drive, and "\…\d" is tmp's path without
+                // its drive. A harness that wrongly accepted them would write into
+                // tmp, which AssertEntries sees and Dispose deletes.
+                string full = Path.GetFullPath(tmp.Path);
+                string drive = Path.GetPathRoot(full)!.Substring(0, 2);
+                string driveRelative = drive + "c";
+                string rootRelative = full.Substring(2) + "\\d";
+                string saved = Environment.CurrentDirectory;
+                try
                 {
-                    string resolved = Path.GetFullPath(rooted);
-                    bool existedBefore = File.Exists(resolved);
-                    CliResult r = Cli(SoakOut("1", rooted));
-                    Assert.True(r.Exit == 2, "--out " + rooted + ": exit " + r.Exit + ", stderr: " + r.Stderr);
-                    Assert.Equal(string.Empty, r.Stdout);
-                    if (!existedBefore)
+                    Environment.CurrentDirectory = full;
+                    foreach (string rooted in new[] { driveRelative, rootRelative })
                     {
-                        Assert.False(File.Exists(resolved), "--out " + rooted + " created " + resolved);
+                        Assert.True(Path.IsPathRooted(rooted) && !Path.IsPathFullyQualified(rooted), rooted + " is not rooted-but-not-fully-qualified");
+                        Assert.StartsWith(full, Path.GetFullPath(rooted), StringComparison.OrdinalIgnoreCase);
+                        CliResult r = Cli(SoakOut("1", rooted));
+                        Assert.True(r.Exit == 2, "--out " + rooted + ": exit " + r.Exit + ", stderr: " + r.Stderr);
+                        Assert.Equal(string.Empty, r.Stdout);
+                        AssertEntries(tmp.Path, "a");
                     }
+                }
+                finally
+                {
+                    Environment.CurrentDirectory = saved;
                 }
             }
         }
@@ -406,12 +450,12 @@ namespace AirportSim.Tools.SimHarness.Tests
         /// minute together. Spread each departure's passengers over its profile's
         /// show-up buckets (business 30 to 120 min, leisure 45 to 180 min before
         /// STD) and serve 60 a minute: the combined backlog peaks at about 70, the
-        /// busiest hour brings about 2 950 against 3 600 served, and every bank's
+        /// busiest hour brings about 2 960 against 3 600 served, and every bank's
         /// backlog is gone well before the next one opens. Even if one lane took
-        /// every passenger at 30 a minute, the backlog would peak near 1 920 and
-        /// still be empty by midnight, and capacity_standing 2 500 is above that,
-        /// so nothing spills back. So the queues drain between banks on every day,
-        /// and at each midnight nothing is left (<see cref="SoakKit.CohortCeiling"/>).</para>
+        /// every passenger at 30 a minute, the backlog would peak at about 2 080
+        /// and still be empty by about 22:00, and capacity_standing 2 500 is above
+        /// that, so nothing spills back. So the queues drain between banks on every
+        /// day, and at each midnight nothing is left (<see cref="SoakKit.CohortCeiling"/>).</para>
         ///
         /// <para>The load check then holds after the timed run. A `soak --days K`
         /// CLI run follows, and its final must equal the timed run's: this ties the

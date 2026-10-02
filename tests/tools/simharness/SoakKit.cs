@@ -50,6 +50,10 @@ namespace AirportSim.Tools.SimHarness.Tests
 
         private static IContentIndex? _content;
 
+        private static string? _dayFinalHash;
+
+        private static KitDump? _dayDump;
+
         /// <summary>
         /// §19.2a's content source over the soak manifest: Files() is exactly the
         /// manifest's lines, each a path under soak-content/, and ReadAll returns
@@ -102,6 +106,32 @@ namespace AirportSim.Tools.SimHarness.Tests
         internal static string FinalHash(uint ticks)
         {
             return HarnessGates.FinalHash(Content(), new SoakComposer().Compose, Seed, ticks);
+        }
+
+        /// <summary>
+        /// <see cref="FinalHash"/> of one sim-day, computed once for the test
+        /// assembly, which runs its tests one at a time. The run is deterministic,
+        /// so every test that compares with it sees the same value.
+        /// </summary>
+        internal static string DayFinalHash()
+        {
+            if (_dayFinalHash == null)
+            {
+                _dayFinalHash = FinalHash(HarnessTestKit.TicksPerDay);
+            }
+
+            return _dayFinalHash;
+        }
+
+        /// <summary><see cref="RunDump"/> of one sim-day, computed once, as <see cref="DayFinalHash"/> is.</summary>
+        internal static KitDump DayDump()
+        {
+            if (_dayDump == null)
+            {
+                _dayDump = RunDump(1);
+            }
+
+            return _dayDump;
         }
 
         /// <summary>
