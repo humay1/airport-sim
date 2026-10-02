@@ -44,6 +44,7 @@ namespace AirportSim.Sim.Airside.Tests
 
             List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, a1);
             Assert.Single(pairs);
+            AirsideAsserts.ClosesWithOpener(pairs);
             var hold = (AircraftHeldOnTaxiway)pairs[0].Hold.Payload;
             Assert.Equal(3640UL, pairs[0].Hold.Tick);
             Assert.Equal(FixtureLayout.E1, hold.Edge.Value);

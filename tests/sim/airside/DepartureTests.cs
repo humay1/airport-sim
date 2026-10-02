@@ -79,6 +79,10 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(h + 60UL, pushback.Milestone.ActualTick);
             Assert.True(released[0].Rec.Id.CompareTo(closed.Id) < 0 && closed.Id.CompareTo(pushback.Id) < 0, "order must be Released, DoorsClosed, Pushback");
 
+            // 12 §12.11: after a boarding hold, DoorsClosed names the release just emitted.
+            Assert.Equal(released[0].Rec.Id, closed.Env.Cause.Id);
+            Assert.Equal(closed.Id, pushback.Env.Cause.Id);
+
             var absorbs = flow.AbsorbsOf(Rd);
             Assert.Single(absorbs);
             Assert.Equal(h + 60UL, absorbs[0].Tick);
@@ -143,6 +147,7 @@ namespace AirportSim.Sim.Airside.Tests
 
             List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<DepartureHeldForPassengers, DepartureHeldForPassengersReleased>(rig.Rec, Rd);
             Assert.Single(pairs);
+            AirsideAsserts.ClosesWithOpener(pairs);
             Assert.Single(rig.Rec.Of<DepartureHeldForPassengers>());
             Assert.Single(rig.Rec.Of<DepartureHeldForPassengersReleased>());
 

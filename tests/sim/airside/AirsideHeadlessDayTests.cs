@@ -196,6 +196,12 @@ namespace AirportSim.Sim.Airside.Tests
                 {
                     return at + "flight " + st.Occupant.Value.Value + " occupies two stands";
                 }
+
+                // 12 §12.9 (Q-079): VacatedBy.HasValue implies Occupant unset.
+                if (st.Occupant.HasValue && st.VacatedBy.HasValue)
+                {
+                    return at + "stand " + s + " occupied with VacatedBy set";
+                }
             }
 
             return null;
@@ -367,6 +373,9 @@ namespace AirportSim.Sim.Airside.Tests
                 var taxi = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rec, f);
                 var stand = AirsideAsserts.Pairs<StandUnavailable, StandAssigned>(rec, f);
                 var pax = AirsideAsserts.Pairs<DepartureHeldForPassengers, DepartureHeldForPassengersReleased>(rec, f);
+                AirsideAsserts.ClosesWithOpener(runway);
+                AirsideAsserts.ClosesWithOpener(taxi);
+                AirsideAsserts.ClosesWithOpener(pax);
                 if (seen.ContainsKey(FlightMilestone.Airborne))
                 {
                     Assert.Equal(rec.Of<AircraftHeldForRunway>(f).Count, runway.Count);

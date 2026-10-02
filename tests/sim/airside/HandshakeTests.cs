@@ -115,6 +115,11 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(Boarding + 1UL, pushback.Milestone.ActualTick);
             Assert.True(closed.Id.CompareTo(pushback.Id) < 0);
 
+            // 12 §12.11: unheld, DoorsClosed names the BoardingComplete read from
+            // RecordedCause; Pushback names the DoorsClosed.
+            Assert.Equal(probe.Published.Find(p => p.Flight == rd).Id, closed.Env.Cause.Id);
+            Assert.Equal(closed.Id, pushback.Env.Cause.Id);
+
             var absorbs = flow.AbsorbsOf(rd);
             Assert.Single(absorbs);
             Assert.Equal(Boarding + 1UL, absorbs[0].Tick);

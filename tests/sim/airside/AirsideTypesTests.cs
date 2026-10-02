@@ -88,7 +88,8 @@ namespace AirportSim.Sim.Airside.Tests
                 600UL,
                 700UL,
                 800UL,
-                new EventRef(new EventId(900UL, 9U), true));
+                new EventRef(new EventId(900UL, 9U), true),
+                new EventRef(new EventId(950UL, 4U), true));
             Assert.Equal(100001UL, t.Flight.Value);
             Assert.Equal(MovementKind.Departure, t.Kind);
             Assert.Equal(AircraftLegPhase.Taxiing, t.Phase);
@@ -102,18 +103,25 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(800UL, t.PassengerHoldSince);
             Assert.True(t.RecordedCause.HasValue);
             Assert.Equal(new EventId(900UL, 9U), t.RecordedCause.Id);
+            Assert.True(t.OpenHold.HasValue);
+            Assert.Equal(new EventId(950UL, 4U), t.OpenHold.Id);
 
-            var none = new AircraftTrack(new FlightId(1UL), MovementKind.Arrival, AircraftLegPhase.AwaitingApproach, null, null, Fx.Zero, null, null, 0UL, AirConst.TickUnscheduled, AirConst.TickUnscheduled, EventRef.None);
+            var none = new AircraftTrack(new FlightId(1UL), MovementKind.Arrival, AircraftLegPhase.AwaitingApproach, null, null, Fx.Zero, null, null, 0UL, AirConst.TickUnscheduled, AirConst.TickUnscheduled, EventRef.None, EventRef.None);
             Assert.False(none.RecordedCause.HasValue);
+            Assert.False(none.OpenHold.HasValue);
             Assert.False(none.AtNode.HasValue);
             Assert.False(none.OnEdge.HasValue);
             Assert.False(none.Stand.HasValue);
             Assert.False(none.Runway.HasValue);
 
-            var st = new StandState(new StandId(6), new FlightId(42UL));
+            var st = new StandState(new StandId(6), new FlightId(42UL), EventRef.None);
             Assert.Equal(6, st.Id.Value);
             Assert.Equal(42UL, st.Occupant!.Value.Value);
-            Assert.False(new StandState(new StandId(6), null).Occupant.HasValue);
+            Assert.False(st.VacatedBy.HasValue);
+            var vacated = new StandState(new StandId(6), null, new EventRef(new EventId(1000UL, 2U), true));
+            Assert.False(vacated.Occupant.HasValue);
+            Assert.True(vacated.VacatedBy.HasValue);
+            Assert.Equal(new EventId(1000UL, 2U), vacated.VacatedBy.Id);
         }
     }
 }

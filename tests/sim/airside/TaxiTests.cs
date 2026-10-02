@@ -67,9 +67,13 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Empty(rig.Rec.Of<AircraftHeldOnTaxiway>(d1));
             List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, d2);
             Assert.Single(pairs);
+            AirsideAsserts.ClosesWithOpener(pairs);
             Assert.Equal(3620UL, pairs[0].Hold.Tick);
             Assert.Equal(1, ((AircraftHeldOnTaxiway)pairs[0].Hold.Payload).Edge.Value);
             Assert.Equal(3651UL, pairs[0].Release.Tick);
+
+            // 12 §12.11: D2 reached J along its route, so the hold's Cause is None.
+            Assert.False(pairs[0].Hold.Env.Cause.HasValue);
         }
 
         /// <summary>Two stands 20 ticks from junction J, one edge (1) from J to T.</summary>
@@ -97,6 +101,7 @@ namespace AirportSim.Sim.Airside.Tests
 
             List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, d2);
             Assert.Single(pairs);
+            AirsideAsserts.ClosesWithOpener(pairs);
             var hold = (AircraftHeldOnTaxiway)pairs[0].Hold.Payload;
             Assert.Equal(3620UL, pairs[0].Hold.Tick);
             Assert.True(hold.Blocking.HasValue, "Blocking is never null on the opening event");
@@ -122,8 +127,13 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(3650UL, rig.Rec.Milestone(a1, FlightMilestone.OffRunway).Tick);
             List<(Rec Hold, Rec Release)> pairs = AirsideAsserts.Pairs<AircraftHeldOnTaxiway, AircraftHeldOnTaxiwayReleased>(rig.Rec, a1);
             Assert.Single(pairs);
+            AirsideAsserts.ClosesWithOpener(pairs);
             var hold = (AircraftHeldOnTaxiway)pairs[0].Hold.Payload;
             Assert.Equal(3650UL, pairs[0].Hold.Tick);
+
+            // 12 §12.11: A1's first edge request after OffRunway placed it at T,
+            // with a stand granted in S5 of that tick: Cause = that OffRunway.
+            Assert.Equal(rig.Rec.Milestone(a1, FlightMilestone.OffRunway).Id, pairs[0].Hold.Env.Cause.Id);
             Assert.Equal(FixtureLayout.E1, hold.Edge.Value);
             Assert.Equal(d1, hold.Blocking!.Value.Value);
             Assert.Equal(3651UL, pairs[0].Release.Tick);

@@ -39,6 +39,13 @@ namespace AirportSim.Sim.Airside.Tests
 
             Assert.False(rig.Rec.Has(a1, FlightMilestone.DoorsClosed));
             Assert.False(rig.Rec.Has(a1, FlightMilestone.Pushback));
+
+            // 12 §12.11: the fallback handoff after a nonzero MinTurnaround has
+            // Cause None; DoorsClosed names the departure OnStand just emitted;
+            // Pushback names the DoorsClosed.
+            Assert.False(onStand.Env.Cause.HasValue);
+            Assert.Equal(onStand.Id, closed.Env.Cause.Id);
+            Assert.Equal(closed.Id, pushback.Env.Cause.Id);
         }
 
         [Fact]
