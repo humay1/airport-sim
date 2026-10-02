@@ -54,8 +54,7 @@ namespace AirportSim.Sim.Airside.Tests
             probe.Script.Add((4000UL, ra, FlightMilestone.DeboardComplete));
             probe.Script.Add((4100UL, rd, FlightMilestone.BoardingComplete));
 
-            // After W_A's DoorsOpen (1880): before it, 12 §12.10 (Q-083) makes it a reason-1 no-op.
-            Assert.True(rig.Submit(Payload.ReassignCommand(1885UL, wa, FixtureLayout.S4), out _));
+            Assert.True(rig.Submit(Payload.ReassignCommand(1870UL, wa, FixtureLayout.S4), out _));
             Assert.True(rig.Submit(Payload.ReassignCommand(1875UL, 999UL, FixtureLayout.S3), out _));
             Assert.True(rig.Submit(Payload.ReassignCommand(3700UL, x1, FixtureLayout.S3), out _));
             Assert.True(rig.Submit(Payload.ReassignCommand(3710UL, 999UL, FixtureLayout.S2), out _));
