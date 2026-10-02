@@ -15,19 +15,63 @@ namespace AirportSim.Tools.SimHarness
     /// </summary>
     internal sealed class Phase0Composition
     {
-        private const string ContentManifestPath = "tests/fixtures/harness/phase0-content.files";
-        private const string ContentDirectory = "tests/fixtures/harness/phase0-content/";
-        private const string WorldPath = "tests/fixtures/world/phase0-landside.json";
-        private const string FlowPath = "tests/fixtures/flow/phase0-landside.flow.json";
-        private const string SchedulePath = "tests/fixtures/schedule/phase0-200.csv";
+        /// <summary>One fixture set's repository paths and <c>sourceName</c>s (§19.2a, §19.2b).</summary>
+        internal sealed class FixtureSet
+        {
+            internal FixtureSet(
+                string contentManifestPath,
+                string contentDirectory,
+                string worldPath,
+                string flowPath,
+                string schedulePath)
+            {
+                ContentManifestPath = contentManifestPath;
+                ContentDirectory = contentDirectory;
+                WorldPath = worldPath;
+                FlowPath = flowPath;
+                SchedulePath = schedulePath;
+            }
 
+            internal string ContentManifestPath { get; }
+
+            internal string ContentDirectory { get; }
+
+            internal string WorldPath { get; }
+
+            internal string FlowPath { get; }
+
+            internal string SchedulePath { get; }
+        }
+
+        /// <summary>The Phase 0 fixture set (§19.2a).</summary>
+        internal static readonly FixtureSet Phase0 = new FixtureSet(
+            "tests/fixtures/harness/phase0-content.files",
+            "tests/fixtures/harness/phase0-content/",
+            "tests/fixtures/world/phase0-landside.json",
+            "tests/fixtures/flow/phase0-landside.flow.json",
+            "tests/fixtures/schedule/phase0-200.csv");
+
+        /// <summary>The soak fixture set (§19.2b).</summary>
+        internal static readonly FixtureSet Soak = new FixtureSet(
+            "tests/fixtures/soak/soak-content.files",
+            "tests/fixtures/soak/soak-content/",
+            "tests/fixtures/soak/soak-landside.json",
+            "tests/fixtures/soak/soak-landside.flow.json",
+            "tests/fixtures/soak/soak.csv");
+
+        private readonly string _worldName;
+        private readonly string _flowName;
+        private readonly string _scheduleName;
         private readonly byte[] _world;
         private readonly byte[] _flow;
         private readonly byte[] _schedule;
 
-        private Phase0Composition(IContentIndex content, byte[] world, byte[] flow, byte[] schedule)
+        private Phase0Composition(IContentIndex content, FixtureSet set, byte[] world, byte[] flow, byte[] schedule)
         {
             Content = content;
+            _worldName = Path.GetFileName(set.WorldPath);
+            _flowName = Path.GetFileName(set.FlowPath);
+            _scheduleName = Path.GetFileName(set.SchedulePath);
             _world = world;
             _flow = flow;
             _schedule = schedule;
@@ -35,20 +79,30 @@ namespace AirportSim.Tools.SimHarness
 
         internal IContentIndex Content { get; }
 
+        /// <summary>The Names of the systems the last <see cref="Compose"/> call registered, in registry order.</summary>
+        internal string[] RegisteredNames { get; private set; } = Array.Empty<string>();
+
         /// <summary>
         /// Finds the repository root, reads every fixture file once and loads the content
         /// once (§19.2a "When"). Any failure is an exception, which the CLI maps to exit 3.
         /// </summary>
         internal static Phase0Composition Load()
         {
+            return Load(Phase0);
+        }
+
+        /// <summary>As <see cref="Load()"/>, over the given fixture set.</summary>
+        internal static Phase0Composition Load(FixtureSet set)
+        {
             string root = FindRoot();
-            var source = new ManifestSource(root);
+            var source = new ManifestSource(root, set);
             IContentIndex content = ContentIndexFactory.Create(ContentLoaderFactory.Create().Load(source));
             return new Phase0Composition(
                 content,
-                ReadRepoFile(root, WorldPath),
-                ReadRepoFile(root, FlowPath),
-                ReadRepoFile(root, SchedulePath));
+                set,
+                ReadRepoFile(root, set.WorldPath),
+                ReadRepoFile(root, set.FlowPath),
+                ReadRepoFile(root, set.SchedulePath));
         }
 
         /// <summary>Every call parses the graphs and schedule afresh and registers fresh systems.</summary>
@@ -56,11 +110,11 @@ namespace AirportSim.Tools.SimHarness
         {
             SystemServices services = builder.Services;
 
-            WalkGraph walk = WorldFactory.CreateGraphLoader().Load(_world, "phase0-landside.json");
+            WalkGraph walk = WorldFactory.CreateGraphLoader().Load(_world, _worldName);
             IWorldSystem world = WorldFactory.CreateSystem(services, walk);
-            FlowGraph flowGraph = FlowFactory.CreateGraphLoader().Load(_flow, "phase0-landside.flow.json", world);
+            FlowGraph flowGraph = FlowFactory.CreateGraphLoader().Load(_flow, _flowName, world);
             IFlowSystem flow = FlowFactory.CreateSystem(services, flowGraph, world);
-            ScheduleTable table = ScheduleFactory.CreateLoader().Load(_schedule, "phase0-200.csv");
+            ScheduleTable table = ScheduleFactory.CreateLoader().Load(_schedule, _scheduleName);
             IScheduleSystem schedule = ScheduleFactory.CreateSystem(services, table, flow);
             var boarding = new BoardingStandIn(schedule, flow);
 
@@ -68,6 +122,7 @@ namespace AirportSim.Tools.SimHarness
             builder.Register(schedule);
             builder.Register(boarding);
             builder.Register(flow);
+            RegisteredNames = new[] { world.Name, schedule.Name, boarding.Name, flow.Name };
         }
 
         internal static string FindRoot()
@@ -103,25 +158,26 @@ namespace AirportSim.Tools.SimHarness
             private readonly List<string> _files = new List<string>();
             private readonly Dictionary<string, byte[]> _bytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
-            internal ManifestSource(string root)
+            internal ManifestSource(string root, FixtureSet set)
             {
-                string text = new UTF8Encoding(false, true).GetString(ReadRepoFile(root, ContentManifestPath));
+                string manifest = set.ContentManifestPath;
+                string text = new UTF8Encoding(false, true).GetString(ReadRepoFile(root, manifest));
                 if (text.Length == 0 || text[text.Length - 1] != '\n')
                 {
-                    throw new InvalidOperationException("harness: " + ContentManifestPath + " must end in LF");
+                    throw new InvalidOperationException("harness: " + manifest + " must end in LF");
                 }
                 foreach (string line in text.Substring(0, text.Length - 1).Split('\n'))
                 {
                     if (line.Length == 0 || line.IndexOf('\r') >= 0)
                     {
-                        throw new InvalidOperationException("harness: " + ContentManifestPath + " has a bad line '" + line + "'");
+                        throw new InvalidOperationException("harness: " + manifest + " has a bad line '" + line + "'");
                     }
                     if (_bytes.ContainsKey(line))
                     {
-                        throw new InvalidOperationException("harness: " + ContentManifestPath + " has a duplicate line '" + line + "'");
+                        throw new InvalidOperationException("harness: " + manifest + " has a duplicate line '" + line + "'");
                     }
                     _files.Add(line);
-                    _bytes.Add(line, ReadRepoFile(root, ContentDirectory + line));
+                    _bytes.Add(line, ReadRepoFile(root, set.ContentDirectory + line));
                 }
             }
 
