@@ -2341,36 +2341,37 @@ Answer:      Architecture. `tests/fixtures/harness/checkpoints-phase0/`
 Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
 
 ### Q-077 — `app.host`: the D7 test cannot reach the harness
-Raised by:   Architect, answering Q-066 to Q-076, 2026-10-01
+Raised by:   Architect, answering Q-066 to Q-076 (PR #83), 2026-10-01
 Blocking:    T-031 (`test_host_composition_matches_harness_checkpoints`)
 Question:    `16` §16.8 runs the D7 test in process. `07` L3 lets
-             `tests/app/host` reference only `src/app/host`, and §19.8
-             forbids the harness from referencing `app.host`. No test
-             project can therefore call both `HarnessCli.Run` and
-             `IHeadlessRun` in process. How does the D7 test run both
-             sides?
+             `tests/app/host` reference only `src/app/host`, and
+             `app.host` does not reference the harness, nor the harness
+             `app.host`. No test project can therefore call both
+             `HarnessCli.Run` and `IHeadlessRun` in process. How does
+             the D7 test run both sides?
 Why it matters: As specified, the test cannot be written.
-Proposed:    (A) An integration test project, for example
-             `tests/integration/`, which is the one project allowed to
-             reference both `src/app/host` and `tools/SimHarness`. This
-             is a `07` L1/L3 amendment, one `.sln` edit and no
-             goldens. (B) Committed golden dumps of both bundles,
-             written by `checkpoints --out`. A harness test and a host
-             test each compare with them. That needs no new project, but
-             every hash-moving change re-authors them under
-             `tests/golden/README.md`, with owner confirmation. (C) Spawn
-             the built harness from the host test. Q-025 binds harness
-             tests only, so nothing forbids it outright. But it drops
-             §16.8's in-process run, and the host test would have to
-             locate a build output that its own project does not
-             reference, with its configuration and runtime, which
-             depends on the build layout. (D) Let
-             the harness reference `app.host`, so that the harness test
-             project sees it. That withdraws §19.8's static check, makes
-             "two independent compositions" uncheckable, and pulls
-             `app.render` and `app.ui` into a CI tool.
-             The Architect recommends (A). It is not answered in this PR,
-             because it does not block T-030 and it changes `07`'s
-             project layout, which deserves its own review. T-031 cannot
-             be released until it is answered.
-Status:      OPEN
+Answer:      Architecture, option (A). `07` L1 gains one integration test
+             project, `tests/integration/AirportSim.Integration.Tests.csproj`.
+             Under L3 it is the only test project with two references:
+             `src/app/host`, then `tools/SimHarness`. It calls both in
+             process and spawns nothing. It holds only tests that compare
+             `app.host` with the harness, which at Phase 1 is exactly
+             the D7 test. Any other test there needs an amendment. L8:
+             T-031's Test Author writes the project file, and T-031 adds
+             it to `AirportSim.sln`. `16` §16.8 and §16.11 say where the
+             test lives. Rejected:
+             (B) committed golden dumps compared by a harness test and a
+             host test. Every hash-moving change would re-author them,
+             with owner confirmation (`tests/golden/README.md`), for
+             nothing that (A) does not check directly;
+             (C) spawning the built harness from the host test. Q-025
+             binds harness tests only, so nothing forbids it outright.
+             But it drops §16.8's in-process run, and the host test
+             would have to locate a build output that its project does
+             not reference, with its configuration and runtime, which
+             ties it to the build layout;
+             (D) the harness referencing `app.host`, which pulls
+             `app.render` and `app.ui` into a CI tool and makes "two
+             independent compositions" uncheckable.
+             No option was chosen that needs an owner decision.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)

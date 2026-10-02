@@ -431,10 +431,13 @@ playtest bundle is compared by §16.9's procedure.
 > reads the build step's copy of the playtest bundle (§16.9 step 1), so
 > it can run as soon as the Unity shell task has committed the bundle.
 
-`07` L3 lets a test project reference only its own module's production
-project, so no test project can call both sides in process. Which
-project holds this test is **OPEN** (Q-077). It does not block the
-harness side.
+**Where the D7 test lives (Q-077).** `tests/integration/`, the one test
+project that references both `src/app/host` and `tools/SimHarness` (`07`
+L1, L3). It calls the harness through `HarnessCli.Run` (`19` §19.1) and
+`app.host` through `HostFactory`, both in process, and it never spawns a
+process. It compares the two dumps directly. No golden is committed for
+it. It is the only test in that project. Every other `app.host` test stays
+in `tests/app/host/`.
 
 ---
 
@@ -514,7 +517,8 @@ subcommand, `IHeadlessRun`, the dump writer and the bootstrap's batch mode.
 
 Two pieces of work. Writable paths are proposed; the Planner confirms them.
 
-- **Headless host:** `src/app/host/**`, `tests/app/host/**`. The frame loop,
+- **Headless host:** `src/app/host/**`, `tests/app/host/**`, and
+  `tests/integration/**` for the D7 test (§16.8, Q-077). The frame loop,
   the command-line parse and the dump writer can be built now against the
   `app.render` (T-020) and `app.ui` (`17` §17.10) scene-layer interfaces.
   `ISimComposer`, `IPresentationComposer`, `IHeadlessRun` and the
@@ -539,7 +543,8 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - `test_headless_run_result_independent_of_step_batch_size`
 - `test_compose_constructs_in_dependency_order_and_registers_in_registry_order`
 - `test_compose_rejects_airside_without_schedule`
-- `test_host_composition_matches_harness_checkpoints`
+- `test_host_composition_matches_harness_checkpoints`, in
+  `tests/integration/` (§16.8, Q-077)
 - `test_frame_loop_passes_ui_graphics_to_promotion_and_scene` (D10)
 - `test_frame_loop_writes_graphics_preference_only_on_change`
 - `test_presentation_uses_stored_graphics_preference_or_default` — the
