@@ -135,7 +135,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   polyfills**; **solution layout (Q-013): fixed project paths and names,
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
-  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
+  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
+  **one integration test project, `tests/integration/`, references both
+  `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
   `[Trait("Category", "Slow")]` on a test method, with a `[Theory]`'s rows
@@ -340,8 +343,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   name (§16.4, Q-073); `IHeadlessRun` submits no command and steps one
   sim-day per `Step` (§16.8, Q-071, Q-074); D7 runs on two test bundles,
   `tests/fixtures/harness/checkpoints-phase0/` and `-phase1/`, not on the
-  playtest bundle (§16.8, Q-070)**. How the D7 test reaches both sides is
-  open (Q-077).
+  playtest bundle (§16.8, Q-070)**; **the D7 test lives in
+  `tests/integration/` and calls both sides in process (§16.8, Q-077)**.
 - LC: the gate runs nightly on the real player (§16.9, proposed, not adopted);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
   Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
@@ -423,9 +426,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: **Q-077** (how T-031's D7 test reaches both the harness and
-  `app.host` under `07` L3; blocks T-031 only). Every other question in
-  the file from Q-002 on is answered
+- Open now: none. Every question in the file from Q-002 on is answered
   (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1

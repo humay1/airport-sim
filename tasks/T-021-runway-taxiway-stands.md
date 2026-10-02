@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN PROGRESS (worker implemented locally, 106/110; blocked on Q-078/Q-079; test PR #78 approved) |
 | Module | `sim.airside` |
 | Assigned role | worker |
 | Depends on | T-003 (merged #18), T-005 (merged #26), T-008 (merged #54), T-026 (merged #29); all merged |

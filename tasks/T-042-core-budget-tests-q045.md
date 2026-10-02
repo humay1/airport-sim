@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #81) |
 | Module | `sim.core` tests |
 | Assigned role | test-author |
 | Depends on | none open (spec PR #68, `7c9a373`, merged) |
@@ -18,7 +18,7 @@ tests/sim/core/**
 No other file. No `src/`, `spec/`, `ci/` or `.github/` edit. The Test Author
 opens its own PR. `tests/sim/core/**` has no other open writer: T-009's (merged #74), T-013's and
 T-030's tests moved to `tests/tools/simharness/**` (`19` §19.6, Q-041; synced
-2026-10-01). Check the queue before release anyway.
+2026-10-01). Check the queue before release anyway. (historical, resolved: T-042 merged #81)
 
 ## Why this task exists
 

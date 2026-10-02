@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (approved by the owner 2026-09-29; test-author, own PR) |
+| Status | MERGED (PR #80) |
 | Module | `sim.world` tests |
 | Assigned role | test-author |
 | Depends on | none open (T-012 merged; T-037 merged) |
@@ -122,6 +122,6 @@ over one 14 400-sample window, with p99 <= 0.20 ms. `tools/SimHarness budget` re
 ## Worker notes
 
 No worker: test-only. `tests/sim/world/**` has no other open branch as of
-2026-09-29 (T-037, the last world-test writer, is merged). If the test still
+2026-09-29 (T-037, the last world-test writer, is merged). (historical, resolved: T-041 merged #80) If the test still
 fails on `main` code after this change with a p99 or mean clearly above budget,
 that is a `sim.world` performance finding for the team lead, not a test edit.
