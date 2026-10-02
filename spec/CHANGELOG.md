@@ -3168,3 +3168,76 @@ Impact:      - **Merged code and tests:** none. No existing project
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (project layout; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-02 — spec/12-interfaces-airside.md §12.5–§12.13, spec/10-events.md §10.2–§10.3, spec/14-interfaces-delay.md §14.5 — `Cause` of airside events; cross-tick cause ids in hashed state (Q-078, Q-079)
+Reason:      The T-021 worker found that PR #78's `Pairs` helper requires
+             every release's `Cause` to be its opening hold, while `12`
+             §12.7 (and tests in the same PR) give `StandAssigned` the
+             freeing `Pushback`. The spec was already unambiguous here:
+             the helper is wrong for the stand family. But only some
+             `Cause`s were stated anywhere, so `12` §12.11 now has a
+             binding table for every event `sim.airside` publishes, and
+             `10` §10.3 rule 2 says that pairs are never matched by
+             `Cause`. `10` §10.2's "an emitter that knows why must
+             populate it" is made precise, so that the table can follow
+             it: `Cause` is the event that made the emission due, if it
+             was published earlier in the same tick or is kept in hashed
+             state, else None. A blocking condition is not a cause, and
+             no id is kept across ticks only to be named. So zero-delay
+             chains name their same-tick trigger (`DoorsOpen` at a 0 door
+             delay, the fallback handoff at a 0 `MinTurnaround`), and so
+             do `StandUnavailable` and a first-edge taxi hold. Separately, the release `Cause`s and
+             `StandAssigned`'s `Pushback` are ids from an earlier tick,
+             and §12.12 gave them no home, so they would be unhashed and
+             lost on save and load. That breaks `08` §8.6, as Q-062 did.
+             They now live in `AircraftTrack.OpenHold` and
+             `StandState.VacatedBy`, both hashed and saved. Also stated:
+             `AwaitingPushbackClearance` and `Departed` are reserved and
+             never set at Phase 0/1.
+Raised by:   Q-078, Q-079 (Worker / T-021, via coordinator)
+Impact:      - **No merged work is invalidated.** `sim.airside` is not
+               merged, and PR #78 (T-021 tests) is open.
+             - **T-021 tests (Test Author, PR #78):** `Pairs` stops
+               asserting `Cause` = opening event, at least for
+               `StandUnavailable`/`StandAssigned` (its callers in
+               `StandTests`, `BoardingHoldTests` and
+               `AirsideHeadlessDayTests` already assert the `Pushback`).
+               `AirsideTypesTests` builds `AircraftTrack` and `StandState`
+               positionally, so it gains the new last arguments. Two new
+               tests: `test_airside_event_causes_follow_cause_table` and
+               `test_open_hold_and_vacated_by_track_cross_tick_causes`
+               (§12.13). Apart from `Pairs`, no existing assertion changes.
+             - **T-021 worker:** moves the hold ids and freeing `Pushback`
+               ids out of unhashed side state into the two fields, feeds
+               them per §12.12, and sets each `Cause` per the §12.11 table.
+               Most rows were unstated before, so the worker checks its
+               choices against them, especially the same-tick triggers
+               (`DoorsOpen` and the fallback handoff in zero-delay chains,
+               `StandUnavailable`, a first-edge `AircraftHeldOnTaxiway`,
+               and a rotation-less departure's `OnStand` from the
+               stand-wait queue, which reads `VacatedBy`).
+             - **T-022 (`sim.turnaround`, not started):** none. `13`'s
+               declared `Cause`s already follow the `10` §10.2 rules, and
+               all are same-tick. An event `13` declares no `Cause` for is
+               a root, as before.
+             - **Merged `sim.flow` and `sim.schedule`:** none. `09`
+               declares no `Cause`, so its events stay roots, which is
+               what the code publishes. `11` §11.5's `PlanPublished`
+               cause is same-tick and follows the rules.
+             - **T-024 (`sim.delay`):** none. It pairs by key and never
+               reads a closing `Cause` (§14.5, §14.7).
+             - **`app.render`:** none. `15` §15.4 reads `Occupant` and
+               the phase only, and maps the two reserved phases already.
+             - **LOW CONFIDENCE:** not keeping an earlier tick's cause
+               (`10` §10.2 "Not kept just to be named", `12` §12.11). A
+               milestone that a nonzero duration made due is None rather
+               than naming the milestone that started the duration. That
+               keeps cross-tick state to three fields, and nothing reads
+               such a `Cause` while `sim.delay` does not follow `Cause`
+               chains (`14` §14.7), when it is revisited.
+             - **Scope:** none added. Two state fields and a table of
+               existing behaviour.
+             - **PENDING HUMAN:** none.
+Signed off:  not required (interface detail and state layout; no balance,
+             scope or `01`/`02` change). The owner should review the LOW
+             CONFIDENCE marker.
