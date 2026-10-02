@@ -37,7 +37,7 @@ namespace AirportSim.Sim.Airside.Tests
             foreach (StandDef d in a.Layout().Stands)
             {
                 a.TryGetStand(d.Id, out StandState st);
-                s.Add("stand" + d.Id.Value.ToString(CultureInfo.InvariantCulture) + "=" + Show.Opt(st.Occupant, x => x.Value));
+                s.Add("stand" + d.Id.Value.ToString(CultureInfo.InvariantCulture) + "=" + Show.Opt(st.Occupant, x => x.Value) + " vacatedBy=" + Show.Cause(st.VacatedBy));
             }
 
             foreach (FlightId f in a.TrackedFlights())

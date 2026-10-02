@@ -47,6 +47,10 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.True(hold.HasValue, "release without an earlier hold");
             Assert.Equal(hold!.Value.Rec.Id, release.Value.Rec.Env.Cause.Id);
             Assert.Equal(FixtureLayout.Runway, hold.Value.Evt.Runway.Value);
+
+            // 12 §12.11: a held Landed or TakeoffRoll names the release just emitted.
+            Assert.True(ms.Env.Cause.HasValue, milestone + " after a hold carries no Cause");
+            Assert.Equal(release.Value.Rec.Id, ms.Env.Cause.Id);
         }
 
         /// <summary>
@@ -83,7 +87,12 @@ namespace AirportSim.Sim.Airside.Tests
             return null;
         }
 
-        /// <summary>The flight's hold/release pairs of one kind, checked for pairing and Cause (10 §10.3 rule 2, 12 §12.5/§12.6).</summary>
+        /// <summary>
+        /// The flight's opening/closing pairs of one kind (10 §10.3 rule 2,
+        /// Q-078): matched by subject and kind in EventId order, never by
+        /// Cause. A closing Cause is per family (12 §12.11 "The Cause of each
+        /// emitted event"), so callers assert it.
+        /// </summary>
         public static List<(Rec Hold, Rec Release)> Pairs<THold, TRelease>(Recorder rec, ulong flight)
             where THold : struct, ISimEvent
             where TRelease : struct, ISimEvent
@@ -105,14 +114,22 @@ namespace AirportSim.Sim.Airside.Tests
                 else if (r.Payload is TRelease)
                 {
                     Assert.True(open != null, typeof(TRelease).Name + " without an open " + typeof(THold).Name + ": " + r);
-                    Assert.True(r.Env.Cause.HasValue, "release carries no Cause: " + r);
-                    Assert.Equal(open!.Id, r.Env.Cause.Id);
-                    result.Add((open, r));
+                    result.Add((open!, r));
                     open = null;
                 }
             }
 
             return result;
+        }
+
+        /// <summary>12 §12.11: the runway, taxiway and passenger hold families close with Cause = their opening event.</summary>
+        public static void ClosesWithOpener(List<(Rec Hold, Rec Release)> pairs)
+        {
+            foreach (var (hold, release) in pairs)
+            {
+                Assert.True(release.Env.Cause.HasValue, "release carries no Cause: " + release);
+                Assert.Equal(hold.Id, release.Env.Cause.Id);
+            }
         }
     }
 }

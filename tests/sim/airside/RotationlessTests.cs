@@ -60,6 +60,7 @@ namespace AirportSim.Sim.Airside.Tests
             Rec onStand = rig.Rec.Milestone(d1, FlightMilestone.OnStand);
             Assert.Equal(created, onStand.Milestone.PlannedTick);
             Assert.Equal(created, onStand.Milestone.ActualTick);
+            Assert.False(onStand.Env.Cause.HasValue, "a new request at its start tick has Cause None (12 §12.11)");
             Assert.Equal(created, rig.Rec.Milestone(d1, FlightMilestone.DoorsClosed).Milestone.ActualTick);
 
             Rec pushback = rig.Rec.Milestone(d1, FlightMilestone.Pushback);
@@ -120,6 +121,16 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Single(absorbs);
             Assert.Equal(got, absorbs[0].Tick);
             Assert.Equal(FixtureLayout.Sink(FixtureLayout.S1), absorbs[0].Sink);
+
+            // 12 §12.11 (Q-078): from the stand-wait queue, OnStand's Cause is
+            // the stand's VacatedBy, R_D's Pushback; DoorsClosed names the
+            // OnStand just emitted (fallback, nobody outstanding), and Pushback
+            // the DoorsClosed.
+            Rec freeing = rig.Rec.Milestone(rig.Id("R_D"), FlightMilestone.Pushback);
+            Assert.Equal(freeing.Id, onStand.Env.Cause.Id);
+            Rec closed = rig.Rec.Milestone(d9, FlightMilestone.DoorsClosed);
+            Assert.Equal(onStand.Id, closed.Env.Cause.Id);
+            Assert.Equal(closed.Id, push.Env.Cause.Id);
         }
     }
 }

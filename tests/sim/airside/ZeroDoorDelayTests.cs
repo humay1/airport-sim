@@ -45,6 +45,18 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(onStand, chain[1].Milestone.PlannedTick);
             Assert.Equal(AirConst.At(8, 0), chain[2].Milestone.PlannedTick);
             Assert.Equal(AirConst.At(8, 0), chain[3].Milestone.PlannedTick);
+
+            // 12 §12.11 (Q-078): the arrival's OnStand ends its edges, so None;
+            // each later link names the one just emitted: DoorsOpen the
+            // OnStand (delay 0), the fallback handoff the DoorsOpen
+            // (MinTurnaround 0), DoorsClosed the departure's OnStand (no
+            // flow, so no hold), Pushback the DoorsClosed.
+            Assert.False(chain[0].Env.Cause.HasValue);
+            for (int i = 1; i < chain.Count; i++)
+            {
+                Assert.True(chain[i].Env.Cause.HasValue, "no Cause on " + chain[i]);
+                Assert.Equal(chain[i - 1].Id, chain[i].Env.Cause.Id);
+            }
         }
     }
 }
