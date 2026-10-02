@@ -89,7 +89,8 @@ namespace AirportSim.Sim.Airside.Tests
                 700UL,
                 800UL,
                 new EventRef(new EventId(900UL, 9U), true),
-                new EventRef(new EventId(950UL, 4U), true));
+                new EventRef(new EventId(950UL, 4U), true),
+                1000UL);
             Assert.Equal(100001UL, t.Flight.Value);
             Assert.Equal(MovementKind.Departure, t.Kind);
             Assert.Equal(AircraftLegPhase.Taxiing, t.Phase);
@@ -105,8 +106,10 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(new EventId(900UL, 9U), t.RecordedCause.Id);
             Assert.True(t.OpenHold.HasValue);
             Assert.Equal(new EventId(950UL, 4U), t.OpenHold.Id);
+            Assert.Equal(1000UL, t.PlannedOnStand);
 
-            var none = new AircraftTrack(new FlightId(1UL), MovementKind.Arrival, AircraftLegPhase.AwaitingApproach, null, null, Fx.Zero, null, null, 0UL, AirConst.TickUnscheduled, AirConst.TickUnscheduled, EventRef.None, EventRef.None);
+            var none = new AircraftTrack(new FlightId(1UL), MovementKind.Arrival, AircraftLegPhase.AwaitingApproach, null, null, Fx.Zero, null, null, 0UL, AirConst.TickUnscheduled, AirConst.TickUnscheduled, EventRef.None, EventRef.None, AirConst.TickUnscheduled);
+            Assert.Equal(AirConst.TickUnscheduled, none.PlannedOnStand);
             Assert.False(none.RecordedCause.HasValue);
             Assert.False(none.OpenHold.HasValue);
             Assert.False(none.AtNode.HasValue);
