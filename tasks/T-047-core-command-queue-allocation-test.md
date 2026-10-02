@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #86) |
 | Module | `sim.core` tests |
 | Assigned role | test-author |
 | Depends on | T-042 (not merged; both write `tests/sim/core/**`); spec PR #77 (`1574534`, Q-065) merged |

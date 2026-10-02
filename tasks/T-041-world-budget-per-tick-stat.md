@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (approved by the owner 2026-09-29; test-author, own PR) |
+| Status | MERGED (PR #80) |
 | Module | `sim.world` tests |
 | Assigned role | test-author |
 | Depends on | none open (T-012 merged; T-037 merged) |

@@ -6,7 +6,7 @@
 | Module | `app.host` (Unity project shell) |
 | Assigned role | worker |
 | Depends on | T-027, T-028, T-031, T-032, T-033 |
-| Spec source | `spec/16-interfaces-host.md` §16.1, §16.2, §16.3, §16.7 |
+| Spec source | `spec/16-interfaces-host.md` §16.1, §16.2, §16.3 (playtest-bundle table, incl. `world.fixture`), §16.7 |
 | Blocked by | — |
 
 ## Writable paths
@@ -57,15 +57,23 @@ paraphrased:
   quit with its exit code, no frame loop, nothing drawn. The bootstrap
   calls no sim member itself, never branches on sim state, never reads a
   bundle file directly.
-- **The Phase 1 playtest bundle** (§16.3):
-  `unity/AirportSim/Scenario/bundle.json`, plus the Phase 1 fixtures named
-  in `11` §11.10, `12` §12.13, `13` §13.11, `15` §15.12 and `18` §18.6, the
-  `sim.flow` fixture T-023 runs, and the human-authored
-  `data/balance/airside_rules.json` (D6, **not** written by this task).
-  The build step copies them into `Assets/StreamingAssets/Scenario/` as
-  build output — the fixtures stay test fixtures beside their tests, never
+- **The Phase 1 playtest bundle** (§16.3): `unity/AirportSim/Scenario/`
+  holds only the committed `bundle.json` and is not a complete bundle. The
+  build step assembles `Assets/StreamingAssets/Scenario/` with one file for
+  each row of §16.3's playtest-bundle table, under its exact name:
+  `bundle.json`; `world.fixture` (`18` §18.6,
+  `tests/fixtures/world/phase0-landside.json`); `schedule.csv` (`11`
+  §11.10, `tests/fixtures/schedule/phase0-200.csv`); `airside.fixture` (`12`
+  §12.13, `tests/fixtures/airside/phase1-single-runway.json`);
+  `airside_rules.json` (the human-authored `data/balance/airside_rules.json`,
+  D6, **not** written by this task); `turnaround.fixture` (`13` §13.11,
+  `tests/fixtures/turnaround/phase1-four-vehicles.*`); `flow.fixture` (the
+  `sim.flow` fixture T-023 runs); and `render_layout.fixture` (`15` §15.12,
+  under `tests/fixtures/render/`). It also copies `data/` into
+  `Assets/StreamingAssets/Content/`. Both directories are build output — the fixtures stay test fixtures beside their tests, never
   moved into `data/`.
-- **Content for the player**: a copy of `data/` through
+- **Content for the player**: a copy of `data/` in
+  `Assets/StreamingAssets/Content/` through
   `HostFactory.LoadContent`, feeding T-027's loader — this is why this task
   depends on T-027 (the loader) and T-028 (schemas plus size-category and
   aircraft data). `pax_profiles`/`queue_profiles` data and
@@ -89,7 +97,7 @@ sim's 6 ms; `RunFrame`'s cost is T-031's).
       .NET Standard 2.1, plugins never recompiled)
 - [ ] Bootstrap matches §16.7's contract line by line
 - [ ] Playtest bundle names every file `bundle.json` lists and none it
-      does not
+      does not (all eight files of the §16.3 table, `world.fixture` included)
 - [ ] No write to `data/pax_profiles/**`, `data/queue_profiles/**` or
       `data/balance/**`
 - [ ] Reviewer approved

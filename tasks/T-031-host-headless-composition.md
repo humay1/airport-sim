@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `app.host` (headless side only) |
 | Assigned role | worker |
-| Depends on | T-008 (merged #54), T-012 (merged #39), T-020 (not merged), T-021 (not merged), T-022 (not merged), T-023 (merged #71), T-024 (not merged), T-026 (merged #29), T-027 (merged #37), T-029 (not merged), T-030 (not merged) |
-| Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8, §16.10 (new module, D7; graphics preference and frame-loop steps 2/4/5, D10/Q-034) |
+| Depends on | T-008 (merged #54), T-012 (merged #39), T-020 (not merged), T-021 (not merged), T-022 (not merged), T-023 (merged #71), T-024 (not merged), T-026 (merged #29), T-027 (merged #37), T-029 (not merged), T-030 (not merged), T-048 (not merged; the Phase 1 harness stage) |
+| Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8, §16.10, §16.11 (new module, D7; graphics preference and frame-loop steps 2/4/5, D10/Q-034) |
 | Blocked by | — |
 
 **Amendment (D10/Q-034, this cycle):** the owner's graphics-quality
@@ -38,6 +38,19 @@ conflict (`07` L8).
 The Unity project shell (`unity/AirportSim/**`) is a separate task (T-034),
 released after this one, the render/UI Unity backends (T-032, T-033), and
 after content exists for a real player build.
+
+**Integration test project (Q-077, `07` L1/L3/L8; PR #84, pending #84 merge
+-- if #84 has not merged when this task is released, stop and ask the
+Planner).** `test_host_composition_matches_harness_checkpoints` cannot live in
+`tests/app/host` (`07` L3: one reference), and the harness may not reference
+`app.host` (`19` §19.8). It lives in `tests/integration/`, the one test
+project that references both `src/app/host` and `tools/SimHarness` (exactly
+two `ProjectReference`s, `AirportSim.Integration.Tests`). Per L8 this task's
+**Test Author** writes `tests/integration/AirportSim.Integration.Tests.csproj`
+and its parallelisation file; this task's `.sln` edit adds that project
+along with its own two projects, in the same change. The Test Author's grant
+therefore gains `tests/integration/**` (besides `tests/app/host/**`). Any
+other test in that project needs a spec amendment.
 
 **Confirmed (Q-022):** `ComposedSim.World : IWorldSystem?` below now matches
 `16-interfaces-host.md` §16.4 exactly — the spec previously omitted it
@@ -132,7 +145,7 @@ Binding, copied from `spec/16-interfaces-host.md`, not paraphrased:
 
 - **The scenario bundle** (§16.3): read by exact file name only, never by
   directory listing. Files: `bundle.json` (`schema_version`, `seed`,
-  `systems`), `schedule.csv`, `airside.fixture`, `airside_rules.json`
+  `systems`; strict form, `16` §16.3, Q-069: duplicate, unknown or missing key is a load failure), `schedule.csv`, `airside.fixture`, `airside_rules.json`
   (required whenever `sim.airside` is listed; the host parses it into
   `AirsideRules`, "both keys, `boarding_hold_max_minutes` and
   `doors_open_delay_minutes` (Q-047)", and the file is human-authored; the owner landed the schema and the file in `3a00a78`, closing T-046), `turnaround.fixture`,
@@ -202,6 +215,7 @@ composed systems; `app.host` itself does not subscribe to anything.
 
 ```
 tests/app/host/**
+tests/integration/**
 ```
 
 Written by the Test Author. Expect at least:
@@ -213,15 +227,25 @@ Written by the Test Author. Expect at least:
 - `test_bundle_unlisted_system_is_not_registered`
 - `test_command_line_parses_checkpoint_run_and_rejects_others`
 - `test_checkpoint_dump_format_is_byte_exact`
-- `test_headless_run_result_independent_of_step_batch_size`
+- `test_headless_run_result_independent_of_step_batch_size` -- no seam:
+  `IHeadlessRun` submits no command (Q-071) and calls
+  `Step(TICKS_PER_SIM_DAY)` exactly `Days` times; the test composes the same
+  bundle with `ISimComposer.Compose`, steps it in other batches, renders that
+  run's dump with its own code and compares it with `Run`'s file (`16` §16.8)
 - `test_compose_constructs_in_dependency_order_and_registers_in_registry_order`
 - `test_compose_rejects_airside_without_schedule`
-- `test_host_composition_matches_harness_checkpoints` — runs T-030's harness
-  `checkpoints` subcommand and this task's `IHeadlessRun` (in-process,
-  `net8.0`) on the same bundle for one sim-day, on two bundles: the Phase 1
-  playtest bundle and a Phase 0 bundle with only `sim.world`,
-  `sim.schedule` and `sim.flow` (T-009's composition). Dumps must be
-  byte-identical.
+- `test_host_composition_matches_harness_checkpoints` -- **in
+  `tests/integration/`** (Q-077, pending #84 merge). Runs the harness
+  `checkpoints` subcommand (`HarnessCli.Run`, `19` §19.1, in process,
+  `net8.0`) and this task's `IHeadlessRun` on the same bundle and content for
+  one sim-day, on two Phase 1 test bundles (`16` §16.8; the playtest bundle
+  does not exist yet and is compared by `16` §16.9 by hand):
+  `tests/fixtures/harness/checkpoints-phase0/` with content
+  `tests/fixtures/harness/phase0-content/` (`sim.world`, `sim.schedule`,
+  `sim.flow`, no boarding stand-in), and
+  `tests/fixtures/harness/checkpoints-phase1/` (T-048) with content `data/`
+  (all six systems). Both bundles use the strict `bundle.json` form (`16`
+  §16.3). Dumps must be byte-identical.
 - `test_frame_loop_passes_ui_graphics_to_promotion_and_scene` (D10)
 - `test_frame_loop_writes_graphics_preference_only_on_change`
 - `test_presentation_uses_stored_graphics_preference_or_default` — the
@@ -267,8 +291,8 @@ or load.
 This task depends on every Phase 1 module's factory existing
 (`08` §8.11a, Q-009) — T-008, T-012, T-021, T-022, T-024, T-026 — plus the
 render and UI scene layers (T-020, T-029) whose `RenderFactory`/`UiFactory`
-the presentation composer calls, plus T-027 (content loader) and T-030
-(the harness side of the equivalence test). **Also T-023, named explicitly
+the presentation composer calls, plus T-027 (content loader) and T-030 and T-048
+(the harness side of the equivalence test, both stages). **Also T-023, named explicitly
 now (systematic recheck):** `IFlowSystem.TryGetLaneState`/
 `TryGetOutstanding` are called through the same `RenderSources`/lane-sink
 wiring T-020/T-029 already require, so this was already transitively
