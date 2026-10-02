@@ -61,6 +61,8 @@ namespace AirportSim.Tools.SimHarness
                         return RunPromotion(args, stdout);
                     case "budget":
                         return RunBudget(args, stdout);
+                    case "checkpoints":
+                        return RunCheckpoints(args, stdout, stderr);
                     default:
                         stderr.WriteLine("tools.simharness: unknown subcommand '" + args[0] + "'");
                         return 2;
@@ -204,6 +206,44 @@ namespace AirportSim.Tools.SimHarness
                 " p99_us=" + p99Us.ToString(CultureInfo.InvariantCulture);
             stdout.Write(line + "\n");
             return passed ? 0 : 1;
+        }
+
+        private static int RunCheckpoints(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr)
+        {
+            var spec = new Dictionary<string, bool>(StringComparer.Ordinal)
+            {
+                ["--bundle"] = true,
+                ["--content"] = true,
+                ["--days"] = true,
+                ["--out"] = true,
+            };
+            ParseFlags(args, spec, out Dictionary<string, string> values, out _);
+
+            string bundle = RequirePath(values, "--bundle");
+            string content = RequirePath(values, "--content");
+            string outPath = RequirePath(values, "--out");
+            ulong days = ParseUnsignedDecimal(RequireValue(values, "--days"), "--days");
+            if (days == 0 || days > MaxDays)
+            {
+                throw new UsageException("--days must be positive and its ticks must fit a uint32");
+            }
+
+            return CheckpointsCommand.Run(bundle, content, (uint)days, outPath, stdout, stderr);
+        }
+
+        /// <summary>§19.2b "Paths": not empty, and not rooted without being fully qualified.</summary>
+        private static string RequirePath(IReadOnlyDictionary<string, string> values, string flag)
+        {
+            string path = RequireValue(values, flag);
+            if (path.Length == 0)
+            {
+                throw new UsageException(flag + " must not be empty");
+            }
+            if (Path.IsPathRooted(path) && !Path.IsPathFullyQualified(path))
+            {
+                throw new UsageException(flag + " is rooted but not fully qualified");
+            }
+            return path;
         }
 
         private static int RunLegacyDefault(TextWriter stdout)

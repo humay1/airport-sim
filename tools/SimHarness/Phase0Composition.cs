@@ -70,7 +70,7 @@ namespace AirportSim.Tools.SimHarness
             builder.Register(flow);
         }
 
-        private static string FindRoot()
+        internal static string FindRoot()
         {
             string? dir = AppContext.BaseDirectory;
             while (dir != null && !File.Exists(Path.Combine(dir, "AirportSim.sln")))
