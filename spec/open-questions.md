@@ -2144,3 +2144,233 @@ Answer:      Architecture. On a tick that completes normally, command
              for both kinds. It is a separate small test-only task after
              T-042, not part of T-042.
 Status:      ANSWERED (spec/08-interfaces-core.md#87-commands)
+
+<!-- Q-066 to Q-076: the T-030 Test Author's eleven gaps, via coordinator. -->
+
+### Q-066 — `tools.simharness` `checkpoints`: grammar and usage errors
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    `19` §19.3 lists "exactly these forms" without
+             `checkpoints`. Flag order, repeats, missing flags, `--days 0`
+             and `Days × TICKS_PER_SIM_DAY` above `uint32` are undefined.
+Why it matters: Usage errors are exit 2 everywhere else. Guessing gives
+             tests and code different grammars.
+Answer:      Architecture. §19.3 gains `checkpoints --bundle B --content
+             C --days D --out P`. Flags in any order, each exactly once,
+             all four required. `D` follows every other `--days`: 0 and
+             `D > 298 261` are usage errors. `B`, `C` and `P` follow
+             §19.2b's path rules. `--seed` and `--golden` are unknown
+             flags. `--content` is new (Q-072). Usage is decided before
+             any file is touched.
+Status:      ANSWERED (spec/19-interfaces-harness.md#193-the-command-line-q-026)
+
+### Q-067 — `checkpoints`: success stdout and exit codes
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    What does a successful `checkpoints` print, and which exit
+             codes do a missing or bad bundle, a listed system without its
+             file, a load failure and a write failure return?
+Why it matters: §19.3's stdout grammar has no line for it, and its
+             exit-3 cases name only §19.2a and §19.2b failures.
+Answer:      Architecture. Success is exit 0 with one line, `WROTE
+             checkpoints ticks=<n> checkpoints=<k> final=<hex16>`, which
+             mirrors `soak --out`. It never exits 1. Every failure after
+             usage is exit 3, with stdout empty and one stderr message.
+             §19.2c lists them, in order: root, `--out` checks, bundle,
+             composability, files, content, then composition and run,
+             then the write. `P` is created only after the run, so an
+             earlier exit 3 leaves no file.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-068 — `checkpoints`: path rules for `--bundle` and `--out`
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    Do §19.2b's rules (repository-relative or fully qualified,
+             never overwrite) apply to `--bundle` and `--out`?
+Why it matters: Tests need temporary directories, and CI must not
+             depend on the working directory.
+Answer:      Architecture. Yes, to `--bundle`, `--content` and `--out`
+             alike. `--out` is never overwritten. The root is looked for
+             only when a path is repository-relative. Bundle files are
+             read by exact name and `B` is never listed.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-069 — `checkpoints`: which composition, and which systems?
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030; T-031 (its D7 test)
+Question:    §19.2 says no flag selects a composition, but `--bundle`
+             does. Which `systems` must the harness support? D7 needs the
+             Phase 1 bundle (airside, turnaround, delay), but T-030
+             depends only on T-004, T-006 and T-009. What happens with a
+             system the harness can't compose?
+Why it matters: As filed, T-030 cannot build the Phase 1 half of D7.
+Answer:      Architecture, plus an ordering question for the Planner.
+             `checkpoints` is §19.2's one exception: it composes the
+             bundle by `16` §16.4 in its own code (§19.2c). The support
+             is **staged**. T-030 composes `sim.world`, `sim.schedule`
+             and `sim.flow`. A bundle listing another Phase 1 system is
+             exit 3, naming it, and no test asserts that. A **Phase 1
+             stage** harness task, after T-021, T-022 and T-024 merge,
+             adds the other three and must merge before T-031. So T-030
+             is not mis-ordered for its own scope. The Phase 1 half of
+             D7 needs work after those three tasks, which is a pure
+             ordering question and belongs to the Planner: either file
+             the Phase 1 stage as its own task (recommended, because
+             T-013, T-014 and T-045 queue behind T-030 as harness
+             writers, and the nightly soak waits on T-013), or move T-030
+             after T-021, T-022 and T-024, so that it covers both stages.
+             §19.2c holds under either choice. `16` §16.3 also gets a
+             strict `bundle.json` form: exact keys, a digit-string seed,
+             and a non-empty list of distinct Phase 1 names, with each
+             `Name` equal to its module name. The playtest bundle is the
+             Unity shell's, which comes after T-031, so D7's Phase 1 half
+             uses a test bundle, `tests/fixtures/harness/checkpoints-phase1/`
+             (LOW CONFIDENCE, `16` §16.8).
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-070 — `checkpoints`: the boarding stand-in, and §16.8's Phase 0 bundle
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    §19.2a registers the stand-in at slot 3, and no production
+             composition does, so a T-009-style composition cannot be
+             byte-identical to `IHeadlessRun`. §16.8's "Phase 0 bundle
+             with only `sim.schedule` and `sim.flow`" contradicts §16.4
+             (flow without world is a load failure) and T-009's real
+             composition.
+Why it matters: D7 would fail by construction.
+Answer:      Architecture. `checkpoints` registers no stand-in and no
+             probe, only the listed systems. The stand-in stays in the
+             §19.2a CLI composition only. §16.8 now names the Phase 0
+             bundle `tests/fixtures/harness/checkpoints-phase0/`, listing
+             `sim.world`, `sim.schedule` and `sim.flow`: T-009's
+             composition without the stand-in.
+Status:      ANSWERED (spec/16-interfaces-host.md#168-the-headless-checkpoint-run-and-the-dump-format)
+
+### Q-071 — `checkpoints`: does it submit §19.2's NoOp script?
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    The command queue is hashed, and `IHeadlessRun` has no
+             commands.
+Why it matters: A script on one side only breaks D7's byte identity.
+Answer:      Architecture. No. Neither `checkpoints` nor `IHeadlessRun`
+             submits any command. §19.2's script excludes `checkpoints`,
+             and §16.8 says so for `Run`.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-072 — `checkpoints`: which content?
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    A bundle has no content file. Which content does
+             `checkpoints` load?
+Why it matters: The content index enters composition. Both sides of D7
+             and of `16` §16.9 must load the same definitions.
+Answer:      Architecture. A required `--content C` names a content
+             directory laid out like `data/`. The harness lists every
+             file under it, and `08` §8.11's loader orders and filters
+             them. `--content data` is the player's content. `16` §16.9
+             step 1 passes the build step's copy of it,
+             `unity/AirportSim/Assets/StreamingAssets/Content`, beside
+             the build step's copy of the playtest bundle (review of #83
+             at `8df4681`). LOW CONFIDENCE: §19.2a
+             uses a manifest, but there is none for `data/`, and here the
+             directory is the whole input on both sides.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-073 — `checkpoints`: the loader `sourceName` per bundle file
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    Which `sourceName` does each loader get?
+Why it matters: Loader messages start with it, and tests assert the
+             prefix.
+Answer:      Architecture. Exactly the bundle file name, such as
+             `schedule.csv`, on both sides (`16` §16.4 step 2, `19`
+             §19.2c).
+Status:      ANSWERED (spec/16-interfaces-host.md#164-composition)
+
+### Q-074 — `checkpoints`: no seam for the batch-size test
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    `test_checkpoints_result_independent_of_step_batch_size` has
+             no batch flag and no public checkpoints member in §19.1.
+Why it matters: The test cannot vary anything.
+Answer:      Architecture. No seam is added. Both sides pin their
+             stepping to `Days` calls of `Step(TICKS_PER_SIM_DAY)`. The
+             test builds a checkpoints kit from the same bundle through
+             the published factories, steps it as `Step(1)`, as one
+             `Step(14 400)` and as `Step(997)` with a remainder, and
+             asserts that all three dumps equal the CLI's file (§19.8).
+             `IHeadlessRun`'s test does the same through `ISimComposer`
+             (`16` §16.8).
+Status:      ANSWERED (spec/19-interfaces-harness.md#198-tests-of-checkpoints-q-074-to-q-076)
+
+### Q-075 — `checkpoints`: a checkable "published factories only" rule
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    `test_checkpoints_subcommand_composes_through_published_factories_only`
+             has no checkable rule.
+Why it matters: A test with no rule asserts nothing.
+Answer:      Architecture. Two parts, both in the test (§19.8).
+             Behavioural: the default invocation exits 0, and its file
+             is byte-identical to the published-surface kit's dump, so
+             the test fails without a working `checkpoints`. Static, by
+             reflection: the harness assembly references no
+             `AirportSim.App.*` assembly, so D7 compares two independent
+             compositions, and no `AirportSim.*` assembly it references
+             carries `InternalsVisibleTo`. The static part guards against
+             regression, and today's `main` already passes it. The
+             Reviewer checks that no non-public member is reached by
+             reflection.
+Status:      ANSWERED (spec/19-interfaces-harness.md#198-tests-of-checkpoints-q-074-to-q-076)
+
+### Q-076 — `checkpoints`: where the bundle fixture lives
+Raised by:   Test Author / T-030, via coordinator, 2026-10-01
+Blocking:    T-030
+Question:    Where is the bundle fixture, and do T-030's writable paths
+             need it?
+Why it matters: The path guard blocks unlisted writes.
+Answer:      Architecture. `tests/fixtures/harness/checkpoints-phase0/`
+             holds `bundle.json` (seed `"12345"`, the three Phase 0
+             systems), and `world.fixture`, `flow.fixture` and
+             `schedule.csv` as byte copies of the Phase 0 set. Its
+             content is `tests/fixtures/harness/phase0-content/`. The
+             Test Author writes them, so the worker's writable paths stay
+             `tools/SimHarness/**`. The Planner adds
+             `tests/fixtures/harness/checkpoints-phase0/**` to the Test
+             Author's grant. The Phase 1 stage's Test Author writes
+             `tests/fixtures/harness/checkpoints-phase1/`.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-077 — `app.host`: the D7 test cannot reach the harness
+Raised by:   Architect, answering Q-066 to Q-076, 2026-10-01
+Blocking:    T-031 (`test_host_composition_matches_harness_checkpoints`)
+Question:    `16` §16.8 runs the D7 test in process. `07` L3 lets
+             `tests/app/host` reference only `src/app/host`, and §19.8
+             forbids the harness from referencing `app.host`. No test
+             project can therefore call both `HarnessCli.Run` and
+             `IHeadlessRun` in process. How does the D7 test run both
+             sides?
+Why it matters: As specified, the test cannot be written.
+Proposed:    (A) An integration test project, for example
+             `tests/integration/`, which is the one project allowed to
+             reference both `src/app/host` and `tools/SimHarness`. This
+             is a `07` L1/L3 amendment, one `.sln` edit and no
+             goldens. (B) Committed golden dumps of both bundles,
+             written by `checkpoints --out`. A harness test and a host
+             test each compare with them. That needs no new project, but
+             every hash-moving change re-authors them under
+             `tests/golden/README.md`, with owner confirmation. (C) Spawn
+             the built harness from the host test. Q-025 binds harness
+             tests only, so nothing forbids it outright. But it drops
+             §16.8's in-process run, and the host test would have to
+             locate a build output that its own project does not
+             reference, with its configuration and runtime, which
+             depends on the build layout. (D) Let
+             the harness reference `app.host`, so that the harness test
+             project sees it. That withdraws §19.8's static check, makes
+             "two independent compositions" uncheckable, and pulls
+             `app.render` and `app.ui` into a CI tool.
+             The Architect recommends (A). It is not answered in this PR,
+             because it does not block T-030 and it changes `07`'s
+             project layout, which deserves its own review. T-031 cannot
+             be released until it is answered.
+Status:      OPEN
