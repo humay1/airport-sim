@@ -3241,3 +3241,102 @@ Impact:      - **No merged work is invalidated.** `sim.airside` is not
 Signed off:  not required (interface detail and state layout; no balance,
              scope or `01`/`02` change). The owner should review the LOW
              CONFIDENCE marker.
+
+## 2026-10-02 — spec/10-events.md §10.2, spec/13-interfaces-turnaround.md §13.4/§13.9/§13.11, spec/12-interfaces-airside.md §12.3/§12.9/§12.10/§12.11/§12.12/§12.13 — `Cause` follow-ups; track fields by phase; hash encoding; `PlannedOnStand` (Q-080 to Q-083)
+Reason:      Q-080 is the PR #89 reviewer's three non-blocking notes:
+             - `13` left creation-time events without a declared `Cause`;
+             - `10` §10.2 had no precedence rule;
+             - one `12` §12.11 row was worded loosely.
+             Q-081 to Q-083 came from T-021's PR #91:
+             - §12.9 never said when `Stand` and `Runway` clear, so the
+               worker kept the route stand and runway outside the hashed
+               state;
+             - §12.12 fed the tracks and the hold queues with no length;
+             - a `ReassignStand` between `OnStand` and `DoorsOpen` made
+               `DoorsOpen`'s `PlannedTick` underivable or shifted.
+             Each fix is the narrowest one available:
+             - `13` declares every event's `Cause`;
+             - a kept event wins over a same-tick one;
+             - one binding table gives the track fields per phase;
+             - every variable-length list is length-prefixed;
+             - §12.9 declares every track field stored state and names the
+               action that writes each one. `DueAt`, `AtNode` and
+               `EdgeProgress`, which follow a rule, are included, and S6
+               advances `EdgeProgress` each tick. So feeding them is
+               consistent with `08` §8.9 as written, and `08` is not
+               changed (review of #93 at `7e7b55a`, finding 2). A rewording
+               of `08` §8.9 tried at `b290895` is withdrawn: it would have
+               made merged `11` §11.9 non-conforming;
+             - one stored field, `PlannedOnStand`, keeps `DoorsOpen`'s plan
+               across a reassignment. **HUMAN DECISION, owner,
+               2026-10-02 (Q-083):** `ReassignStand` stays open during the
+               door delay. That replaces the reason-1 restriction first
+               proposed at `7e7b55a`, which narrowed a player command and
+               contradicted a PR #78 test;
+             - `ReassignStand` moves the track's `AtNode` with its
+               `Stand` (finding 3).
+Raised by:   Q-080 (Reviewer, PR #89), Q-081 and Q-082 (Worker / T-021),
+             Q-083 (Reviewer, PR #91 finding 1; owner decision
+             2026-10-02), review of #93 at `7e7b55a`
+Impact:      - **No merged code is invalidated.** `sim.airside` (PR #91)
+               and `sim.turnaround` are not merged. Merged `sim.flow` and
+               `sim.schedule` already match `10` §10.2's last bullet.
+             - **`08`:** unchanged, so no merged module's conformance
+               changes.
+             - **HASH CHANGE, `sim.airside` (Q-081, Q-082, Q-083):**
+               - the hold-queue and track length prefixes are new;
+               - `PlannedOnStand` is fed last in each track, so a track
+                 is 14 fields;
+               - `EdgeProgress` stays fed, at the stored value S6 writes;
+               - the phase table pins `Stand` kept after `Pushback`,
+                 `Runway` kept after `OffRunway`, `AtNode` moved by
+                 `ReassignStand`, `DueAt`, `EdgeProgress` and
+                 `PhaseEnteredAt`.
+               No golden covers `sim.airside` (`19`), so none is
+               re-authored.
+             - **T-021 worker (PR #91):**
+               - adds length prefixes to the hold queues and tracks. The
+                 prefixes from `09783f7` come back, and they now match
+                 the spec;
+               - feeds no derived stand-wait flag;
+               - stores `EdgeProgress`, advances it in S6 each tick as
+                 §12.9 says, and keeps feeding it. The current #91
+                 computes it when the track is read, from the last tick it
+                 ran;
+               - keeps `Stand` and `Runway` per the table and derives the
+                 route and planned ticks from them;
+               - adds the stored `PlannedOnStand`, and computes
+                 `DoorsOpen`'s `PlannedTick` from it, which fixes #91
+                 review finding 1;
+               - moves `AtNode` with `Stand` on `ReassignStand` and leaves
+                 `PhaseEnteredAt`, `DueAt` and `PlannedOnStand` alone;
+               - keeps `ReassignStand` open during the door delay, as it
+                 already is;
+               - fixes the `AircraftHeldOnTaxiway` `Cause` only if its
+                 reading differed.
+             - **T-021 tests (Test Author, PR #78):**
+               - `AircraftTrack` gains a last positional argument,
+                 `PlannedOnStand`, so `AirsideTypesTests` and any helper
+                 that builds a track change;
+               - two new tests, `test_track_fields_follow_phase_table` and
+                 `test_reassign_before_doors_open_keeps_planned_tick_and_moves_at_node`
+                 (§12.13);
+               - `test_airside_update_path_allocates_nothing_including_handlers`
+                 stays valid. Its reassignment of W_A at 1870, before W_A's
+                 1880 `DoorsOpen`, is still applied;
+               - any test computing the hash by hand gains the prefixes and
+                 `PlannedOnStand`. `EdgeProgress` stays in the feed.
+             - **T-022 (not started):** implements §13.9's `Cause`
+               table and §13.4's `NominalDurationTicks ≥ 1` check. Two
+               new tests (§13.11). Its fixture must have no zero
+               duration.
+             - **T-024, `app.render`:** none. `15` §15.4 places aircraft
+               by `AtNode`/`OnEdge`, never by `Stand`.
+             - **LOW CONFIDENCE:** none added.
+             - **Scope:** none added. The player command is unchanged, by
+               the owner's decision.
+             - **PENDING HUMAN:** none. Q-083's command question was
+               escalated and decided by the owner, 2026-10-02.
+Signed off:  Q-083: owner, 2026-10-02 (`ReassignStand` stays open). The
+             rest is not required (interface detail and state layout; no
+             balance, scope or `01`/`02` change).

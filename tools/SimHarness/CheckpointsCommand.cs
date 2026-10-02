@@ -138,7 +138,12 @@ namespace AirportSim.Tools.SimHarness
             ulong final = host.WorldStateHash();
 
             Checkpoint[] checkpoints = sink.ToArray();
-            byte[] dump = Render(seed, registered, checkpoints);
+            var registeredNames = new List<string>(registered.Count);
+            foreach (ISimSystem system in registered)
+            {
+                registeredNames.Add(system.Name);
+            }
+            byte[] dump = Render(seed, registeredNames, checkpoints);
 
             // Step 4: P is created as a new file, and the dump is written to it.
             try
@@ -356,15 +361,15 @@ namespace AirportSim.Tools.SimHarness
         // ---------------------------------------------------------------- dump
 
         /// <summary>16 §16.8 checkpoint dump, version 1, byte for byte.</summary>
-        private static byte[] Render(ulong seed, IReadOnlyList<ISimSystem> systems, Checkpoint[] checkpoints)
+        internal static byte[] Render(ulong seed, IReadOnlyList<string> systemNames, Checkpoint[] checkpoints)
         {
             var sb = new StringBuilder();
             sb.Append("airport-sim-checkpoints 1\n");
             sb.Append("seed ").Append(seed.ToString(CultureInfo.InvariantCulture)).Append('\n');
             sb.Append("systems");
-            foreach (ISimSystem system in systems)
+            foreach (string name in systemNames)
             {
-                sb.Append(' ').Append(system.Name);
+                sb.Append(' ').Append(name);
             }
             sb.Append('\n');
 

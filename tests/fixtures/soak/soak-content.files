@@ -1,0 +1,10 @@
+aircraft/a320.json
+aircraft/a321.json
+aircraft/a359.json
+aircraft/b738.json
+aircraft/b789.json
+aircraft/crj900.json
+pax_profiles/business.json
+pax_profiles/leisure.json
+queue_profiles/security_soak.json
+size_categories/size_c.json
