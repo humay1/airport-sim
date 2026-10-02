@@ -37,6 +37,7 @@ namespace AirportSim.Tools.SimHarness.Tests
         // ------------------------------------------------------------ format
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_checkpoint_dump_format_is_byte_exact()
         {
             using var tmp = new CheckpointsKit.TempDir();
@@ -78,6 +79,7 @@ namespace AirportSim.Tools.SimHarness.Tests
         // ------------------------------------------------------------ batching
 
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_checkpoints_result_independent_of_step_batch_size()
         {
             // Q-074: the CLI's batching is pinned to Step(TICKS_PER_SIM_DAY) per day,
