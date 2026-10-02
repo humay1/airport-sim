@@ -5,8 +5,8 @@
 | Status | QUEUED |
 | Module | `sim.turnaround` |
 | Assigned role | worker |
-| Depends on | T-008 (merged #54), T-021 (not merged), T-026 (merged #29) |
-| Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
+| Depends on | T-008 (merged #54), T-021 (not merged; implementation PR #91), T-026 (merged #29) |
+| Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006) §13.4, §13.9, §13.11; `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75); `spec/10-events.md` §10.2 (Q-080, PR #93) |
 | Blocked by | — |
 
 ## Writable paths
@@ -215,6 +215,21 @@ allocate nothing and count toward the 0.50 ms: a budget test times `Tick` plus
 the shimmed handlers (`03` "Timing a module's handlers"). `13` §13.10 is the
 source. Also note `T-021` now hands the arrival off only after `DoorsOpen`
 (Q-062), so the handshake test's event order follows `12` §12.8 step 3.
+
+Added by Q-080 (`13` §13.11, spec PR #93, `1154c2a`):
+
+- `test_turnaround_event_causes_follow_cause_table`: every event this module
+  emits carries the `Cause` the binding table in `13` §13.9 gives it
+- `test_catalogue_rejects_zero_nominal_duration` (`13` §13.4)
+
+**`Cause` (Q-080, `13` §13.9).** The Cause table in §13.9 is binding for every
+event this module emits. `TurnaroundJobBlocked`, and `TurnaroundJobStarted`
+for `Deboard` or a job given a free vehicle at creation, name the flight's
+`OnStand` that the creating handler received in the same tick.
+`TurnaroundJobCompleted` is None, after a duration. A kept event takes
+precedence over a same-tick one (`10` §10.2). **No zero durations (`13`
+§13.4):** `NominalDurationTicks >= 1` for every catalogue entry, and the
+loader rejects a zero.
 
 **Do not edit them.** If a test contradicts `spec/13-interfaces-turnaround.md`,
 file an open question and stop.

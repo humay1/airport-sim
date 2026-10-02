@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (spec gap closed by Q-057; releasable after T-009 merges and tests are authored) (historical, resolved: T-009 merged #74; now ordered after T-030, then one at a time with T-014) |
+| Status | MERGED (PR #94, `4466a26`, 2026-10-02). The golden `tests/golden/soak-500.hashes` was committed by the owner in `c4cbbf4` |
 | Module | `tools.simharness` (invoked by `ci/run-checks.sh`) |
 | Assigned role | worker |
-| Depends on | T-009 (merged #74); harness writer order is T-030, then T-013 and T-014 one at a time, then T-045; see `queue.md` |
+| Depends on | T-009 (merged #74), T-030 (merged #90); harness writer order is T-030, then T-013 and T-014 one at a time, then T-045; see `queue.md` |
 | Spec source | `spec/19-interfaces-harness.md` §19.2b and §19.3 (Q-057, PR #70, `b00adcb`); `spec/00-overview.md`; `spec/02-determinism.md` "Gates" (`soak_500_days`); `spec/03-module-map.md` "The soak fixture" (answers Q-003, D3) |
 | Blocked by | — |
 
