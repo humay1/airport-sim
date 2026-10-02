@@ -9,16 +9,18 @@ namespace AirportSim.Sim.Airside.Tests
 {
     /// <summary>
     /// 12 §12.2 and §12.12 "Tracked flights" (Q-085): at most
-    /// TRACKED_FLIGHTS_CAPACITY (2048) flights are tracked; S2's arrival
-    /// start that would add track 2 049 throws SimInvariantException at that
-    /// tick, before it publishes, naming the flight and the tracked flights;
-    /// and every earlier Tick allocates nothing.
+    /// TRACKED_FLIGHTS_CAPACITY (4096) flights are tracked. S2's arrival
+    /// start that would add track 4 097 throws SimInvariantException at that
+    /// tick, before it publishes, naming the flight and the tracked flights,
+    /// and every earlier Tick allocates nothing. A run that §12.2 "Why 4096
+    /// tracks hold" covers never throws.
     /// </summary>
     public sealed class TrackedFlightsTests
     {
-        private const int Day0 = 1024;
-        private const int Day1 = 1025; // Day0 + Day1 = 2 049 tracks
         private const int PerMinute = 30;
+
+        // Rows per calendar day: 4 097 in all, so day 2's last row is track 4 097.
+        private static readonly int[] RowsPerDay = { 1365, 1366, 1366 };
 
         /// <summary>Counts sim.airside's InboundAirborne without allocating.</summary>
         private sealed class InboundCounter
@@ -37,31 +39,40 @@ namespace AirportSim.Sim.Airside.Tests
         {
             // Rotation-less arrivals only: they never leave tracked state
             // (§12.7), and one runway at 1 per hour lands one every 600 ticks,
-            // so no track is ever removed and the count only grows.
-            //  - day 0: A0000-A1023, 30 a minute from 02:10 (STA 1300 on), so
-            //    InboundAirborne runs at ticks 100-440 and none at tick 0;
-            //  - day 1: B0000-B1024, 30 a minute from 03:00, published during
-            //    day 0 (STA - 14 400), started at STA - 1 200.
-            // Pending peaks at 1 025 (day 0 has all started by 440, before day
-            // 1 publishes from 1800), under 2 048.
-            var rows = new List<string>(Day0 + Day1);
-            for (int i = 0; i < Day0; i++)
+            // so no track is removed and the count only grows. Each day's rows
+            // run 30 a minute: day 0 (A) from 02:10, so InboundAirborne falls
+            // in ticks 100-550 and none at tick 0; days 1 (B) and 2 (C) from
+            // 03:00, each published on the previous day (STA - 14 400). Every
+            // day's starts end by its 03:45 - 1 200, before the next day's
+            // publications begin at 03:00, so the pending list holds at most
+            // one day's rows (1 366), under 2 048.
+            var rows = new List<string>();
+            string[] prefix = { "A", "B", "C" };
+            int[] firstMinute = { 130, 180, 180 };
+            for (int day = 0; day < RowsPerDay.Length; day++)
             {
-                rows.Add(Csv.Row("A" + i.ToString("D4", CultureInfo.InvariantCulture), "A", Hhmm(130 + (i / PerMinute))));
-            }
-
-            for (int i = 0; i < Day1; i++)
-            {
-                rows.Add(Csv.Row("B" + i.ToString("D4", CultureInfo.InvariantCulture), "A", Hhmm(180 + (i / PerMinute)), day: "1"));
+                for (int i = 0; i < RowsPerDay[day]; i++)
+                {
+                    rows.Add(Csv.Row(prefix[day] + i.ToString("D4", CultureInfo.InvariantCulture), "A", Hhmm(firstMinute[day] + (i / PerMinute)), day: day.ToString(CultureInfo.InvariantCulture)));
+                }
             }
 
             byte[] csv = Csv.Of(rows.ToArray());
             Dictionary<string, ulong> ids = Csv.Ids(csv);
-            ulong overflowing = ids["B1024"];
-            Assert.Equal(AirConst.DayStride + (ulong)Day0 + (ulong)Day1, overflowing); // RowOrdinal 2 048, day 1
-            ulong sta = AirConst.TicksPerDay + AirConst.At(3, 0) + ((ulong)(1024 / PerMinute) * AirConst.TicksPerMinute);
+
+            // Track 4 097 is day 2's last row, C1365: RowOrdinal 4 096 on day 2
+            // (11 §11.3). Its STA is day 2 03:45 (minute 1365 / 30 = 45), so its
+            // InboundAirborne is due at 28 800 + 2 250 - 1 200 = 29 850. The
+            // earlier tracks are days 0 and 1 (2 731) plus day 2's minutes 0-44
+            // (45 x 30 = 1 350): 4 081. That tick then starts C1350-C1365,
+            // tracks 4 082 to 4 097.
+            ulong overflowing = ids["C1365"];
+            Assert.Equal((2UL * AirConst.DayStride) + 4097UL, overflowing);
+            ulong sta = (2UL * AirConst.TicksPerDay) + AirConst.At(3, 45);
             ulong throwTick = sta - AirConst.CruiseLead;
-            Assert.Equal(15340UL, throwTick);
+            Assert.Equal(29850UL, throwTick);
+            const int before = 1365 + 1366 + (45 * PerMinute);
+            Assert.Equal(4081, before);
 
             // A host with sim.schedule, sim.airside and a non-allocating counter.
             var counter = new InboundCounter();
@@ -84,9 +95,9 @@ namespace AirportSim.Sim.Airside.Tests
             ISimHost host = b.Build();
 
             // Every earlier Tick: metered with the T-037 meter over Step windows
-            // that hold no checkpoint tick (every 600; tick 14 400 is also
-            // sim.schedule's day boundary), as 03 permits. The first window
-            // (ticks 1-599) is the warm-up 03 requires before metering.
+            // that hold no checkpoint tick (every 600; ticks 14 400 and 28 800
+            // are also sim.schedule's day boundaries), as 03 permits. The first
+            // 600 ticks are the warm-up 03 requires before metering.
             const ulong checkpoint = 600UL;
             host.Step((uint)checkpoint);
             while (host.CurrentTick < throwTick)
@@ -102,11 +113,10 @@ namespace AirportSim.Sim.Airside.Tests
             }
 
             Assert.Equal(throwTick, host.CurrentTick);
-            Assert.Equal(2044, counter.Count); // 1 024 + 30 × 34 day-1 starts before the throwing tick
-            Assert.Equal(2044, airside.TrackedFlights().Count);
+            Assert.Equal(before, counter.Count);
+            Assert.Equal(before, airside.TrackedFlights().Count);
 
-            // Tick 15 340 starts B1020-B1024 in ascending FlightId; B1024 would
-            // be track 2 049. The host wraps the module's throw once (08 §8.5a).
+            // The host wraps the module's throw once (08 §8.5a).
             SimInvariantException ex = Assert.Throws<SimInvariantException>(() => host.Step(1));
             Assert.Equal(throwTick, ex.Tick);
             var inner = Assert.IsType<SimInvariantException>(ex.InnerException);
@@ -114,10 +124,58 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Contains(overflowing.ToString(CultureInfo.InvariantCulture), inner.Message, StringComparison.Ordinal);
             Assert.Contains("track", inner.Message, StringComparison.OrdinalIgnoreCase);
 
-            // Nothing of the throwing tick was dispatched, and B1024's
-            // InboundAirborne never reached the bus's subscribers.
-            Assert.Equal(2044, counter.Count);
+            // Nothing of the throwing tick reached a subscriber, C1365's
+            // InboundAirborne included.
+            Assert.Equal(before, counter.Count);
             Assert.NotEqual(overflowing, counter.LastFlight);
+        }
+
+        [Fact]
+        public void test_tracked_flights_bound_not_reached_by_covered_max_tier_run()
+        {
+            // §12.13's second case: a run §12.2 says stays under the bound. Max
+            // tier, 800 rotation-less departures a day repeating from day 1
+            // (none on day 0, so tick 0 carries no burst), MinTurnaround 1 440
+            // minutes. Each is due at STD - 14 400 = its PublishTick and so
+            // starts at PublishTick + 1 (§12.11). 800 movements a calendar day,
+            // 60 stands, and every flight leaves well within 3 sim-days, so by
+            // "Why 4096 tracks hold" the run never reaches 4 096. Three days.
+            byte[] fixture = ScheduleFixture.Bytes();
+            string[] lines = System.Text.Encoding.UTF8.GetString(fixture).Split('\n');
+            var rows = new List<string>(800);
+            int n = 0;
+            foreach (string suffix in new[] { "a", "b", "c", "d" })
+            {
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (lines[i].Length == 0)
+                    {
+                        continue;
+                    }
+
+                    // Keep each fixture row's time; make it a rotation-less departure.
+                    string[] f = lines[i].Split(',');
+                    rows.Add(Csv.Row("P" + n.ToString("D3", CultureInfo.InvariantCulture) + suffix, "D", f[6], aircraft: f[5], minTurn: "1440", repeat: "1", day: "1"));
+                    n++;
+                }
+            }
+
+            Assert.Equal(800, rows.Count);
+            var rig = new HostRig(Csv.Of(rows.ToArray()), layout: MaxTierLayout.Layout());
+            int peak = 0;
+            rig.StepEach(3UL * AirConst.TicksPerDay, t => peak = Math.Max(peak, rig.Airside.TrackedFlights().Count));
+
+            Assert.Equal(3UL * AirConst.TicksPerDay, rig.Host.CurrentTick);
+            Assert.True(peak <= 4096, "tracked " + peak.ToString(CultureInfo.InvariantCulture));
+
+            // The run is the one described: departures start at PublishTick + 1
+            // with PlannedTick = the due tick, and they leave (Airborne).
+            ulong first = rig.Id("P000a");
+            FlightRecord fr = rig.Flight(first);
+            Rec onStand = rig.Rec.Milestone(first, FlightMilestone.OnStand);
+            Assert.Equal(fr.ScheduledTick - AirConst.TicksPerDay, onStand.Milestone.PlannedTick);
+            Assert.Equal(fr.PublishTick + 1UL, onStand.Milestone.ActualTick);
+            Assert.Contains(rig.Rec.All, r => r.FromAirside && r.IsMilestone(FlightMilestone.Airborne));
         }
     }
 }
