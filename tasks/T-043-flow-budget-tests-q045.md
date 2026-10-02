@@ -30,7 +30,7 @@ test that asserts only allocation are out of scope.
 **Serialised after T-039 and T-040** (T-023 has merged). T-040 adds the `Slow`
 trait to `PromotionBudgetTests` and `FlowStressBudgetTests` methods and T-039
 adds a file, both in `tests/sim/flow/**`. Never release two tasks that write the
-same paths.
+same paths. (historical, resolved: T-039, T-040 and T-023 merged; T-043 merged #85)
 
 **Folded in (2026-10-01, post-#73/#75 sync): two more `tests/sim/flow/**`
 rewrites that would otherwise need their own serialised tasks.** They touch the
