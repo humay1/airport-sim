@@ -681,8 +681,7 @@ namespace AirportSim.Sim.Airside
             int target = StandIndex(standId);
             Slot? s = Find(flight);
             long reason = 0;
-            if (s is null || s.Phase != AircraftLegPhase.OnStand || s.Stand < 0
-                || (s.Kind == MovementKind.Arrival && s.PhaseEnteredAt + _delayTicks >= ctx.Tick) || !_standHas[s.Stand] || _standOccupant[s.Stand] != flight)
+            if (s is null || s.Phase != AircraftLegPhase.OnStand || s.Stand < 0 || !_standHas[s.Stand] || _standOccupant[s.Stand] != flight)
             {
                 reason = 1;
             }
