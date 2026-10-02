@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "nodes": [
+    { "id": 1, "kind": "source" },
+    { "id": 2, "kind": "source" },
+    { "id": 3, "kind": "hall" },
+    { "id": 4, "kind": "corridor" },
+    { "id": 5, "kind": "queue", "server_count": 3, "servers_open": 2, "queue_profile": "security_soak" },
+    { "id": 6, "kind": "queue", "server_count": 3, "servers_open": 2, "queue_profile": "security_soak" },
+    { "id": 7, "kind": "corridor" },
+    { "id": 8, "kind": "gate" },
+    { "id": 9, "kind": "sink" }
+  ]
+}
