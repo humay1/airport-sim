@@ -39,9 +39,7 @@ The Unity project shell (`unity/AirportSim/**`) is a separate task (T-034),
 released after this one, the render/UI Unity backends (T-032, T-033), and
 after content exists for a real player build.
 
-**Integration test project (Q-077, `07` L1/L3/L8; PR #84, pending #84 merge
--- if #84 has not merged when this task is released, stop and ask the
-Planner).** `test_host_composition_matches_harness_checkpoints` cannot live in
+**Integration test project (Q-077, `07` L1/L3/L8; merged #84).** `test_host_composition_matches_harness_checkpoints` cannot live in
 `tests/app/host` (`07` L3: one reference), and the harness may not reference
 `app.host` (`19` §19.8). It lives in `tests/integration/`, the one test
 project that references both `src/app/host` and `tools/SimHarness` (exactly
@@ -235,7 +233,7 @@ Written by the Test Author. Expect at least:
 - `test_compose_constructs_in_dependency_order_and_registers_in_registry_order`
 - `test_compose_rejects_airside_without_schedule`
 - `test_host_composition_matches_harness_checkpoints` -- **in
-  `tests/integration/`** (Q-077, pending #84 merge). Runs the harness
+  `tests/integration/`** (Q-077, merged #84). Runs the harness
   `checkpoints` subcommand (`HarnessCli.Run`, `19` §19.1, in process,
   `net8.0`) and this task's `IHeadlessRun` on the same bundle and content for
   one sim-day, on two Phase 1 test bundles (`16` §16.8; the playtest bundle
