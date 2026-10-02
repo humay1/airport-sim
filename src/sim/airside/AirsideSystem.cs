@@ -322,13 +322,13 @@ namespace AirportSim.Sim.Airside
             {
                 h.Feed(_rwyNextSlot[r]);
                 FeedSlotRef(ref h, _rwyOccupant[r]);
-                FeedQueue(ref h, _rwyQHead[r]);
+                FeedQueue(ref h, _rwyQHead[r], _rwyQLen[r]);
             }
 
             for (int e = 0; e < _edgeId.Length; e++)
             {
                 FeedSlotRef(ref h, _edgeOcc[e]);
-                FeedQueue(ref h, _edgeQHead[e]);
+                FeedQueue(ref h, _edgeQHead[e], _edgeQLen[e]);
             }
 
             for (int s = 0; s < _standId.Length; s++)
@@ -344,6 +344,7 @@ namespace AirportSim.Sim.Airside
                 h.Feed(_wait[i].Flight);
             }
 
+            h.Feed((ulong)_n);
             for (int i = 0; i < _n; i++)
             {
                 AircraftTrack t = MakeTrack(_order[i]);
@@ -388,8 +389,9 @@ namespace AirportSim.Sim.Airside
             h.Feed(s != null ? s.Flight : 0UL);
         }
 
-        private static void FeedQueue(ref StateHasher h, Slot? head)
+        private static void FeedQueue(ref StateHasher h, Slot? head, int len)
         {
+            h.Feed((ulong)len);
             for (Slot? s = head; s != null; s = s.QNext)
             {
                 h.Feed(s.Flight);
@@ -679,7 +681,8 @@ namespace AirportSim.Sim.Airside
             int target = StandIndex(standId);
             Slot? s = Find(flight);
             long reason = 0;
-            if (s is null || s.Phase != AircraftLegPhase.OnStand || s.Stand < 0 || !_standHas[s.Stand] || _standOccupant[s.Stand] != flight)
+            if (s is null || s.Phase != AircraftLegPhase.OnStand || s.Stand < 0
+                || (s.Kind == MovementKind.Arrival && s.PhaseEnteredAt + _delayTicks >= ctx.Tick) || !_standHas[s.Stand] || _standOccupant[s.Stand] != flight)
             {
                 reason = 1;
             }
