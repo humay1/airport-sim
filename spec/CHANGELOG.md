@@ -3348,9 +3348,17 @@ Reason:      The PR #91 review found that nothing bounded the tracked
              grows the tracked set by hundreds of flights a day, inside
              every stated bound, until the implementation's preallocated
              pool grows. That allocates in `Tick`, which §12.12 forbids.
-             The new bound is 2048 tracks: at most 1 660 in any run that
-             serves a max-tier schedule (§12.2 "Why 2048 tracks hold").
-             It also bounds the hold queues together, because every
+             The new bound is 4096 tracks (§12.2 "Why 4096 tracks
+             hold"). Every tracked flight is scheduled less than a
+             sim-day ahead, early rotation-less departures included. So
+             a max-tier run whose flights each leave tracked state within
+             3 sim-days of their schedule has at most 4 060 tracks.
+             §12.2 lists the only runs that can reach the bound. A
+             first version at `1bd2c4b` set 2048 with a 1 660 argument.
+             The review of #96 found it unsound: rotation-less
+             departures with `MinTurnaround ≥ 1 440` are created almost
+             a day before `STD`, which reaches about 2 196 tracks, and
+             the window it used was longer than a day. It also bounds the hold queues together, because every
              entry is a tracked flight in at most one queue. Overflow
              throws `SimInvariantException` at the adding action, as the
              other §12.2 bounds do. No load-time check is added, because
@@ -3364,15 +3372,22 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
                `TRACKED_FLIGHTS_CAPACITY` at `CreateSystem`, including
                the handoff's create-before-remove order. Throw
                `SimInvariantException` naming the flight and the tracked
-               flights before a track would be added past 2 048, in S2
+               flights before a track would be added past 4 096, in S2
                and in S5, before anything is published. Remove the
                growth paths (`new Slot()` when the pool is empty, the
                `Array.Resize` calls and the pool growth). The current
-               4 096 pool is above the bound and would also be correct
-               once growth is removed and the throw added.
+               4 096 pool is exactly the bound, so what remains is the
+               throw, the removal of growth, and room for the handoff's
+               create-before-remove order.
              - **T-021 tests (Test Author, PR #78):** one new test,
                `test_tracked_flights_overflow_throws_sim_invariant`
-               (§12.13), likely `Slow`. No existing test changes. The
+               (§12.13), likely `Slow`. It throws at track 4 097, not
+               2 049. A local version that assumes 2048 (for example
+               with track 2 049 at tick 15 340) must be re-derived for
+               4096. With a runway at one movement per hour, that is
+               about day 11. The test also gains a case that stays under
+               the bound, such as the early rotation-less departures
+               from the review. No existing test changes, and the
                fixture day stays far under the bound.
              - **T-022, T-024, `app.render`:** none.
              - **LOW CONFIDENCE:** none. The bound is an engineering
