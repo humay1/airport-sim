@@ -199,9 +199,9 @@ namespace AirportSim.Sim.Flow.Tests
         public ProbeSystem Injector = null!;
         public HashSet<uint> Corridors = new HashSet<uint>();
 
-        public static Rig Create(TestGraph graph, IContentIndex content, ulong seed = 1, bool recordEvents = true)
+        public static Rig Create(TestGraph graph, IContentIndex content, ulong seed = 1, bool recordEvents = true, FlowClock? clock = null)
         {
-            Rig rig = Create(b => graph.World(b), Fixtures.Utf8(graph.FlowJson()), "test.flow.json", content, seed, recordEvents);
+            Rig rig = Create(b => graph.World(b), Fixtures.Utf8(graph.FlowJson()), "test.flow.json", content, seed, recordEvents, clock);
             rig.Corridors = graph.Corridors();
             return rig;
         }
@@ -219,17 +219,21 @@ namespace AirportSim.Sim.Flow.Tests
             return rig;
         }
 
-        public static Rig Create(Func<ISimHostBuilder, IWorldSystem> world, byte[] flowFile, string flowName, IContentIndex content, ulong seed, bool recordEvents)
+        /// <param name="clock">
+        /// When given, sim.flow is built with the clock's shimmed services and
+        /// registered behind <see cref="TimedSystem"/> (03 Q-064), for a budget test.
+        /// </param>
+        public static Rig Create(Func<ISimHostBuilder, IWorldSystem> world, byte[] flowFile, string flowName, IContentIndex content, ulong seed, bool recordEvents, FlowClock? clock = null)
         {
             var rig = new Rig { Checkpoints = new RecordingSink() };
             ISimHostBuilder b = FlowKit.Builder(content, seed, rig.Checkpoints);
             rig.World = world(b);
             FlowGraph flowGraph = FlowFactory.CreateGraphLoader().Load(flowFile, flowName, rig.World);
-            rig.Flow = FlowFactory.CreateSystem(b.Services, flowGraph, rig.World);
+            rig.Flow = FlowFactory.CreateSystem(clock == null ? b.Services : clock.Shim(b.Services), flowGraph, rig.World);
             rig.Injector = new ProbeSystem(2) { OnTick = (in TickContext ctx) => rig.Inject?.Invoke(ctx) };
             b.Register(rig.World);
             b.Register(rig.Injector);
-            b.Register(rig.Flow);
+            b.Register(clock == null ? rig.Flow : new TimedSystem(rig.Flow, clock));
             if (recordEvents)
             {
                 rig.Events = new FlowEvents(b.Services.Events);

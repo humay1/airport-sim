@@ -1,13 +1,14 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using AirportSim.Sim.Core;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace AirportSim.Sim.Flow.Tests
 {
     /// <summary>
     /// sim.flow's budget, 2.5 ms/tick at max tier (03-module-map.md, 09 §9.10),
-    /// measured per 07 L11; no allocation in the update path (§9.10, 07); and a
+    /// measured per 07 L11 and 03 "Budget tests: window and arithmetic"
+    /// (<see cref="FlowBudget"/>); no allocation in the update path (§9.10, 07); and a
     /// ceiling on live cohorts, because "a passing time with an unbounded cohort
     /// count only means the fixture was short" (§9.10).
     /// </summary>
@@ -21,6 +22,13 @@ namespace AirportSim.Sim.Flow.Tests
         private static readonly Fx WalkSpeed = Fx.FromRatio(13, 10);
         private static readonly HashSet<uint> Corridors = CorridorIds();
 
+        private readonly ITestOutputHelper _output;
+
+        public FlowBudgetTests(ITestOutputHelper output)
+        {
+            _output = output;
+        }
+
         private static HashSet<uint> CorridorIds()
         {
             var ids = new HashSet<uint> { 1000 };
@@ -31,11 +39,6 @@ namespace AirportSim.Sim.Flow.Tests
             }
 
             return ids;
-        }
-
-        private static long ElapsedMicros(long start, long end)
-        {
-            return (end - start) * 1_000_000L / Stopwatch.Frequency;
         }
 
         /// <summary>
@@ -77,9 +80,9 @@ namespace AirportSim.Sim.Flow.Tests
         /// sources, one flight per FlightTicks, each flight absorbed
         /// LiveFlights - 1 flights later. The probe allocates nothing per tick.
         /// </summary>
-        private static Rig Loaded(ulong seed)
+        private static Rig Loaded(ulong seed, FlowClock? clock = null)
         {
-            var rig = Rig.Create(MaxTier(out uint[] sources, out uint sink), Content(), 1, recordEvents: false);
+            var rig = Rig.Create(MaxTier(out uint[] sources, out uint sink), Content(), 1, recordEvents: false, clock: clock);
             var rng = new SplitMix64(seed);
             var sinkNode = new NodeId(sink);
             rig.Inject = (in TickContext ctx) =>
@@ -112,20 +115,30 @@ namespace AirportSim.Sim.Flow.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")]
         public void test_flow_budget_max_tier_within_two_and_a_half_ms_and_bounded_cohorts()
         {
-            Rig rig = Loaded(0xB0D6_E7F1UL);
+            var clock = new FlowClock((int)SimConstants.TICKS_PER_SIM_DAY);
+            Rig rig = Loaded(0xB0D6_E7F1UL, clock);
             int nodes = rig.World.Nodes().Count;
             Assert.InRange(nodes, 180, 220);
+            Assert.Equal(1, clock.CommandHandlers);
 
-            // Warm up for two sim hours, then measure one.
+            // Warm up for two sim hours, not sampled, then sample exactly
+            // TICKS_PER_SIM_DAY consecutive ticks (03 Q-044), each as
+            // sim.flow's Tick plus its shimmed event handlers (Q-064). The
+            // fixture submits no command, so no Apply runs; the report says
+            // how many handlers were shimmed and how often they ran.
             rig.Step((uint)(2 * SimConstants.TICKS_PER_SIM_HOUR));
-            const int Measured = (int)SimConstants.TICKS_PER_SIM_HOUR;
-            long start = Stopwatch.GetTimestamp();
-            rig.Step((uint)Measured);
-            long end = Stopwatch.GetTimestamp();
-            long perTick = ElapsedMicros(start, end) / Measured;
-            Assert.True(perTick <= BudgetMicrosPerTick, "sim.flow max tier took " + perTick + " us/tick, budget " + BudgetMicrosPerTick);
+            clock.StartWindow();
+            for (int t = 0; t < (int)SimConstants.TICKS_PER_SIM_DAY; t++)
+            {
+                clock.Begin();
+                rig.Step(1);
+                clock.End();
+            }
+
+            clock.StopWindow();
 
             // Cohort ceiling (§9.10, Q-033: fixture sizing), derived in
             // Graphs.CohortCeiling. One key per flight, LiveFlights live at once
@@ -140,6 +153,8 @@ namespace AirportSim.Sim.Flow.Tests
             Assert.Equal(5446, ceiling);
             Assert.True(live <= ceiling, live + " live cohorts exceed the ceiling " + ceiling);
             Assert.True(FlowKit.TotalPopulation(rig.Flow, rig.World) > 1000, "the load never built up");
+
+            FlowBudget.Assert(clock, BudgetMicrosPerTick, "sim.flow (Tick + handlers), max-tier landside", _output);
         }
 
         [Fact]
