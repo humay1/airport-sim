@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN PROGRESS (PR #85, approved, merging now) |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
 | Depends on | T-039, T-040, T-023 (all merged: #63, #64, #71) |
