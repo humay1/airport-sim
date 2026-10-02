@@ -1621,25 +1621,43 @@ Done-condition tests this spec expects to exist, phrased per
   derived from the schedule alone:
   - **Setup.** The layout has one runway at `declared_capacity_per_hour`
     1. The schedule has only rotation-less arrivals, `N` a day with
-    `repeat_daily`, `N ≤ 800`. No track is ever removed, because a
-    rotation-less arrival is never handed off and there are no
-    departures. Landings run at 24 a day, so the stand-wait queue stays
-    far under `STAND_WAIT_CAPACITY` until the throw, and the pending list
-    stays under `PENDING_FLIGHTS_CAPACITY` (§12.11 "Why 2048 holds").
+    `repeat_daily`, and **`100 ≤ N ≤ 800`**. No track is ever removed,
+    because a rotation-less arrival is never handed off and there are no
+    departures. The two other bounds hold until the throw:
+    - **Stand-wait queue.** Only a landed arrival joins it, so it never
+      holds more than the landings so far. Landings are paced at 600
+      ticks (§12.5), so by tick `t` there are at most `⌊t / 600⌋ + 1`.
+      `A_4097` is on day `⌊4 096 / N⌋ ≤ 40`, so `t_4097 < 41 × 14 400 =
+      590 400`. That allows at most `⌊590 399 / 600⌋ + 1 = 984` landings, under
+      `STAND_WAIT_CAPACITY` (1 024), with any number of stands. Below
+      `N = 100` this fails: rotation-less arrivals hold their stands for
+      good, and the queue can overflow first.
+    - **Pending list.** It holds flights scheduled within the next sim-day
+      (§12.11 "Why 2048 holds"), which spans at most two calendar days,
+      so at most `2N ≤ 1 600`, under `PENDING_FLIGHTS_CAPACITY`.
   - **Order.** Rank the arrivals by `InboundAirborne` tick,
     `max(0, STA − 1 200)`, then by ascending `FlightId`, the S2 order
     (§12.8a). Call the arrival of rank `k` `A_k`, and its
     `InboundAirborne` tick `t_k`.
   - **Precondition, to the bound.** At the end of every `Tick` `t` before
     `t_4097`, `TrackedFlights().Count` equals the number of arrivals with
-    `InboundAirborne` tick `≤ t`. In particular it is exactly 4 096 after
-    `A_4096` starts. Every `A_k` with `k ≤ 4 096` has published its
-    `InboundAirborne` at `t_k`. No `SimInvariantException` is thrown
-    before `t_4097`, and no `Tick` before it allocates.
-  - **The throw.** The `Tick` of `t_4097` throws `SimInvariantException`
-    whose message names `A_4097` and the tracked flights. No
-    `InboundAirborne` is published for `A_4097`, and `A_4097` is not
-    tracked.
+    `InboundAirborne` tick `≤ t`. Every `A_k` with `t_k < t_4097` has its
+    `InboundAirborne` recorded at `t_k`. No `SimInvariantException` is
+    thrown before `t_4097`, and no `Tick` before it allocates.
+  - **The throw.** `Step` for the tick `t_4097` throws
+    `SimInvariantException` (`08` §8.5a) whose message names `A_4097` and
+    the tracked flights.
+  - **After the throw, the reading to use.** The test reads the
+    partial state that `08` §8.5a leaves, with nothing rolled back,
+    through the `IAirsideSystem` queries. `TrackedFlights().Count` is
+    exactly **4 096**, every `A_k` with `k ≤ 4 096` is tracked in
+    `AwaitingApproach`, and `A_4097` is not tracked. This is the reading
+    whether or not `A_4096` and later ranks share `t_4097` with `A_4097`.
+    S2 starts those ranks before `A_4097` in the same tick, so the end of
+    the previous tick may show fewer than 4 096. Events of tick `t_4097`
+    are never dispatched, because phase 3 does not run. So the test does
+    not look for that tick's `InboundAirborne` events, and their absence
+    proves nothing.
 
   An empty or non-tracking implementation fails the precondition, and an
   implementation that throws early or late fails at an exact rank.

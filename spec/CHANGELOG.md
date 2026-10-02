@@ -3386,15 +3386,25 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
                track 2 049 at tick 15 340) must be re-derived for 4096.
                §12.13 pins its shape:
                - one runway at one movement per hour;
-               - only rotation-less arrivals, `N ≤ 800` a day, so no
-                 track is ever removed;
+               - only rotation-less arrivals, `100 ≤ N ≤ 800` a day, so
+                 no track is ever removed. At `N ≥ 100` the stand-wait
+                 queue holds at most 984 entries by the throw (landings
+                 paced at 600 ticks), and the pending list at most
+                 `2N`. Below 100 the stand-wait queue can overflow first
+                 (review of #96 at `7bc8b34`);
                - arrivals ranked by `InboundAirborne` tick, then
                  `FlightId`;
                - as a precondition, `TrackedFlights().Count` equals the
-                 number of arrivals started at the end of every tick,
-                 up to exactly 4 096, with no throw and no allocation;
+                 number of arrivals started at the end of every tick
+                 before the throw, with no throw and no allocation;
                - the throw comes at `A_4097`'s `InboundAirborne` tick,
-                 naming it, with no `InboundAirborne` published for it.
+                 naming it;
+               - after the throw, the test reads `08` §8.5a's partial
+                 state through the `IAirsideSystem` queries: exactly
+                 4 096 tracked, `A_4097` untracked. That reading holds
+                 even when `A_4096` shares the throwing tick. The
+                 throwing tick's events are never dispatched, so the
+                 test does not look for them.
                At 400 arrivals a day that is about day 10. The
                non-throwing case from `757a7e5` ("peaks near 2 200") is
                replaced by this exact precondition, which an empty
