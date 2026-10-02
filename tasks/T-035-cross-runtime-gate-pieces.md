@@ -5,7 +5,7 @@
 | Status | QUEUED — OPTIONAL, does not gate anything |
 | Module | `tools.simharness` / `app.host` (wiring only, no new production surface) |
 | Assigned role | worker |
-| Depends on | T-030, T-031, T-034 |
+| Depends on | T-030, T-048, T-031, T-034 |
 | Spec source | `spec/16-interfaces-host.md` §16.9 "The cross-runtime determinism gate — PROPOSED (D1)" |
 | Blocked by | — |
 
@@ -48,14 +48,19 @@ per §16.9, adopting the gate is an owner decision this task does not make.
 ## Readable specs
 
 `CLAUDE.md`, `spec/02-determinism.md` "Gates", `spec/16-interfaces-host.md`
-§16.8, §16.9
+§16.8, §16.9, `spec/19-interfaces-harness.md` §19.2c
 
 ## Content to build
 
 Binding, copied from `spec/16-interfaces-host.md` §16.9, not paraphrased:
 
-1. **CoreCLR:** `tools.simharness checkpoints --bundle B --days 10 --out a`
-   (T-030).
+1. **CoreCLR:** `tools.simharness checkpoints --bundle
+   unity/AirportSim/Assets/StreamingAssets/Scenario --content
+   unity/AirportSim/Assets/StreamingAssets/Content --days 10 --out a`
+   (T-030 and T-048, `19` §19.2c), run after T-034's player build step has
+   assembled both directories (build output, never committed). The
+   committed `unity/AirportSim/Scenario/` holds only `bundle.json` and is
+   never passed as `--bundle`.
 2. **Mono:** the Unity player build of `unity/AirportSim/` (Mono backend,
    `16` §16.2, T-034), with `B` as its scenario, started as
    `-batchmode -nographics -airportsim-checkpoints 10 b` (T-031's
@@ -63,7 +68,7 @@ Binding, copied from `spec/16-interfaces-host.md` §16.9, not paraphrased:
 3. **Pass condition (for a human to read, not a CI assertion this task
    adds):** `a` and `b` byte-identical (`16` §16.8's format).
 
-`B` is the Phase 1 playtest bundle (`16` §16.3), every Phase 1 system
+`B` (the assembled `StreamingAssets/Scenario`) is the Phase 1 playtest bundle (`16` §16.3), every Phase 1 system
 registered. Ten days matches `determinism_cross_process`'s size. The Mono
 side must be the **real player** — Unity ships its own Mono fork and class
 libraries, so a standalone upstream Mono proves little about the shipped

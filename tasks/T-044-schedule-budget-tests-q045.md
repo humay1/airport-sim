@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #82) |
 | Module | `sim.schedule` tests |
 | Assigned role | test-author |
 | Depends on | T-040 (merged #64; wrote `tests/sim/schedule/ScheduleHashTests.cs`) |

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #86) |
 | Module | `sim.core` tests |
 | Assigned role | test-author |
-| Depends on | T-042 (not merged; both write `tests/sim/core/**`); spec PR #77 (`1574534`, Q-065) merged |
+| Depends on | T-042 (merged #81; both write `tests/sim/core/**`); spec PR #77 (`1574534`, Q-065) merged |
 | Spec source | `spec/08-interfaces-core.md` §8.7 "Allocation" (Q-065) and its Tests list, §8.5 (loop allocation), §8.6 (bus, Q-035); `spec/03-module-map.md` "How a budget is measured" (`Step` meter bullet) |
 | Blocked by | — |
 
@@ -18,7 +18,7 @@ tests/sim/core/**
 No other file. No `src/`, `spec/`, `ci/` or `.github/` edit. The Test Author
 opens its own PR. T-042 also writes `tests/sim/core/**`, so **do not release
 this task until T-042 has merged** (one writer per path). Check the queue
-before release.
+before release. (historical, resolved: T-042 merged #81, T-047 merged #86)
 
 ## Why this task exists
 

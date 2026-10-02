@@ -3116,6 +3116,59 @@ Signed off:  not required (harness interface detail and test protocol;
              no balance, scope or `01`/`02` change). The owner should
              review the two LOW CONFIDENCE markers.
 
+## 2026-10-01 — spec/07 L1, L3, L8; 16 §16.8, §16.11; INDEX; open-questions — Q-077: an integration test project for the D7 test
+Reason:      `16` §16.8's `test_host_composition_matches_harness_checkpoints`
+             must call both `HarnessCli.Run` and `IHeadlessRun` in
+             process. `07` L3 lets a test project reference only its own
+             module's production project, and neither `app.host` nor the
+             harness references the other, so no project could hold the
+             test. The smallest fix is one test project with exactly two
+             references, restricted to tests that compare the two
+             modules.
+             - **L1:** `tests/integration/AirportSim.Integration.Tests.csproj`,
+               `net8.0`, C# 12.
+             - **L3:** the L3 file with its names changed and two
+               `ProjectReference`s, `src/app/host` then
+               `tools/SimHarness`. In process only. At Phase 1 it holds
+               only the D7 test. Neither module references the other.
+               The exception covers both of L3's "one reference"
+               sentences: "every other test project ... the one
+               `ProjectReference` changed" and "references **only** the
+               production project" (review of #84 at `91b1b91`).
+             - **L8:** T-031's Test Author writes the project file and
+               the L4 parallelisation file. T-031 adds it to
+               `AirportSim.sln`.
+             - **`16` §16.8, §16.11:** the test lives there, and no
+               golden is committed for it.
+             - **Rejected:** golden dumps (owner confirmation on every
+               hash-moving change), spawning the harness, and the
+               harness referencing `app.host`. Spawning is not forbidden
+               by Q-025, which binds harness tests only. It is rejected
+               because it drops §16.8's in-process run and ties the test
+               to the build layout (corrected after the review of #83 at
+               `8df4681`, which raised the same framing there).
+Raised by:   Q-077 (Architect, while answering Q-066 to Q-076, PR #83)
+Impact:      - **Merged code and tests:** none. No existing project
+               changes. `ci/run-checks.sh` builds and tests the solution,
+               so the new project runs with no `ci/` change.
+             - **T-031:** the Planner syncs its task file. The D7 test
+               moves to `tests/integration/`, the Test Author's grant
+               gains `tests/integration/**`, and its `.sln` edit adds a
+               third project. Its dependencies do not change.
+             - **PR #83, merged first (`6ad1efa`), reconciled in this
+               branch's merge of `main`:** #83's OPEN Q-077 entry is
+               replaced by this answered one. #83's §16.8 paragraph that
+               called Q-077 open is replaced by "Where the D7 test lives".
+               #83's D7 wording, "in-process" included, is kept. The
+               INDEX "Open now" line is back to none, and the INDEX §16
+               entry now names `tests/integration/` instead of "open
+               (Q-077)". #83's entry above stays as it was when merged:
+               its "Q-077 filed OPEN" and "left OPEN" describe that PR,
+               and this entry closes the question.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (project layout; no balance, scope or
+             `01`/`02` change).
+
 ## 2026-10-02 — spec/12-interfaces-airside.md §12.5–§12.13, spec/10-events.md §10.2–§10.3, spec/14-interfaces-delay.md §14.5 — `Cause` of airside events; cross-tick cause ids in hashed state (Q-078, Q-079)
 Reason:      The T-021 worker found that PR #78's `Pairs` helper requires
              every release's `Cause` to be its opening hold, while `12`
