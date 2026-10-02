@@ -2953,6 +2953,169 @@ Signed off:  not required (measurement protocol and a `sim.core`
              invariant that merged code already meets; no balance, scope
              or `01`/`02` change).
 
+## 2026-10-01 — spec/19 (new §19.2c, §19.8; §19.1, §19.2, §19.2a, §19.2b, §19.3); 16 §16.3, §16.4, §16.8, §16.9; INDEX; open-questions — Q-066 to Q-076: the harness `checkpoints` subcommand; Q-077 filed OPEN
+Reason:      T-030's Test Author was blocked by eleven gaps. `16` §16.8
+             pinned only the dump bytes, and `19` never defined the
+             subcommand, while `19` §19.2 and §19.2a contradicted it
+             (no flag selects a composition, and the boarding stand-in
+             is in every CLI composition). The smallest closure is a new
+             §19.2c that applies `16` §16.4's composition rules in the
+             harness's own code, and §19.8 tests with no new seam.
+             - **Grammar (Q-066):** `checkpoints --bundle B --content C
+               --days D --out P`. All four flags required, in any order,
+               once each. `D` follows every other `--days`. `--content`
+               is new (Q-072).
+             - **Output and failures (Q-067):** `WROTE checkpoints
+               ticks=<n> checkpoints=<k> final=<hex16>`, exit 0. It never
+               exits 1. Every later failure is exit 3, in a fixed order,
+               and `P` is created only after the run.
+             - **Paths (Q-068):** §19.2b's rules for `B`, `C` and `P`.
+               `P` is never overwritten. `B` is read by exact name and
+               never listed.
+             - **Composition (Q-069, Q-070, Q-073):** `16` §16.4 steps 1
+               to 4, with no stand-in, no probe, and `sourceName` = the
+               bundle file name on both sides. **Staged:** T-030 composes
+               world, schedule and flow, and any other Phase 1 system is
+               exit 3. A Phase 1 stage harness task adds airside,
+               turnaround and delay, after T-021, T-022 and T-024 and
+               before T-031. `16` §16.3 gets a strict `bundle.json`
+               form, and each system's `Name` is its module name (merged
+               world, schedule and flow already comply).
+             - **Commands (Q-071):** neither side submits any.
+             - **Content (Q-072):** a listed content directory, with the
+               order fixed by `08` §8.11's loader. `16` §16.9 step 1
+               passes the build step's copies of the playtest bundle and
+               of `data/` (see the review fixes below).
+             - **Batch size (Q-074):** both sides pin `Days` calls of
+               `Step(TICKS_PER_SIM_DAY)`. The test compares a
+               published-surface kit, stepped three other ways, with the
+               CLI's file.
+             - **Factories only (Q-075):** a reflection check. The harness
+               references no `AirportSim.App.*` assembly, and its
+               `AirportSim.*` references carry no `InternalsVisibleTo`.
+             - **Fixtures (Q-076):**
+               `tests/fixtures/harness/checkpoints-phase0/` (T-030's Test
+               Author) and `-phase1/` (the Phase 1 stage's Test Author).
+             - **§16.8 D7:** the Phase 0 bundle now lists `sim.world`
+               (the old "only `sim.schedule` and `sim.flow`" was a load
+               failure by §16.4), and the Phase 1 half uses the
+               `-phase1/` test bundle, because the playtest bundle is the
+               Unity shell's, which follows T-031.
+             - **Review of #83 at `8df4681`, five fixes:**
+               1. `test_checkpoints_rejects_usage_errors` passed against
+                  a harness without the subcommand, because an unknown
+                  subcommand is also exit 2 with empty stdout. It now
+                  starts with a control: the valid invocation exits 0 and
+                  prints the `WROTE checkpoints` line. Then each usage
+                  error exits 2.
+               2. `test_checkpoints_subcommand_composes_through_published_factories_only`
+                  was only a static check that `main` already passes. It
+                  now has a behavioural part (exit 0, and the file is
+                  byte-identical to the published-surface kit's dump), and
+                  the static part is kept as a regression guard.
+               3. §19.2 "Untested by design" said code 3 is reachable only
+                  through `soak`. It now names `checkpoints` too (§19.8).
+               4. The first draft dropped "in-process" from §16.8's D7
+                  description with no record. It is restored. Q-077's
+                  framing is corrected: Q-025 binds harness tests only,
+                  so spawning the harness (C) is not forbidden. It is
+                  rejected because it drops §16.8's in-process run and
+                  depends on the build layout. #84, which answers Q-077,
+                  gets the same correction in its own entry.
+               5. §16.9 step 1's `--bundle B` named the playtest bundle,
+                  but `unity/AirportSim/Scenario/` holds only
+                  `bundle.json`, so §19.2c could not run it. Step 1 now
+                  reads the player build step's copies,
+                  `unity/AirportSim/Assets/StreamingAssets/Scenario` and
+                  `.../Content` (`16` §16.3), after the build step has
+                  run. The harness therefore reads the bytes the player
+                  reads. The §16.8 LOW CONFIDENCE marker now says that
+                  step 1 reads the build copy. The first claim here that
+                  the marker "holds" was premature: see the next block.
+             - **Review of #83 at `a8e3edb`: the playtest bundle had no
+               walk graph.** §16.3's playtest-bundle list named no
+               `world.fixture`, but that bundle registers every Phase 1
+               system, `sim.world` included, which `sim.flow` needs. So
+               §19.2c, and the player, would fail with exit 3 for the
+               missing file. §19.2c's Phase 1 test bundle already added
+               "plus the walk graph", so §16.3, §16.9 and §19.2c
+               disagreed. This was a spec omission, not a content or
+               scope decision: the §16.3 table already required the file,
+               and `18` §18.6 already names
+               `tests/fixtures/world/phase0-landside.json` as the walk
+               graph that T-023's flow fixture shares. The fix:
+               - §16.3 adds the walk graph to the playtest bundle, with a
+                 table that gives each bundle file name and its source;
+               - the `world.fixture` row now says it is required whenever
+                 `sim.world` is listed, which §16.4 requires whenever
+                 `sim.flow` is;
+               - §16.9 step 1 points to that table, `world.fixture`
+                 included;
+               - §19.2c's Phase 1 test bundle names its six files and
+                 takes each from the same table.
+               Every bundle file list was re-checked against the systems
+               its bundle registers. The Phase 0 checkpoints bundle has
+               world, schedule and flow, with `world.fixture`,
+               `schedule.csv` and `flow.fixture`. The Phase 1 test bundle
+               has six files for the five systems that need one
+               (`sim.delay` needs none). The playtest bundle has those six
+               plus `render_layout.fixture` for presentation. §16.4 and
+               §16.8 name no file list of their own. The §16.8 LOW
+               CONFIDENCE marker's mitigation now holds, because the
+               build copy is a complete bundle. **T-034:** its task file
+               copies §16.3's old list, which has no walk graph. The
+               Planner syncs it to the new table. Its "Playtest bundle
+               names every file `bundle.json` lists" check then covers
+               `world.fixture`.
+Raised by:   Q-066 to Q-076 (Test Author / T-030, via coordinator). Q-077
+             was raised by the Architect while answering them.
+Impact:      - **Merged code:** none invalidated. No harness code for
+               `checkpoints` exists. Merged `sim.world`, `sim.schedule`
+               and `sim.flow` already return their module names as
+               `Name`. The §19.2a composition, the soak, the stand-in and
+               every existing subcommand are unchanged, and so are their
+               tests.
+             - **T-030:** its interface line gains `--content <dir>`.
+               The Planner syncs the task file: the grammar, §19.2c and
+               §19.8 as spec sources, the five §19.8 tests, and the Test
+               Author's grant of
+               `tests/fixtures/harness/checkpoints-phase0/**`. Its
+               writable paths stay `tools/SimHarness/**`. Its
+               dependencies are enough for its stage.
+             - **New task (Planner):** the Phase 1 stage of
+               `checkpoints`, writing `tools/SimHarness/**`, with its
+               Test Author writing `tests/fixtures/harness/checkpoints-phase1/**`
+               and one §19.8 test. It depends on T-021, T-022, T-024 and
+               T-030, and T-031 depends on it. This is a pure ordering
+               choice for the Planner. The alternative is to move T-030
+               itself after T-021, T-022 and T-024. The Architect
+               recommends the split, because T-013, T-014 and T-045
+               queue behind T-030 as harness writers, and the nightly
+               soak waits on T-013.
+             - **T-031:** `IHeadlessRun` submits no command and steps one
+               sim-day per `Step`. Its batch-size test composes through
+               `ISimComposer` with no seam. Its D7 test uses the two test
+               bundles, not the playtest bundle. `bundle.json` gets a
+               strict form. T-031 is not started, so nothing is reworked,
+               but the Planner syncs its task file. **T-031 also stays
+               blocked by Q-077 (OPEN):** `07` L3 leaves no test project
+               that can call both sides.
+             - **T-035:** step 1 now runs `checkpoints` over
+               `unity/AirportSim/Assets/StreamingAssets/Scenario` and
+               `.../Content`, after the player build step. The Planner
+               syncs its task file. T-035 already depends on T-034.
+             - **LOW CONFIDENCE:** the listed content directory (Q-072),
+               and D7 on test bundles rather than the playtest bundle
+               (§16.8).
+             - **Scope:** none added. The subcommand was already planned
+               (D7, T-030). `--content` and the stage split refine it.
+             - **PENDING HUMAN:** none. Ordering is the Planner's, and
+               Q-077 is architecture, recommended (A), left OPEN for its
+               own review.
+Signed off:  not required (harness interface detail and test protocol;
+             no balance, scope or `01`/`02` change). The owner should
+             review the two LOW CONFIDENCE markers.
+
 ## 2026-10-01 — spec/07 L1, L3, L8; 16 §16.8, §16.11; INDEX; open-questions — Q-077: an integration test project for the D7 test
 Reason:      `16` §16.8's `test_host_composition_matches_harness_checkpoints`
              must call both `HarnessCli.Run` and `IHeadlessRun` in
@@ -2992,19 +3155,16 @@ Impact:      - **Merged code and tests:** none. No existing project
                moves to `tests/integration/`, the Test Author's grant
                gains `tests/integration/**`, and its `.sln` edit adds a
                third project. Its dependencies do not change.
-             - **PR #83:** it files Q-077 as OPEN and adds a §16.8
-               paragraph that calls it open. Whichever of #83 and this PR
-               merges second keeps this PR's answered Q-077 entry and
-               drops #83's OPEN one. It also replaces #83's "How this test
-               reaches both ... is OPEN (Q-077)" paragraph with this PR's
-               "Where the D7 test lives" paragraph, restores the INDEX
-               "Open now" line to none, and keeps both CHANGELOG entries.
-               #83 also rewrites the D7 paragraph just above, so the
-               §16.8 hunks are adjacent and will conflict textually. The
-               new paragraph follows #83's wording of the D7 paragraph,
-               which keeps "in-process" (restored at #83's `a8e3edb`).
-               #83's OPEN Q-077 entry carries the same corrected
-               framing of option (C), so dropping it loses nothing.
+             - **PR #83, merged first (`6ad1efa`), reconciled in this
+               branch's merge of `main`:** #83's OPEN Q-077 entry is
+               replaced by this answered one. #83's §16.8 paragraph that
+               called Q-077 open is replaced by "Where the D7 test lives".
+               #83's D7 wording, "in-process" included, is kept. The
+               INDEX "Open now" line is back to none, and the INDEX §16
+               entry now names `tests/integration/` instead of "open
+               (Q-077)". #83's entry above stays as it was when merged:
+               its "Q-077 filed OPEN" and "left OPEN" describe that PR,
+               and this entry closes the question.
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (project layout; no balance, scope or
              `01`/`02` change).
