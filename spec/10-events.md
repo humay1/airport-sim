@@ -58,6 +58,16 @@ What "knows" means (Q-078), binding on every emitter's interface file:
   follows from (a chain); or the event id that the emitter's file keeps in
   hashed state for it (as `12` §12.9's `RecordedCause`, `OpenHold` and
   `VacatedBy`). When such an event exists, `Cause` **must** name it.
+- **Precedence (Q-080).** When a kept event and a same-tick event both
+  qualify, `Cause` names the **kept** one. The kept event is what the
+  action was waiting for, and the same-tick event only lifted a
+  precondition that let it run in this tick. At Phase 1 the one case is
+  `12` §12.11's handshake handoff chained right after the arrival's
+  `DoorsOpen`: its `Cause` is the recorded `DeboardComplete`, not the
+  `DoorsOpen`. When several same-tick events qualify, the emitter's file
+  names one per event (the "Declared per event" bullet below). For
+  example, `13` §13.9 names the freeing completion for both
+  `TurnaroundJobUnblocked` and the `TurnaroundJobStarted` after it.
 - **Not kept just to be named.** An emitter keeps an event id across a tick
   boundary only where its file says so. When what made an emission due is a
   schedule time, a duration running out, or an event from an earlier tick
@@ -74,10 +84,15 @@ What "knows" means (Q-078), binding on every emitter's interface file:
   vehicle-freeing `TurnaroundJobCompleted` (`13` §13.5).
 - **Declared per event, by the spec.** These rules bind the emitter's
   interface file, which declares each event's `Cause` (as `11` §11.5,
-  `12` §12.11 and `13` §13.5, §13.6 do). An implementation follows the
-  file and does not apply the rules itself. An event whose file declares
-  no `Cause` is a root, `EventRef.None`, until the file is amended. That
-  is what merged `sim.flow` does for every event of `09`.
+  `12` §12.11, `13` §13.9 and `14` §14.8 do). An implementation follows
+  the file and does not apply the rules itself. An event whose file
+  declares no `Cause` is a root, `EventRef.None`, until the file is
+  amended. A file leaves an event undeclared only where no event
+  qualifies under the rules above. Today that is every event of `09`,
+  whose emissions follow from calls, durations or conditions, so merged
+  `sim.flow` publishes them as roots. It is also `11`'s
+  `FlightPlanPublished`, which follows a schedule time. `12` and `13`
+  declare every event they emit (Q-080).
 
 Every event also carries a `LocalisedKey` plus integer/`Fx` parameters where the
 table says "explanation". No literal text ever (`04-data-schemas.md`).
