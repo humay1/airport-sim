@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN PROGRESS (worker implemented locally, 106/110; blocked on Q-078/Q-079; test PR #78 approved) |
+| Status | IN PROGRESS (implementation PR #91; test PR #78 approved and merging via #91). Spec answers Q-080..Q-083 (PR #93, `1154c2a`) are merged and apply. Q-085 (a tracked bound, PR #96) is open |
 | Module | `sim.airside` |
 | Assigned role | worker |
 | Depends on | T-003 (merged #18), T-005 (merged #26), T-008 (merged #54), T-026 (merged #29); all merged |
@@ -530,6 +530,27 @@ computed once at load, off the tick path.
 - [ ] Verifier gates green
 
 ## Worker notes
+
+**Post-#93 sync (2026-10-02).** Spec PR #93 (`1154c2a`) answered the four
+questions the worker raised and the reviewer's follow-ups; `12` binds them:
+
+- **Q-081.** `12` §12.9 "Track fields by phase": the binding table of
+  `AtNode`, `OnEdge`, `Stand`, `Runway`, `PhaseEnteredAt` and `DueAt` per
+  phase and kind, with set and clear rules. `EdgeProgress` is stored and
+  advanced by S6.
+- **Q-082.** `12` §12.12 encoding block: nullables as `HasValue` then the
+  widened value; every variable-length list length-prefixed (hold queues,
+  stand-wait queue, tracks, pending list); all 14 `AircraftTrack` fields fed.
+- **Q-083 (HUMAN DECISION, owner).** `ReassignStand` stays open at any point of
+  `OnStand`. The track gains the hashed, saved `PlannedOnStand` field.
+  `DoorsOpen`'s `PlannedTick` is `PlannedOnStand` + the delay.
+- **Q-080** concerns `13`'s `Cause` table (T-022), not this task.
+
+**Open: Q-085 (a tracked bound, spec PR #96, not merged).** If it changes
+`12`, the worker syncs after it merges. Do not guess its answer.
+
+Implementation is PR #91; the Test Author's PR #78 (approved) merges through
+it.
 
 `sim.airside` makes **no calls into `sim.world`** at Phase 0/1 — the
 taxiway/runway/stand graph is this module's own data, loaded via
