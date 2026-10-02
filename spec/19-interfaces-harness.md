@@ -20,7 +20,8 @@ Reading order for a harness worker: `01`, `02`, `07`, `08` §8.5, §8.5a,
 `checkpoints` subcommand, read `16` §16.3, §16.4 and §16.8, then §19.2c.
 `16` §16.8 owns the dump format. §19.2c owns the invocation, the
 composition and the failures. For `Promotion`'s second run, read `09`
-§9.1 and §9.7 (`KindOf` included), `15` §15.7 and `18`, then §19.2d.
+§9.1, §9.7 (`KindOf` included) and §9.10, `15` §15.6 and `18`, then
+§19.2d.
 
 ---
 
@@ -570,10 +571,17 @@ tests' non-flow probes, at 4 and elsewhere, cause no promotion.
 
 > **HUMAN DECISION — owner, 2026-10-02 (Q-084): follow `02` literally.**
 > "Camera parked on a gate" means that run 2 promotes a real `Gate`-kind
-> node and draws its passengers through `AgentsAt` every tick, as the
-> camera does (`15` §15.7), so that the `flow.presentation` stream is
-> exercised. Run 2 must still match run 1 exactly. The Architect recorded
-> this decision and did not make it.
+> node and draws its passengers through `AgentsAt` after every tick. Run
+> 2 must still match run 1 exactly. The owner's stated purpose was to
+> exercise the `flow.presentation` stream (`09` §9.1 rule 2). Merged
+> `sim.flow` does not use that stream yet: its `AgentsAt` fills a reused
+> buffer with `ProgressAlongEdge = 0` and draws from no RNG. So that
+> benefit arrives only when `sim.flow` derives agent detail from the
+> stream, and from then on this gate exercises it with no change here.
+> The cadence is the owner's. The camera's own `AgentsAt` caller is the
+> scene builder, once per rebuild per promoted node (`15` §15.6), not
+> once per tick. The Architect recorded this decision and did not make
+> it.
 
 **Finding the gate.** After `Build()` returns, and before the command
 script is submitted:
@@ -608,19 +616,22 @@ are unchanged (§19.2, §19.3).
 
 - **In the CLI.** Both fixture sets have exactly one `Gate` node,
   `NodeId(8)`, so `promotion --days D` promotes `NodeId(8)` and calls
-  `AgentsAt(NodeId(8))` once per tick. Every real `FlowGraph` has a `Gate`
-  (`09` §9.11: every `Source` reaches one), so step 3 happens only with a
-  test's own flow system. If a fixture change ever removed the `Gate`,
-  the kit test of §19.9 would fail.
-- **Why it is outcome-neutral.** `SetPromoted` changes no hashed state,
-  and `AgentsAt` derives agent detail from `flow.presentation`, the one
-  stream that is excluded from the state hash and that no other system
-  reads (`09` §9.1, rules 1 and 2). `KindOf` is a query. So the two runs
-  must still compare equal, and `promotion --days D` prints the same line
-  as before. A promotion or an agent draw that leaked into the hash would
-  fail this gate, and catching that is what the gate is for. The calls
-  are therefore observable only through a test's own `IFlowSystem`
-  (§19.9).
+  `AgentsAt(NodeId(8))` once per tick. `09` §9.11 requires only that
+  every `Source` reach a `Gate`. A valid graph with no `Source` can
+  therefore have no `Gate`, and the real flow system then reaches step
+  3. Neither fixture set is such a graph. If a fixture change ever
+  removed the `Gate`, the kit test of §19.9 would fail.
+- **Why it is outcome-neutral.** `SetPromoted` writes only the promoted
+  flags, and `AgentsAt` writes only its reused view buffer. Both are
+  derived and unhashed (`09` §9.10), and neither draws from any RNG
+  stream in merged `sim.flow`. If agent detail later comes from
+  `flow.presentation`, that stream is excluded from the state hash and
+  no other system reads it (`09` §9.1, rules 1 and 2). `KindOf` is a
+  query. So the two runs must still compare equal, and `promotion --days
+  D` prints the same line as before. A promotion or an agent draw that
+  leaked into the hash would fail this gate, and catching that is what
+  the gate is for. The calls are therefore observable only through a
+  test's own `IFlowSystem` (§19.9).
 
 ## 19.3 The command line (Q-026)
 
@@ -1022,7 +1033,8 @@ Binding on T-014's Test Author. Every test is in `tests/tools/simharness/`
 - Each composition below is built by a fresh `CountingComposer`, which
   constructs fresh doubles on every call, so that run 1's doubles and run
   2's doubles are told apart. Unless stated otherwise, the seed is `12345`
-  and `ticks` is `1400`, so a run records 2 checkpoints, at 600 and 1200.
+  and `ticks` is `1400`, so a run records 3 checkpoints, at 0, 600 and
+  1200 (`08` §8.9).
   "**G**" is the composition of a test world with `Nodes()` `[3, 7]` and a
   spy flow with kinds `3 → Source` and `7 → Gate`.
 
@@ -1034,7 +1046,7 @@ The tests. The Test Author may add more.
   `SetPromoted(NodeId(7), true)` with 0 ticks seen; and then 1400 calls of
   `AgentsAt(NodeId(7))`, the `k`-th with `k` ticks seen. They record
   nothing else. `Report` is `PASS determinism_promotion ticks=1400
-  checkpoints=2 final=<h>`, where `<h>` is `FinalHash` of G with the same
+  checkpoints=3 final=<h>`, where `<h>` is `FinalHash` of G with the same
   seed and ticks.
 - `test_harness_gates_promotion_promotes_nothing_without_a_gate`. Each
   of these compositions passes `Promotion`, and its doubles record no
@@ -1045,8 +1057,11 @@ The tests. The Test Author may add more.
     `Nodes()` and no `KindOf`.
   - (c) G, with `7 → Sink` instead of `7 → Gate`. Run 2 records one
     `Nodes()`, then `KindOf(3)` and `KindOf(7)`.
-  - (d) G, with the spy flow at `SystemId(5)` instead of 4. The spy records
-    no call.
+  - (d) G, with the spy flow at `SystemId(5)` instead of 4. Neither the
+    test world nor the spy records any call in either run. In particular
+    there is no `Nodes()`, because `flow` is missing (§19.2d step 1).
+  - (e) G's test world alone, with no flow system. The test world records
+    no call in either run.
 - `test_harness_gates_promotion_promotes_same_node_on_every_call`. The
   composition is a test world with `Nodes()` `[2, 5, 9]` and a spy flow
   with kinds `2 → Source`, `5 → Gate` and `9 → Gate`. `Promotion` is called

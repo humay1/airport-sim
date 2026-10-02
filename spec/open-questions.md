@@ -2596,8 +2596,12 @@ Answer:      (1) Yes. Run 2 hands `compose` a harness-internal recording
              promotes. (3) **HUMAN DECISION, owner, 2026-10-02: follow
              `02` literally.** "Camera parked on a gate" means a real
              `Gate`-kind node, whose passengers are drawn through
-             `AgentsAt` every tick, as the camera does (`15` §15.7). Run 2
-             must still match run 1 exactly. So `09` §9.7 gains the query
+             `AgentsAt` after every tick. Run 2 must still match run 1
+             exactly. The per-tick cadence is the owner's choice. The
+             camera's scene builder calls `AgentsAt` per rebuild (`15`
+             §15.6). The intended `flow.presentation` exercise does not
+             exist yet, because merged `AgentsAt` draws no RNG. So `09`
+             §9.7 gains the query
              `NodeKind KindOf(NodeId)`. After `Build` and before the
              script, the harness walks `world.Nodes()` in ascending order
              with `flow.KindOf` and stops at the first `Gate`. If there is
