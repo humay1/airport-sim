@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "seed": "12345",
+  "systems": [ "sim.world", "sim.schedule", "sim.flow" ]
+}

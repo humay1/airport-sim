@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using AirportSim.Sim.Core;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace AirportSim.Sim.Flow.Tests
 {
@@ -29,8 +30,20 @@ namespace AirportSim.Sim.Flow.Tests
     /// </summary>
     public sealed class PromotionAllocationTests
     {
-        private static long AllocatedOverDay(PromoRig rig, ulong fromTick)
+        private readonly ITestOutputHelper _output;
+
+        public PromotionAllocationTests(ITestOutputHelper output)
         {
+            _output = output;
+        }
+
+        private static long AllocatedOverDay(PromoRig rig, ulong fromTick, FlowClock? clock = null, long[]? callsInWindows = null)
+        {
+            // With a clock, callsInWindows[i] gains the calls sim.flow's i-th
+            // shimmed event handler made inside the metered windows only. The
+            // snapshot is taken before the meter starts and read after it
+            // stops; the shim's own increment allocates nothing.
+            var snapshot = new long[FlowClock.MaxEventHandlers];
             // Same exclusion as a per-tick GC.GetAllocatedBytesForCurrentThread
             // pair would give (a tick is excluded when the tick it starts from
             // is itself a checkpoint boundary, 08 §8.9), but batched into one
@@ -44,9 +57,21 @@ namespace AirportSim.Sim.Flow.Tests
             while (rig.Host.CurrentTick < to)
             {
                 rig.Host.Step(1);
+                if (clock != null)
+                {
+                    Array.Copy(clock.HandlerCalls, snapshot, snapshot.Length);
+                }
+
                 long before = Allocation.Start();
                 rig.Host.Step(599);
                 total += Allocation.Since(before);
+                if (clock != null && callsInWindows != null)
+                {
+                    for (int i = 0; i < snapshot.Length; i++)
+                    {
+                        callsInWindows[i] += clock.HandlerCalls[i] - snapshot[i];
+                    }
+                }
             }
 
             return total;
@@ -62,6 +87,48 @@ namespace AirportSim.Sim.Flow.Tests
             long bytes = AllocatedOverDay(rig, PromoConst.TicksPerDay);
             Assert.True(rig.Absorber.Absorbed > 0, "the measured day must move passengers to the gate and board them");
             Assert.True(bytes == 0L, "promoted ticks allocated " + bytes.ToString(CultureInfo.InvariantCulture) + " bytes over day 1");
+        }
+
+        [Fact]
+        public void test_promotion_allocation_overloaded_day_runs_every_flow_handler_in_window_allocates_nothing()
+        {
+            // 03 Q-061: every event handler sim.flow registers runs at least
+            // once inside a metered window, after a warm-up that already ran
+            // it. sim.flow is built with FlowClock's shims, which count each
+            // event handler's calls without allocating. The standard congested
+            // day boards every passenger, so it never publishes
+            // PassengersMissedFlight. This day is the same congested graph
+            // with every node promoted, loaded past its three open lanes
+            // (about 18 000 passengers a day against roughly 10 800 served), so
+            // queues spill back, cross thresholds, reach the gate and miss
+            // flights every day. The windows are AllocatedOverDay's whole-Step
+            // windows over day 1. SetServersOpen's Apply is proven inside a
+            // window by SecurityLaneBudgetTests' allocation test.
+            var clock = new FlowClock(1);
+            var rig = new PromoRig(new PromoPlan(0x0010_0FE7UL, 150, 6, 40), record: false, recordCheckpoints: false, clock: clock);
+            rig.SetAll(true);
+            rig.Host.Step((uint)PromoConst.TicksPerDay);
+            var warm = new long[FlowClock.MaxEventHandlers];
+            Array.Copy(clock.HandlerCalls, warm, warm.Length);
+            var inWindows = new long[FlowClock.MaxEventHandlers];
+            long bytes = AllocatedOverDay(rig, PromoConst.TicksPerDay, clock, inWindows);
+
+            var counts = new List<string>();
+            for (int i = 0; i < clock.EventHandlers; i++)
+            {
+                counts.Add(clock.HandlerEvents[i] + " warm-up " + warm[i] + ", in windows " + inWindows[i]);
+            }
+
+            string report = clock.Handlers() + ": " + string.Join("; ", counts);
+            _output.WriteLine(report);
+            Assert.True(clock.EventHandlers > 0, "sim.flow registered no event handler through the shim. " + report);
+            for (int i = 0; i < clock.EventHandlers; i++)
+            {
+                Assert.True(warm[i] > 0, "the warm-up never ran sim.flow's " + clock.HandlerEvents[i] + " handler. " + report);
+                Assert.True(inWindows[i] > 0, "sim.flow's " + clock.HandlerEvents[i] + " handler never ran inside a metered window. " + report);
+            }
+
+            Assert.True(bytes == 0L, "the overloaded day's update path allocated " + bytes.ToString(CultureInfo.InvariantCulture) + " bytes over day 1. " + report);
         }
 
         [Fact]

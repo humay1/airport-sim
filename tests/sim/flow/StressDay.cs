@@ -1,68 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using AirportSim.Sim.Core;
 
 namespace AirportSim.Sim.Flow.Tests
 {
-    /// <summary>
-    /// Wraps sim.flow at its own registry position so a test can time the
-    /// module's Tick alone (03 "How a budget is measured": the module's Tick
-    /// only, excluding fixture setup and the checkpoint phase). Commands,
-    /// the injector, event dispatch and the checkpoint are all outside the
-    /// timed call. Recording writes into a preallocated array, so the wrapper
-    /// allocates nothing per tick.
-    /// </summary>
-    internal sealed class TimedSystem : ISimSystem
-    {
-        private readonly ISimSystem _inner;
-
-        public TimedSystem(ISimSystem inner, int capacity)
-        {
-            _inner = inner;
-            Samples = new long[capacity];
-        }
-
-        public readonly long[] Samples;
-        public int Count;
-        public bool Recording;
-        public bool MeterAllocation;
-        public long AllocatedInTick;
-
-        public SystemId Id => _inner.Id;
-
-        public string Name => _inner.Name;
-
-        public void Tick(in TickContext ctx)
-        {
-            if (MeterAllocation)
-            {
-                // The meter's collection runs inside the tick, right before
-                // sim.flow's Tick; it touches no sim state.
-                long metered = Allocation.Start();
-                _inner.Tick(ctx);
-                AllocatedInTick += Allocation.Since(metered);
-                return;
-            }
-
-            if (!Recording)
-            {
-                _inner.Tick(ctx);
-                return;
-            }
-
-            long start = Stopwatch.GetTimestamp();
-            _inner.Tick(ctx);
-            long end = Stopwatch.GetTimestamp();
-            Samples[Count++] = end - start;
-        }
-
-        public ulong ComputeStateHash()
-        {
-            return _inner.ComputeStateHash();
-        }
-    }
-
     /// <summary>
     /// Counts sim.flow's events without allocating, subscribed at sim.delay's
     /// registry position (7), as the production consumer is.
@@ -163,7 +104,7 @@ namespace AirportSim.Sim.Flow.Tests
         }
 
         public Rig Rig = null!;
-        public TimedSystem Timed = null!;
+        public FlowClock Clock = null!;
         public FlowCounters Counters = null!;
         public HashSet<uint> Corridors = null!;
         public Injection[] Injections = null!;
@@ -355,7 +296,8 @@ namespace AirportSim.Sim.Flow.Tests
         /// <summary>
         /// Composes sim.world at 1, the injector at 2 (sim.schedule's
         /// position, doubling as sim.airside's Absorb), sim.flow at 4 behind
-        /// <see cref="TimedSystem"/>, and the event counters at 7.
+        /// <see cref="TimedSystem"/>, built with <see cref="FlowClock"/>'s
+        /// shimmed services (03 Q-064), and the event counters at 7.
         /// </summary>
         public static StressDay Create(ulong seed, int days)
         {
@@ -368,11 +310,12 @@ namespace AirportSim.Sim.Flow.Tests
             ISimHostBuilder b = FlowKit.Builder(Content(), seed, rig.Checkpoints);
             rig.World = graph.World(b);
             FlowGraph flowGraph = FlowFactory.CreateGraphLoader().Load(Fixtures.Utf8(graph.FlowJson()), "stress.flow.json", rig.World);
-            rig.Flow = FlowFactory.CreateSystem(b.Services, flowGraph, rig.World);            rig.Injector = new ProbeSystem(2) { OnTick = s.Drive };
-            s.Timed = new TimedSystem(rig.Flow, (int)Day);
+            s.Clock = new FlowClock((int)Day);
+            rig.Flow = FlowFactory.CreateSystem(s.Clock.Shim(b.Services), flowGraph, rig.World);
+            rig.Injector = new ProbeSystem(2) { OnTick = s.Drive };
             b.Register(rig.World);
             b.Register(rig.Injector);
-            b.Register(s.Timed);
+            b.Register(new TimedSystem(rig.Flow, s.Clock));
             s.Counters = new FlowCounters(b.Services.Events);
             b.Register(new ProbeSystem(7));
             rig.Host = b.Build();
@@ -395,6 +338,14 @@ namespace AirportSim.Sim.Flow.Tests
                 ref Boarding a = ref Boardings[_nextBoarding];
                 Boarded += Rig.Flow.Absorb(a.Sink, a.Flight);
             }
+        }
+
+        /// <summary>One Step(1), sampled by <see cref="Clock"/> while it records.</summary>
+        public void Step()
+        {
+            Clock.Begin();
+            Rig.Step(1);
+            Clock.End();
         }
 
         public int LiveCohorts()

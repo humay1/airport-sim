@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #85) |
 | Module | `sim.flow` tests |
 | Assigned role | test-author |
 | Depends on | T-039, T-040, T-023 (all merged: #63, #64, #71) |
@@ -27,7 +27,7 @@ confirms the list by reading every timed `Budget` test in `tests/sim/flow/**`
 and rewrites each that asserts a time. `PromotionAllocationTests` and any other
 test that asserts only allocation are out of scope.
 
-**Serialised after T-039 and T-040** (T-023 has merged). T-040 adds the `Slow`
+**Serialised after T-039 and T-040** (T-023 has merged) (historical, resolved: T-039, T-040 and T-023 merged; T-043 merged #85). T-040 adds the `Slow`
 trait to `PromotionBudgetTests` and `FlowStressBudgetTests` methods and T-039
 adds a file, both in `tests/sim/flow/**`. Never release two tasks that write the
 same paths.

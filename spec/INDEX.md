@@ -26,7 +26,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 |---|---|
 | Anyone constructing a system (harness, host, integration tests) | `08` §8.11a, then the module's Construction section: `09` §9.11, `11` §11.9a, `12` §12.12a, `13` §13.10a, `14` §14.13a, `15` §15.9, `17` §17.7 |
 | `sim.core` (T-001–T-006, T-026) | `08` all; `10` §10.2, §10.3; `03` budgets. T-003: `08` §8.3. T-026: `10` §10.6 plus the type blocks of `12` §12.4, `13` §13.3, `14` §14.3 |
-| `tools.simharness` (T-006, T-009, T-013, T-045) | `19` all; `02` Gates; `08` §8.5, §8.5a, §8.7, §8.9, §8.11a; `03` "How a budget is measured", "The soak fixture"; `16` §16.8 (the `checkpoints` subcommand) |
+| `tools.simharness` (T-006, T-009, T-013, T-030, T-045) | `19` all; `02` Gates; `08` §8.5, §8.5a, §8.7, §8.9, §8.11, §8.11a; `03` "How a budget is measured", "The soak fixture"; `16` §16.3, §16.4, §16.8 (for `checkpoints`, with `19` §19.2c and §19.8) |
 | `sim.world` (fixed walk graph) | `18` all; `08` §8.9, §8.11a; `09` §9.6 (its consumer) |
 | `sim.flow` (T-007, T-010, T-011, T-023) | `09` all; `18` §18.2, §18.3, §18.5; `08` §8.3, §8.7; `10` §10.6 From `sim.flow`; `11` §11.6 (who calls `Inject`) |
 | `sim.schedule` (T-008) | `11` all; `08` §8.2, §8.4; `09` §9.7; `10` §10.4, §10.6 |
@@ -135,7 +135,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   polyfills**; **solution layout (Q-013): fixed project paths and names,
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
-  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**; every load failure is `FormatException`
+  sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
+  **one integration test project, `tests/integration/`, references both
+  `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
   `[Trait("Category", "Slow")]` on a test method, with a `[Theory]`'s rows
@@ -219,8 +222,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: milestones plus blocking intervals; `PlannedTick` is schedule-anchored
   and cumulative (§10.4); intervals come in pairs and may cross days
   (§10.3); **new pair `DepartureHeldForPassengers`/`Released`, category
-  `passenger_late` (§10.6, D6)**.
-- LC: first-blocker-wins (§10.5 rule 3).
+  `passenger_late` (§10.6, D6)**; **pairs are never matched by `Cause`, and a
+  closing `Cause` is per family (§10.3 rule 2, Q-078)**; **`Cause` is the
+  event that made the emission due, if same-tick or kept in hashed state;
+  conditions are not causes (§10.2, Q-078)**.
+- LC: first-blocker-wins (§10.5 rule 3); an earlier tick's cause is not
+  kept just to be named (§10.2, its marker in `12` §12.11, Q-078).
 - Read if: any emitter (§10.3, its §10.6 table); `sim.delay` (all of it).
 
 ### `11-interfaces-schedule.md` — `sim.schedule`
@@ -271,10 +278,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   §12.8a S4, Q-062)**; **a consumed `DeboardComplete` or `BoardingComplete`
   awaiting action is hashed state, in `AircraftTrack.RecordedCause` (§12.9,
   §12.12, Q-062)**; **a runway hold's `queuePosition` is 1-based and counts
-  the flight itself, and it is 0 on `Released` (§12.5, Q-063)**.
+  the flight itself, and it is 0 on `Released` (§12.5, Q-063)**; **a
+  binding `Cause` table for every emitted event: hold releases name their
+  hold, `StandAssigned` names the freeing `Pushback` (§12.11, Q-078)**;
+  **cross-tick cause ids are hashed state, in `AircraftTrack.OpenHold` and
+  `StandState.VacatedBy` (§12.9, §12.12, Q-079)**; **`AwaitingPushbackClearance`
+  and `Departed` are reserved, never set at Phase 0/1 (§12.9)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
-  actual doors-close point, and released at a zero count (§12.8).
+  actual doors-close point, and released at a zero count (§12.8); an
+  earlier tick's cause is not kept, so a duration-driven milestone has
+  `Cause` None (§12.11).
 - Read if: T-021 and the hold task; §12.3 for `sim.turnaround`/`sim.delay`;
   §12.4/§12.9 for `app.render`.
 
@@ -329,14 +343,23 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   composition is a pure function of the bundle's bytes (§16.4); frame order
   is UI, then promotion, then `Step`, then build (§16.6); the byte-exact
   checkpoint dump and the harness `checkpoints` subcommand (§16.8); exact
-  bundle file names and the composition steps (§16.3, §16.4), using the
+  bundle file names, with the playtest bundle's file-to-source table
+  (`world.fixture` included), and the composition steps (§16.3, §16.4),
+  using the
   Q-009 factories; content in the player comes from a copy of `data/`
   through `HostFactory.LoadContent` (§16.3); the graphics preference is
   read and written through `IPreferenceStore`, never in the bundle (§16.6,
-  D10).
+  D10). **`bundle.json` has a strict form, and each system's `Name` is its
+  module name (§16.3, Q-069); a loader's `sourceName` is the bundle file
+  name (§16.4, Q-073); `IHeadlessRun` submits no command and steps one
+  sim-day per `Step` (§16.8, Q-071, Q-074); D7 runs on two test bundles,
+  `tests/fixtures/harness/checkpoints-phase0/` and `-phase1/`, not on the
+  playtest bundle (§16.8, Q-070)**; **the D7 test lives in
+  `tests/integration/` and calls both sides in process (§16.8, Q-077)**.
 - LC: the gate runs nightly on the real player (§16.9, proposed, not adopted);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
-  Q-034).
+  Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
+  Q-069).
 - Read if: the host tasks, the harness `checkpoints` subcommand, and the
   cross-runtime gate.
 
@@ -370,13 +393,16 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `SimComposer`, `GateResult`), the NoOp command script, the run comparison,
   exit codes 0/1/2/3, the one-line stdout, `budget --tier max`; the Phase 0
   CLI composition and its boarding stand-in (§19.2a); the `soak`
-  subcommand, its fixture set and its golden (§19.2b); the T-009 tests
-  (§19.6); the T-013 and T-045 tests (§19.7).
+  subcommand, its fixture set and its golden (§19.2b); the `checkpoints`
+  subcommand's invocation, composition and failures (§19.2c); the T-009
+  tests (§19.6); the T-013 and T-045 tests (§19.7); the T-030 tests
+  (§19.8).
 - Key: harness tests run in process from `tests/tools/simharness` (`07`
   L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
   an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
-  `promotion` passes vacuously until T-010; **every CLI subcommand uses one
+  `promotion` passes vacuously until T-010; **every CLI subcommand except
+  `checkpoints` uses one
   composition over four Test Author fixtures (the Phase 0 set, or for
   `soak` the soak set), found from the
   `AirportSim.sln` root, with content from a manifest and never from
@@ -388,13 +414,20 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `soak --out P` writes a dump and never overwrites (§19.2b, Q-057)**;
   **`budget`'s verdict and line come from the pure public
   `HarnessGates.BudgetFromSamples`, which tests call with chosen samples
-  (§19.4, Q-058)**.
-- LC: the `budget` load before a max-tier fixture exists (§19.4). **HD
+  (§19.4, Q-058)**; **`checkpoints --bundle B --content C --days D --out
+  P` composes a bundle by `16` §16.4 in the harness's own code, with no
+  stand-in and no command script, steps one sim-day per `Step`, and
+  writes the `16` §16.8 dump to a new file; T-030 composes world,
+  schedule and flow, and a Phase 1 stage task adds the other three
+  before T-031; it is the only place the harness lists a directory, the
+  content one (§19.2c, Q-066 to Q-076)**.
+- LC: the `budget` load before a max-tier fixture exists (§19.4); the
+  listed `checkpoints` content directory (§19.2c, Q-072). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
   `sim.save` (§19.5). **HD (owner, 2026-09-29):** the boarding stand-in is
   a valid reading of the kill gate (§19.2a, Q-043).
-- Read if: T-006, T-009, T-013, T-030, T-045; the Test Author for the
-  harness.
+- Read if: T-006, T-009, T-013, T-030 and its Phase 1 stage, T-045; the
+  Test Author for the harness.
 
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the
