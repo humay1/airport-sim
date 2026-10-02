@@ -1650,8 +1650,9 @@ Done-condition tests this spec expects to exist, phrased per
   - **After the throw, the reading to use.** The test reads the
     partial state that `08` §8.5a leaves, with nothing rolled back,
     through the `IAirsideSystem` queries. `TrackedFlights().Count` is
-    exactly **4 096**, every `A_k` with `k ≤ 4 096` is tracked in
-    `AwaitingApproach`, and `A_4097` is not tracked. This is the reading
+    exactly **4 096**, every `A_k` with `k ≤ 4 096` is tracked
+    (`TryGetTrack` true, in whatever phase it has reached), and `A_4097`
+    is not tracked. The test asserts no phase. This is the reading
     whether or not `A_4096` and later ranks share `t_4097` with `A_4097`.
     S2 starts those ranks before `A_4097` in the same tick, so the end of
     the previous tick may show fewer than 4 096. Events of tick `t_4097`
