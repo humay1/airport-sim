@@ -431,6 +431,7 @@ interface IFlowSystem : ISimSystem {
   bool   TryGetCohort(CohortId id, out PassengerCohort cohort)
   bool   TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)   // §9.7a; false iff none
   bool   TryGetLaneState(NodeId node, out LaneState lanes)                           // §9.7b; false unless a Queue node
+  NodeKind KindOf(NodeId node)                                                       // Q-084; the node's FlowGraph kind
 
   // ---- injection, called only by the systems named ----
   CohortId Inject(in CohortKey key, int32 count, NodeId at)   // sim.schedule, sim.airside
@@ -516,6 +517,18 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
   event's owner in `10` §10.6 stays `sim.flow`. `Inject` publishes nothing,
   and it may be called between ticks, which tests use to seed a fixture.
 
+**`KindOf(node)` (Q-084).** It returns the `NodeKind` that the system's
+`FlowGraph` gives `node` (§9.11). An unknown node throws
+`ArgumentException`, as `SetPromoted` does. It is a query: read-only,
+O(1), allocation-free, not hashed (the kinds are construction data), and
+it consumes no RNG. It may be called at any time, inside a `Tick`
+included. Its first caller is the harness's `determinism_promotion`,
+which uses it to find "a gate" (`19` §19.2d).
+Test, owned by the Test Author of the task that adds it:
+`test_kind_of_returns_graph_kinds_and_throws_on_unknown_node`. Over a
+fixture with one node of each `NodeKind`, it returns each node's kind,
+and an unknown `NodeId` throws `ArgumentException`.
+
 `SetPromoted` may be called at any tick and, by §9.1, changes no hashed state.
 `determinism_promotion` asserts exactly this.
 
@@ -530,7 +543,9 @@ count, and it reports everyone else of the flight as `PassengersMissedFlight`
   On a node that is not promoted, it is empty.
 - **When.** `SetPromoted` may be called at any time, inside another
   system's `Tick` included, because it changes no hashed state. Its only
-  production caller calls it between `Step`s (`15` §15.7).
+  production caller calls it between `Step`s (`15` §15.7). The harness's
+  `Promotion` gate calls `SetPromoted` and `AgentsAt` between `Step`s too,
+  in the way `19` §19.2d pins.
 - **Allocation.** `SetPromoted` never allocates. `AgentsAt` allocates
   nothing after warm-up. Its list is valid until the next `AgentsAt` or
   `Tick` call, and its buffer grows only when a node's population exceeds

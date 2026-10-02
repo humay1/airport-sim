@@ -2593,15 +2593,25 @@ Answer:      (1) Yes. Run 2 hands `compose` a harness-internal recording
              `SystemId(1)` if it implements `IWorldSystem`. Both the
              position and the type are required. (2) Every composer passed
              to `Promotion`. No other gate or subcommand wraps or
-             promotes. (3) After `Build` and before the command script:
-             if `flow` and `world` both exist and `world.Nodes()` is not
-             empty, the harness calls `flow.SetPromoted(Nodes()[0], true)`
-             once. Otherwise it calls nothing. A constant `NodeId(1)` was
-             rejected. (4) Run 1: no call to any system. Run 2: exactly
-             one `SetPromoted(lowest node, true)` before the first `Tick`,
-             and no other member of `flow` or `world` except one
-             `Nodes()`. There is no demotion and no `AgentsAt`. The
-             comparison and the report are unchanged. Tests are in §19.9.
-             The Test Author's proposal is confirmed, with the added
-             position requirement.
+             promotes. (3) **HUMAN DECISION, owner, 2026-10-02: follow
+             `02` literally.** "Camera parked on a gate" means a real
+             `Gate`-kind node, whose passengers are drawn through
+             `AgentsAt` every tick, as the camera does (`15` §15.7). Run 2
+             must still match run 1 exactly. So `09` §9.7 gains the query
+             `NodeKind KindOf(NodeId)`. After `Build` and before the
+             script, the harness walks `world.Nodes()` in ascending order
+             with `flow.KindOf` and stops at the first `Gate`. If there is
+             none, including when there is no flow, no world or no node,
+             it calls nothing more and run 2 steps as run 1 does.
+             Otherwise it calls `SetPromoted(gate, true)` once, then steps
+             `Step(1)` `ticks` times, calling `AgentsAt(gate)` once after
+             each. The CLI promotes `NodeId(8)` in both fixture sets. The
+             earlier answer, promote `Nodes()[0]` and never call
+             `AgentsAt`, is withdrawn. (4) Run 1: no call to any system.
+             Run 2: one `Nodes()`, `KindOf` up to the first `Gate`, one
+             `SetPromoted(gate, true)` and `ticks` calls of
+             `AgentsAt(gate)`, and nothing else. There is no demotion. The
+             comparison and the report are unchanged. Tests are in §19.9,
+             each fully pinned, including the divergence string.
+             PENDING HUMAN: resolved by the owner's decision above.
 Status:      ANSWERED (spec/19-interfaces-harness.md#192d-promotion-what-the-second-run-promotes-q-084)

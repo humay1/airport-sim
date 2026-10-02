@@ -3341,68 +3341,91 @@ Signed off:  Q-083: owner, 2026-10-02 (`ReassignStand` stays open). The
              rest is not required (interface detail and state layout; no
              balance, scope or `01`/`02` change).
 
-## 2026-10-02 — spec/19-interfaces-harness.md §19.1, §19.2, §19.2d, §19.9; INDEX; open-questions — Q-084: how `Promotion` finds and promotes a node
+## 2026-10-02 — spec/19-interfaces-harness.md §19.1, §19.2, §19.2d, §19.9; spec/09-interfaces-flow.md §9.7; INDEX; open-questions — Q-084: `Promotion` promotes and draws a real gate
 Reason:      T-014's Test Author was blocked. Promotion is outcome-neutral,
-             so it is observable only through a test's spy `IFlowSystem`,
-             and §19 did not say how the gate reaches the flow system
-             through an opaque `SimComposer`, which composers it applies
-             to, or which node it promotes. The task text said both "the
-             lowest registered NodeId" and "a fixed choice, not
-             content-driven".
-Raised by:   Q-084 (Test Author / T-014)
-Impact:      - **New §19.2d.** `Promotion`'s second run hands `compose` a
-               harness-internal recording builder that forwards
-               `Services`, `Register` and `Build` to the factory builder
-               and records each `Register` that returns. `flow` is the
-               recorded system at `SystemId(4)` that implements
-               `IFlowSystem`, and `world` the one at `SystemId(1)` that
-               implements `IWorldSystem`. After `Build` and before the
-               command script, if both exist and `world.Nodes()` is not
-               empty, the harness calls `flow.SetPromoted(Nodes()[0],
-               true)` once. Otherwise it calls nothing. This applies to
-               every composer passed to `Promotion`. Run 1, and every
-               other gate and subcommand, are unchanged.
-             - **§19.1** "One run" now names the one exception to "compose
-               receives the factory's builder". **§19.2**'s "before
-               T-010" bullet and the gate table row now point to §19.2d.
-             - **New §19.9:** four named T-014 tests and the spy
-               conventions (spy at position 4, test world at 1).
+             so it is observable only through a test's spy `IFlowSystem`.
+             §19 did not say how the gate reaches the flow system through
+             an opaque `SimComposer`, which composers it applies to, or
+             which node it promotes. The first version of this PR (at
+             `98c0082`) read `02`'s "camera parked on a gate" as "the lowest
+             node, never drawn". Its review (PR #95, finding 1) pointed out
+             that this decided what `02` means, which only the owner may
+             do. The owner then decided to follow `02` literally. Review
+             findings 2 and 3, an underivable test and an unpinned failure
+             string, are also fixed.
+Raised by:   Q-084 (Test Author / T-014); review of PR #95 at `98c0082`;
+             owner decision 2026-10-02
+Impact:      - **HUMAN DECISION, owner, 2026-10-02.** Run 2 promotes a real
+               `Gate`-kind node and draws its passengers through
+               `AgentsAt` every tick, so that `flow.presentation` is
+               exercised. It must still match run 1 exactly. `02` is not
+               edited.
+             - **New §19.2d.** Run 2 hands `compose` a harness-internal
+               recording builder, which forwards `Services`, `Register`
+               and `Build` and records each `Register` that returns.
+               `flow` is the recorded `IFlowSystem` at `SystemId(4)`, and
+               `world` is the recorded `IWorldSystem` at `SystemId(1)`.
+               After `Build` and before the script, the harness walks
+               `world.Nodes()` in ascending order with `flow.KindOf` and
+               stops at the first `Gate`. It calls
+               `SetPromoted(gate, true)` once, then steps `Step(1)` `ticks`
+               times, with one `AgentsAt(gate)` after each step. If there
+               is no flow, no world or no `Gate`, it calls nothing more
+               and steps as run 1 does. This applies to every composer
+               passed to `Promotion`. Every other gate and subcommand is
+               unchanged. The CLI promotes `NodeId(8)`, the only `Gate` in
+               both fixture sets.
+             - **`09` §9.7, an interface addition:**
+               `NodeKind KindOf(NodeId node)`. It is an O(1),
+               allocation-free query that is not hashed, and an unknown
+               node throws `ArgumentException`. The test is
+               `test_kind_of_returns_graph_kinds_and_throws_on_unknown_node`.
+               §9.1 is unchanged and still guarantees neutrality.
+               `SetPromoted` changes no hashed state, `AgentsAt` draws
+               only from `flow.presentation`, which is excluded from the
+               hash, and `KindOf` is a query.
+             - **Merged `sim.flow` changes (follow-up task needed).**
+               `IFlowSystem` gains a member, so `FlowSystem` must
+               implement it, from its existing per-node kind array.
+               `tests/sim/schedule/ScheduleTestKit.cs`'s `RecordingFlow`
+               also implements `IFlowSystem` and must gain `KindOf`, or
+               the schedule tests stop compiling. Adding the method to
+               `RecordingFlow` first compiles on today's `main`. So the
+               follow-up task's Test Author adds it, together with the
+               `09` test, and then the worker adds the interface member.
+               The Planner creates this task (suggested T-049, `sim.flow`:
+               `KindOf`). **T-014 depends on it.** No other implementer of
+               `IFlowSystem` exists. No hash, golden or event changes.
+             - **§19.1** "One run" names the recording-builder exception.
+               **§19.2**'s bullet and table row point to §19.2d.
+             - **New §19.9:** five fully pinned T-014 tests. Every
+               composition, node list, kind, seed and tick count is given,
+               and so is the exact call sequence. Exactly one
+               `SetPromoted` is required per call (finding 2). The
+               divergence test expects exactly `FAIL
+               determinism_promotion tick=1200 at=system:2` (finding 3).
              - **Merged harness code and tests (T-006, T-009, T-013,
-               T-030):** no behaviour changes. Every `HarnessGatesTests`
-               composer registers no `IFlowSystem` at 4, so it promotes
-               nothing, and the empty composition still passes vacuously
-               with the same report. The recording builder is a fresh
-               object per run, so the fresh-builder test still holds. The
-               CLI `promotion` output is unchanged, because
-               `SetPromoted` changes no hashed state (`09` §9.1). The CLI
-               composer now promotes `NodeId(1)` in run 2. That is the
-               intended T-014 change.
-             - **T-014 worker:** implements §19.2d in `tools/SimHarness`
-               only. No public type is added, and `Promotion`'s signature
-               is unchanged.
-             - **Refines T-014's task text:** "the lowest registered
-               NodeId" is read as `world.Nodes()[0]`, and "not
-               content-driven" as "no node kind or fixture is parsed to
-               choose it". The task file is the Planner's to align, and no
-               code exists yet.
-             - **`sim.flow`, `sim.world`, `09`, `18`, `08`:** none. The
-               harness uses only the published `SetPromoted` and
-               `Nodes()`.
-             - **LOW CONFIDENCE:** "a gate" in `02`'s
-               `determinism_promotion` row ("camera parked on a gate") is
-               read as any promotable node, the lowest one, and not as a
-               `Gate`-kind node. `IFlowSystem` publishes no node kinds, and
-               choosing a `Gate` would need a new query or fixture
-               parsing. Over the Phase 0 and soak fixtures the promoted
-               node is `NodeId(1)`, which is not a `Gate` node. `02` is not
-               edited. If the owner reads it literally, a later amendment
-               adds a node-kind query to `09`.
+               T-030):** no behaviour changes. No `HarnessGatesTests`
+               composer registers an `IFlowSystem` at 4, so the empty
+               composition still passes vacuously with the same report.
+               The fresh-builder test holds. The CLI `promotion` line is
+               unchanged.
+             - **T-014:** the worker implements §19.2d in
+               `tools/SimHarness` only, with no new public type and no
+               signature change. Its task text ("the lowest registered
+               NodeId", "do not build a gate concept") is superseded by
+               §19.2d. The Planner aligns the task file and adds the
+               dependency on the `KindOf` task. Run 2 of `promotion --days
+               1` now makes 14 400 `Step(1)` and `AgentsAt` calls, and no
+               budget applies to it (T-014 "Performance budget").
              - **LOW CONFIDENCE:** finding the systems by registry
-               position and type, rather than by type alone. This is
-               narrower and unambiguous, but a test spy must report
-               `Id = SystemId(4)` to be promoted.
-             - **Scope:** none added. A harness-internal wrapper.
-             - **PENDING HUMAN:** none.
-Signed off:  not required (harness test mechanics; no balance, scope or
-             `01`/`02` change). The owner should review the LOW
-             CONFIDENCE markers.
+               position and type rather than by type alone. A test spy
+               must report `Id = SystemId(4)`. The review found this
+               conforming.
+             - **Scope:** one query on `IFlowSystem`, required by the
+               owner's decision. No new system or behaviour.
+             - **PENDING HUMAN:** resolved by the owner, 2026-10-02.
+Signed off:  owner, 2026-10-02 (the `02` reading: a real `Gate` node,
+             drawn through `AgentsAt` every tick, matching run 1 exactly).
+             The rest follows from that decision. The owner should review
+             the LOW CONFIDENCE marker.
