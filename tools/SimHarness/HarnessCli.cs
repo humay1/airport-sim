@@ -61,6 +61,8 @@ namespace AirportSim.Tools.SimHarness
                         return RunPromotion(args, stdout);
                     case "budget":
                         return RunBudget(args, stdout);
+                    case "soak":
+                        return RunSoak(args, stdout, stderr);
                     case "checkpoints":
                         return RunCheckpoints(args, stdout, stderr);
                     default:
@@ -206,6 +208,29 @@ namespace AirportSim.Tools.SimHarness
                 " p99_us=" + p99Us.ToString(CultureInfo.InvariantCulture);
             stdout.Write(line + "\n");
             return passed ? 0 : 1;
+        }
+
+        private static int RunSoak(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr)
+        {
+            var spec = new Dictionary<string, bool>(StringComparer.Ordinal)
+            {
+                ["--days"] = true,
+                ["--golden"] = true,
+                ["--out"] = true,
+            };
+            ParseFlags(args, spec, out Dictionary<string, string> values, out _);
+
+            uint ticks = ParseDaysAsTicks(RequireValue(values, "--days"));
+            bool hasGolden = values.ContainsKey("--golden");
+            bool hasOut = values.ContainsKey("--out");
+            if (hasGolden == hasOut)
+            {
+                throw new UsageException("soak needs exactly one of --golden and --out");
+            }
+            string? golden = hasGolden ? RequirePath(values, "--golden") : null;
+            string? outPath = hasOut ? RequirePath(values, "--out") : null;
+
+            return SoakCommand.Run(ticks / TicksPerDay, golden, outPath, stdout, stderr);
         }
 
         private static int RunCheckpoints(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr)
