@@ -69,7 +69,7 @@ namespace AirportSim.Sim.Airside
         private readonly bool[] _standHas;
         private readonly ulong[] _standOccupant;
         private readonly ulong[] _standFreedTick;
-        private readonly EventRef[] _standFreedCause;
+        private readonly EventRef[] _standVacatedBy;
         private readonly WaitEntry[] _wait = new WaitEntry[StandWaitCapacity];
         private int _waitCount;
 
@@ -220,11 +220,11 @@ namespace AirportSim.Sim.Airside
             _standHas = new bool[stands];
             _standOccupant = new ulong[stands];
             _standFreedTick = new ulong[stands];
-            _standFreedCause = new EventRef[stands];
+            _standVacatedBy = new EventRef[stands];
             for (int i = 0; i < stands; i++)
             {
                 _standFreedTick[i] = ulong.MaxValue;
-                _standFreedCause[i] = EventRef.None;
+                _standVacatedBy[i] = EventRef.None;
             }
 
             for (int i = 0; i < InitialSlots; i++)
@@ -272,7 +272,7 @@ namespace AirportSim.Sim.Airside
                 return false;
             }
 
-            stand = new StandState(id, _standHas[i] ? new FlightId(_standOccupant[i]) : (FlightId?)null);
+            stand = new StandState(id, _standHas[i] ? new FlightId(_standOccupant[i]) : (FlightId?)null, _standVacatedBy[i]);
             return true;
         }
 
@@ -334,6 +334,7 @@ namespace AirportSim.Sim.Airside
             {
                 h.Feed(_standHas[s]);
                 h.Feed(_standHas[s] ? _standOccupant[s] : 0UL);
+                FeedRef(ref h, _standVacatedBy[s]);
             }
 
             h.Feed((ulong)_waitCount);
@@ -362,9 +363,8 @@ namespace AirportSim.Sim.Airside
                 h.Feed(t.PhaseEnteredAt);
                 h.Feed(t.DueAt);
                 h.Feed(t.PassengerHoldSince);
-                h.Feed(t.RecordedCause.HasValue);
-                h.Feed(t.RecordedCause.HasValue ? t.RecordedCause.Id.Tick : 0UL);
-                h.Feed(t.RecordedCause.HasValue ? (ulong)t.RecordedCause.Id.Sequence : 0UL);
+                FeedRef(ref h, t.RecordedCause);
+                FeedRef(ref h, t.OpenHold);
             }
 
             h.Feed((ulong)_pendingCount);
@@ -374,6 +374,13 @@ namespace AirportSim.Sim.Airside
             }
 
             return h.Result;
+        }
+
+        private static void FeedRef(ref StateHasher h, in EventRef r)
+        {
+            h.Feed(r.HasValue);
+            h.Feed(r.HasValue ? r.Id.Tick : 0UL);
+            h.Feed(r.HasValue ? (ulong)r.Id.Sequence : 0UL);
         }
 
         private static void FeedSlotRef(ref StateHasher h, Slot? s)
@@ -434,7 +441,8 @@ namespace AirportSim.Sim.Airside
                 s.PhaseEnteredAt,
                 s.DueAt,
                 s.HoldSince,
-                s.Recorded);
+                s.Recorded,
+                s.OpenHold);
         }
 
         // ------------------------------------------------------------ tracked list
@@ -695,9 +703,10 @@ namespace AirportSim.Sim.Airside
             Slot slot = s!;
             int old = slot.Stand;
             _standHas[old] = false;
-            _standFreedCause[old] = EventRef.None;
+            _standVacatedBy[old] = EventRef.None;
             _standHas[target] = true;
             _standOccupant[target] = flight;
+            _standVacatedBy[target] = EventRef.None;
             slot.Stand = target;
             slot.DepartStand = target;
             slot.AtNode = _standNode[target];
@@ -732,7 +741,9 @@ namespace AirportSim.Sim.Airside
             public int DepartStand = -1;
             public int AskEdge = -1;
             public Slot? QNext;
-            public EventId HoldEvent;
+            public EventRef OpenHold;
+            public EventRef Placed;
+            public EventRef OffRunwayEvent;
             public bool DoorsOpenFired;
             public bool ReqTakeoff;
 
@@ -762,7 +773,9 @@ namespace AirportSim.Sim.Airside
                 DepartStand = -1;
                 AskEdge = -1;
                 QNext = null;
-                HoldEvent = default;
+                OpenHold = EventRef.None;
+                Placed = EventRef.None;
+                OffRunwayEvent = EventRef.None;
                 DoorsOpenFired = false;
                 ReqTakeoff = false;
             }

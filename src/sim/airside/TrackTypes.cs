@@ -70,6 +70,9 @@ namespace AirportSim.Sim.Airside
         /// <summary>A consumed turnaround event awaiting action, or EventRef.None.</summary>
         public EventRef RecordedCause { get; }
 
+        /// <summary>The open runway, taxiway or passenger hold event, or EventRef.None.</summary>
+        public EventRef OpenHold { get; }
+
         /// <summary>Constructs the track from its members in declared order.</summary>
         public AircraftTrack(
             FlightId flight,
@@ -83,7 +86,8 @@ namespace AirportSim.Sim.Airside
             ulong phaseEnteredAt,
             ulong dueAt,
             ulong passengerHoldSince,
-            EventRef recordedCause)
+            EventRef recordedCause,
+            EventRef openHold)
         {
             Flight = flight;
             Kind = kind;
@@ -97,6 +101,7 @@ namespace AirportSim.Sim.Airside
             DueAt = dueAt;
             PassengerHoldSince = passengerHoldSince;
             RecordedCause = recordedCause;
+            OpenHold = openHold;
         }
     }
 
@@ -109,11 +114,15 @@ namespace AirportSim.Sim.Airside
         /// <summary>The flight holding the stand, if any.</summary>
         public FlightId? Occupant { get; }
 
+        /// <summary>The Pushback that last freed the stand; EventRef.None while occupied.</summary>
+        public EventRef VacatedBy { get; }
+
         /// <summary>Constructs the state.</summary>
-        public StandState(StandId id, FlightId? occupant)
+        public StandState(StandId id, FlightId? occupant, EventRef vacatedBy)
         {
             Id = id;
             Occupant = occupant;
+            VacatedBy = vacatedBy;
         }
     }
 

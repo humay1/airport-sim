@@ -30,6 +30,17 @@ namespace AirportSim.Sim.Airside
             StepStands(ctx, t);
             StepTaxi(ctx, t);
             StepRunway(ctx, t);
+
+            // Same-tick triggers are not state: nothing here survives the tick (12 §12.12).
+            for (int i = 0; i < _askerCount; i++)
+            {
+                _askers[i].Placed = EventRef.None;
+            }
+
+            for (int i = 0; i < _standReqCount; i++)
+            {
+                _standReqs[i].OffRunwayEvent = EventRef.None;
+            }
         }
 
         private static EventRef Ref(EventId id)
@@ -126,7 +137,7 @@ namespace AirportSim.Sim.Airside
                 _rwyOccupant[r] = null;
                 if (s.Kind == MovementKind.Arrival)
                 {
-                    Milestone(ctx, s.Flight, FlightMilestone.OffRunway, s.Sched + _rwyOccTicks[r], EventRef.None);
+                    s.OffRunwayEvent = Ref(Milestone(ctx, s.Flight, FlightMilestone.OffRunway, s.Sched + _rwyOccTicks[r], EventRef.None));
                     s.RouteRwy = r;
                     s.Rwy = -1;
                     s.Phase = AircraftLegPhase.HeldOnTaxiway;
@@ -157,12 +168,12 @@ namespace AirportSim.Sim.Airside
                     {
                         if (s.DueAt <= t)
                         {
-                            DoorsOpen(s, ctx, t);
+                            DoorsOpen(s, ctx, t, EventRef.None);
                         }
                     }
                     else if (s.HasRotation && HandoffDue(s, t))
                     {
-                        Handoff(s, ctx, t);
+                        Handoff(s, ctx, t, EventRef.None);
                     }
                 }
                 else if (s.HoldSince != Unscheduled)
@@ -170,10 +181,11 @@ namespace AirportSim.Sim.Airside
                     bool has = _flow!.TryGetOutstanding(new FlightId(s.Flight), out OutstandingPassengers o);
                     if (!has || t >= s.DueAt)
                     {
-                        ctx.Events.Publish(new DepartureHeldForPassengersReleased(new FlightId(s.Flight), has ? o.Count : 0, null), Ref(s.HoldEvent));
+                        EventId released = ctx.Events.Publish(new DepartureHeldForPassengersReleased(new FlightId(s.Flight), has ? o.Count : 0, null), s.OpenHold);
+                        s.OpenHold = EventRef.None;
                         s.HoldSince = Unscheduled;
                         s.DueAt = Unscheduled;
-                        CloseDoors(s, ctx, t);
+                        CloseDoors(s, ctx, t, Ref(released));
                     }
                 }
                 else if (_turnaround && s.Recorded.HasValue)
@@ -188,20 +200,20 @@ namespace AirportSim.Sim.Airside
             return _turnaround ? s.Recorded.HasValue : s.DueAt <= t;
         }
 
-        private void DoorsOpen(Slot s, in TickContext ctx, ulong t)
+        private void DoorsOpen(Slot s, in TickContext ctx, ulong t, EventRef cause)
         {
             s.DoorsOpenFired = true;
-            Milestone(ctx, s.Flight, FlightMilestone.DoorsOpen, s.PlannedOnStand + _delayTicks, EventRef.None);
+            EventId opened = Milestone(ctx, s.Flight, FlightMilestone.DoorsOpen, s.PlannedOnStand + _delayTicks, cause);
             s.DueAt = s.HasRotation && !_turnaround ? t + s.MinTurnTicks : Unscheduled;
             if (s.HasRotation && HandoffDue(s, t))
             {
-                Handoff(s, ctx, t);
+                Handoff(s, ctx, t, Ref(opened));
             }
         }
 
-        private void Handoff(Slot arrival, in TickContext ctx, ulong t)
+        private void Handoff(Slot arrival, in TickContext ctx, ulong t, EventRef doorsOpenCause)
         {
-            EventRef cause = _turnaround ? arrival.Recorded : EventRef.None;
+            EventRef cause = _turnaround ? arrival.Recorded : doorsOpenCause;
             int stand = arrival.Stand;
             ulong depId = arrival.Rotation;
             if (!_schedule.TryGetFlight(new FlightId(depId), out FlightRecord dr))
@@ -232,6 +244,7 @@ namespace AirportSim.Sim.Airside
             d.Rotation = r.Rotation.Value;
             _standHas[stand] = true;
             _standOccupant[stand] = flight;
+            _standVacatedBy[stand] = EventRef.None;
             if (arrival != null)
             {
                 RemoveTrack(arrival);
@@ -249,30 +262,31 @@ namespace AirportSim.Sim.Airside
             d.Recorded = EventRef.None;
             if (_flow != null && _holdTicks > 0 && _flow.TryGetOutstanding(new FlightId(d.Flight), out OutstandingPassengers o))
             {
-                d.HoldEvent = ctx.Events.Publish(new DepartureHeldForPassengers(new FlightId(d.Flight), o.Count, o.MostHeldAt), cause);
+                d.OpenHold = Ref(ctx.Events.Publish(new DepartureHeldForPassengers(new FlightId(d.Flight), o.Count, o.MostHeldAt), cause));
                 d.HoldSince = t;
                 d.DueAt = t + _holdTicks;
                 return;
             }
 
-            CloseDoors(d, ctx, t);
+            CloseDoors(d, ctx, t, cause);
         }
 
-        private void CloseDoors(Slot d, in TickContext ctx, ulong t)
+        private void CloseDoors(Slot d, in TickContext ctx, ulong t, EventRef cause)
         {
             if (_flow != null)
             {
                 _flow.Absorb(_standSink[d.Stand], new FlightId(d.Flight));
             }
 
-            Milestone(ctx, d.Flight, FlightMilestone.DoorsClosed, d.Sched, EventRef.None);
-            EventId push = Milestone(ctx, d.Flight, FlightMilestone.Pushback, d.Sched, EventRef.None);
+            EventId closed = Milestone(ctx, d.Flight, FlightMilestone.DoorsClosed, d.Sched, cause);
+            EventId push = Milestone(ctx, d.Flight, FlightMilestone.Pushback, d.Sched, Ref(closed));
 
             int st = d.Stand;
             _standHas[st] = false;
             _standFreedTick[st] = t;
-            _standFreedCause[st] = Ref(push);
+            _standVacatedBy[st] = Ref(push);
             d.Stand = -1;
+            d.Placed = Ref(push);
 
             int r = ChooseRunway();
             d.Rwy = r;
@@ -337,7 +351,7 @@ namespace AirportSim.Sim.Airside
                 }
                 else if (w.IsDeparture)
                 {
-                    StartDeparture(w.Flight, st, ctx, t);
+                    StartDeparture(w.Flight, st, _standVacatedBy[st], ctx, t);
                 }
                 else
                 {
@@ -379,7 +393,7 @@ namespace AirportSim.Sim.Airside
                     else
                     {
                         CheckWaitRoom(a.Flight, t);
-                        ctx.Events.Publish(new StandUnavailable(new FlightId(a.Flight), null, null), EventRef.None);
+                        ctx.Events.Publish(new StandUnavailable(new FlightId(a.Flight), null, null), a.OffRunwayEvent);
                         _wait[_waitCount++] = new WaitEntry(a.Flight, false, a.SizeOrd);
                     }
                 }
@@ -395,7 +409,7 @@ namespace AirportSim.Sim.Airside
                     int st = FindStand(size, t);
                     if (st >= 0)
                     {
-                        StartDeparture(flight, st, ctx, t);
+                        StartDeparture(flight, st, EventRef.None, ctx, t);
                     }
                     else
                     {
@@ -415,20 +429,22 @@ namespace AirportSim.Sim.Airside
             }
         }
 
-        private void StartDeparture(ulong flight, int stand, in TickContext ctx, ulong t)
+        private void StartDeparture(ulong flight, int stand, EventRef cause, in TickContext ctx, ulong t)
         {
             if (!_schedule.TryGetFlight(new FlightId(flight), out FlightRecord r))
             {
                 throw new SimInvariantException("sim.airside: departure " + flight.ToString(CultureInfo.InvariantCulture) + " is not in the schedule", t);
             }
 
-            CreateDeparture(flight, r, stand, EventRef.None, null, ctx, t);
+            CreateDeparture(flight, r, stand, cause, null, ctx, t);
         }
 
         private void AssignArrival(Slot a, int stand, bool fromQueue, in TickContext ctx)
         {
+            EventRef vacated = _standVacatedBy[stand];
             _standHas[stand] = true;
             _standOccupant[stand] = a.Flight;
+            _standVacatedBy[stand] = EventRef.None;
             a.Stand = stand;
             int pair = (a.RouteRwy * _standId.Length) + stand;
             a.RouteBase = _arrBase[pair];
@@ -436,7 +452,11 @@ namespace AirportSim.Sim.Airside
             a.RoutePos = 0;
             if (fromQueue)
             {
-                ctx.Events.Publish(new StandAssigned(new FlightId(a.Flight), new StandId(_standId[stand]), null), _standFreedCause[stand]);
+                a.Placed = Ref(ctx.Events.Publish(new StandAssigned(new FlightId(a.Flight), new StandId(_standId[stand]), null), vacated));
+            }
+            else
+            {
+                a.Placed = a.OffRunwayEvent;
             }
 
             Ask(a);
@@ -462,6 +482,7 @@ namespace AirportSim.Sim.Airside
                     s.Phase = AircraftLegPhase.HeldOnTaxiway;
                     s.PhaseEnteredAt = t;
                     s.DueAt = Unscheduled;
+                    s.Placed = EventRef.None;
                     Ask(s);
                 }
                 else if (s.Kind == MovementKind.Arrival)
@@ -469,11 +490,11 @@ namespace AirportSim.Sim.Airside
                     s.Phase = AircraftLegPhase.OnStand;
                     s.PhaseEnteredAt = t;
                     s.PlannedOnStand = s.Sched + _rwyOccTicks[s.RouteRwy] + _arrTicks[(s.RouteRwy * _standId.Length) + s.Stand];
-                    Milestone(ctx, s.Flight, FlightMilestone.OnStand, s.PlannedOnStand, EventRef.None);
+                    EventId onStand = Milestone(ctx, s.Flight, FlightMilestone.OnStand, s.PlannedOnStand, EventRef.None);
                     s.DueAt = t + _delayTicks;
                     if (_delayTicks == 0UL)
                     {
-                        DoorsOpen(s, ctx, t);
+                        DoorsOpen(s, ctx, t, Ref(onStand));
                     }
                 }
                 else
@@ -565,7 +586,8 @@ namespace AirportSim.Sim.Airside
                     if (_edgeQLen[e] > 0)
                     {
                         grantee = DequeueEdge(e);
-                        ctx.Events.Publish(new AircraftHeldOnTaxiwayReleased(new FlightId(grantee.Flight), new TaxiEdgeId(_edgeId[e]), null), Ref(grantee.HoldEvent));
+                        ctx.Events.Publish(new AircraftHeldOnTaxiwayReleased(new FlightId(grantee.Flight), new TaxiEdgeId(_edgeId[e]), null), grantee.OpenHold);
+                        grantee.OpenHold = EventRef.None;
                     }
                     else if (first < end)
                     {
@@ -610,7 +632,8 @@ namespace AirportSim.Sim.Airside
                 _heldEdges[_heldEdgeCount++] = e;
             }
 
-            s.HoldEvent = ctx.Events.Publish(new AircraftHeldOnTaxiway(new FlightId(s.Flight), new TaxiEdgeId(_edgeId[e]), new FlightId(blocking)), EventRef.None);
+            s.OpenHold = Ref(ctx.Events.Publish(new AircraftHeldOnTaxiway(new FlightId(s.Flight), new TaxiEdgeId(_edgeId[e]), new FlightId(blocking)), s.Placed));
+            s.Placed = EventRef.None;
             s.Phase = AircraftLegPhase.HeldOnTaxiway;
             s.PhaseEnteredAt = t;
             s.DueAt = Unscheduled;
@@ -660,8 +683,9 @@ namespace AirportSim.Sim.Airside
 
                     head.QNext = null;
                     _rwyQLen[r]--;
-                    ctx.Events.Publish(new AircraftHeldForRunwayReleased(new FlightId(head.Flight), new RunwayId(_rwyId[r]), 0), Ref(head.HoldEvent));
-                    ClaimRunway(head, r, ctx, t);
+                    EventId released = ctx.Events.Publish(new AircraftHeldForRunwayReleased(new FlightId(head.Flight), new RunwayId(_rwyId[r]), 0), head.OpenHold);
+                    head.OpenHold = EventRef.None;
+                    ClaimRunway(head, r, ctx, t, Ref(released));
                 }
             }
 
@@ -684,7 +708,7 @@ namespace AirportSim.Sim.Airside
 
                 if (t >= _rwyNextSlot[r] && _rwyOccupant[r] is null)
                 {
-                    ClaimRunway(s, r, ctx, t);
+                    ClaimRunway(s, r, ctx, t, EventRef.None);
                 }
                 else
                 {
@@ -700,7 +724,7 @@ namespace AirportSim.Sim.Airside
 
                     _rwyQTail[r] = s;
                     _rwyQLen[r]++;
-                    s.HoldEvent = ctx.Events.Publish(new AircraftHeldForRunway(new FlightId(s.Flight), new RunwayId(_rwyId[r]), _rwyQLen[r]), EventRef.None);
+                    s.OpenHold = Ref(ctx.Events.Publish(new AircraftHeldForRunway(new FlightId(s.Flight), new RunwayId(_rwyId[r]), _rwyQLen[r]), EventRef.None));
                     s.Phase = AircraftLegPhase.HeldForRunway;
                     s.PhaseEnteredAt = t;
                     s.DueAt = Unscheduled;
@@ -708,7 +732,7 @@ namespace AirportSim.Sim.Airside
             }
         }
 
-        private void ClaimRunway(Slot s, int r, in TickContext ctx, ulong t)
+        private void ClaimRunway(Slot s, int r, in TickContext ctx, ulong t, EventRef cause)
         {
             _rwyNextSlot[r] = t + _rwySep[r];
             _rwyOccupant[r] = s;
@@ -719,11 +743,11 @@ namespace AirportSim.Sim.Airside
             s.Rwy = r;
             if (s.Kind == MovementKind.Arrival)
             {
-                Milestone(ctx, s.Flight, FlightMilestone.Landed, s.Sched, EventRef.None);
+                Milestone(ctx, s.Flight, FlightMilestone.Landed, s.Sched, cause);
             }
             else
             {
-                Milestone(ctx, s.Flight, FlightMilestone.TakeoffRoll, s.Sched + _depTicks[(s.DepartStand * _rwyId.Length) + r], EventRef.None);
+                Milestone(ctx, s.Flight, FlightMilestone.TakeoffRoll, s.Sched + _depTicks[(s.DepartStand * _rwyId.Length) + r], cause);
             }
         }
     }
