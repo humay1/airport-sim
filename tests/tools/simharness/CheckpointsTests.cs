@@ -216,6 +216,16 @@ namespace AirportSim.Tools.SimHarness.Tests
         [Fact]
         public void test_checkpoints_harness_failures_exit_3()
         {
+            // Control: the default invocation writes its dump, so each 3 that follows
+            // comes from the failure case, not from a subcommand that always fails.
+            using (var control = new CheckpointsKit.TempDir())
+            {
+                CliResult ok = Cli(CheckpointsKit.DefaultArgs(control.File("a")));
+                Assert.Equal(0, ok.Exit);
+                Assert.Matches(WroteLine, ok.Stdout);
+                Assert.True(File.Exists(control.File("a")), "control wrote no dump");
+            }
+
             const string bundle = CheckpointsKit.BundleDirectory;
             const string content = CheckpointsKit.ContentDirectory;
 
