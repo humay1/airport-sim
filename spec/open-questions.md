@@ -2374,3 +2374,62 @@ Proposed:    (A) An integration test project, for example
              project layout, which deserves its own review. T-031 cannot
              be released until it is answered.
 Status:      OPEN
+
+<!-- Q-078 and Q-079: the T-021 worker, via coordinator, against PR #78's tests. -->
+
+### Q-078 — `sim.airside`: the `Cause` of hold-release events
+Raised by:   Worker / T-021, via coordinator, 2026-10-02
+Blocking:    T-021
+Question:    PR #78's helper `AirsideAsserts.Pairs<THold, TRelease>`
+             (`tests/sim/airside/AirsideAsserts.cs`, lines 108-109)
+             requires every release's `Cause` to be its opening hold
+             event. `12` §12.7 says `StandAssigned`'s `Cause` is the
+             freeing `Pushback`, and other tests in the same PR assert
+             that. Which is it, per pair?
+Why it matters: The stand family cannot satisfy both, so the approved
+             tests cannot all pass.
+Answer:      The spec was already unambiguous; the helper is wrong for
+             the stand family. Runway, taxiway and passenger holds close
+             with `Cause` = their opening event (`12` §12.5, §12.6,
+             §12.8). `StandAssigned` closes with the `Pushback` that
+             freed the stand, or `EventRef.None` after a `ReassignStand`
+             (`12` §12.7), and `14` §14.5 already said so. This amendment
+             makes it explicit in all three files: `10` §10.3 rule 2 now
+             says pairs are never matched by `Cause` and a closing
+             `Cause` is per family. `12` §12.11 gains a binding table
+             with the `Cause` of every event `sim.airside` publishes, and
+             `14` §14.5 cites it. `sim.delay` never reads a closing
+             `Cause` (§14.5, §14.7), so it is unaffected. The Test Author
+             fixes `Pairs` to pair by kind and flight only, and asserts
+             `Cause` per family, or leaves `Cause` to the callers. T-021
+             gains one test, `test_airside_event_causes_follow_cause_table`.
+Status:      ANSWERED (spec/12-interfaces-airside.md#the-cause-of-each-emitted-event-q-078)
+
+### Q-079 — `sim.airside`: cross-tick state holding event ids
+Raised by:   Worker / T-021, via coordinator, 2026-10-02
+Blocking:    T-021
+Question:    A release's `Cause` (the hold event) and `StandAssigned`'s
+             `Cause` (the freeing `Pushback`) are ids from an earlier
+             tick. §12.12 lists no state for them, so an implementation
+             keeps them unhashed and loses them on save and load, the
+             same class as Q-062's `RecordedCause`. Where do they live,
+             and how are they hashed?
+Why it matters: `08` §8.6: events must never be the sole carrier of
+             state. A run saved and loaded mid-hold would emit a
+             different `Cause` from one that was not.
+Answer:      Two new fields. `AircraftTrack.OpenHold` (`EventRef`, last
+             field) holds the opening event of the flight's open runway,
+             taxiway or passenger hold: set when the hold is published,
+             read as the release's `Cause` and cleared in the release
+             action. A flight has at most one such hold open.
+             `StandState.VacatedBy` (`EventRef`, after `Occupant`) holds
+             the `Pushback` that freed the stand, and is cleared whenever
+             `Occupant` is set. Both are fed as `RecordedCause` is:
+             `HasValue`, `Id.Tick`, `Id.Sequence` widened to `uint64`,
+             with zeros for `EventRef.None`, at §12.12 items 4 and 3.
+             They are saved with the state. `Tick` keeps no other
+             cross-tick state. Also noted: `AwaitingPushbackClearance`
+             and `Departed` are reserved and never set at Phase 0/1
+             (§12.9 "Reserved phases"). That is intended. T-021 gains
+             `test_open_hold_and_vacated_by_track_cross_tick_causes`.
+Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)

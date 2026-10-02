@@ -219,7 +219,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: milestones plus blocking intervals; `PlannedTick` is schedule-anchored
   and cumulative (§10.4); intervals come in pairs and may cross days
   (§10.3); **new pair `DepartureHeldForPassengers`/`Released`, category
-  `passenger_late` (§10.6, D6)**.
+  `passenger_late` (§10.6, D6)**; **pairs are never matched by `Cause`, and a
+  closing `Cause` is per family (§10.3 rule 2, Q-078)**.
 - LC: first-blocker-wins (§10.5 rule 3).
 - Read if: any emitter (§10.3, its §10.6 table); `sim.delay` (all of it).
 
@@ -271,10 +272,16 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   §12.8a S4, Q-062)**; **a consumed `DeboardComplete` or `BoardingComplete`
   awaiting action is hashed state, in `AircraftTrack.RecordedCause` (§12.9,
   §12.12, Q-062)**; **a runway hold's `queuePosition` is 1-based and counts
-  the flight itself, and it is 0 on `Released` (§12.5, Q-063)**.
+  the flight itself, and it is 0 on `Released` (§12.5, Q-063)**; **a
+  binding `Cause` table for every emitted event: hold releases name their
+  hold, `StandAssigned` names the freeing `Pushback` (§12.11, Q-078)**;
+  **cross-tick cause ids are hashed state, in `AircraftTrack.OpenHold` and
+  `StandState.VacatedBy` (§12.9, §12.12, Q-079)**; **`AwaitingPushbackClearance`
+  and `Departed` are reserved, never set at Phase 0/1 (§12.9)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
-  actual doors-close point, and released at a zero count (§12.8).
+  actual doors-close point, and released at a zero count (§12.8); None as
+  the `Cause` of timer-driven milestones and opening holds (§12.11).
 - Read if: T-021 and the hold task; §12.3 for `sim.turnaround`/`sim.delay`;
   §12.4/§12.9 for `app.render`.
 

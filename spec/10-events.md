@@ -71,6 +71,13 @@ the `sim.core` budget and keep the delay tree bounded.
    across a day boundary — a job that never gets a vehicle stays blocked
    indefinitely by design (`13-interfaces-turnaround.md` §13.4), and
    `sim.delay` carries such intervals forward (`14-interfaces-delay.md` §14.8).
+   A pair is matched by subject and kind, in `EventId` order, and **never by
+   `Cause`** (Q-078). A closing event's `Cause` is whatever its emitter's
+   file declares for that family. It is the opening event for `sim.airside`'s
+   runway, taxiway and passenger holds, and the event that ended the wait for
+   `StandAssigned` (the freeing `Pushback`) and for `TurnaroundJobUnblocked`
+   (the vehicle-freeing `TurnaroundJobCompleted`): `12-interfaces-airside.md`
+   §12.11, `13-interfaces-turnaround.md` §13.5.
 3. **Emit at the transition tick**, not at the next convenient one. Deferring
    shifts minutes into the wrong interval and quietly corrupts attribution.
 4. **Deduplicate at the source.** Threshold events use hysteresis, declared in

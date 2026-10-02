@@ -3115,3 +3115,59 @@ Impact:      - **Merged code:** none invalidated. No harness code for
 Signed off:  not required (harness interface detail and test protocol;
              no balance, scope or `01`/`02` change). The owner should
              review the two LOW CONFIDENCE markers.
+
+## 2026-10-02 — spec/12-interfaces-airside.md §12.5–§12.13, spec/10-events.md §10.3, spec/14-interfaces-delay.md §14.5 — `Cause` of airside events; cross-tick cause ids in hashed state (Q-078, Q-079)
+Reason:      The T-021 worker found that PR #78's `Pairs` helper requires
+             every release's `Cause` to be its opening hold, while `12`
+             §12.7 (and tests in the same PR) give `StandAssigned` the
+             freeing `Pushback`. The spec was already unambiguous here:
+             the helper is wrong for the stand family. But only some
+             `Cause`s were stated anywhere, so `12` §12.11 now has a
+             binding table for every event `sim.airside` publishes, and
+             `10` §10.3 rule 2 says that pairs are never matched by
+             `Cause`. Separately, the release `Cause`s and
+             `StandAssigned`'s `Pushback` are ids from an earlier tick,
+             and §12.12 gave them no home, so they would be unhashed and
+             lost on save and load. That breaks `08` §8.6, as Q-062 did.
+             They now live in `AircraftTrack.OpenHold` and
+             `StandState.VacatedBy`, both hashed and saved. Also stated:
+             `AwaitingPushbackClearance` and `Departed` are reserved and
+             never set at Phase 0/1.
+Raised by:   Q-078, Q-079 (Worker / T-021, via coordinator)
+Impact:      - **No merged work is invalidated.** `sim.airside` is not
+               merged, and PR #78 (T-021 tests) is open.
+             - **T-021 tests (Test Author, PR #78):** `Pairs` stops
+               asserting `Cause` = opening event, at least for
+               `StandUnavailable`/`StandAssigned` (its callers in
+               `StandTests`, `BoardingHoldTests` and
+               `AirsideHeadlessDayTests` already assert the `Pushback`).
+               `AirsideTypesTests` builds `AircraftTrack` and `StandState`
+               positionally, so it gains the new last arguments. Two new
+               tests: `test_airside_event_causes_follow_cause_table` and
+               `test_open_hold_and_vacated_by_track_cross_tick_causes`
+               (§12.13). Apart from `Pairs`, no existing assertion changes.
+             - **T-021 worker:** moves the hold ids and freeing `Pushback`
+               ids out of unhashed side state into the two fields, feeds
+               them per §12.12, and sets each `Cause` per the §12.11 table.
+               The milestone rows (None for timer-driven milestones,
+               the release for a held `Landed`/`TakeoffRoll`, `DoorsClosed`
+               for `Pushback`) were unstated before, so the worker checks
+               its choices against them.
+             - **T-022 (`sim.turnaround`):** none. `13` §13.5 is cited as
+               is. `TurnaroundJobUnblocked` is always in the tick of the
+               freeing completion, so it needs no cross-tick state.
+             - **T-024 (`sim.delay`):** none. It pairs by key and never
+               reads a closing `Cause` (§14.5, §14.7).
+             - **`app.render`:** none. `15` §15.4 reads `Occupant` and
+               the phase only, and maps the two reserved phases already.
+             - **LOW CONFIDENCE:** None as the `Cause` of timer-driven
+               milestones and of opening hold events (§12.11). It keeps
+               cross-tick state to three fields and is honest while
+               nothing follows `Cause`. It is revisited when `sim.delay`
+               follows `Cause` chains (`14` §14.7).
+             - **Scope:** none added. Two state fields and a table of
+               existing behaviour.
+             - **PENDING HUMAN:** none.
+Signed off:  not required (interface detail and state layout; no balance,
+             scope or `01`/`02` change). The owner should review the LOW
+             CONFIDENCE marker.
