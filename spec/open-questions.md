@@ -2438,3 +2438,110 @@ Answer:      Two new fields. `AircraftTrack.OpenHold` (`EventRef`, last
              (§12.9 "Reserved phases"). That is intended. T-021 gains
              `test_open_hold_and_vacated_by_track_cross_tick_causes`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)
+
+<!-- Q-080: the reviewer's non-blocking notes on PR #89. Q-081 to Q-083: the T-021 worker and the PR #91 reviews. -->
+
+### Q-080 — `Cause`: `13`'s undeclared events, precedence, and the first-edge row
+Raised by:   Reviewer (reviewer-core) on PR #89, via coordinator, 2026-10-02
+Blocking:    T-022 (before it starts)
+Question:    (1) `13` leaves `TurnaroundJobBlocked`, and
+             `TurnaroundJobStarted` for jobs created in the `OnStand`
+             handler, without a declared `Cause`, although a same-tick
+             trigger exists under `10` §10.2. (2) §10.2 gives no
+             precedence when two events qualify, such as a handshake
+             handoff chained after `DoorsOpen`. (3) `12` §12.11's
+             `AircraftHeldOnTaxiway` row says "placed at a node in this
+             tick", which does not literally cover the stand-wait
+             arrival it then lists.
+Why it matters: A rule stated as binding on every emitter's file was not
+             met by `13`, and the rule text alone did not decide the
+             handoff case.
+Answer:      (1) `13` §13.9 gains a binding `Cause` table for every event
+             it emits. Events at job creation (`TurnaroundJobBlocked`,
+             and `TurnaroundJobStarted` for `Deboard` or a job given a
+             free vehicle) name the flight's `OnStand`, which the creating
+             handler received in the same tick. `TurnaroundJobCompleted`
+             is None, after a duration. `13` §13.4 now requires
+             `NominalDurationTicks ≥ 1`. A zero duration would never
+             complete under §13.5 step 1, and would put a completion in
+             its start tick. `10` §10.2's last bullet now cites `13`
+             §13.9 and `14` §14.8, and says a file leaves an event
+             undeclared only where nothing qualifies. Today that is
+             every event of `09`, and `11`'s `FlightPlanPublished`.
+             (2) A kept event takes precedence over a same-tick one.
+             Among several same-tick events, the emitter's file names
+             one. (3) The row now reads "first edge request of its
+             route" and names the three triggers.
+Status:      ANSWERED (spec/10-events.md#102-envelope)
+
+### Q-081 — `sim.airside`: track fields after the flight leaves a resource
+Raised by:   Worker / T-021, via coordinator, 2026-10-02
+Blocking:    T-021 (PR #91)
+Question:    §12.9 never says when `Runway`, `Stand`, `OnEdge` and
+             `AtNode` are set and cleared. The worker cleared `Stand` at
+             `Pushback` and `Runway` at `OffRunway`, then kept the
+             values on the side for the route and the `TakeoffRoll`,
+             `Airborne` and arrival `OnStand` `PlannedTick`s, which put
+             behaviour outside the hashed state.
+Why it matters: Every value behaviour needs must be derivable from
+             hashed fields (§12.12, Q-079).
+Answer:      §12.9 gains "Track fields by phase": a binding table of
+             `AtNode`, `OnEdge`, `Stand`, `Runway`, `PhaseEnteredAt` and
+             `DueAt` per phase and kind, at the end of each `Tick`, plus
+             set and clear rules. `Runway` is the chosen runway, set at
+             the choice and never cleared while tracked. `Stand` is the
+             leg's stand. A departure keeps it after `Pushback`, as the
+             stand it left. Neither means occupancy, which is
+             `StandState.Occupant` and the runway's `Occupant` alone. So
+             a departure's `Stand` may name a stand another flight now
+             holds. `EdgeProgress` is `Fx.FromRatio(t − PhaseEnteredAt,
+             TraversalTicks)`, and `Fx.Zero` off an edge. A list says
+             how the route, the planned ticks and "has `DoorsOpen`
+             fired" derive from hashed fields. HASH CHANGE for any
+             implementation that chose otherwise.
+Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)
+
+### Q-082 — `sim.airside`: the §12.12 encoding is ambiguous
+Raised by:   Worker / T-021, via coordinator, 2026-10-02
+Blocking:    T-021 (PR #91)
+Question:    Item 4 (the tracks) is fed with no count, and neither are
+             the hold queues of items 1 and 2, so two different states
+             could feed the same byte stream. Item 3's queue has a length
+             prefix. Which is right?
+Why it matters: `08` §8.9 needs a declared, stable, unambiguous order.
+Answer:      §12.12 gains an encoding block. Nullables are fed as
+             `HasValue` then the value widened, with 0 when unset.
+             `EventRef` is fed as `RecordedCause` is. Every
+             variable-length list is preceded by its length: each hold
+             queue, the stand-wait queue, the tracks and the pending
+             list. Layout-sized lists are not prefixed. List entries
+             carry no derived data. HASH CHANGE: the hold-queue and track
+             prefixes are new. No golden covers `sim.airside`.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1212-state-hashing-rng-and-budget)
+
+### Q-083 — `sim.airside`: `DoorsOpen`'s planned tick after a `ReassignStand`
+Raised by:   Reviewer (reviewer-core) on PR #91, finding 1, via coordinator, 2026-10-02
+Blocking:    T-021 (PR #91)
+Question:    `DoorsOpen`'s `PlannedTick` is planned `OnStand` + the
+             delay, and planned `OnStand` depends on the stand reached.
+             `ReassignStand` is allowed while `OnStand`, before
+             `DoorsOpen`, and then the reached stand is in no hashed
+             field. On the fixture, stand 2 then stand 4 gives a
+             `PlannedTick` 10 ticks off, which `10` §10.4 forbids.
+Why it matters: Either a planned tick shifts, or behaviour depends on
+             unhashed state.
+Answer:      Constrain the command rather than add state. `ReassignStand`
+             of an arrival whose `DoorsOpen` has not fired is a reason-1
+             no-op (§12.10 check 1): `PhaseEnteredAt +
+             DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE ≥ tick`. So
+             the track's `Stand` is still the stand reached when
+             `DoorsOpen` fires, and no arrival milestone `sim.airside`
+             owns comes later. A departure's `TakeoffRoll` plan uses the
+             stand it pushed back from (its kept `Stand`). That plan is
+             formed at `Pushback`, so a reassignment before then is not a
+             shift. The departure-`Stand` disagreement the reviewer noted
+             is covered by Q-081. No PR #78 test reassigns an arrival
+             before its `DoorsOpen`. LOW CONFIDENCE: the alternative is a
+             hashed `PlannedOnStand` tick on the track, which keeps the
+             command open during the door delay.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1210-commands-consumed)

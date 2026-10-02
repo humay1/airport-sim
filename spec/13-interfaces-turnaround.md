@@ -145,6 +145,11 @@ Load-time validation, hard failures naming the offending `JobKind`/`VehicleId`
   milestone), not this module's prep job. A catalogue that maps
   `PushbackPrep` to `pushback` fails to load.
 - `VehicleDef.Id` unique within the fleet.
+- `NominalDurationTicks ≥ 1` for every entry (Q-080). A zero duration would
+  give a job started at tick `t` a `DueAt` of `t`, which §13.5 step 1 has
+  already passed, so the job would never complete. It would also put a
+  completion in the tick of its start, which §13.9's `Cause` table does
+  not cover.
 
 `TurnaroundFleet` is not required to include every `VehicleKind` — a scenario
 with no catering demand can ship zero `CateringTruck`s, and any `Catering` job
@@ -298,6 +303,25 @@ Full field lists in `10-events.md` §10.6.
 | `TurnaroundJobBlocked` / `Unblocked` | Created needing an unavailable vehicle / assigned one thereafter, §13.5. `category` is the job's `JobDef.Category` (§13.4), copied onto the event because `sim.delay` cannot read this catalogue (`10-events.md` §10.6) |
 | `FlightMilestoneReached` | `DeboardComplete`, `ReadyToBoard`, `BoardingComplete` only, §13.6 |
 
+**The `Cause` of each emitted event (Q-080).** Binding, and it applies the
+rules of `10-events.md` §10.2. Every event below has the `Cause` given and
+no other. "Creation" is §13.6's job creation, which runs in the `OnStand`
+handler, in phase 3 of the tick of the flight's `OnStand` (§13.10). So the
+handler's `OnStand` event is published earlier in the same tick.
+
+| Event | `Cause` |
+|---|---|
+| `TurnaroundJobBlocked` | the flight's `OnStand` that the creating handler received. Every `Blocked` is emitted at creation, both on a vehicle and, for `Boarding`, on `JobDependency` |
+| `TurnaroundJobStarted` at creation | the same `OnStand`: `Deboard`, which goes straight to `Active`, and a job assigned a free vehicle at creation (§13.5 step 2) |
+| `TurnaroundJobUnblocked`, and the `TurnaroundJobStarted` that follows it | the vehicle-freeing `TurnaroundJobCompleted` (§13.5 step 3), or, for `Boarding`, the fifth prerequisite's `TurnaroundJobCompleted` (§13.5 step 1, §13.6) |
+| `TurnaroundJobCompleted` | None: it follows a duration of `NominalDurationTicks ≥ 1` (§13.4) |
+| `DeboardComplete` | the `Deboard` job's `TurnaroundJobCompleted` (§13.6) |
+| `ReadyToBoard` | the fifth prerequisite's `TurnaroundJobCompleted` (§13.6) |
+| `BoardingComplete` | `Boarding`'s own `TurnaroundJobCompleted` (§13.6) |
+
+`sim.turnaround` keeps no event id across ticks: every `Cause` above is
+published earlier in the same tick.
+
 `CrewUnavailable`/`CrewReady` are **not emitted** — they are Phase 2, gated on
 `sim.staff` existing (`10-events.md` §10.6), and this module makes no crew
 distinction yet (§13.1).
@@ -398,3 +422,8 @@ Done-condition tests this spec expects to exist, phrased per
   (Q-061, `03` "How a budget is measured"): with `sim.airside`
   registered, every `sim.turnaround` handler runs inside the metered
   window
+- `test_turnaround_event_causes_follow_cause_table` (Q-080): every event
+  this module publishes has the `Cause` of §13.9, including the `OnStand`
+  for each `TurnaroundJobBlocked` and each `TurnaroundJobStarted` at
+  creation
+- `test_catalogue_rejects_zero_nominal_duration` (Q-080, §13.4)
