@@ -3241,3 +3241,69 @@ Impact:      - **No merged work is invalidated.** `sim.airside` is not
 Signed off:  not required (interface detail and state layout; no balance,
              scope or `01`/`02` change). The owner should review the LOW
              CONFIDENCE marker.
+
+## 2026-10-02 — spec/19-interfaces-harness.md §19.1, §19.2, §19.2d, §19.9; INDEX; open-questions — Q-084: how `Promotion` finds and promotes a node
+Reason:      T-014's Test Author was blocked. Promotion is outcome-neutral,
+             so it is observable only through a test's spy `IFlowSystem`,
+             and §19 did not say how the gate reaches the flow system
+             through an opaque `SimComposer`, which composers it applies
+             to, or which node it promotes. The task text said both "the
+             lowest registered NodeId" and "a fixed choice, not
+             content-driven".
+Raised by:   Q-084 (Test Author / T-014)
+Impact:      - **New §19.2d.** `Promotion`'s second run hands `compose` a
+               harness-internal recording builder that forwards
+               `Services`, `Register` and `Build` to the factory builder
+               and records each `Register` that returns. `flow` is the
+               recorded system at `SystemId(4)` that implements
+               `IFlowSystem`, and `world` the one at `SystemId(1)` that
+               implements `IWorldSystem`. After `Build` and before the
+               command script, if both exist and `world.Nodes()` is not
+               empty, the harness calls `flow.SetPromoted(Nodes()[0],
+               true)` once. Otherwise it calls nothing. This applies to
+               every composer passed to `Promotion`. Run 1, and every
+               other gate and subcommand, are unchanged.
+             - **§19.1** "One run" now names the one exception to "compose
+               receives the factory's builder". **§19.2**'s "before
+               T-010" bullet and the gate table row now point to §19.2d.
+             - **New §19.9:** four named T-014 tests and the spy
+               conventions (spy at position 4, test world at 1).
+             - **Merged harness code and tests (T-006, T-009, T-013,
+               T-030):** no behaviour changes. Every `HarnessGatesTests`
+               composer registers no `IFlowSystem` at 4, so it promotes
+               nothing, and the empty composition still passes vacuously
+               with the same report. The recording builder is a fresh
+               object per run, so the fresh-builder test still holds. The
+               CLI `promotion` output is unchanged, because
+               `SetPromoted` changes no hashed state (`09` §9.1). The CLI
+               composer now promotes `NodeId(1)` in run 2. That is the
+               intended T-014 change.
+             - **T-014 worker:** implements §19.2d in `tools/SimHarness`
+               only. No public type is added, and `Promotion`'s signature
+               is unchanged.
+             - **Refines T-014's task text:** "the lowest registered
+               NodeId" is read as `world.Nodes()[0]`, and "not
+               content-driven" as "no node kind or fixture is parsed to
+               choose it". The task file is the Planner's to align, and no
+               code exists yet.
+             - **`sim.flow`, `sim.world`, `09`, `18`, `08`:** none. The
+               harness uses only the published `SetPromoted` and
+               `Nodes()`.
+             - **LOW CONFIDENCE:** "a gate" in `02`'s
+               `determinism_promotion` row ("camera parked on a gate") is
+               read as any promotable node, the lowest one, and not as a
+               `Gate`-kind node. `IFlowSystem` publishes no node kinds, and
+               choosing a `Gate` would need a new query or fixture
+               parsing. Over the Phase 0 and soak fixtures the promoted
+               node is `NodeId(1)`, which is not a `Gate` node. `02` is not
+               edited. If the owner reads it literally, a later amendment
+               adds a node-kind query to `09`.
+             - **LOW CONFIDENCE:** finding the systems by registry
+               position and type, rather than by type alone. This is
+               narrower and unambiguous, but a test spy must report
+               `Id = SystemId(4)` to be promoted.
+             - **Scope:** none added. A harness-internal wrapper.
+             - **PENDING HUMAN:** none.
+Signed off:  not required (harness test mechanics; no balance, scope or
+             `01`/`02` change). The owner should review the LOW
+             CONFIDENCE markers.

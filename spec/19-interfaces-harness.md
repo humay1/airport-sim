@@ -6,7 +6,8 @@ compiles against. It answers `open-questions.md` Q-025, Q-026 and Q-027,
 and, for T-009's Phase 0 composition, Q-041 to Q-043. For T-013's `soak`
 subcommand, which the nightly workflow invokes (`.github/workflows/`), it
 answers Q-057, and for T-045's budget statistic Q-058. For T-030's
-`checkpoints` subcommand it answers Q-066 to Q-076.
+`checkpoints` subcommand it answers Q-066 to Q-076, and for T-014's
+promotion in `Promotion` Q-084.
 Notation is as in `08-interfaces-core.md`. Where this file appears to
 contradict `01-architecture.md` or `02-determinism.md`, those win and it is a
 spec bug. `ci/**` is the human owner's. This file describes what the harness
@@ -18,7 +19,8 @@ Reading order for a harness worker: `01`, `02`, `07`, `08` §8.5, §8.5a,
 §9.11, `11` §11.7 and §11.9, `12` §12.3 and §12.7, and `18`. For the
 `checkpoints` subcommand, read `16` §16.3, §16.4 and §16.8, then §19.2c.
 `16` §16.8 owns the dump format. §19.2c owns the invocation, the
-composition and the failures.
+composition and the failures. For `Promotion`'s second run, read `09`
+§9.1 and §9.7 and `18`, then §19.2d.
 
 ---
 
@@ -56,6 +58,9 @@ HarnessGates.BudgetFromSamples(IReadOnlyList<int64> samples, int64 frequency) ->
   `compose(builder)` **exactly once** and calls `Build()` itself. It submits
   the command script (§19.2) and steps. A composer registers systems and
   must not call `Build`. Every run gets a fresh builder and a fresh call.
+  `compose` receives the factory's builder itself in every run except
+  `Promotion`'s second run, which hands it the recording builder of
+  §19.2d over that run's factory builder (Q-084).
 - **The divergence seam.** A test proves that a gate *fails* on
   nondeterminism by passing a composer whose runs differ, for example one
   that counts its own calls in a captured local and registers a probe system
@@ -100,7 +105,7 @@ If every checkpoint agrees but the final hashes differ: `final`.
 |---|---|---|
 | `SameProcess` | two runs of `ticks`, in one process | the two runs compare equal |
 | `SaveLoad` | In this order (Q-029). **U**: one run of `ticks`, run to the end. **A**: a run of `saveAt` ticks, then its "save", which is `CommandLogSince(0)` plus the run's inputs (`content`, `compose`, `seed`). **B**: a fresh run from those inputs, in which every logged command is resubmitted in log order in place of the script. B steps `saveAt`, then `ticks − saveAt` | First, after B's first `saveAt` ticks, B's `WorldStateHash()` equals A's. Otherwise the gate fails at once with `tick=saveAt at=reload`, and B is not stepped further. Then B compares equal to U |
-| `Promotion` | two runs of `ticks`. The second is the "camera parked" run | the two runs compare equal |
+| `Promotion` | two runs of `ticks`. The second is the "camera parked" run, which may promote one node before stepping (§19.2d) | the two runs compare equal |
 
 - **`SaveLoad` before `sim.save` (Q-027).** No save seam exists (`08` §8.8).
   So the save is the seed, the content, the composition and the command log.
@@ -109,14 +114,13 @@ If every checkpoint agrees but the final hashes differ: `final`.
   harness snapshots nothing else, and it invents no seam. When `sim.save`
   specifies a snapshot, `SaveLoad` is amended to reload from it. See the
   HUMAN DECISION (owner, 2026-09-26) in §19.5.
-- **`Promotion` before `sim.flow` promotion (T-010).** Without a promotable
-  system, the second run differs from the first in nothing. The gate
-  compares for real and passes vacuously. A **harness task**, not T-010,
-  amends the second run to promote, through `IFlowSystem.SetPromoted` (`09`
-  §9.7), the nodes the `02` gate calls "a gate". T-010 writes `sim.flow`
-  only. The harness task depends on T-010 and on the CLI composition
-  including `sim.flow`, and the Planner creates it (Q-033). Until then, a
-  harness that stubs the comparison is wrong.
+- **`Promotion`'s second run promotes (T-014, Q-033, Q-084).** Before
+  its first `Step`, the second run promotes one node through
+  `IFlowSystem.SetPromoted` (`09` §9.7), exactly as §19.2d pins. That node
+  is what the `02` gate calls "a gate". The comparison is unchanged. A
+  composition with nothing to promote, the empty one included, differs
+  between the runs in nothing, and the gate still compares for real and
+  passes vacuously. A harness that stubs the comparison is wrong.
 - **The CLI composition.** Every CLI run, of every subcommand in §19.3
   except `checkpoints`, uses the composer of §19.2a (Q-042, from T-009).
   `soak` runs it over the
@@ -517,6 +521,82 @@ listed systems that need one: `sim.airside` takes two, `airside.fixture`
 and `airside_rules.json`, and `sim.delay` takes none. It holds no `render_layout.fixture`, since
 `checkpoints` never reads it. Its content is `--content data`.
 
+## 19.2d `Promotion`: what the second run promotes (Q-084)
+
+Binding on T-014 and its Test Author. It replaces the "vacuous until
+T-010" reading of `Promotion` (§19.2).
+
+**Scope.** It applies to **every** composer passed to
+`HarnessGates.Promotion`, whether that is the §19.2a composer or a test's.
+The gate is a function of its arguments and cannot tell them apart, and
+no seam may be added that tells it. Nothing else wraps a builder or
+promotes: `SameProcess`, `SaveLoad`, `FinalHash`, `budget`, `soak` and
+`checkpoints` are unchanged.
+
+**Run 1** is exactly §19.1's run. The harness calls no member of any
+registered system.
+
+**Run 2: the recording builder.** The harness creates the run's factory
+builder as §19.1 says. It calls `compose` exactly once, with a fresh
+harness-internal `ISimHostBuilder` over the factory builder, called the
+**recording builder**:
+
+- `Services` returns the factory builder's `Services`.
+- `Register(s)` calls the factory builder's `Register(s)`. If that call
+  returns, the recording builder records `s`. If it throws, the exception
+  propagates and nothing is recorded.
+- `Build()` calls the factory builder's `Build()`. A composer must not
+  call it (§19.1). If one does, the harness's own `Build` then throws, as
+  `08` §8.11a says.
+
+After `compose` returns, the harness calls `Build()` on the factory
+builder. The recording builder adds no behaviour beyond recording, so run
+2 registers exactly what run 1 registers.
+
+**Finding the systems.** Among the recorded systems:
+
+- `flow` is the system whose `Id` is `SystemId(4)`, `sim.flow`'s registry
+  position (`08` §8.5), if it implements `IFlowSystem`;
+- `world` is the system whose `Id` is `SystemId(1)`, if it implements
+  `IWorldSystem`.
+
+`Register` takes each position at most once, so each of these is at most
+one system. A system at any other position is never `flow` or `world`,
+whatever it implements. A system at position 4 or 1 that does not
+implement the interface is not `flow` or `world` either. So the gate
+tests' non-flow probes, at 4 and elsewhere, cause no promotion.
+
+**The promotion.** After `Build()` returns, and before the command script
+is submitted:
+
+1. If `flow` or `world` is missing, nothing is called.
+2. Otherwise the harness calls `world.Nodes()` once. If the list is empty,
+   nothing more is called.
+3. Otherwise it calls `flow.SetPromoted(nodes[0], true)` exactly once.
+   Since `Nodes()` is ascending (`18`), `nodes[0]` is the lowest
+   registered `NodeId`.
+
+The harness calls no other member of `flow` or `world`. It never demotes,
+and it never calls `AgentsAt`. If `SetPromoted` throws, for example with
+`ArgumentException` because `flow` was built over a different world
+(`09` §9.7), the exception propagates unchanged from `Promotion`, and the
+CLI maps it to exit 3 (§19.3). Then run 2 submits the script and steps
+as §19.1 says. The comparison, the report and the exit codes are
+unchanged (§19.2, §19.3).
+
+- **Why the lowest node.** `IFlowSystem` publishes no node kinds, and
+  every node is promotable (`09` §9.7), so any registered node is "a
+  gate" in `02`'s sense. The lowest one is deterministic and needs no new
+  query and no fixture parsing. The harness never invents a node. Over
+  either fixture set, the §19.2a composer promotes `NodeId(1)`. A constant
+  `NodeId(1)` was rejected, because it would throw on a world that has no
+  node 1.
+- **Why the CLI output does not change.** `SetPromoted` changes no hashed
+  state (`09` §9.1), so the two runs still compare equal, and `promotion
+  --days D` prints the same line as before. A promotion that leaked into
+  the hash would fail this gate, which is what it is for. Promotion is
+  therefore observable only through a test's own `IFlowSystem` (§19.9).
+
 ## 19.3 The command line (Q-026)
 
 Exactly these forms. The first five are the ones `ci/run-checks.sh` uses.
@@ -893,3 +973,44 @@ The Phase 1 stage's Test Author adds one test,
 sim.airside sim.flow sim.turnaround sim.delay`, and the file is
 byte-identical to a Phase 1 checkpoints kit's dump, built as above with
 all six factories.
+
+## 19.9 Tests of `Promotion` (Q-084)
+
+Binding on T-014's Test Author. Every test is in `tests/tools/simharness/`
+(Q-041). A **spy flow** is the test's own `IFlowSystem` with
+`Id = SystemId(4)`. It records every `SetPromoted` and `AgentsAt` call
+with its arguments and whether its own `Tick` has been called yet. It
+hashes a constant. A **test world** is the test's own `IWorldSystem` with
+`Id = SystemId(1)` and a chosen `Nodes()`. The Test Author may instead
+wrap `FlowFactory`'s and `WorldFactory`'s systems in forwarding spies, so
+that the real `sim.flow` is promoted. The Test Author chooses the
+composers and may add tests. At least these:
+
+- `test_harness_gates_promotion_promotes_lowest_node_once_in_second_run_only`.
+  With a test world whose `Nodes()` is `[3, 7]`, run 1's spy records no
+  call. Run 2's spy records exactly one call, `SetPromoted(NodeId(3),
+  true)`, before its first `Tick`. Neither spy records `AgentsAt`. The
+  gate passes, and its `final` equals `FinalHash` of the same composer,
+  seed and ticks.
+- `test_harness_gates_promotion_promotes_nothing_without_flow_world_or_nodes`.
+  Each spy records no call in either run, and the gate passes, for each
+  of these compositions: a spy flow with no world; a test world with
+  `Nodes()` empty and a spy flow; a test world and a spy `IFlowSystem`
+  registered at position 5 instead of 4.
+- `test_harness_gates_promotion_promotes_same_node_on_every_call`. Two
+  `Promotion` calls with the same inputs promote the same node.
+- `test_harness_gates_promotion_phase0_kit_promotes_real_flow_and_passes`.
+  The §19.6 kit, with its world and flow wrapped in forwarding spies, run
+  through `Promotion` with seed 12345 for one sim-day. Run 2 promotes
+  `NodeId(1)` once, and the gate passes with `final` equal to
+  `FinalHash` of the same kit.
+
+The task's divergence-seam test reuses
+`test_harness_gates_promotion_really_compares_runs`'s pattern with a spy
+flow and a test world added, and it expects a `FAIL` report. Every
+existing test in `HarnessGatesTests.cs` and `HarnessCliTests.cs` is
+unchanged and still passes. Their compositions register no `IFlowSystem`
+at position 4, or, for the CLI's `promotion`, an outcome-neutral one, and
+the recording builder is a fresh object per run, so
+`test_harness_gates_compose_called_exactly_once_per_run_with_fresh_builder`
+still holds.

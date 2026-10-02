@@ -394,14 +394,19 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   exit codes 0/1/2/3, the one-line stdout, `budget --tier max`; the Phase 0
   CLI composition and its boarding stand-in (§19.2a); the `soak`
   subcommand, its fixture set and its golden (§19.2b); the `checkpoints`
-  subcommand's invocation, composition and failures (§19.2c); the T-009
+  subcommand's invocation, composition and failures (§19.2c); what
+  `Promotion`'s second run promotes (§19.2d); the T-009
   tests (§19.6); the T-013 and T-045 tests (§19.7); the T-030 tests
-  (§19.8).
+  (§19.8); the T-014 tests (§19.9).
 - Key: harness tests run in process from `tests/tools/simharness` (`07`
   L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
   an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
-  `promotion` passes vacuously until T-010; **every CLI subcommand except
+  **`Promotion`'s second run gives `compose` a recording builder and, if
+  it registered an `IFlowSystem` at 4 and an `IWorldSystem` at 1 with a
+  node, calls `SetPromoted(Nodes()[0], true)` once before the script, for
+  every composer; otherwise nothing, so the empty composition still
+  passes vacuously (§19.2d, Q-084)**; **every CLI subcommand except
   `checkpoints` uses one
   composition over four Test Author fixtures (the Phase 0 set, or for
   `soak` the soak set), found from the
@@ -422,12 +427,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   before T-031; it is the only place the harness lists a directory, the
   content one (§19.2c, Q-066 to Q-076)**.
 - LC: the `budget` load before a max-tier fixture exists (§19.4); the
-  listed `checkpoints` content directory (§19.2c, Q-072). **HD
+  listed `checkpoints` content directory (§19.2c, Q-072); "a gate" read
+  as the lowest node, and discovery by position and type (§19.2d,
+  Q-084). **HD
   (owner, 2026-09-26):** replay satisfies `determinism_save_load` until
   `sim.save` (§19.5). **HD (owner, 2026-09-29):** the boarding stand-in is
   a valid reading of the kill gate (§19.2a, Q-043).
-- Read if: T-006, T-009, T-013, T-030 and its Phase 1 stage, T-045; the
-  Test Author for the harness.
+- Read if: T-006, T-009, T-013, T-014, T-030 and its Phase 1 stage,
+  T-045; the Test Author for the harness.
 
 ### `CHANGELOG.md`
 - Owns: every spec change with Reason, Raised by, Impact and Signed off; the

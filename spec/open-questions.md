@@ -2438,3 +2438,42 @@ Answer:      Two new fields. `AircraftTrack.OpenHold` (`EventRef`, last
              (§12.9 "Reserved phases"). That is intended. T-021 gains
              `test_open_hold_and_vacated_by_track_cross_tick_causes`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)
+
+### Q-084 — `tools.simharness`: how `Promotion` finds and promotes a node
+Raised by:   Test Author / T-014, via coordinator, 2026-10-02
+Blocking:    T-014
+Question:    Promotion is outcome-neutral, so the CLI output is the same
+             whether or not a node is promoted, and only a test's spy
+             `IFlowSystem` can observe it. `Promotion` gets an opaque
+             `SimComposer`, and `ISimHost` exposes no systems. (1) May the
+             gate hand `compose` a forwarding builder that records
+             `Register` calls, and is the flow system found by
+             `is IFlowSystem` or by `SystemId(4)`? (2) Does promotion apply
+             to every composer, or only to the §19.2a CLI composer? (3) Is
+             the node `world.Nodes()[0]` or the constant `NodeId(1)`, and
+             what happens with no world, no nodes or no flow? (4) What is
+             the exact observable contract?
+Why it matters: §19.1 says `compose` receives the factory's builder, and
+             §19.2 does not say how the gate reaches `sim.flow`. Without an
+             answer, T-014's tests cannot be written, and the empty
+             composition must still pass vacuously.
+Answer:      (1) Yes. Run 2 hands `compose` a harness-internal recording
+             builder that forwards `Services`, `Register` and `Build` to
+             the factory builder and records each `Register` that
+             returns. `flow` is the recorded system at `SystemId(4)` if it
+             implements `IFlowSystem`. `world` is the one at
+             `SystemId(1)` if it implements `IWorldSystem`. Both the
+             position and the type are required. (2) Every composer passed
+             to `Promotion`. No other gate or subcommand wraps or
+             promotes. (3) After `Build` and before the command script:
+             if `flow` and `world` both exist and `world.Nodes()` is not
+             empty, the harness calls `flow.SetPromoted(Nodes()[0], true)`
+             once. Otherwise it calls nothing. A constant `NodeId(1)` was
+             rejected. (4) Run 1: no call to any system. Run 2: exactly
+             one `SetPromoted(lowest node, true)` before the first `Tick`,
+             and no other member of `flow` or `world` except one
+             `Nodes()`. There is no demotion and no `AgentsAt`. The
+             comparison and the report are unchanged. Tests are in §19.9.
+             The Test Author's proposal is confirmed, with the added
+             position requirement.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192d-promotion-what-the-second-run-promotes-q-084)
