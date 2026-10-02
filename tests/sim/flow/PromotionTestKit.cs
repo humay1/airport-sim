@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using AirportSim.Sim.Core;
@@ -264,8 +263,6 @@ namespace AirportSim.Sim.Flow.Tests
         private int _next;
         public IFlowSystem? Flow;
         public long Absorbed;
-        public long LastTimestamp;
-        public bool Timing;
 
         public PromoAbsorber(PromoPlan plan)
         {
@@ -290,12 +287,6 @@ namespace AirportSim.Sim.Flow.Tests
                 Absorbed += Flow!.Absorb(new NodeId(PromoConst.Sink), PromoPlan.FlightOf(day, _plan.AbsorbFlight[_next]));
                 _next++;
             }
-
-            if (Timing)
-            {
-                // Last thing before sim.flow's Tick (registry order, 08 §8.5).
-                LastTimestamp = Stopwatch.GetTimestamp();
-            }
         }
 
         public ulong ComputeStateHash()
@@ -308,14 +299,12 @@ namespace AirportSim.Sim.Flow.Tests
 
     /// <summary>
     /// Registry position 5, right after sim.flow: optionally calls SetPromoted
-    /// inside the tick, and optionally stamps the end of sim.flow's Tick.
+    /// inside the tick.
     /// </summary>
     internal sealed class PromoAfterFlow : ISimSystem
     {
         public IFlowSystem? Flow;
         public PromoTickHook? Hook;
-        public PromoAbsorber? TimingFrom;
-        public long[]? Samples;
 
         public SystemId Id => new SystemId(PromoConst.AfterFlowId);
 
@@ -323,13 +312,6 @@ namespace AirportSim.Sim.Flow.Tests
 
         public void Tick(in TickContext ctx)
         {
-            if (TimingFrom != null && Samples != null)
-            {
-                long now = Stopwatch.GetTimestamp();
-                ulong i = ctx.Tick % (ulong)Samples.Length;
-                Samples[i] = now - TimingFrom.LastTimestamp;
-            }
-
             Hook?.Invoke(ctx, Flow!);
         }
 
@@ -441,21 +423,25 @@ namespace AirportSim.Sim.Flow.Tests
         public readonly PromoCheckpoints Checkpoints;
         public readonly PromoEventLog? Events;
 
-        public PromoRig(PromoPlan plan, string? flowJson = null, bool record = true, ulong seed = 0x5EED_0010UL, bool recordCheckpoints = true)
+        /// <param name="clock">
+        /// When given, sim.flow is built with the clock's shimmed services and
+        /// registered behind <see cref="TimedSystem"/> (03 Q-064), for a budget test.
+        /// </param>
+        public PromoRig(PromoPlan plan, string? flowJson = null, bool record = true, ulong seed = 0x5EED_0010UL, bool recordCheckpoints = true, FlowClock? clock = null)
         {
             Checkpoints = new PromoCheckpoints(recordCheckpoints);
             ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(seed, PromoContent.Index(), Checkpoints, new PromoNullLog()));
             WalkGraph walk = WorldFactory.CreateGraphLoader().Load(PromoGraphs.Utf8(PromoGraphs.World), "promo-world.json");
             World = WorldFactory.CreateSystem(b.Services, walk);
             FlowGraph graph = FlowFactory.CreateGraphLoader().Load(PromoGraphs.Utf8(flowJson ?? PromoGraphs.Congested), "promo.flow.json", World);
-            Flow = FlowFactory.CreateSystem(b.Services, graph, World);
+            Flow = FlowFactory.CreateSystem(clock == null ? b.Services : clock.Shim(b.Services), graph, World);
             Injector = new PromoInjector(plan) { Flow = Flow };
             Absorber = new PromoAbsorber(plan) { Flow = Flow };
             AfterFlow.Flow = Flow;
             b.Register(World);
             b.Register(Injector);
             b.Register(Absorber);
-            b.Register(Flow);
+            b.Register(clock == null ? Flow : new TimedSystem(Flow, clock));
             b.Register(AfterFlow);
             if (record)
             {
