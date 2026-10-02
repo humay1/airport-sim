@@ -65,14 +65,49 @@ calls into `sim.world` at all.
 | `RUNWAY_SLOT_ROUNDING` | ceiling | §12.5, capacity → separation |
 | `STAND_WAIT_CAPACITY` | 1024 entries | §12.7 stand-wait queue, a hard bound (Q-050) |
 | `PENDING_FLIGHTS_CAPACITY` | 2048 entries | §12.11 pending list, a hard bound |
+| `TRACKED_FLIGHTS_CAPACITY` | 2048 tracks | §12.9 tracked flights, a hard bound (Q-085). It also bounds the hold queues together |
 
-The two capacities are engineering bounds, not balance. They are sized
+The three capacities are engineering bounds, not balance. They are sized
 from `01`'s max tier, 800 daily movements. The pending list only holds
 flights scheduled within the next 24 hours (§12.11 "Why 2048 holds"). That
 window can span two calendar days, so it holds up to 1 600 entries, day 0
 at construction included. The stand-wait queue is larger than any one
 day's arrivals.
-Both are preallocated at `CreateSystem`, and neither ever grows.
+All three are preallocated at `CreateSystem`, and none ever grows.
+
+**Why 2048 tracks hold (Q-085).** A track is either on stand or off it.
+
+- **On stand.** Every track in `OnStand` is its `Stand`'s `Occupant`
+  (§12.10 check 1), so there are at most as many as there are stands. At
+  `03`'s max tier that is 60. That includes rotation-less arrivals, which
+  stay on stand for good (§12.7), and arrivals waiting out a long
+  `MinTurnaround`.
+- **Off stand.** An arrival is off stand from its `InboundAirborne`,
+  `STA − 1 200`, to its `OnStand`. A departure is off stand from its
+  `Pushback`, at or after `STD`, to its `Airborne`. In a run that serves
+  its schedule, no flight spends a sim-day off stand. So at any tick `t`
+  an off-stand flight has its `ScheduledTick` in `(t − 14 400, t + 1 200]`,
+  a window of under two sim-days. At `01`'s max tier that holds at most
+  1 600 movements.
+
+That gives at most 1 660 tracks, under 2 048. A run that reaches the bound
+has flights off stand for more than a sim-day, so the layout cannot serve
+the schedule. One example is a runway whose `DeclaredCapacityPerHour` is
+far below the movement rate. At Phase 0/1 the layout and schedule are
+fixed fixtures, so that is a fixture error, as for the stand-wait queue
+(§12.12 "Hard bounds"). When construction exists, the bound is revisited
+by amendment.
+
+**The hold queues need no constant of their own (Q-085).** Every runway
+and taxi hold-queue entry is a tracked flight, and a flight is in at most
+one hold queue at a time (§12.9 `OpenHold`). So all hold queues together
+hold at most `TRACKED_FLIGHTS_CAPACITY` entries. Their storage is
+preallocated at `CreateSystem` for that total, and no entry allocates.
+
+**No static check at load (Q-085).** Whether a layout can serve a
+schedule depends on how runway holds, taxi holds and stand waits interact
+over time. A load-time check could only approximate that, so none is
+specified. The runtime bound is the check.
 
 `AircraftHeldForRunway`/`StandUnavailable` etc. carry no constant of their own;
 their thresholds are runway/stand content, never hardcoded.
@@ -1454,6 +1489,21 @@ O(stands). Stands are bounded by `03-module-map.md`'s max tier at 60.
   example because rotation-less arrivals hold stands for good (§12.7). At
   Phase 0/1 the layout is a fixed fixture, so this is a fixture error. When
   construction exists, the bound is revisited by amendment.
+- **Tracked flights (Q-085).** At most `TRACKED_FLIGHTS_CAPACITY` flights
+  are tracked at once (§12.2 "Why 2048 tracks hold"). Track storage, and
+  hold-queue storage for the same total, are preallocated at
+  `CreateSystem` and never grow. A track is added in two places only:
+  S2's arrival start, and S5's rotation-less departure, whether a new
+  request or from the stand-wait queue. If adding it would exceed the
+  bound, that action throws `SimInvariantException` (`08` §8.5a) at that
+  tick, before it publishes anything. The message names the flight and
+  the tracked flights, and nothing is created. The handoff (§12.8)
+  replaces the arrival's track with the departure's, so it never changes
+  the count and never throws. Its storage must cover the
+  create-before-remove order of §12.8 "The handed-off arrival" without
+  allocating. No track exists at construction, so `CreateSystem` has no
+  overflow case for it. Reaching the bound means the layout cannot serve
+  its schedule. At Phase 0/1 that is a fixture error, as above.
 - No allocation in the update path (`07-conventions.md`, `08` §8.5). The
   routing table and the day-0 read are done once at construction, off the
   tick path. The update path includes the module's event handlers and its
@@ -1542,6 +1592,15 @@ Done-condition tests this spec expects to exist, phrased per
   departure's `OnStand`, `DoorsClosed` and `Pushback` all fire in one tick,
   in that order, inside the arrival's turn.
 - `test_stand_wait_queue_overflow_throws_sim_invariant` (§12.12)
+- `test_tracked_flights_overflow_throws_sim_invariant` (Q-085, §12.12
+  "Tracked flights"). The layout has one runway at
+  `declared_capacity_per_hour` 1, under a schedule whose arrivals outrun
+  it. The `Tick` that would add track 2 049 throws
+  `SimInvariantException` naming the flight and the tracked flights. That
+  happens before it publishes the flight's `InboundAirborne`, and every
+  earlier `Tick` allocates nothing. The fixture may use a smaller
+  injected schedule, as long as the count reaches the bound. It is a
+  `Slow` test if it runs over many sim-days.
 - `test_pending_list_overflow_in_publication_handler_throws_sim_invariant`
   (§12.11 "Overflow")
 - `test_pending_list_overflow_in_day_zero_read_throws_argument_exception`

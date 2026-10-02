@@ -2566,3 +2566,37 @@ Answer:      **HUMAN DECISION, owner, 2026-10-02: `ReassignStand` stays
              by Q-081. HASH CHANGE: one more fed field per track.
              PENDING HUMAN: resolved by the owner's decision above.
 Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)
+
+### Q-085 — `sim.airside`: no bound on tracked flights or hold queues
+Raised by:   Reviewer (reviewer-core) on PR #91, via coordinator, 2026-10-02
+Blocking:    T-021 (PR #91)
+Question:    §12.2 bounds only the stand-wait queue (1 024) and the
+             pending list (2 048). Nothing bounds the tracked flights or
+             the runway and taxi hold queues. Within every stated bound,
+             take one runway at `declared_capacity_per_hour` 1 (24
+             movements a day), 60 stands, and 800 daily rotation pairs
+             repeating daily. Runway-held arrivals then grow by at least
+             376 a day. Around day 11 the worker's 4 096-slot track pool
+             grows, which allocates in `Tick` (§12.12).
+Why it matters: "No allocation in the update path" cannot be met
+             without a bound.
+Answer:      A new hard bound, `TRACKED_FLIGHTS_CAPACITY` = 2048 tracks
+             (§12.2). It is engineering sizing, not balance. On-stand
+             tracks are at most one per stand, 60 at `03`'s max tier.
+             An off-stand flight in a run that serves its schedule has
+             its `ScheduledTick` within under two sim-days of the current
+             tick, so at most 1 600 at `01`'s max tier. That is at most
+             1 660, under 2 048. The hold queues get no constant of their
+             own. Every entry is a tracked flight in at most one queue,
+             so the bound covers them together, and their storage is
+             preallocated for that total. Exceeding the bound throws
+             `SimInvariantException` at the adding action, either S2's
+             arrival start or S5's rotation-less departure, as the other
+             §12.2 bounds do. The handoff never changes the count. No
+             static check at load: whether a layout serves a schedule is
+             dynamic, and a load-time check could only approximate it.
+             The counter-example now throws at about day 5 or 6, which is
+             correct: that layout cannot serve that schedule, a fixture
+             error at Phase 0/1. No balance, content or scope number is
+             involved, so nothing is PENDING HUMAN.
+Status:      ANSWERED (spec/12-interfaces-airside.md#122-constants)
