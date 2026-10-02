@@ -2494,7 +2494,10 @@ Answer:      §12.9 gains "Track fields by phase": a binding table of
              stand it left. Neither means occupancy, which is
              `StandState.Occupant` and the runway's `Occupant` alone. So
              a departure's `Stand` may name a stand another flight now
-             holds. `EdgeProgress` is `Fx.FromRatio(t − PhaseEnteredAt,
+             holds. `ReassignStand` moves `Stand` and `AtNode` together
+             and nothing else on the track, so a reassigned departure
+             starts its route from the new stand's node. `EdgeProgress`
+             is computed on read: `Fx.FromRatio(t − PhaseEnteredAt,
              TraversalTicks)`, and `Fx.Zero` off an edge. A list says
              how the route, the planned ticks and "has `DoorsOpen`
              fired" derive from hashed fields. HASH CHANGE for any
@@ -2515,8 +2518,15 @@ Answer:      §12.12 gains an encoding block. Nullables are fed as
              variable-length list is preceded by its length: each hold
              queue, the stand-wait queue, the tracks and the pending
              list. Layout-sized lists are not prefixed. List entries
-             carry no derived data. HASH CHANGE: the hold-queue and track
-             prefixes are new. No golden covers `sim.airside`.
+             carry no derived data. "Derived" is made precise in `08`
+             §8.9: a value computed on read and not stored. A field of a
+             declared state record that the module's file says actions
+             write is stored, and it is fed even where an invariant ties
+             it to other fields, such as `DueAt` and `AtNode`. §12.9
+             names `EdgeProgress` as the one track field computed on
+             read, and it is not fed. HASH CHANGE: the hold-queue and
+             track prefixes are new, and `EdgeProgress` is dropped from
+             the feed. No golden covers `sim.airside`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#1212-state-hashing-rng-and-budget)
 
 ### Q-083 — `sim.airside`: `DoorsOpen`'s planned tick after a `ReassignStand`
@@ -2530,18 +2540,26 @@ Question:    `DoorsOpen`'s `PlannedTick` is planned `OnStand` + the
              `PlannedTick` 10 ticks off, which `10` §10.4 forbids.
 Why it matters: Either a planned tick shifts, or behaviour depends on
              unhashed state.
-Answer:      Constrain the command rather than add state. `ReassignStand`
-             of an arrival whose `DoorsOpen` has not fired is a reason-1
-             no-op (§12.10 check 1): `PhaseEnteredAt +
-             DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE ≥ tick`. So
-             the track's `Stand` is still the stand reached when
-             `DoorsOpen` fires, and no arrival milestone `sim.airside`
-             owns comes later. A departure's `TakeoffRoll` plan uses the
-             stand it pushed back from (its kept `Stand`). That plan is
-             formed at `Pushback`, so a reassignment before then is not a
-             shift. The departure-`Stand` disagreement the reviewer noted
-             is covered by Q-081. No PR #78 test reassigns an arrival
-             before its `DoorsOpen`. LOW CONFIDENCE: the alternative is a
-             hashed `PlannedOnStand` tick on the track, which keeps the
-             command open during the door delay.
-Status:      ANSWERED (spec/12-interfaces-airside.md#1210-commands-consumed)
+Answer:      **HUMAN DECISION, owner, 2026-10-02: `ReassignStand` stays
+             open at any point of `OnStand`, the door delay included.**
+             The Architect's first answer, a reason-1 no-op before
+             `DoorsOpen`, is withdrawn. It narrowed a player command,
+             which is the owner's call, and it contradicted PR #78's
+             `test_airside_update_path_allocates_nothing_including_handlers`,
+             which reassigns W_A at 1870, before its 1880 `DoorsOpen`.
+             Instead the track gains one stored, hashed and saved field,
+             `PlannedOnStand` (`Tick`, the last field of `AircraftTrack`,
+             fed as a `uint64`). It is set at an arrival's `OnStand` to
+             that event's `PlannedTick`, and never changed afterwards,
+             not by `ReassignStand` either. It is `TICK_UNSCHEDULED`
+             before `OnStand` and on every departure. `DoorsOpen`'s
+             `PlannedTick` is `PlannedOnStand` + the delay (§12.3). A
+             tick is the minimal form: the only value behaviour needs
+             from the stand reached is this plan. A departure's
+             `TakeoffRoll` plan uses the stand it pushed back from, its
+             kept `Stand`. That plan is formed at `Pushback`, so a
+             reassignment before then is not a shift. The
+             departure-`Stand` disagreement the reviewer noted is covered
+             by Q-081. HASH CHANGE: one more fed field per track.
+             PENDING HUMAN: resolved by the owner's decision above.
+Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)

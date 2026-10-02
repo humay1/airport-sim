@@ -306,8 +306,11 @@ Full field lists in `10-events.md` §10.6.
 **The `Cause` of each emitted event (Q-080).** Binding, and it applies the
 rules of `10-events.md` §10.2. Every event below has the `Cause` given and
 no other. "Creation" is §13.6's job creation, which runs in the `OnStand`
-handler, in phase 3 of the tick of the flight's `OnStand` (§13.10). So the
-handler's `OnStand` event is published earlier in the same tick.
+handler (§13.6, "on the tick it receives one"). Handlers run in phase 3,
+event dispatch, of the tick whose queue holds the event (`08` §8.5 "Fixed
+phase order", §8.6). `sim.airside` publishes the `OnStand` in phase 2 of
+that tick, so the handler's `OnStand` event is published earlier in the
+same tick.
 
 | Event | `Cause` |
 |---|---|

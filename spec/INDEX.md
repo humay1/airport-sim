@@ -174,6 +174,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   outside a checkpoint's phase 4, allocate nothing, so a module's `Step`
   allocation meter excludes nothing for `sim.core`; wrapping a thrown tick
   (§8.5a) may allocate (§8.5, §8.7, Q-065)**;
+  **"derived" means computed on read and not stored; a declared state
+  field that actions write is fed even when an invariant ties it to other
+  fields (§8.9, Q-082)**;
   **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
   Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);
@@ -287,12 +290,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `StandState.VacatedBy` (§12.9, §12.12, Q-079)**; **`AwaitingPushbackClearance`
   and `Departed` are reserved, never set at Phase 0/1 (§12.9)**; **track
   fields by phase: `Stand` kept after `Pushback`, `Runway` kept after
-  `OffRunway`, `EdgeProgress` and `DueAt` pinned, occupancy is
-  `StandState.Occupant` alone (§12.9, Q-081)**; **hash encoding: nullables
-  as `HasValue` then value, every variable-length list length-prefixed,
-  tracks included (§12.12, Q-082, hash change)**; **`ReassignStand` of an
-  arrival is a no-op until its `DoorsOpen` has fired (§12.3, §12.10,
-  Q-083)**.
+  `OffRunway`, `AtNode` moves with `Stand` on `ReassignStand`, `DueAt`
+  pinned, occupancy is `StandState.Occupant` alone (§12.9, Q-081)**;
+  **hash encoding: nullables as `HasValue` then value, every
+  variable-length list length-prefixed, tracks included, stored fields
+  fed and `EdgeProgress` (computed on read) not fed (§12.12, Q-082, hash
+  change)**; **`ReassignStand` stays open during the door delay, and the
+  stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
+  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8); an

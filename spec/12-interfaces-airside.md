@@ -118,7 +118,7 @@ time, holds excluded.
 | `Landed` | arrival | `STA` |
 | `OffRunway` | arrival | `STA + OccupancyTicks` |
 | `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
-| `DoorsOpen` | arrival | planned `OnStand` + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, with the planned `OnStand` that was emitted. No `ReassignStand` can apply between the two (§12.10, Q-083), so the track's `Stand` is still the stand reached |
+| `DoorsOpen` | arrival | planned `OnStand` + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, with the planned `OnStand` that was emitted, read from the track's `PlannedOnStand` (§12.9). A `ReassignStand` between the two does not move it (Q-083) |
 | `OnStand` | departure | `max(0, STD − MinTurnaround)` (§12.8 step 3; §12.7 for a rotation-less departure, whose due tick this is) |
 | `DoorsClosed` | departure | `STD` |
 | `Pushback` | departure | `STD` |
@@ -914,7 +914,7 @@ readonly struct AircraftTrack {
   AircraftLegPhase Phase
   TaxiNodeId?      AtNode
   TaxiEdgeId?      OnEdge
-  Fx               EdgeProgress        // 0..1, meaningful only if OnEdge set
+  Fx               EdgeProgress        // 0..1, meaningful only if OnEdge set; computed on read, not stored or fed (Q-082)
   StandId?         Stand
   RunwayId?        Runway
   Tick             PhaseEnteredAt
@@ -922,6 +922,7 @@ readonly struct AircraftTrack {
   Tick             PassengerHoldSince  // §12.8 boarding hold start; TICK_UNSCHEDULED unless held
   EventRef         RecordedCause       // §12.8 steps 3 and 5, Q-062; EventRef.None (10 §10.2) unless a consumed event awaits action
   EventRef         OpenHold            // Q-079: the open runway, taxiway or passenger hold event; EventRef.None unless one is open
+  Tick             PlannedOnStand      // Q-083: an arrival's emitted OnStand PlannedTick; TICK_UNSCHEDULED before its OnStand and on every departure
 }
 
 readonly struct StandState {
@@ -980,6 +981,31 @@ overwrites a set value. It is fed in field order (§12.12 item 4) as
 to `uint64` (`08` §8.9). All three are fed even for `EventRef.None`, with
 `Id.Tick` and `Id.Sequence` fed as 0.
 
+**`PlannedOnStand` (Q-083).** HUMAN DECISION, owner, 2026-10-02: the player
+may reassign a stand at any time, the door delay included. So the stand
+reached can be gone from the track by the time `DoorsOpen` fires, and the
+plan it gave is kept instead:
+
+- **Set** at an arrival's `OnStand` to the `PlannedTick` that the
+  `OnStand` event carries (§12.3), in the action that emits it.
+- **Never changed** after that while the arrival is tracked. `ReassignStand`
+  does not touch it. It leaves with the track at the handoff.
+- `TICK_UNSCHEDULED` before the arrival's `OnStand`, and always on a
+  departure's track. A departure's planned `OnStand` comes from the
+  schedule (§12.3), and none of its later planned ticks depends on it.
+- `DoorsOpen`'s `PlannedTick` is `PlannedOnStand +
+  DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE` (§12.3).
+- It is the last field, fed as one `uint64` (§12.12 item 4).
+
+**Stored fields and the one computed on read (Q-082).** Every field of
+`AircraftTrack` except `EdgeProgress` is **stored** state in the sense of
+`08` §8.9. This file says which actions write each one: the table below,
+its rules, and the paragraphs above. Each is fed, even where an invariant
+ties it to other fields. For example, a `Taxiing` track's `DueAt` equals
+`PhaseEnteredAt` + the edge's `TraversalTicks`, and an `OnStand` track's
+`AtNode` is its `Stand`'s node. `EdgeProgress` is **computed on read**
+(rule below). It is not stored, and it is not fed.
+
 **`AtNode` and `OnEdge` together.** While `OnEdge` is set, `AtNode` holds the
 node the aircraft **entered the edge from**, and `EdgeProgress` runs from 0 at
 `AtNode` to 1 at the edge's other endpoint. For a `Bidirectional` edge this is
@@ -994,11 +1020,12 @@ track. A value that changes inside a `Tick` (for example between `Pushback`
 in S4 and the edge grant in S6) is never observed. "Kept" means the field
 keeps the value it already had.
 
-> **HASH CHANGE (Q-081).** This table pins hashed values that were not
-> stated before, notably `Stand` kept after `Pushback`, `Runway` kept after
-> `OffRunway`, `EdgeProgress` and `DueAt`. An implementation that chose
-> differently changes its `sim.airside` hash. No golden covers
-> `sim.airside` yet.
+> **HASH CHANGE (Q-081, Q-082, Q-083).** This table pins hashed values
+> that were not stated before, notably `Stand` kept after `Pushback`,
+> `Runway` kept after `OffRunway`, `AtNode` moved by `ReassignStand`, and
+> `DueAt`. `EdgeProgress` is no longer fed, and `PlannedOnStand` is a new
+> fed field. An implementation that chose differently changes its
+> `sim.airside` hash. No golden covers `sim.airside` yet.
 
 | Phase | Kind | `AtNode` | `OnEdge` | `Stand` | `Runway` | `PhaseEnteredAt` | `DueAt` |
 |---|---|---|---|---|---|---|---|
@@ -1039,13 +1066,21 @@ The set and clear rules this table implies:
 - **`AtNode`** follows the table. It is set when the aircraft enters the
   graph (an arrival's `OffRunway` puts it at its threshold node, and a
   departure's creation puts it at its stand node). It is updated on edge
-  entry (to the entry node) and on edge exit (to the end node). An
+  entry (to the entry node) and on edge exit (to the end node).
+  `ReassignStand` (§12.10) sets it to `newStand`'s node, together with
+  `Stand`. So an `OnStand` track's `AtNode` is always its `Stand`'s node,
+  and a departure starts its `(Stand, threshold)` route from there. An
   arrival has it unset until its `OffRunway`. A departure's is cleared at
   its `TakeoffRoll`.
-- **`EdgeProgress`** is `Fx.FromRatio(t − PhaseEnteredAt, TraversalTicks)`
-  of `OnEdge` at the end of tick `t` while `OnEdge` is set (`08` §8.3,
-  truncated). It is never above 1, because the aircraft leaves the edge in
-  S6.1 of its `DueAt` tick. It is `Fx.Zero` while `OnEdge` is unset.
+- **`EdgeProgress`** is computed on read, never stored. A query after the
+  `Tick` of `t` returns `Fx.FromRatio(t − PhaseEnteredAt, TraversalTicks)`
+  of `OnEdge` while `OnEdge` is set (`08` §8.3, truncated), and `Fx.Zero`
+  while it is unset. It is never above 1, because the aircraft leaves the
+  edge in S6.1 of its `DueAt` tick. It is not fed (§12.12 item 4).
+- **`ReassignStand` touches only `Stand` and `AtNode`** on the track, and
+  the two stands' `Occupant` and `VacatedBy` (§12.9 `VacatedBy`, §12.10).
+  `Phase`, `PhaseEnteredAt`, `DueAt` and `PlannedOnStand` are unchanged,
+  so `DoorsOpen` and the handoff keep their timing.
 
 **Everything behaviour needs is in hashed fields (Q-081).** The values
 `sim.airside` needs later are derived from the fields above, plus
@@ -1057,9 +1092,10 @@ on the side:
   threshold`)` (departure), and `AtNode`/`OnEdge` on it. A least-cost route
   visits no node twice, so `AtNode` fixes the next edge;
 - every planned tick of §12.3, for example planned `OnStand` from `STA`,
-  `Runway` and `Stand`, and planned `TakeoffRoll`/`Airborne` from `STD`,
-  `Stand` and `Runway`. That is why `Stand` is kept after `Pushback` and
-  `Runway` after `OffRunway`;
+  `Runway` and `Stand` at the moment `OnStand` fires, planned `DoorsOpen`
+  from `PlannedOnStand`, and planned `TakeoffRoll`/`Airborne` from `STD`,
+  `Stand` and `Runway`. That is why `Stand` is kept after `Pushback`,
+  `Runway` after `OffRunway`, and `PlannedOnStand` across a reassignment;
 - whether an arrival's `DoorsOpen` has fired: it has once a `Tick` at or
   after `PhaseEnteredAt + DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`
   has run;
@@ -1098,7 +1134,7 @@ Registry position is **3** (`08-interfaces-core.md` §8.5): after `sim.schedule`
 
 | Command | Payload | Effect |
 |---|---|---|
-| `ReassignStand` | `FlightId`, `StandId newStand` — byte layout `08` §8.7 | Only while the flight's `Phase == OnStand`, and for an arrival only once its `DoorsOpen` has fired (Q-083). Takes effect at the next tick boundary: old stand's occupant clears, new stand's occupant is set, no milestone re-fires. |
+| `ReassignStand` | `FlightId`, `StandId newStand` — byte layout `08` §8.7 | Only while the flight's `Phase == OnStand`, at any point of it, the door delay included (HUMAN DECISION, owner, 2026-10-02, Q-083). Takes effect at the next tick boundary: old stand's occupant clears, new stand's occupant is set, the track's `Stand` and `AtNode` move to `newStand` and its node, and nothing else on the track changes (§12.9, Q-081). No milestone re-fires. |
 
 Handler (`08` §8.7, Q-010), registered in `AirsideFactory.CreateSystem`.
 `Validate` checks the payload only: a length other than 10, or an unknown
@@ -1108,13 +1144,6 @@ they are checked at `Apply`. A command that fails them is a logged no-op,
 not a rejection. This replaces the earlier "Rejected (`NotPermitted`) if
 occupied or incompatible", which admission cannot decide deterministically.
 
-> **LOW CONFIDENCE — no reassignment before `DoorsOpen` (Q-083).** The
-> player cannot move an arrival during the door delay, 2 sim-minutes in the
-> playtest value. That keeps `DoorsOpen`'s `PlannedTick` derivable without
-> new state. The alternative is a hashed planned-`OnStand` tick on the
-> track, which would keep the command open in that window. If playtest
-> shows the window matters, that is the amendment.
-
 **The no-op log line (Q-056).** `Apply` checks in this order and stops at
 the first failure:
 
@@ -1123,18 +1152,10 @@ the first failure:
    handed off to its departure (§12.8 step 3) fails the first clause,
    because its track was removed at the handoff (§12.8 "The handed-off
    arrival", Q-062). Since then, no tracked `OnStand` flight can fail the
-   last clause. It is kept so that the check stays total. **Also reason
-   1 (Q-083):** the flight is an arrival whose `DoorsOpen` has not fired,
-   that is, `PhaseEnteredAt + DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE
-   ≥ tick`, where `tick` is the tick whose boundary applies the command.
-   `DoorsOpen` fires in the `Tick` at that sum (§12.8a S4, or a chain when
-   the delay is 0), so it has fired exactly when the sum is before `tick`.
-   This keeps `DoorsOpen`'s `PlannedTick` derivable from hashed state. It
-   is planned `OnStand` + the delay (§12.3), and planned `OnStand` is for
-   the stand reached, which is the track's `Stand` as long as no
-   reassignment can come before `DoorsOpen`. No arrival milestone that
-   `sim.airside` owns comes after `DoorsOpen`, so a later reassignment
-   changes no planned tick;
+   last clause. It is kept so that the check stays total. An arrival
+   whose `DoorsOpen` has not fired yet is **not** refused (HUMAN DECISION,
+   owner, 2026-10-02, Q-083). Its `DoorsOpen` keeps the planned tick of
+   the stand it reached, through `PlannedOnStand` (§12.9);
 2. `newStand` has an occupant, which includes the flight's own stand:
    reason 2;
 3. the aircraft is incompatible with `newStand` (§12.7): reason 3.
@@ -1341,10 +1362,11 @@ same byte stream:
   stand-wait entry is a departure, which follows from whether the flight
   is tracked.
 
-> **HASH CHANGE (Q-082).** The length prefixes of the hold queues (items 1
-> and 2) and of the tracks (item 4) are new. They change every `sim.airside`
-> hash. No golden covers `sim.airside` yet (`19`), so no golden is
-> re-authored.
+> **HASH CHANGE (Q-082, Q-083).** The length prefixes of the hold queues
+> (items 1 and 2) and of the tracks (item 4) are new. `EdgeProgress` is no
+> longer fed, and `PlannedOnStand` is fed last in each track. They change
+> every `sim.airside` hash. No golden covers `sim.airside` yet (`19`), so
+> no golden is re-authored.
 
 1. Runway state, ascending `RunwayId`: `NextSlotTick`, `Occupant`, then
    the hold queue's length and each entry in queue order.
@@ -1354,16 +1376,20 @@ same byte stream:
    (§12.9, Q-079). Then the stand-wait queue
    (§12.7, Q-050): its length, then each entry in queue order.
 4. Tracked aircraft: their count, then each track in ascending `FlightId`,
-   as every field of `AircraftTrack` in §12.9's declared order (13
-   fields, `Flight` to `OpenHold`), with the values of §12.9 "Track fields
-   by phase" (Q-081).
+   as its **stored** fields in §12.9's declared order, with the values of
+   §12.9 "Track fields by phase" (Q-081). That is 13 fields: `Flight`,
+   `Kind`, `Phase`, `AtNode`, `OnEdge`, `Stand`, `Runway`,
+   `PhaseEnteredAt`, `DueAt`, `PassengerHoldSince`, `RecordedCause`,
+   `OpenHold`, `PlannedOnStand`. `EdgeProgress` is computed on read and
+   is **not** fed (§12.9, `08` §8.9, Q-082).
    A flight is fed only while tracked: from `InboundAirborne` to its
    handoff for an arrival with a rotation (§12.8, Q-062), and from
    `OnStand` to `Airborne` for a departure. The fields include
    `RecordedCause`, encoded as §12.9 says, so a consumed
    `DeboardComplete` or `BoardingComplete` awaiting action is hashed and
-   saved (Q-062). The last field is `OpenHold`, encoded the same way, so
-   an open hold's event id is hashed and saved (Q-079).
+   saved (Q-062), and `OpenHold`, encoded the same way, so an open hold's
+   event id is hashed and saved (Q-079). The last field is
+   `PlannedOnStand` (Q-083).
 5. The pending list (§12.11): its length, then each entry's `FlightId`, in
    ascending `FlightId`.
 
@@ -1545,12 +1571,17 @@ Done-condition tests this spec expects to exist, phrased per
   `Stand`, `Runway`, `PhaseEnteredAt` and `DueAt` are those of §12.9
   "Track fields by phase". In particular a departure's `Stand` stays set
   from `Pushback` to `Airborne`, and an arrival's `Runway` stays set after
-  `OffRunway`.
-- `test_reassign_stand_before_doors_open_is_no_op_reason_one` (Q-083): a
-  `ReassignStand` for an arrival applied at a boundary at or before its
-  `DoorsOpen` tick is a logged no-op with reason 1, and the arrival's
-  `DoorsOpen` `PlannedTick` is its emitted planned `OnStand` + the delay.
-  The same command applied after `DoorsOpen` moves the flight.
+  `OffRunway`. `PlannedOnStand` is `TICK_UNSCHEDULED` until an arrival's
+  `OnStand` and equals that event's `PlannedTick` afterwards.
+- `test_reassign_before_doors_open_keeps_planned_tick_and_moves_at_node`
+  (Q-081, Q-083): an arrival reaches one stand, and a `ReassignStand` to a
+  stand with a different route length applies before its `DoorsOpen`. The
+  move is applied, and the track's `Stand` and `AtNode` name the new stand
+  and its node, with `PhaseEnteredAt`, `DueAt` and `PlannedOnStand`
+  unchanged. `DoorsOpen` fires at the unchanged tick, with `PlannedTick` =
+  the emitted planned `OnStand` + the delay. A departure reassigned while
+  `OnStand` starts its taxi from the new stand's node, and its
+  `TakeoffRoll` `PlannedTick` uses the new stand's route.
 
 Boarding-hold tests (D6). They run with `sim.flow` registered, or with a fake
 `IFlowSystem` answering `TryGetOutstanding`, and they belong to whichever task
