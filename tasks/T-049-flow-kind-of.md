@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (Test Author first; the worker is not releasable until the tests are authored) |
+| Status | QUEUED (not releasable until T-021 merges; then Test Author first, and the worker after the tests are authored) |
 | Module | `sim.flow` |
 | Assigned role | worker (tests by the Test Author, first) |
-| Depends on | none open. T-007 (merged #48) and T-023 (merged #71) are the existing `IFlowSystem` surface |
+| Depends on | T-021 (not merged; implementation PR #91). T-007 (merged #48) and T-023 (merged #71) are the existing `IFlowSystem` surface |
 | Spec source | `spec/09-interfaces-flow.md` §9.7 (`NodeKind KindOf(NodeId node)` and the `KindOf(node)` paragraph, Q-084, spec PR #95, merged `8f66470`); `spec/19-interfaces-harness.md` §19.2d (its first caller) |
 | Blocked by | — |
 
@@ -25,19 +25,26 @@ Worker:
 src/sim/flow/**
 ```
 
-Test Author (separate branch, first):
+Test Author (separate branch, first; the path guard checks a
+`test-author/T-049-*` branch against the first block above only, see "Worker
+notes"):
 
 ```
 tests/sim/flow/**
 tests/sim/schedule/ScheduleTestKit.cs
+tests/sim/airside/AirsideRigs.cs
 ```
 
-`tests/sim/schedule/ScheduleTestKit.cs` holds `RecordingFlow : IFlowSystem`
-(the only other `IFlowSystem` implementer under `tests/`). Adding a member to
-the interface breaks its compile, so the Test Author adds `KindOf` to
-`RecordingFlow` in the same change; as an extra method it compiles on `main` before
-the interface member exists. No other file under
-`tests/sim/schedule/**` changes. The worker writes nothing under `tests/`.
+Two test doubles implement `IFlowSystem` and break when `KindOf` joins it:
+`RecordingFlow` in `tests/sim/schedule/ScheduleTestKit.cs`, and
+`FakeFlowBase : IFlowSystem` in `tests/sim/airside/AirsideRigs.cs` (added by
+T-021's branches, so it exists on `main` only after T-021 merges). The Test
+Author adds `KindOf` to both in the same change. The production implementer is
+`FlowSystem` (`src/sim/flow/FlowSystem.cs`). Re-checked on `main`,
+`worker/T-021-airside` and `test-author/T-021-airside-tests` (2026-10-02):
+those three are the only `IFlowSystem` implementers. The Test Author re-greps
+after T-021 lands. No other file under `tests/sim/schedule/**` or
+`tests/sim/airside/**` changes. The worker writes nothing under `tests/`.
 
 ## Readable specs
 
@@ -76,7 +83,8 @@ Written by the Test Author, first: exactly
 `test_kind_of_returns_graph_kinds_and_throws_on_unknown_node` (`09` §9.7).
 Over a fixture with one node of each `NodeKind`, it returns each node's kind,
 and an unknown `NodeId` throws `ArgumentException`. The Test Author also adds
-`KindOf` to `RecordingFlow` in `tests/sim/schedule/ScheduleTestKit.cs`.
+`KindOf` to `RecordingFlow` in `tests/sim/schedule/ScheduleTestKit.cs` and to
+`FakeFlowBase` in `tests/sim/airside/AirsideRigs.cs`.
 **Do not edit them.** If a test contradicts `09` §9.7, file an open question
 and stop.
 
@@ -97,14 +105,22 @@ No change to `sim.flow`'s 2.5 ms/tick budget (`03-module-map.md`, `09`
 
 ## Worker notes
 
-**Serialisation.** This task writes `src/sim/flow/**` and its Test Author
-writes `tests/sim/flow/**`. No other `sim.flow` writer is open today (T-039,
-T-023, T-043 are merged). Do not release it beside any future task that
-writes either path. T-021 writes `src/sim/airside/**`, not these, so it does
-not conflict.
+**Serialisation: after T-021.** This task writes `src/sim/flow/**`, and its
+Test Author writes `tests/sim/flow/**`, `tests/sim/schedule/ScheduleTestKit.cs`
+and `tests/sim/airside/AirsideRigs.cs`. T-021's branches add
+`FakeFlowBase : IFlowSystem` in `AirsideRigs.cs`, which stops compiling once
+`KindOf` joins `IFlowSystem`. So T-049 is not released until T-021 (#91) has
+merged. Do not release it beside any other task that writes these paths. No
+other `sim.flow` writer is open (T-039, T-023, T-043 are merged).
 
-**Order.** The Test Author authors first. The `RecordingFlow.KindOf` edit
-compiles on `main` by itself, but the new flow test calls `IFlowSystem.KindOf`
+**A red path-guard check on the test-only PR is expected, not a defect.**
+`ci/check-paths.sh` checks a `test-author/T-049-*` branch against the first
+"Writable paths" block (the worker's `src/sim/flow/**`), so a test-only PR
+shows path-guard red. Such PRs never merge alone (the same pattern as #78,
+#88 and #92): the worker's branch carries the Test Author's files
+byte-identical and that PR merges.
+
+**Order.** The Test Author authors first, once T-021 has merged. The new flow test calls `IFlowSystem.KindOf`
 and cannot compile until the worker adds it, so the test and the
 implementation merge together: the worker's branch carries the Test Author's
 files byte-identical (the owner-approved path-guard pairing rule, see
