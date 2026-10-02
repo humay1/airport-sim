@@ -321,13 +321,13 @@ namespace AirportSim.Sim.Airside
             {
                 h.Feed(_rwyNextSlot[r]);
                 FeedSlotRef(ref h, _rwyOccupant[r]);
-                FeedQueue(ref h, _rwyQHead[r], _rwyQLen[r]);
+                FeedQueue(ref h, _rwyQHead[r]);
             }
 
             for (int e = 0; e < _edgeId.Length; e++)
             {
                 FeedSlotRef(ref h, _edgeOcc[e]);
-                FeedQueue(ref h, _edgeQHead[e], _edgeQLen[e]);
+                FeedQueue(ref h, _edgeQHead[e]);
             }
 
             for (int s = 0; s < _standId.Length; s++)
@@ -341,10 +341,8 @@ namespace AirportSim.Sim.Airside
             for (int i = 0; i < _waitCount; i++)
             {
                 h.Feed(_wait[i].Flight);
-                h.Feed(_wait[i].IsDeparture);
             }
 
-            h.Feed((ulong)_n);
             for (int i = 0; i < _n; i++)
             {
                 AircraftTrack t = MakeTrack(_order[i]);
@@ -389,9 +387,8 @@ namespace AirportSim.Sim.Airside
             h.Feed(s != null ? s.Flight : 0UL);
         }
 
-        private static void FeedQueue(ref StateHasher h, Slot? head, int len)
+        private static void FeedQueue(ref StateHasher h, Slot? head)
         {
-            h.Feed((ulong)len);
             for (Slot? s = head; s != null; s = s.QNext)
             {
                 h.Feed(s.Flight);
@@ -708,7 +705,6 @@ namespace AirportSim.Sim.Airside
             _standOccupant[target] = flight;
             _standVacatedBy[target] = EventRef.None;
             slot.Stand = target;
-            slot.DepartStand = target;
             slot.AtNode = _standNode[target];
         }
 
@@ -730,21 +726,14 @@ namespace AirportSim.Sim.Airside
 
             public ulong Sched;
             public ulong MinTurnTicks;
-            public ulong PlannedOnStand;
             public int SizeOrd;
             public bool HasRotation;
             public ulong Rotation;
-            public int RouteBase;
-            public int RouteLen;
-            public int RoutePos;
-            public int RouteRwy = -1;
-            public int DepartStand = -1;
             public int AskEdge = -1;
             public Slot? QNext;
             public EventRef OpenHold;
             public EventRef Placed;
             public EventRef OffRunwayEvent;
-            public bool DoorsOpenFired;
             public bool ReqTakeoff;
 
             public void Reset()
@@ -762,21 +751,14 @@ namespace AirportSim.Sim.Airside
                 Recorded = EventRef.None;
                 Sched = 0;
                 MinTurnTicks = 0;
-                PlannedOnStand = 0;
                 SizeOrd = 0;
                 HasRotation = false;
                 Rotation = 0;
-                RouteBase = 0;
-                RouteLen = 0;
-                RoutePos = 0;
-                RouteRwy = -1;
-                DepartStand = -1;
                 AskEdge = -1;
                 QNext = null;
                 OpenHold = EventRef.None;
                 Placed = EventRef.None;
                 OffRunwayEvent = EventRef.None;
-                DoorsOpenFired = false;
                 ReqTakeoff = false;
             }
         }

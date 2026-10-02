@@ -2,24 +2,28 @@ using System.Collections.Generic;
 
 namespace AirportSim.Sim.Airside
 {
-    /// <summary>Routing, computed once at construction. Spec: 12-interfaces-airside.md §12.4 "Routing".</summary>
+    /// <summary>
+    /// Routing, computed once at construction. Spec: 12-interfaces-airside.md §12.4 "Routing".
+    /// The tables are fixed at load. A flight's position on its route is never stored: the next
+    /// edge is found from the node it is at and its target, which is the same lowest-edge-id
+    /// least-cost walk (a suffix of a least route, in this order, is the least route from there).
+    /// </summary>
     internal sealed partial class AirsideSystem
     {
         private const long Infinity = long.MaxValue / 4;
 
-        // Arrival routes, indexed runway * stands + stand: threshold to stand.
-        private int[] _arrBase = null!;
-        private int[] _arrLen = null!;
+        // Route cost in ticks, arrivals indexed runway * stands + stand (threshold to stand),
+        // departures indexed stand * runways + runway (stand to threshold).
         private ulong[] _arrTicks = null!;
-
-        // Departure routes, indexed stand * runways + runway: stand to threshold.
-        private int[] _depBase = null!;
-        private int[] _depLen = null!;
         private ulong[] _depTicks = null!;
 
-        // Flat route storage: the edge index taken, and the node index reached.
-        private int[] _routeEdge = null!;
-        private int[] _routeNode = null!;
+        // Distance to a target node from every node, by target node index; null for non-targets.
+        private long[]?[] _distTo = null!;
+
+        // Outgoing arcs per node, flat: arcs of node n are [_outStart[n], _outStart[n + 1]).
+        private int[] _outStart = null!;
+        private int[] _outTo = null!;
+        private int[] _outEdge = null!;
 
         private void BuildRoutes()
         {
@@ -46,66 +50,64 @@ namespace AirportSim.Sim.Airside
             }
 
             int arcs = arcFrom.Count;
-            var outArcs = new List<int>[nodes];
+            _outStart = new int[nodes + 1];
+            for (int a = 0; a < arcs; a++)
+            {
+                _outStart[arcFrom[a] + 1]++;
+            }
+
+            for (int i = 0; i < nodes; i++)
+            {
+                _outStart[i + 1] += _outStart[i];
+            }
+
+            _outTo = new int[arcs];
+            _outEdge = new int[arcs];
+            var fill = new int[nodes];
+            for (int a = 0; a < arcs; a++)
+            {
+                int at = _outStart[arcFrom[a]] + fill[arcFrom[a]]++;
+                _outTo[at] = arcTo[a];
+                _outEdge[at] = arcEdge[a];
+            }
+
             var inArcs = new List<int>[nodes];
             for (int i = 0; i < nodes; i++)
             {
-                outArcs[i] = new List<int>();
                 inArcs[i] = new List<int>();
             }
 
             for (int a = 0; a < arcs; a++)
             {
-                outArcs[arcFrom[a]].Add(a);
                 inArcs[arcTo[a]].Add(a);
             }
 
-            // Distance to each target node, from every node (reverse Dijkstra).
-            var distTo = new long[nodes][];
+            _distTo = new long[]?[nodes];
             for (int s = 0; s < stands; s++)
             {
-                EnsureDist(distTo, _standNode[s], nodes, inArcs, arcFrom, arcEdge);
+                EnsureDist(_standNode[s], nodes, inArcs, arcFrom, arcEdge);
             }
 
             for (int r = 0; r < runways; r++)
             {
-                EnsureDist(distTo, _rwyNode[r], nodes, inArcs, arcFrom, arcEdge);
+                EnsureDist(_rwyNode[r], nodes, inArcs, arcFrom, arcEdge);
             }
 
-            _arrBase = new int[runways * stands];
-            _arrLen = new int[runways * stands];
             _arrTicks = new ulong[runways * stands];
-            _depBase = new int[stands * runways];
-            _depLen = new int[stands * runways];
             _depTicks = new ulong[stands * runways];
-            var flatEdge = new List<int>();
-            var flatNode = new List<int>();
-
             for (int r = 0; r < runways; r++)
             {
                 for (int s = 0; s < stands; s++)
                 {
-                    int ai = (r * stands) + s;
-                    _arrBase[ai] = flatEdge.Count;
-                    Walk(_rwyNode[r], _standNode[s], distTo[_standNode[s]], outArcs, arcTo, arcEdge, flatEdge, flatNode);
-                    _arrLen[ai] = flatEdge.Count - _arrBase[ai];
-                    _arrTicks[ai] = (ulong)distTo[_standNode[s]][_rwyNode[r]];
-
-                    int di = (s * runways) + r;
-                    _depBase[di] = flatEdge.Count;
-                    Walk(_standNode[s], _rwyNode[r], distTo[_rwyNode[r]], outArcs, arcTo, arcEdge, flatEdge, flatNode);
-                    _depLen[di] = flatEdge.Count - _depBase[di];
-                    _depTicks[di] = (ulong)distTo[_rwyNode[r]][_standNode[s]];
+                    _arrTicks[(r * stands) + s] = (ulong)_distTo[_standNode[s]]![_rwyNode[r]];
+                    _depTicks[(s * runways) + r] = (ulong)_distTo[_rwyNode[r]]![_standNode[s]];
                 }
             }
-
-            _routeEdge = flatEdge.ToArray();
-            _routeNode = flatNode.ToArray();
         }
 
-        private void EnsureDist(long[][] distTo, int target, int nodes, List<int>[] inArcs, List<int> arcFrom, List<int> arcEdge)
+        private void EnsureDist(int target, int nodes, List<int>[] inArcs, List<int> arcFrom, List<int> arcEdge)
         {
-            if (distTo[target] != null)
+            if (_distTo[target] != null)
             {
                 return;
             }
@@ -146,32 +148,27 @@ namespace AirportSim.Sim.Airside
                 }
             }
 
-            distTo[target] = dist;
+            _distTo[target] = dist;
         }
 
         /// <summary>
-        /// Follows least-cost arcs from origin to target; at each node takes the lowest edge id
-        /// among the arcs that stay on some least-cost route, which is the tie-break of §12.4.
+        /// The next edge from <paramref name="node"/> towards <paramref name="target"/>: the lowest
+        /// edge id among the arcs that stay on a least-cost route (the tie-break of §12.4).
         /// </summary>
-        private void Walk(int origin, int target, long[] dist, List<int>[] outArcs, List<int> arcTo, List<int> arcEdge, List<int> flatEdge, List<int> flatNode)
+        private int NextEdge(int node, int target)
         {
-            int u = origin;
-            while (u != target)
+            long[] dist = _distTo[target]!;
+            int best = -1;
+            for (int a = _outStart[node]; a < _outStart[node + 1]; a++)
             {
-                int best = -1;
-                foreach (int a in outArcs[u])
+                int v = _outTo[a];
+                if (dist[v] < Infinity && (long)_edgeTicks[_outEdge[a]] + dist[v] == dist[node] && (best < 0 || _outEdge[a] < best))
                 {
-                    int v = arcTo[a];
-                    if (dist[v] < Infinity && (long)_edgeTicks[arcEdge[a]] + dist[v] == dist[u] && (best < 0 || arcEdge[a] < arcEdge[best]))
-                    {
-                        best = a;
-                    }
+                    best = _outEdge[a];
                 }
-
-                flatEdge.Add(arcEdge[best]);
-                flatNode.Add(arcTo[best]);
-                u = arcTo[best];
             }
+
+            return best;
         }
     }
 }
