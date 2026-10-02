@@ -124,6 +124,16 @@ namespace AirportSim.Sim.Airside.Tests
             public ulong? StandAssigned;
             public bool WaitedForStand;
             public ushort? Stand;
+            public ulong? Pushback;
+            public ushort? TaxiHoldEdge;
+            public ulong? TaxiReleaseTick;
+            public ushort? TaxiReleaseEdge;
+            public ulong? PaxHold;
+            public bool PaxReleased;
+
+            // The edge the track was last seen on, and the tick it entered it.
+            public ushort? LastEdge;
+            public ulong LastEntry;
         }
 
         [Fact]
@@ -172,13 +182,17 @@ namespace AirportSim.Sim.Airside.Tests
                                 case FlightMilestone.OnStand: s.OnStand = r.Tick; s.OnStandPlanned = m.PlannedTick; break;
                                 case FlightMilestone.DoorsOpen: s.DoorsOpen = r.Tick; break;
                                 case FlightMilestone.TakeoffRoll: s.TakeoffRoll = r.Tick; break;
+                                case FlightMilestone.Pushback: s.Pushback = r.Tick; break;
                             }
 
                             break;
-                        case AircraftHeldOnTaxiway _: s.TaxiHold = r.Tick; break;
+                        case AircraftHeldOnTaxiway h: s.TaxiHold = r.Tick; s.TaxiHoldEdge = h.Edge.Value; break;
+                        case AircraftHeldOnTaxiwayReleased h: s.TaxiReleaseTick = r.Tick; s.TaxiReleaseEdge = h.Edge.Value; break;
                         case AircraftHeldForRunway _: s.RunwayHold = r.Tick; break;
                         case StandUnavailable _: s.WaitedForStand = true; break;
                         case StandAssigned _: s.StandAssigned = r.Tick; break;
+                        case DepartureHeldForPassengers _: s.PaxHold = r.Tick; break;
+                        case DepartureHeldForPassengersReleased _: s.PaxReleased = true; break;
                     }
                 }
 
@@ -310,12 +324,60 @@ namespace AirportSim.Sim.Airside.Tests
                         return tr.AtNode == new TaxiNodeId(FixtureLayout.Threshold) && tr.PhaseEnteredAt == s.OffRunway ? string.Empty : "waiting for a stand: at the threshold since OffRunway";
                     }
 
-                    // Held for an edge; an arrival that waited for a stand keeps its OffRunway tick.
+                    // Held for an edge: at that edge's entry node (the hold event names
+                    // the edge). An arrival that waited for a stand keeps its OffRunway tick.
+                    if (!s.TaxiHoldEdge.HasValue || tr.AtNode != new TaxiNodeId(EntryNode(rig.Layout, edges[s.TaxiHoldEdge.Value], Origin(arrival, s))))
+                    {
+                        return "held for an edge: AtNode is not the held edge's entry node";
+                    }
+
                     bool keptOffRunway = arrival && s.WaitedForStand && s.StandAssigned == s.TaxiHold;
                     ulong? expected = keptOffRunway ? s.OffRunway : s.TaxiHold;
                     return tr.PhaseEnteredAt == expected ? string.Empty : "held for an edge: PhaseEnteredAt";
                 case AircraftLegPhase.Taxiing:
-                    return tr.OnEdge.HasValue && tr.AtNode.HasValue && tr.Stand.HasValue ? string.Empty : "Taxiing: on an edge with its entry node and Stand";
+                    if (!tr.OnEdge.HasValue || !tr.Stand.HasValue)
+                    {
+                        return "Taxiing: on an edge, with its Stand";
+                    }
+
+                    ushort edge = tr.OnEdge.Value.Value;
+                    if (tr.AtNode != new TaxiNodeId(EntryNode(rig.Layout, edges[edge], Origin(arrival, s))))
+                    {
+                        return "Taxiing: AtNode is not the edge's entry node";
+                    }
+
+                    // The tick the edge was entered, from the flight's own events:
+                    // a taxi hold on this edge released this tick enters it now;
+                    // a first edge is entered when the aircraft was placed (its
+                    // Pushback, its OffRunway, or its StandAssigned after waiting);
+                    // a later edge right when the previous one ends.
+                    if (s.LastEdge != edge)
+                    {
+                        ulong entry;
+                        if (s.TaxiReleaseEdge == edge && s.TaxiReleaseTick == t)
+                        {
+                            entry = t;
+                        }
+                        else if (!s.LastEdge.HasValue)
+                        {
+                            ulong? placed = !arrival ? s.Pushback : s.WaitedForStand ? s.StandAssigned : s.OffRunway;
+                            if (!placed.HasValue)
+                            {
+                                return "Taxiing on a first edge before the event that placed the aircraft";
+                            }
+
+                            entry = placed.Value;
+                        }
+                        else
+                        {
+                            entry = s.LastEntry + edges[s.LastEdge.Value].TraversalTicks;
+                        }
+
+                        s.LastEdge = edge;
+                        s.LastEntry = entry;
+                    }
+
+                    return tr.PhaseEnteredAt == s.LastEntry ? string.Empty : "Taxiing: PhaseEnteredAt is not the tick this edge was entered (" + s.LastEntry.ToString(CultureInfo.InvariantCulture) + ")";
                 case AircraftLegPhase.OnStand:
                     if (tr.OnEdge.HasValue || !tr.Stand.HasValue || tr.AtNode != new TaxiNodeId(FixtureLayout.StandNode(tr.Stand.Value.Value)))
                     {
@@ -346,11 +408,31 @@ namespace AirportSim.Sim.Airside.Tests
                         return tr.DueAt == due ? string.Empty : "arrival OnStand: DueAt";
                     }
 
-                    ulong depDue = tr.PassengerHoldSince != none ? tr.PassengerHoldSince + holdTicks : none;
+                    // A boarding hold is in progress iff its DepartureHeldForPassengers
+                    // has been emitted and its Released not yet (from the events).
+                    bool held = s.PaxHold.HasValue && !s.PaxReleased;
+                    ulong depDue = held ? s.PaxHold!.Value + holdTicks : none;
                     return tr.DueAt == depDue ? string.Empty : "departure OnStand: DueAt is the hold deadline, else unscheduled";
                 default:
                     return "reserved phase " + tr.Phase + " is never set at Phase 0/1";
             }
+        }
+
+        /// <summary>Where the leg's route starts (12 §12.4): an arrival's threshold, a departure's stand node.</summary>
+        private static ushort Origin(bool arrival, Seen s)
+        {
+            return arrival ? FixtureLayout.Threshold : FixtureLayout.StandNode(s.Stand!.Value);
+        }
+
+        /// <summary>
+        /// The endpoint an aircraft enters an edge from: on a least-ticks route
+        /// from <paramref name="origin"/>, the endpoint nearer the origin.
+        /// </summary>
+        private static ushort EntryNode(AirsideLayout layout, TaxiEdgeDef e, ushort origin)
+        {
+            ulong from = Routes.LeastTicks(layout, origin, e.From.Value);
+            ulong to = Routes.LeastTicks(layout, origin, e.To.Value);
+            return from <= to ? e.From.Value : e.To.Value;
         }
     }
 }
