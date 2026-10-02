@@ -2374,3 +2374,25 @@ Proposed:    (A) An integration test project, for example
              project layout, which deserves its own review. T-031 cannot
              be released until it is answered.
 Status:      OPEN
+
+### Q-078 — `sim.airside` tests: `AirsideAsserts.Pairs` contradicts the `StandAssigned` Cause
+Raised by:   Worker / T-021, 2026-10-02
+Blocking:    T-021 (four tests cannot pass)
+Question:    `12` §12.7 (Q-051, Q-054) says `StandAssigned` has `Cause` = the
+             freeing `Pushback` (or `EventRef.None` after a `ReassignStand`).
+             `tests/sim/airside/AirsideAsserts.cs` `Pairs<THold, TRelease>`
+             (lines 108-109) asserts for every release that
+             `r.Env.Cause.Id == open.Id`, the hold event. Used with
+             `<StandUnavailable, StandAssigned>`, it demands
+             `Cause` = the `StandUnavailable` event. The same tests then
+             assert the opposite: `StandTests` line 106 (and
+             `AirsideHeadlessDayTests` "Every StandAssigned was caused by
+             the Pushback") need `Cause` = the `Pushback`. No emission
+             satisfies both. Failing: `test_stand_unavailable_holds_at_threshold_until_pushback_frees_stand`,
+             `test_boarding_hold_keeps_stand_occupied_and_waiting_arrival_gets_stand_unavailable`,
+             and both `test_airside_headless_day_holds_invariants_*`.
+             The worker implements the spec (Cause = the Pushback).
+Why it matters: The tests are frozen for the worker; four fail on the helper.
+Proposed:    The Test Author makes `Pairs` check the Cause only for the
+             `Released` event types (hold event), and not for `StandAssigned`.
+Status:      OPEN
