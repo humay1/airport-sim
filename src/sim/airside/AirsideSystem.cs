@@ -232,6 +232,7 @@ namespace AirportSim.Sim.Airside
                 _pool.Push(new Slot());
             }
 
+            _cand = new int[edges];
             BuildRoutes();
             ReadDayZero();
 

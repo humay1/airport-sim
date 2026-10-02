@@ -13,7 +13,7 @@ namespace AirportSim.Sim.Airside
         private const int ModeEdgeDue = 3;
         private const int ModeRunwayRequest = 4;
 
-        private int[]? _cand;
+        private int[] _cand = null!;
 
         public void Tick(in TickContext ctx)
         {
@@ -521,7 +521,7 @@ namespace AirportSim.Sim.Airside
                 _askers[j + 1] = x;
             }
 
-            int[] cand = _cand ??= new int[_edgeId.Length];
+            int[] cand = _cand;
             int cn = 0;
             for (int i = 0; i < k; i++)
             {
