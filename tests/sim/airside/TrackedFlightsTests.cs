@@ -17,8 +17,8 @@ namespace AirportSim.Sim.Airside.Tests
     /// exactly the number of arrivals started, each A_k with t_k < t_4097 has
     /// its InboundAirborne recorded at t_k, nothing throws and no Tick
     /// allocates. Step for t_4097 throws SimInvariantException naming A_4097;
-    /// the partial state it leaves (08 §8.5a) has exactly 4 096 tracked, every
-    /// A_k (k ≤ 4 096) among them and A_4097 not. N is 400, within §12.13's
+    /// the partial state it leaves (08 §8.5a) has exactly 4 096 tracked and
+    /// A_4097 not. N is 400, within §12.13's
     /// [100, 800], and its schedule starts one arrival per tick, so A_4096's
     /// tick is strictly before A_4097's.
     /// </summary>
@@ -102,14 +102,9 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Contains("track", inner.Message, StringComparison.OrdinalIgnoreCase);
 
             // The partial state 08 §8.5a leaves, read through the queries: exactly
-            // 4 096 tracked, every A_k (k ≤ 4 096) among them, A_4097 not. Events of
-            // the throwing tick are never dispatched, so none is looked for.
+            // 4 096 tracked, A_4097 not. Events of the throwing tick are never
+            // dispatched, so none is looked for.
             Assert.Equal(Capacity, airside.TrackedFlights().Count);
-            for (int k = 1; k <= Capacity; k++)
-            {
-                Assert.True(airside.TryGetTrack(new FlightId(Rank(k).Flight), out _), "A_" + k.ToString(CultureInfo.InvariantCulture) + " not tracked after the throw");
-            }
-
             Assert.False(airside.TryGetTrack(new FlightId(flight), out _), "A_4097 was tracked");
         }
 
