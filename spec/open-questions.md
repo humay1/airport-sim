@@ -2497,8 +2497,9 @@ Answer:      §12.9 gains "Track fields by phase": a binding table of
              holds. `ReassignStand` moves `Stand` and `AtNode` together
              and nothing else on the track, so a reassigned departure
              starts its route from the new stand's node. `EdgeProgress`
-             is computed on read: `Fx.FromRatio(t − PhaseEnteredAt,
-             TraversalTicks)`, and `Fx.Zero` off an edge. A list says
+             is stored and advanced by S6 each tick, to
+             `Fx.FromRatio(t − PhaseEnteredAt, TraversalTicks)`, and it
+             is `Fx.Zero` off an edge. A list says
              how the route, the planned ticks and "has `DoorsOpen`
              fired" derive from hashed fields. HASH CHANGE for any
              implementation that chose otherwise.
@@ -2518,15 +2519,17 @@ Answer:      §12.12 gains an encoding block. Nullables are fed as
              variable-length list is preceded by its length: each hold
              queue, the stand-wait queue, the tracks and the pending
              list. Layout-sized lists are not prefixed. List entries
-             carry no derived data. "Derived" is made precise in `08`
-             §8.9: a value computed on read and not stored. A field of a
-             declared state record that the module's file says actions
-             write is stored, and it is fed even where an invariant ties
-             it to other fields, such as `DueAt` and `AtNode`. §12.9
-             names `EdgeProgress` as the one track field computed on
-             read, and it is not fed. HASH CHANGE: the hold-queue and
-             track prefixes are new, and `EdgeProgress` is dropped from
-             the feed. No golden covers `sim.airside`.
+             carry no derived data. §12.9 declares every `AircraftTrack`
+             field stored state and names the action that writes each
+             one, `DueAt`, `AtNode` and `EdgeProgress` included. S6
+             advances `EdgeProgress` each tick. So all 14 fields are fed
+             consistently with `08` §8.9 as written. A value that equals
+             a formula over other stored fields is an invariant, not a
+             derivation. `08` is unchanged. A rewording of `08` §8.9
+             tried in review of PR #93 is withdrawn, because it would
+             have made merged `11` §11.9 non-conforming. HASH CHANGE: the
+             hold-queue and track prefixes are new. No golden covers
+             `sim.airside`.
 Status:      ANSWERED (spec/12-interfaces-airside.md#1212-state-hashing-rng-and-budget)
 
 ### Q-083 — `sim.airside`: `DoorsOpen`'s planned tick after a `ReassignStand`

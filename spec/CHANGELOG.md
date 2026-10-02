@@ -3242,7 +3242,7 @@ Signed off:  not required (interface detail and state layout; no balance,
              scope or `01`/`02` change). The owner should review the LOW
              CONFIDENCE marker.
 
-## 2026-10-02 — spec/08-interfaces-core.md §8.9, spec/10-events.md §10.2, spec/13-interfaces-turnaround.md §13.4/§13.9/§13.11, spec/12-interfaces-airside.md §12.3/§12.9/§12.10/§12.11/§12.12/§12.13 — `Cause` follow-ups; track fields by phase; hash encoding; `PlannedOnStand` (Q-080 to Q-083)
+## 2026-10-02 — spec/10-events.md §10.2, spec/13-interfaces-turnaround.md §13.4/§13.9/§13.11, spec/12-interfaces-airside.md §12.3/§12.9/§12.10/§12.11/§12.12/§12.13 — `Cause` follow-ups; track fields by phase; hash encoding; `PlannedOnStand` (Q-080 to Q-083)
 Reason:      Q-080 is the PR #89 reviewer's three non-blocking notes:
              - `13` left creation-time events without a declared `Cause`;
              - `10` §10.2 had no precedence rule;
@@ -3259,10 +3259,14 @@ Reason:      Q-080 is the PR #89 reviewer's three non-blocking notes:
              - a kept event wins over a same-tick one;
              - one binding table gives the track fields per phase;
              - every variable-length list is length-prefixed;
-             - `08` §8.9 says what "derived" means: computed on read, not
-               stored. So the track's stored fields are fed, and
-               `EdgeProgress`, the one field computed on read, is not
-               (review of #93 at `7e7b55a`, finding 2);
+             - §12.9 declares every track field stored state and names the
+               action that writes each one. `DueAt`, `AtNode` and
+               `EdgeProgress`, which follow a rule, are included, and S6
+               advances `EdgeProgress` each tick. So feeding them is
+               consistent with `08` §8.9 as written, and `08` is not
+               changed (review of #93 at `7e7b55a`, finding 2). A rewording
+               of `08` §8.9 tried at `b290895` is withdrawn: it would have
+               made merged `11` §11.9 non-conforming;
              - one stored field, `PlannedOnStand`, keeps `DoorsOpen`'s plan
                across a reassignment. **HUMAN DECISION, owner,
                2026-10-02 (Q-083):** `ReassignStand` stays open during the
@@ -3277,18 +3281,17 @@ Raised by:   Q-080 (Reviewer, PR #89), Q-081 and Q-082 (Worker / T-021),
 Impact:      - **No merged code is invalidated.** `sim.airside` (PR #91)
                and `sim.turnaround` are not merged. Merged `sim.flow` and
                `sim.schedule` already match `10` §10.2's last bullet.
-             - **`08` §8.9 clarification:** no merged module is affected.
-               It only makes precise that "derived" means a value computed
-               on read and not stored. Merged `sim.world`, `sim.schedule`
-               and `sim.flow` declare their fed state in their own files,
-               and no reviewer ruling depended on the wider reading.
+             - **`08`:** unchanged, so no merged module's conformance
+               changes.
              - **HASH CHANGE, `sim.airside` (Q-081, Q-082, Q-083):**
                - the hold-queue and track length prefixes are new;
-               - `EdgeProgress` is no longer fed;
-               - `PlannedOnStand` is fed last in each track;
+               - `PlannedOnStand` is fed last in each track, so a track
+                 is 14 fields;
+               - `EdgeProgress` stays fed, at the stored value S6 writes;
                - the phase table pins `Stand` kept after `Pushback`,
                  `Runway` kept after `OffRunway`, `AtNode` moved by
-                 `ReassignStand`, `DueAt` and `PhaseEnteredAt`.
+                 `ReassignStand`, `DueAt`, `EdgeProgress` and
+                 `PhaseEnteredAt`.
                No golden covers `sim.airside` (`19`), so none is
                re-authored.
              - **T-021 worker (PR #91):**
@@ -3296,7 +3299,10 @@ Impact:      - **No merged code is invalidated.** `sim.airside` (PR #91)
                  prefixes from `09783f7` come back, and they now match
                  the spec;
                - feeds no derived stand-wait flag;
-               - stops feeding `EdgeProgress`;
+               - stores `EdgeProgress`, advances it in S6 each tick as
+                 §12.9 says, and keeps feeding it. The current #91
+                 computes it when the track is read, from the last tick it
+                 ran;
                - keeps `Stand` and `Runway` per the table and derives the
                  route and planned ticks from them;
                - adds the stored `PlannedOnStand`, and computes
@@ -3319,7 +3325,7 @@ Impact:      - **No merged code is invalidated.** `sim.airside` (PR #91)
                  stays valid. Its reassignment of W_A at 1870, before W_A's
                  1880 `DoorsOpen`, is still applied;
                - any test computing the hash by hand gains the prefixes and
-                 `PlannedOnStand`, and drops `EdgeProgress`.
+                 `PlannedOnStand`. `EdgeProgress` stays in the feed.
              - **T-022 (not started):** implements §13.9's `Cause`
                table and §13.4's `NominalDurationTicks ≥ 1` check. Two
                new tests (§13.11). Its fixture must have no zero

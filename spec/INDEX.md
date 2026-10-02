@@ -174,9 +174,6 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   outside a checkpoint's phase 4, allocate nothing, so a module's `Step`
   allocation meter excludes nothing for `sim.core`; wrapping a thrown tick
   (§8.5a) may allocate (§8.5, §8.7, Q-065)**;
-  **"derived" means computed on read and not stored; a declared state
-  field that actions write is fed even when an invariant ties it to other
-  fields (§8.9, Q-082)**;
   **`LogKey.AirsideReassignStandNoOp = 1`, the first appended key (§8.10,
   Q-056)**;
   xoshiro256\*\* + SplitMix64 (§8.8);
@@ -293,9 +290,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `OffRunway`, `AtNode` moves with `Stand` on `ReassignStand`, `DueAt`
   pinned, occupancy is `StandState.Occupant` alone (§12.9, Q-081)**;
   **hash encoding: nullables as `HasValue` then value, every
-  variable-length list length-prefixed, tracks included, stored fields
-  fed and `EdgeProgress` (computed on read) not fed (§12.12, Q-082, hash
-  change)**; **`ReassignStand` stays open during the door delay, and the
+  variable-length list length-prefixed, tracks included; every track
+  field is stored state with a named writer, `EdgeProgress` advanced by S6
+  each tick, and all 14 are fed (§12.9, §12.12, Q-082, hash change)**; **`ReassignStand` stays open during the door delay, and the
   stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
   §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get

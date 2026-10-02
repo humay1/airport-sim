@@ -828,14 +828,7 @@ interface IStateHasher {
   code-review rejection.
 - Derived or cached values are **not** fed. If a cache can disagree with its
   source that is a bug, and hashing it converts a clean test failure into a
-  cross-machine hash mismatch. **What counts as derived (Q-082).** A value
-  is derived when the module computes it on read and does not store it as
-  state, for example a query result, an index or a progress fraction. A
-  field of a module's declared state record is **stored**, not derived, when
-  the module's file says which actions write it. It is fed even where an
-  invariant ties its value to other fields, such as a deadline that equals
-  an entry tick plus a duration. The module's file says which of its
-  record's fields are stored and which are computed on read.
+  cross-machine hash mismatch.
 - World hash: FNV-1a-64 over the tick, the core section and each system's
   `ComputeStateHash()` in registry order (§8.5). The exact layout is below
   (Q-017).

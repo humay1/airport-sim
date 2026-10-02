@@ -914,7 +914,7 @@ readonly struct AircraftTrack {
   AircraftLegPhase Phase
   TaxiNodeId?      AtNode
   TaxiEdgeId?      OnEdge
-  Fx               EdgeProgress        // 0..1, meaningful only if OnEdge set; computed on read, not stored or fed (Q-082)
+  Fx               EdgeProgress        // 0..1 while OnEdge set, Fx.Zero otherwise; stored, advanced by S6 each tick (Q-082)
   StandId?         Stand
   RunwayId?        Runway
   Tick             PhaseEnteredAt
@@ -997,14 +997,30 @@ plan it gave is kept instead:
   DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE` (§12.3).
 - It is the last field, fed as one `uint64` (§12.12 item 4).
 
-**Stored fields and the one computed on read (Q-082).** Every field of
-`AircraftTrack` except `EdgeProgress` is **stored** state in the sense of
-`08` §8.9. This file says which actions write each one: the table below,
-its rules, and the paragraphs above. Each is fed, even where an invariant
-ties it to other fields. For example, a `Taxiing` track's `DueAt` equals
-`PhaseEnteredAt` + the edge's `TraversalTicks`, and an `OnStand` track's
-`AtNode` is its `Stand`'s node. `EdgeProgress` is **computed on read**
-(rule below). It is not stored, and it is not fed.
+**Every track field is stored state (Q-082).** `sim.airside` stores every
+field of `AircraftTrack` as state. It is written only by the actions this
+file names, and it is not recomputed when queried. So none of them is a
+derived or cached value under `08` §8.9, and all of them are fed (§12.12
+item 4). These are the writers of the three fields whose values follow a
+rule:
+
+- **`DueAt`** is written by the action that enters the phase or the edge,
+  and by `DoorsOpen` for an arrival `OnStand` (table below), and by the
+  start of a boarding hold (§12.8). It is the stored deadline that
+  `Tick` compares with `t`.
+- **`AtNode`** is written by `OffRunway`, a departure's creation, edge
+  entry and exit (S6), `TakeoffRoll`, and `ReassignStand` (rules below).
+- **`EdgeProgress`** is written by S6. Edge entry (S6.2) sets it to
+  `Fx.Zero`. In S6.1 of every later `Tick` of `t` with the aircraft still
+  on the edge (`DueAt > t`), it is set to `Fx.FromRatio(t −
+  PhaseEnteredAt, TraversalTicks)` of `OnEdge` (`08` §8.3, truncated).
+  Leaving the edge (S6.1, `DueAt ≤ t`) sets it to `Fx.Zero`, together with
+  clearing `OnEdge`.
+
+That a stored value equals a formula over other fields (a `Taxiing`
+track's `DueAt` is `PhaseEnteredAt` + `TraversalTicks`, and an `OnStand`
+track's `AtNode` is its `Stand`'s node) is an invariant between stored
+fields. It is not a derivation.
 
 **`AtNode` and `OnEdge` together.** While `OnEdge` is set, `AtNode` holds the
 node the aircraft **entered the edge from**, and `EdgeProgress` runs from 0 at
@@ -1023,8 +1039,8 @@ keeps the value it already had.
 > **HASH CHANGE (Q-081, Q-082, Q-083).** This table pins hashed values
 > that were not stated before, notably `Stand` kept after `Pushback`,
 > `Runway` kept after `OffRunway`, `AtNode` moved by `ReassignStand`, and
-> `DueAt`. `EdgeProgress` is no longer fed, and `PlannedOnStand` is a new
-> fed field. An implementation that chose differently changes its
+> `DueAt` and `EdgeProgress`. `PlannedOnStand` is a new fed field. An
+> implementation that chose differently changes its
 > `sim.airside` hash. No golden covers `sim.airside` yet.
 
 | Phase | Kind | `AtNode` | `OnEdge` | `Stand` | `Runway` | `PhaseEnteredAt` | `DueAt` |
@@ -1072,11 +1088,12 @@ The set and clear rules this table implies:
   and a departure starts its `(Stand, threshold)` route from there. An
   arrival has it unset until its `OffRunway`. A departure's is cleared at
   its `TakeoffRoll`.
-- **`EdgeProgress`** is computed on read, never stored. A query after the
-  `Tick` of `t` returns `Fx.FromRatio(t − PhaseEnteredAt, TraversalTicks)`
-  of `OnEdge` while `OnEdge` is set (`08` §8.3, truncated), and `Fx.Zero`
-  while it is unset. It is never above 1, because the aircraft leaves the
-  edge in S6.1 of its `DueAt` tick. It is not fed (§12.12 item 4).
+- **`EdgeProgress`** is stored and written by S6 ("Every track field is
+  stored state" above). So at the end of the `Tick` of `t` it is
+  `Fx.FromRatio(t − PhaseEnteredAt, TraversalTicks)` of `OnEdge` while
+  `OnEdge` is set, and `Fx.Zero` while it is unset. It is never above 1,
+  because the aircraft leaves the edge in S6.1 of its `DueAt` tick. It is
+  fed (§12.12 item 4).
 - **`ReassignStand` touches only `Stand` and `AtNode`** on the track, and
   the two stands' `Occupant` and `VacatedBy` (§12.9 `VacatedBy`, §12.10).
   `Phase`, `PhaseEnteredAt`, `DueAt` and `PlannedOnStand` are unchanged,
@@ -1363,8 +1380,9 @@ same byte stream:
   is tracked.
 
 > **HASH CHANGE (Q-082, Q-083).** The length prefixes of the hold queues
-> (items 1 and 2) and of the tracks (item 4) are new. `EdgeProgress` is no
-> longer fed, and `PlannedOnStand` is fed last in each track. They change
+> (items 1 and 2) and of the tracks (item 4) are new, and `PlannedOnStand`
+> is fed last in each track. `EdgeProgress` stays fed, at the stored value
+> §12.9 pins. They change
 > every `sim.airside` hash. No golden covers `sim.airside` yet (`19`), so
 > no golden is re-authored.
 
@@ -1376,12 +1394,12 @@ same byte stream:
    (§12.9, Q-079). Then the stand-wait queue
    (§12.7, Q-050): its length, then each entry in queue order.
 4. Tracked aircraft: their count, then each track in ascending `FlightId`,
-   as its **stored** fields in §12.9's declared order, with the values of
-   §12.9 "Track fields by phase" (Q-081). That is 13 fields: `Flight`,
-   `Kind`, `Phase`, `AtNode`, `OnEdge`, `Stand`, `Runway`,
+   as every field of `AircraftTrack`, all stored (§12.9, Q-082), in
+   §12.9's declared order and with the values of §12.9 "Track fields by
+   phase" (Q-081). That is 14 fields: `Flight`, `Kind`, `Phase`,
+   `AtNode`, `OnEdge`, `EdgeProgress`, `Stand`, `Runway`,
    `PhaseEnteredAt`, `DueAt`, `PassengerHoldSince`, `RecordedCause`,
-   `OpenHold`, `PlannedOnStand`. `EdgeProgress` is computed on read and
-   is **not** fed (§12.9, `08` §8.9, Q-082).
+   `OpenHold`, `PlannedOnStand`.
    A flight is fed only while tracked: from `InboundAirborne` to its
    handoff for an arrival with a rotation (§12.8, Q-062), and from
    `OnStand` to `Airborne` for a departure. The fields include
