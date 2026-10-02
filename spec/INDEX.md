@@ -220,8 +220,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   and cumulative (§10.4); intervals come in pairs and may cross days
   (§10.3); **new pair `DepartureHeldForPassengers`/`Released`, category
   `passenger_late` (§10.6, D6)**; **pairs are never matched by `Cause`, and a
-  closing `Cause` is per family (§10.3 rule 2, Q-078)**.
-- LC: first-blocker-wins (§10.5 rule 3).
+  closing `Cause` is per family (§10.3 rule 2, Q-078)**; **`Cause` is the
+  event that made the emission due, if same-tick or kept in hashed state;
+  conditions are not causes (§10.2, Q-078)**.
+- LC: first-blocker-wins (§10.5 rule 3); an earlier tick's cause is not
+  kept just to be named (§10.2, its marker in `12` §12.11, Q-078).
 - Read if: any emitter (§10.3, its §10.6 table); `sim.delay` (all of it).
 
 ### `11-interfaces-schedule.md` — `sim.schedule`
@@ -280,8 +283,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   and `Departed` are reserved, never set at Phase 0/1 (§12.9)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
-  actual doors-close point, and released at a zero count (§12.8); None as
-  the `Cause` of timer-driven milestones and opening holds (§12.11).
+  actual doors-close point, and released at a zero count (§12.8); an
+  earlier tick's cause is not kept, so a duration-driven milestone has
+  `Cause` None (§12.11).
 - Read if: T-021 and the hold task; §12.3 for `sim.turnaround`/`sim.delay`;
   §12.4/§12.9 for `app.render`.
 

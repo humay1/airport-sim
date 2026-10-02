@@ -2396,7 +2396,11 @@ Answer:      The spec was already unambiguous; the helper is wrong for
              (`12` §12.7), and `14` §14.5 already said so. This amendment
              makes it explicit in all three files: `10` §10.3 rule 2 now
              says pairs are never matched by `Cause` and a closing
-             `Cause` is per family. `12` §12.11 gains a binding table
+             `Cause` is per family. `10` §10.2 now says what an emitter
+             "knows": the event that made the emission due, published
+             earlier in the same tick or kept in hashed state. Conditions
+             are not causes, and no id is kept across ticks only to be
+             named. `12` §12.11 gains a binding table
              with the `Cause` of every event `sim.airside` publishes, and
              `14` §14.5 cites it. `sim.delay` never reads a closing
              `Cause` (§14.5, §14.7), so it is unaffected. The Test Author

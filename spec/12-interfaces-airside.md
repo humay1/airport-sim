@@ -957,7 +957,10 @@ the stand, from that `Pushback` until the stand is next occupied.
   the action that vacates the stand (§12.8a S4, or a chain).
 - **Cleared** to `EventRef.None` whenever `Occupant` is set, by any path:
   an S5 grant, a rotation-less departure's claim, or `ReassignStand`'s new
-  stand. A `StandAssigned` reads it as its `Cause` before clearing it.
+  stand. An entry of the stand-wait queue that gets the stand reads it
+  first, as the `Cause` of its `StandAssigned` (arrival) or of its
+  `OnStand` (rotation-less departure), §12.11. A new request in S5 does
+  not read it.
 - A stand freed by `ReassignStand` keeps `EventRef.None`, because an
   occupied stand always has `EventRef.None`. At construction every stand
   has `EventRef.None`. The handoff (§12.8) never frees a stand, so it does
@@ -1068,9 +1071,13 @@ Full field lists in `10-events.md` §10.6 except where this file adds a
 ### The `Cause` of each emitted event (Q-078)
 
 Binding. Every event `sim.airside` publishes has the `Cause` given here
-and no other. "None" is `EventRef.None`. "Just emitted" means the event
-published immediately before, in the same action and tick. Every `Cause`
-is either published in the same tick or read from hashed state: from
+and no other. The table applies `10` §10.2's rule for what an emitter knows: `Cause`
+is the event that made the emission due, if it was published earlier in
+the same tick or is kept in hashed state, and `EventRef.None` otherwise.
+"None" is `EventRef.None`. "Just emitted" means published earlier in the
+same tick by the action or step (§12.8a) this event follows from, for the
+same flight or, at a handoff, for its arrival. Every `Cause` is either
+published in the same tick or read from hashed state: from
 `RecordedCause` or `OpenHold` (§12.12 item 4), or from `VacatedBy` (item
 3). Nothing else is kept across ticks for it.
 
@@ -1078,16 +1085,18 @@ is either published in the same tick or read from hashed state: from
 |---|---|
 | `AircraftHeldForRunway` | None |
 | `AircraftHeldForRunwayReleased` | the hold event, from `OpenHold` |
-| `AircraftHeldOnTaxiway` | None |
+| `AircraftHeldOnTaxiway` | for the flight's first edge request after it was placed at a node in this tick, the event that placed it, just emitted: its `Pushback` (departure), its `StandAssigned` (arrival from the stand-wait queue) or its `OffRunway` (arrival granted a stand in S5 of its `OffRunway` tick). None for a request at a node the flight reached along its route |
 | `AircraftHeldOnTaxiwayReleased` | the hold event, from `OpenHold` |
-| `StandUnavailable` | None |
+| `StandUnavailable` | the arrival's `OffRunway`, just emitted (S3, then S5 of the same tick) |
 | `StandAssigned` | the stand's `VacatedBy`: the freeing `Pushback`, or None if a `ReassignStand` freed it (§12.7) |
-| `DepartureHeldForPassengers` | the event that led to the doors-close point: the `BoardingComplete` from `RecordedCause` (handshake), or the departure's `OnStand` (fallback) (§12.8) |
+| `DepartureHeldForPassengers` | the event that led to the doors-close point: the `BoardingComplete` from `RecordedCause` (handshake), or the departure's `OnStand`, just emitted (fallback) (§12.8) |
 | `DepartureHeldForPassengersReleased` | the hold event, from `OpenHold` |
-| `InboundAirborne`, `OffRunway`, arrival `OnStand`, `DoorsOpen`, `Airborne` | None |
+| `InboundAirborne`, `OffRunway`, arrival `OnStand`, `Airborne` | None |
+| `DoorsOpen` | the arrival's `OnStand`, just emitted, when `DoorsOpenDelayMinutes = 0` (§12.8a "Chains"). Otherwise None |
 | `Landed`, `TakeoffRoll` | the `AircraftHeldForRunwayReleased` just emitted if the movement was held, else None |
-| departure `OnStand` | the arrival's `RecordedCause`, the `DeboardComplete`, at a handshake handoff (§12.8 step 3). None at a fallback handoff and for a rotation-less departure |
-| `DoorsClosed` | the `DepartureHeldForPassengersReleased` just emitted after a boarding hold. Otherwise what `DepartureHeldForPassengers` would have had: the `BoardingComplete` from `RecordedCause`, read before the doors-close point clears it, or the departure's `OnStand` in the fallback |
+| departure `OnStand`, handoff | handshake: the arrival's `RecordedCause`, the `DeboardComplete` (§12.8 step 3), also when the handoff chains right after a `DoorsOpen`. Fallback: the arrival's `DoorsOpen`, just emitted, when `MinTurnaround = 0`; otherwise None |
+| departure `OnStand`, rotation-less | from the stand-wait queue: the stand's `VacatedBy`, read before the claim clears it (the freeing `Pushback`, or None after a `ReassignStand`). As a new request at its start tick: None |
+| `DoorsClosed` | the `DepartureHeldForPassengersReleased` just emitted after a boarding hold. Otherwise what `DepartureHeldForPassengers` would have had: the `BoardingComplete` from `RecordedCause`, read before the doors-close point clears it, or the departure's `OnStand`, just emitted, in the fallback |
 | `Pushback` | the `DoorsClosed` just emitted |
 
 - **Closing events.** Only the three hold families above close with
@@ -1096,21 +1105,34 @@ is either published in the same tick or read from hashed state: from
   of pairing, or in `sim.delay` (`14` §14.5): a pair is the opening and the
   next closing event of the same kind for the same flight, in `EventId`
   order (`10` §10.3 rule 2).
-- **Timer-driven milestones are roots.** `OffRunway`, `DoorsOpen`,
-  `Airborne` and the fallback handoff fire because a duration ran out. Naming
-  the earlier milestone would need its id kept across ticks, and nothing
-  reads it at Phase 0/1, because `sim.delay` does not follow `Cause`
-  (`14` §14.7). So they are None.
+- **None means nothing in hand.** Each None row is a schedule time
+  (`InboundAirborne`, an unheld `Landed`, a rotation-less departure's
+  start tick), a duration of at least one tick (`OffRunway` and `Airborne`
+  after `OccupancyTicks ≥ 1`, an arrival's `OnStand` and an unheld
+  `TakeoffRoll` after edges of `TraversalTicks ≥ 1`, a nonzero door delay
+  or `MinTurnaround`), or a stand freed by a command. The earlier event is
+  then from an earlier tick, and keeping its id only to name it is what
+  `10` §10.2 rules out. Where a zero delay makes the same action run in
+  the same turn (§12.8a "Chains"), the row names the event instead.
+- **Opening holds name their trigger, not their blocker.**
+  `AircraftHeldForRunway` is requested at `STA` or on reaching the
+  threshold, neither of which is an event, so it is None. The occupied
+  runway, edge or stand, or the slot another flight has just taken, is a
+  condition (`10` §10.2): `AircraftHeldOnTaxiway` names it in `blocking`,
+  and the others do not name it.
 - **No capacity event exists yet.** `10` §10.2's example, a runway hold
   that references a declared-capacity event, names an event the
-  catalogue does not have at Phase 0/1. `AircraftHeldForRunway` is None
-  until such an event is added by amendment.
+  catalogue does not have at Phase 0/1. `AircraftHeldForRunway` names
+  such an event once it is added by amendment.
 
-> **LOW CONFIDENCE — None for timer-driven milestones and for opening hold
-> events.** It is honest at Phase 0/1, where nothing follows `Cause`, and it
-> keeps cross-tick state to the three fields above. When `sim.delay` starts
-> following `Cause` chains (`14` §14.7), this table is the first thing to
-> revisit.
+> **LOW CONFIDENCE — not keeping an earlier tick's cause.** A milestone
+> that a nonzero duration made due (`OffRunway`, `DoorsOpen`, `Airborne`, a
+> fallback handoff) could name the milestone that started the duration, if
+> its id were kept across ticks. That is not done: it would add a field
+> per duration, and nothing reads such a `Cause` at Phase 0/1, because
+> `sim.delay` does not follow `Cause` (`14` §14.7). When `sim.delay` starts
+> following `Cause` chains, this table and `10` §10.2's "Not kept just to
+> be named" are the first things to revisit.
 
 **Consumed:**
 
