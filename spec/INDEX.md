@@ -225,7 +225,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `passenger_late` (§10.6, D6)**; **pairs are never matched by `Cause`, and a
   closing `Cause` is per family (§10.3 rule 2, Q-078)**; **`Cause` is the
   event that made the emission due, if same-tick or kept in hashed state;
-  conditions are not causes (§10.2, Q-078)**.
+  conditions are not causes (§10.2, Q-078)**; **a kept event takes
+  precedence over a same-tick one, and only an event with no qualifying
+  cause is left undeclared (§10.2, Q-080)**.
 - LC: first-blocker-wins (§10.5 rule 3); an earlier tick's cause is not
   kept just to be named (§10.2, its marker in `12` §12.11, Q-078).
 - Read if: any emitter (§10.3, its §10.6 table); `sim.delay` (all of it).
@@ -283,7 +285,16 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   hold, `StandAssigned` names the freeing `Pushback` (§12.11, Q-078)**;
   **cross-tick cause ids are hashed state, in `AircraftTrack.OpenHold` and
   `StandState.VacatedBy` (§12.9, §12.12, Q-079)**; **`AwaitingPushbackClearance`
-  and `Departed` are reserved, never set at Phase 0/1 (§12.9)**.
+  and `Departed` are reserved, never set at Phase 0/1 (§12.9)**; **track
+  fields by phase: `Stand` kept after `Pushback`, `Runway` kept after
+  `OffRunway`, `AtNode` moves with `Stand` on `ReassignStand`, `DueAt`
+  pinned, occupancy is `StandState.Occupant` alone (§12.9, Q-081)**;
+  **hash encoding: nullables as `HasValue` then value, every
+  variable-length list length-prefixed, tracks included; every track
+  field is stored state with a named writer, `EdgeProgress` advanced by S6
+  each tick, and all 14 are fed (§12.9, §12.12, Q-082, hash change)**; **`ReassignStand` stays open during the door delay, and the
+  stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
+  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8); an
@@ -297,7 +308,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `ReadyToBoard`, `BoardingComplete`.
 - Key: a vehicle is its own crew at Phase 0/1; dispatch by lowest blocking
   `EventId`; `Boarding` waits on five jobs; unchanged by D6; factory plus
-  `ITurnaroundSetupLoader` (§13.10a).
+  `ITurnaroundSetupLoader` (§13.10a); **a binding `Cause` table for every
+  emitted event, with creation-time events caused by the `OnStand`, and
+  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**.
 - LC: distance-blind dispatch (§13.5).
 - Read if: T-022.
 
