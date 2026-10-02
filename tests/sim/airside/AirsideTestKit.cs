@@ -672,7 +672,7 @@ namespace AirportSim.Sim.Airside.Tests
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "f={0} kind={1} phase={2} at={3} edge={4} prog={5} stand={6} rwy={7} entered={8} due={9} holdSince={10} recorded={11} openHold={12}",
+                "f={0} kind={1} phase={2} at={3} edge={4} prog={5} stand={6} rwy={7} entered={8} due={9} holdSince={10} recorded={11} openHold={12} plannedOnStand={13}",
                 t.Flight.Value,
                 t.Kind,
                 t.Phase,
@@ -685,7 +685,8 @@ namespace AirportSim.Sim.Airside.Tests
                 t.DueAt,
                 t.PassengerHoldSince,
                 Cause(t.RecordedCause),
-                Cause(t.OpenHold));
+                Cause(t.OpenHold),
+                t.PlannedOnStand);
         }
 
         public static string Cause(in EventRef r)

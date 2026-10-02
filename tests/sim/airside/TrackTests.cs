@@ -116,6 +116,7 @@ namespace AirportSim.Sim.Airside.Tests
             public ulong? Landed;
             public ulong? OffRunway;
             public ulong? OnStand;
+            public ulong? OnStandPlanned;
             public ulong? DoorsOpen;
             public ulong? TakeoffRoll;
             public ulong? TaxiHold;
@@ -168,7 +169,7 @@ namespace AirportSim.Sim.Airside.Tests
                                 case FlightMilestone.InboundAirborne: s.Inbound = r.Tick; break;
                                 case FlightMilestone.Landed: s.Landed = r.Tick; break;
                                 case FlightMilestone.OffRunway: s.OffRunway = r.Tick; break;
-                                case FlightMilestone.OnStand: s.OnStand = r.Tick; break;
+                                case FlightMilestone.OnStand: s.OnStand = r.Tick; s.OnStandPlanned = m.PlannedTick; break;
                                 case FlightMilestone.DoorsOpen: s.DoorsOpen = r.Tick; break;
                                 case FlightMilestone.TakeoffRoll: s.TakeoffRoll = r.Tick; break;
                             }
@@ -231,7 +232,15 @@ namespace AirportSim.Sim.Airside.Tests
                 return "Runway should be " + (runwayExpected ? "runway 1" : "unset");
             }
 
-            // EdgeProgress: Fx.FromRatio(t - PhaseEnteredAt, TraversalTicks) on an edge, Zero off it.
+            // PlannedOnStand (Q-083): an arrival's emitted OnStand PlannedTick once
+            // it has fired; TICK_UNSCHEDULED before that and on every departure.
+            ulong plannedOnStand = arrival && s.OnStandPlanned.HasValue ? s.OnStandPlanned.Value : none;
+            if (tr.PlannedOnStand != plannedOnStand)
+            {
+                return "PlannedOnStand should be " + plannedOnStand.ToString(CultureInfo.InvariantCulture);
+            }
+
+            // EdgeProgress (stored, written by S6): Fx.FromRatio(t - PhaseEnteredAt, TraversalTicks) on an edge, Zero off it.
             if (tr.OnEdge.HasValue)
             {
                 if (tr.Phase != AircraftLegPhase.Taxiing)
