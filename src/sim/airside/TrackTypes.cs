@@ -73,6 +73,9 @@ namespace AirportSim.Sim.Airside
         /// <summary>The open runway, taxiway or passenger hold event, or EventRef.None.</summary>
         public EventRef OpenHold { get; }
 
+        /// <summary>An arrival's emitted OnStand PlannedTick; TICK_UNSCHEDULED before its OnStand and on every departure.</summary>
+        public ulong PlannedOnStand { get; }
+
         /// <summary>Constructs the track from its members in declared order.</summary>
         public AircraftTrack(
             FlightId flight,
@@ -87,7 +90,8 @@ namespace AirportSim.Sim.Airside
             ulong dueAt,
             ulong passengerHoldSince,
             EventRef recordedCause,
-            EventRef openHold)
+            EventRef openHold,
+            ulong plannedOnStand)
         {
             Flight = flight;
             Kind = kind;
@@ -102,6 +106,7 @@ namespace AirportSim.Sim.Airside
             PassengerHoldSince = passengerHoldSince;
             RecordedCause = recordedCause;
             OpenHold = openHold;
+            PlannedOnStand = plannedOnStand;
         }
     }
 

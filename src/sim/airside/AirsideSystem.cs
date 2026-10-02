@@ -88,8 +88,6 @@ namespace AirportSim.Sim.Airside
         private int _pendingCount;
         private readonly PendingEntry[] _depDue = new PendingEntry[PendingCapacity];
 
-        private ulong _now;
-
         internal AirsideSystem(
             in SystemServices services,
             in AirsideLayout layout,
@@ -365,6 +363,7 @@ namespace AirportSim.Sim.Airside
                 h.Feed(t.PassengerHoldSince);
                 FeedRef(ref h, t.RecordedCause);
                 FeedRef(ref h, t.OpenHold);
+                h.Feed(t.PlannedOnStand);
             }
 
             h.Feed((ulong)_pendingCount);
@@ -416,33 +415,21 @@ namespace AirportSim.Sim.Airside
 
         private AircraftTrack MakeTrack(Slot s)
         {
-            Fx progress = Fx.Zero;
-            if (s.OnEdge >= 0)
-            {
-                ulong ticks = _edgeTicks[s.OnEdge];
-                ulong elapsed = _now >= s.PhaseEnteredAt ? _now - s.PhaseEnteredAt : 0UL;
-                if (elapsed > ticks)
-                {
-                    elapsed = ticks;
-                }
-
-                progress = Fx.FromRatio((long)elapsed, (long)ticks);
-            }
-
             return new AircraftTrack(
                 new FlightId(s.Flight),
                 s.Kind,
                 s.Phase,
                 s.AtNode >= 0 ? new TaxiNodeId(_nodeId[s.AtNode]) : (TaxiNodeId?)null,
                 s.OnEdge >= 0 ? new TaxiEdgeId(_edgeId[s.OnEdge]) : (TaxiEdgeId?)null,
-                progress,
+                s.EdgeProgress,
                 s.Stand >= 0 ? new StandId(_standId[s.Stand]) : (StandId?)null,
                 s.Rwy >= 0 ? new RunwayId(_rwyId[s.Rwy]) : (RunwayId?)null,
                 s.PhaseEnteredAt,
                 s.DueAt,
                 s.HoldSince,
                 s.Recorded,
-                s.OpenHold);
+                s.OpenHold,
+                s.PlannedOnStand);
         }
 
         // ------------------------------------------------------------ tracked list
@@ -737,6 +724,8 @@ namespace AirportSim.Sim.Airside
             public EventRef OpenHold;
             public EventRef Placed;
             public EventRef OffRunwayEvent;
+            public Fx EdgeProgress;
+            public ulong PlannedOnStand = Unscheduled;
             public bool ReqTakeoff;
 
             public void Reset()
@@ -762,6 +751,8 @@ namespace AirportSim.Sim.Airside
                 OpenHold = EventRef.None;
                 Placed = EventRef.None;
                 OffRunwayEvent = EventRef.None;
+                EdgeProgress = Fx.Zero;
+                PlannedOnStand = Unscheduled;
                 ReqTakeoff = false;
             }
         }

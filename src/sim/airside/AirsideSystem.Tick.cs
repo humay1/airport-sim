@@ -18,7 +18,6 @@ namespace AirportSim.Sim.Airside
         public void Tick(in TickContext ctx)
         {
             ulong t = ctx.Tick;
-            _now = t;
             _askerCount = 0;
             _standReqCount = 0;
 
@@ -70,7 +69,7 @@ namespace AirportSim.Sim.Airside
                         take = s.Phase == AircraftLegPhase.OnStand;
                         break;
                     case ModeEdgeDue:
-                        take = s.Phase == AircraftLegPhase.Taxiing && s.DueAt <= t;
+                        take = s.Phase == AircraftLegPhase.Taxiing;
                         break;
                     default:
                         take = s.ReqTakeoff || (s.Kind == MovementKind.Arrival && s.Phase == AircraftLegPhase.AwaitingApproach && s.DueAt <= t);
@@ -199,7 +198,7 @@ namespace AirportSim.Sim.Airside
             }
         }
 
-        private ulong PlannedOnStand(Slot s)
+        private ulong PlannedOnStandOf(Slot s)
         {
             return s.Sched + _rwyOccTicks[s.Rwy] + _arrTicks[(s.Rwy * _standId.Length) + s.Stand];
         }
@@ -211,7 +210,7 @@ namespace AirportSim.Sim.Airside
 
         private void DoorsOpen(Slot s, in TickContext ctx, ulong t, EventRef cause)
         {
-            EventId opened = Milestone(ctx, s.Flight, FlightMilestone.DoorsOpen, PlannedOnStand(s) + _delayTicks, cause);
+            EventId opened = Milestone(ctx, s.Flight, FlightMilestone.DoorsOpen, s.PlannedOnStand + _delayTicks, cause);
             s.DueAt = s.HasRotation && !_turnaround ? t + s.MinTurnTicks : Unscheduled;
             if (s.HasRotation && HandoffDue(s, t))
             {
@@ -469,6 +468,13 @@ namespace AirportSim.Sim.Airside
             {
                 Slot s = _scr[i];
                 int e = s.OnEdge;
+                if (s.DueAt > t)
+                {
+                    s.EdgeProgress = Fx.FromRatio((long)(t - s.PhaseEnteredAt), (long)_edgeTicks[e]);
+                    continue;
+                }
+
+                s.EdgeProgress = Fx.Zero;
                 _edgeOcc[e] = null;
                 _edgeLeftTick[e] = t;
                 _edgeLeftFlight[e] = s.Flight;
@@ -487,7 +493,8 @@ namespace AirportSim.Sim.Airside
                 {
                     s.Phase = AircraftLegPhase.OnStand;
                     s.PhaseEnteredAt = t;
-                    EventId onStand = Milestone(ctx, s.Flight, FlightMilestone.OnStand, PlannedOnStand(s), EventRef.None);
+                    s.PlannedOnStand = PlannedOnStandOf(s);
+                    EventId onStand = Milestone(ctx, s.Flight, FlightMilestone.OnStand, s.PlannedOnStand, EventRef.None);
                     s.DueAt = t + _delayTicks;
                     if (_delayTicks == 0UL)
                     {
@@ -595,6 +602,7 @@ namespace AirportSim.Sim.Airside
                     {
                         _edgeOcc[e] = grantee;
                         grantee.OnEdge = e;
+                        grantee.EdgeProgress = Fx.Zero;
                         grantee.Phase = AircraftLegPhase.Taxiing;
                         grantee.PhaseEnteredAt = t;
                         grantee.DueAt = t + _edgeTicks[e];
