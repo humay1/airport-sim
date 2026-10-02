@@ -1617,19 +1617,32 @@ Done-condition tests this spec expects to exist, phrased per
   in that order, inside the arrival's turn.
 - `test_stand_wait_queue_overflow_throws_sim_invariant` (§12.12)
 - `test_tracked_flights_overflow_throws_sim_invariant` (Q-085, §12.12
-  "Tracked flights"). The layout has one runway at
-  `declared_capacity_per_hour` 1, under a schedule whose arrivals outrun
-  it. The `Tick` that would add track 4 097 throws
-  `SimInvariantException` naming the flight and the tracked flights. That
-  happens before it publishes the flight's `InboundAirborne`, and every
-  earlier `Tick` allocates nothing. The fixture may use a smaller
-  injected schedule, as long as the count reaches the bound. It is a
-  `Slow` test if it runs over many sim-days. A second case, in the same
-  test or beside it, shows that the bound is not reached by a run
-  §12.2 says stays under it. For example, the reviewer's max-tier case of
-  rotation-less departures with `MinTurnaround` 1 440 created at
-  `PublishTick + 1`, which peaks near 2 200 tracks, runs without the
-  exception.
+  "Tracked flights"). It is a `Slow` test, and every count in it is
+  derived from the schedule alone:
+  - **Setup.** The layout has one runway at `declared_capacity_per_hour`
+    1. The schedule has only rotation-less arrivals, `N` a day with
+    `repeat_daily`, `N ≤ 800`. No track is ever removed, because a
+    rotation-less arrival is never handed off and there are no
+    departures. Landings run at 24 a day, so the stand-wait queue stays
+    far under `STAND_WAIT_CAPACITY` until the throw, and the pending list
+    stays under `PENDING_FLIGHTS_CAPACITY` (§12.11 "Why 2048 holds").
+  - **Order.** Rank the arrivals by `InboundAirborne` tick,
+    `max(0, STA − 1 200)`, then by ascending `FlightId`, the S2 order
+    (§12.8a). Call the arrival of rank `k` `A_k`, and its
+    `InboundAirborne` tick `t_k`.
+  - **Precondition, to the bound.** At the end of every `Tick` `t` before
+    `t_4097`, `TrackedFlights().Count` equals the number of arrivals with
+    `InboundAirborne` tick `≤ t`. In particular it is exactly 4 096 after
+    `A_4096` starts. Every `A_k` with `k ≤ 4 096` has published its
+    `InboundAirborne` at `t_k`. No `SimInvariantException` is thrown
+    before `t_4097`, and no `Tick` before it allocates.
+  - **The throw.** The `Tick` of `t_4097` throws `SimInvariantException`
+    whose message names `A_4097` and the tracked flights. No
+    `InboundAirborne` is published for `A_4097`, and `A_4097` is not
+    tracked.
+
+  An empty or non-tracking implementation fails the precondition, and an
+  implementation that throws early or late fails at an exact rank.
 - `test_pending_list_overflow_in_publication_handler_throws_sim_invariant`
   (§12.11 "Overflow")
 - `test_pending_list_overflow_in_day_zero_read_throws_argument_exception`

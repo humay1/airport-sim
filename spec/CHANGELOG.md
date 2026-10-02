@@ -3381,13 +3381,24 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
                create-before-remove order.
              - **T-021 tests (Test Author, PR #78):** one new test,
                `test_tracked_flights_overflow_throws_sim_invariant`
-               (§12.13), likely `Slow`. It throws at track 4 097, not
-               2 049. A local version that assumes 2048 (for example
-               with track 2 049 at tick 15 340) must be re-derived for
-               4096. With a runway at one movement per hour, that is
-               about day 11. The test also gains a case that stays under
-               the bound, such as the early rotation-less departures
-               from the review. No existing test changes, and the
+               (§12.13), `Slow`. It throws at track 4 097, not 2 049.
+               A local version that assumes 2048 (for example with
+               track 2 049 at tick 15 340) must be re-derived for 4096.
+               §12.13 pins its shape:
+               - one runway at one movement per hour;
+               - only rotation-less arrivals, `N ≤ 800` a day, so no
+                 track is ever removed;
+               - arrivals ranked by `InboundAirborne` tick, then
+                 `FlightId`;
+               - as a precondition, `TrackedFlights().Count` equals the
+                 number of arrivals started at the end of every tick,
+                 up to exactly 4 096, with no throw and no allocation;
+               - the throw comes at `A_4097`'s `InboundAirborne` tick,
+                 naming it, with no `InboundAirborne` published for it.
+               At 400 arrivals a day that is about day 10. The
+               non-throwing case from `757a7e5` ("peaks near 2 200") is
+               replaced by this exact precondition, which an empty
+               implementation fails. No existing test changes, and the
                fixture day stays far under the bound.
              - **T-022, T-024, `app.render`:** none.
              - **LOW CONFIDENCE:** none. The bound is an engineering
