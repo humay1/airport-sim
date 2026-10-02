@@ -512,8 +512,9 @@ stage's Test Author. Its `bundle.json` lists all six Phase 1 systems, with
 seed `"12345"`. It holds `world.fixture`, `schedule.csv`,
 `airside.fixture`, `airside_rules.json`, `turnaround.fixture` and
 `flow.fixture`, each a byte copy of the source that `16` §16.3's
-playtest-bundle table gives for that name. That is one file for each
-listed system that needs one. It holds no `render_layout.fixture`, since
+playtest-bundle table gives for that name. That is six files for the five
+listed systems that need one: `sim.airside` takes two, `airside.fixture`
+and `airside_rules.json`, and `sim.delay` takes none. It holds no `render_layout.fixture`, since
 `checkpoints` never reads it. Its content is `--content data`.
 
 ## 19.3 The command line (Q-026)
