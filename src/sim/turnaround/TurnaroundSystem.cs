@@ -7,17 +7,18 @@ namespace AirportSim.Sim.Turnaround
 {
     /// <summary>
     /// sim.turnaround (13-interfaces-turnaround.md). Phase 2 <see cref="Tick"/>
-    /// runs completions (§13.5 step 1) and vehicle assignment (step 3); the
-    /// phase 3 handler for FlightMilestoneReached{OnStand} creates the flight's
-    /// jobs (§13.5 step 2, §13.6). All state lives in arrays sized at
-    /// construction; they grow, by doubling, only when more flights have been
-    /// on stand than the capacity holds. Jobs are kept after completion so the
-    /// queries can still answer for them.
+    /// prunes on a day's first tick (§13.10), then runs completions (§13.5
+    /// step 1) and vehicle assignment (step 3); the phase 3 handler for
+    /// FlightMilestoneReached{OnStand} creates the flight's jobs (step 2,
+    /// §13.6). Every array is sized at construction to §13.10's capacities and
+    /// never grows (Q-092).
     /// </summary>
     internal sealed class TurnaroundSystem : ITurnaroundSystem
     {
         // 13 §13.2.
         private const int JobKindBits = 8;
+        private const int RetentionDays = 2;
+        private const int FlightsCapacity = 4096;
 
         // Jobs of flight slot s are _jobs[s * Stride + (int)kind]. JobKind has
         // eight values, so the stride is a power of two (checked at construction).
@@ -28,8 +29,6 @@ namespace AirportSim.Sim.Turnaround
         private const int PrerequisiteCount = 5;
 
         private const ulong Unscheduled = ulong.MaxValue;
-        private const int InitialFlightCapacity = 2048;
-        private const int InitialQueueCapacity = 64;
 
         private readonly SystemId _id = new SystemId(5);
         private readonly IScheduleSystem _schedule;
@@ -43,23 +42,33 @@ namespace AirportSim.Sim.Turnaround
         private readonly int[] _vJob;
         private readonly EventRef[] _vFreedBy;
         private readonly int[][] _kindVehicles;
-        private readonly IntQueue[] _blocked;
 
-        // Per flight slot, in creation order.
-        private ulong[] _fFlight;
-        private bool[] _fDeparture;
-        private int[] _fPrerequisitesDone;
-        private ulong[] _fPlan1;
-        private ulong[] _fPlan2;
+        // Per VehicleKind, the Blocked jobs in ascending EventId of their Blocked event.
+        private readonly IntQueue[] _waiting;
+
+        // Per flight slot.
+        private readonly ulong[] _fFlight;
+        private readonly int[] _fJobTotal;
+        private readonly int[] _fDone;
+        private readonly int[] _fPrerequisitesDone;
+        private readonly ulong[] _fAnchor;
+        private readonly ulong[] _fPlanReady;
+        private readonly ulong[] _fPlanDone;
+        private readonly int[] _freeSlots;
+        private int _freeCount;
+
+        // Slots in use, ordered by ascending flight value.
+        private readonly int[] _order;
         private int _flightCount;
-        private int _flightCapacity;
 
-        // Slots ordered by ascending flight value, for lookup and hashing.
-        private int[] _order;
+        // Finished flights' slots in finish order, a ring.
+        private readonly int[] _finished;
+        private int _finishedHead;
+        private int _finishedCount;
 
-        private JobRec[] _jobs;
-        private int[] _active;
-        private int[] _due;
+        private readonly JobRec[] _jobs;
+        private readonly int[] _active;
+        private readonly int[] _due;
         private int _activeCount;
 
         public TurnaroundSystem(in SystemServices services, in TurnaroundSetup setup, IScheduleSystem schedule)
@@ -69,7 +78,12 @@ namespace AirportSim.Sim.Turnaround
                 throw new ArgumentNullException(nameof(schedule));
             }
 
-            TurnaroundSetupValidator.Validate(setup, "turnaround setup");
+            string? failure = TurnaroundSetupValidator.Check(setup);
+            if (failure != null)
+            {
+                throw new ArgumentException(failure, nameof(setup));
+            }
+
             _schedule = schedule;
 
             int jobKinds = Enum.GetValues(typeof(JobKind)).Length;
@@ -119,23 +133,32 @@ namespace AirportSim.Sim.Turnaround
             }
 
             _kindVehicles = new int[_vehicleKindCount][];
-            _blocked = new IntQueue[_vehicleKindCount];
+            _waiting = new IntQueue[_vehicleKindCount];
             for (int k = 0; k < _vehicleKindCount; k++)
             {
                 _kindVehicles[k] = perKind[k].ToArray();
-                _blocked[k] = new IntQueue(InitialQueueCapacity);
+                _waiting[k] = new IntQueue(FlightsCapacity);
             }
 
-            _flightCapacity = InitialFlightCapacity;
-            _fFlight = new ulong[_flightCapacity];
-            _fDeparture = new bool[_flightCapacity];
-            _fPrerequisitesDone = new int[_flightCapacity];
-            _fPlan1 = new ulong[_flightCapacity];
-            _fPlan2 = new ulong[_flightCapacity];
-            _order = new int[_flightCapacity];
-            _jobs = new JobRec[_flightCapacity * Stride];
-            _active = new int[_flightCapacity * Stride];
-            _due = new int[_flightCapacity * Stride];
+            _fFlight = new ulong[FlightsCapacity];
+            _fJobTotal = new int[FlightsCapacity];
+            _fDone = new int[FlightsCapacity];
+            _fPrerequisitesDone = new int[FlightsCapacity];
+            _fAnchor = new ulong[FlightsCapacity];
+            _fPlanReady = new ulong[FlightsCapacity];
+            _fPlanDone = new ulong[FlightsCapacity];
+            _freeSlots = new int[FlightsCapacity];
+            for (int i = 0; i < FlightsCapacity; i++)
+            {
+                _freeSlots[i] = FlightsCapacity - 1 - i;
+            }
+
+            _freeCount = FlightsCapacity;
+            _order = new int[FlightsCapacity];
+            _finished = new int[FlightsCapacity];
+            _jobs = new JobRec[FlightsCapacity * Stride];
+            _active = new int[FlightsCapacity * Stride];
+            _due = new int[FlightsCapacity * Stride];
 
             services.Events.Subscribe<FlightMilestoneReached>(_id, OnMilestone);
         }
@@ -248,6 +271,7 @@ namespace AirportSim.Sim.Turnaround
 
         public void Tick(in TickContext ctx)
         {
+            Prune(ctx.Tick);
             CompleteDueJobs(ctx.Tick, ctx.Events);
             AssignVehicles(ctx.Tick, ctx.Events);
         }
@@ -297,6 +321,52 @@ namespace AirportSim.Sim.Turnaround
             }
 
             return h.Result;
+        }
+
+        // 13 §13.10 "Retention": on a day's first tick, before step 1, drop the
+        // finished flights whose finish tick is before the previous sim-day.
+        private void Prune(ulong tick)
+        {
+            if (tick % SimConstants.TICKS_PER_SIM_DAY != 0UL || _finishedCount == 0)
+            {
+                return;
+            }
+
+            ulong day = tick / SimConstants.TICKS_PER_SIM_DAY;
+            if (day < (ulong)(RetentionDays - 1))
+            {
+                return;
+            }
+
+            ulong threshold = (day - (ulong)(RetentionDays - 1)) * SimConstants.TICKS_PER_SIM_DAY;
+            while (_finishedCount > 0)
+            {
+                int slot = _finished[_finishedHead];
+                if (FinishTick(slot) >= threshold)
+                {
+                    break;
+                }
+
+                _finishedHead = (_finishedHead + 1) % FlightsCapacity;
+                _finishedCount--;
+                RemoveFlight(slot);
+            }
+        }
+
+        // The largest DueAt among the flight's jobs.
+        private ulong FinishTick(int slot)
+        {
+            ulong latest = 0UL;
+            for (int k = 0; k < _defs.Length; k++)
+            {
+                ref JobRec r = ref _jobs[(slot << StrideBits) + k];
+                if (r.Exists && r.DueAt > latest)
+                {
+                    latest = r.DueAt;
+                }
+            }
+
+            return latest;
         }
 
         // 13 §13.5 step 1. Completions in ascending JobId; a freed vehicle is
@@ -367,11 +437,11 @@ namespace AirportSim.Sim.Turnaround
 
             if (kind == JobKind.Deboard)
             {
-                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.DeboardComplete, _fPlan1[slot], tick), done);
+                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.DeboardComplete, _fPlanReady[slot], tick), done);
             }
             else if (kind == JobKind.Boarding)
             {
-                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.BoardingComplete, _fPlan2[slot], tick), done);
+                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.BoardingComplete, _fPlanDone[slot], tick), done);
             }
             else if (kind >= JobKind.CabinClean && kind <= JobKind.PushbackPrep && ++_fPrerequisitesDone[slot] == PrerequisiteCount)
             {
@@ -379,18 +449,24 @@ namespace AirportSim.Sim.Turnaround
                 JobDef def = _defs[(int)JobKind.Boarding];
                 events.Publish(new TurnaroundJobUnblocked(flight, JobKind.Boarding, ResourceKind.JobDependency, null, def.Category), done);
                 StartJob(b, tick, done, events);
-                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.ReadyToBoard, _fPlan1[slot], tick), done);
+                events.Publish(new FlightMilestoneReached(flight, FlightMilestone.ReadyToBoard, _fPlanReady[slot], tick), done);
+            }
+
+            if (++_fDone[slot] == _fJobTotal[slot])
+            {
+                _finished[(_finishedHead + _finishedCount) % FlightsCapacity] = slot;
+                _finishedCount++;
             }
         }
 
-        // 13 §13.5 step 3. Each kind's blocked queue is in ascending EventId of
-        // the Blocked request: Blocked events are published, and jobs queued,
+        // 13 §13.5 step 3. Each kind's waiting list is in ascending EventId of
+        // the Blocked request: Blocked events are published, and jobs appended,
         // in the same order, so the head is always the lowest.
         private void AssignVehicles(ulong tick, IEventPublisher events)
         {
             for (int k = 0; k < _vehicleKindCount; k++)
             {
-                IntQueue queue = _blocked[k];
+                IntQueue queue = _waiting[k];
                 while (queue.Count > 0)
                 {
                     int v = FirstFree(k);
@@ -405,7 +481,7 @@ namespace AirportSim.Sim.Turnaround
                     var kind = (JobKind)(j & (Stride - 1));
                     EventRef cause = _vFreedBy[v];
                     events.Publish(
-                        new TurnaroundJobUnblocked(new FlightId(_fFlight[j >> StrideBits]), kind, ResourceKind.Vehicle, new EntityId(_vId[v]), _defs[(int)kind].Category),
+                        new TurnaroundJobUnblocked(new FlightId(_fFlight[j >> StrideBits]), kind, ResourceKind.Vehicle, null, _defs[(int)kind].Category),
                         cause);
                     StartJob(j, tick, cause, events);
                 }
@@ -419,6 +495,13 @@ namespace AirportSim.Sim.Turnaround
                 return;
             }
 
+            if (_flightCount == FlightsCapacity)
+            {
+                throw new SimInvariantException(
+                    "sim.turnaround: no room for the jobs of flight " + evt.Flight.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ctx.Tick);
+            }
+
             if (!_schedule.TryGetFlight(evt.Flight, out FlightRecord flight))
             {
                 throw new SimInvariantException("sim.turnaround: OnStand for a flight the schedule does not know", ctx.Tick);
@@ -427,16 +510,13 @@ namespace AirportSim.Sim.Turnaround
             ulong tick = ctx.Tick;
             var cause = new EventRef(env.Id, true);
             int slot = AddFlight(evt.Flight.Value);
-            bool departure = flight.Kind == MovementKind.Departure;
-            _fDeparture[slot] = departure;
-            if (departure)
+            if (flight.Kind == MovementKind.Departure)
             {
-                // 12 §12.3: the planned OnStand is STD minus MinTurnaround; 13 §13.6.
-                long turn = Fx.Floor(flight.MinTurnaround * Fx.FromInt((long)SimConstants.TICKS_PER_SIM_MINUTE));
-                ulong minTurn = turn > 0 ? (ulong)turn : 0UL;
-                ulong plannedOnStand = flight.ScheduledTick > minTurn ? flight.ScheduledTick - minTurn : 0UL;
-                _fPlan1[slot] = plannedOnStand + _maxPrerequisiteTicks;
-                _fPlan2[slot] = _fPlan1[slot] + _defs[(int)JobKind.Boarding].NominalDurationTicks;
+                // 13 §13.6: the planned OnStand is the PlannedTick of the OnStand received.
+                _fAnchor[slot] = evt.PlannedTick;
+                _fPlanReady[slot] = evt.PlannedTick + _maxPrerequisiteTicks;
+                _fPlanDone[slot] = _fPlanReady[slot] + _defs[(int)JobKind.Boarding].NominalDurationTicks;
+                _fJobTotal[slot] = 6;
                 for (JobKind k = JobKind.CabinClean; k <= JobKind.PushbackPrep; k++)
                 {
                     CreateJob(slot, k, tick, cause, ctx.Events);
@@ -446,15 +526,17 @@ namespace AirportSim.Sim.Turnaround
             }
             else
             {
-                _fPlan1[slot] = flight.ScheduledTick + _defs[(int)JobKind.Deboard].NominalDurationTicks;
+                _fAnchor[slot] = flight.ScheduledTick;
+                _fPlanReady[slot] = flight.ScheduledTick + _defs[(int)JobKind.Deboard].NominalDurationTicks;
+                _fJobTotal[slot] = 2;
                 CreateJob(slot, JobKind.Deboard, tick, cause, ctx.Events);
                 CreateJob(slot, JobKind.BaggageUnload, tick, cause, ctx.Events);
             }
         }
 
-        // 13 §13.5 step 2 and §13.6. A vehicle job takes a free vehicle at
-        // once; a queue that is not empty implies no vehicle of the kind is
-        // free (step 3 ran this tick), so FIFO order is kept.
+        // 13 §13.5 step 2 and §13.6. A vehicle job takes the lowest free
+        // VehicleId of its kind at once; a non-empty waiting list implies no
+        // vehicle of the kind is free (step 3 ran this tick).
         private void CreateJob(int slot, JobKind kind, ulong tick, EventRef cause, IEventPublisher events)
         {
             int j = (slot << StrideBits) + (int)kind;
@@ -481,7 +563,7 @@ namespace AirportSim.Sim.Turnaround
             }
 
             int vk = (int)def.RequiresVehicle.Value;
-            int v = _blocked[vk].Count == 0 ? FirstFree(vk) : -1;
+            int v = _waiting[vk].Count == 0 ? FirstFree(vk) : -1;
             if (v >= 0)
             {
                 r.Vehicle = v;
@@ -490,7 +572,13 @@ namespace AirportSim.Sim.Turnaround
                 return;
             }
 
-            _blocked[vk].Enqueue(j);
+            if (!_waiting[vk].TryEnqueue(j))
+            {
+                throw new SimInvariantException(
+                    "sim.turnaround: the waiting list is full at flight " + flight.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    tick);
+            }
+
             events.Publish(new TurnaroundJobBlocked(flight, kind, ResourceKind.Vehicle, null, def.Category), cause);
         }
 
@@ -505,17 +593,11 @@ namespace AirportSim.Sim.Turnaround
             events.Publish(new TurnaroundJobStarted(new FlightId(_fFlight[j >> StrideBits]), kind, PlannedStart(j)), cause);
         }
 
-        // The tick the job was planned to start: its creation, the flight's
-        // OnStand. Boarding is planned from ReadyToBoard's planned tick. The
-        // closing event carries the opening event's value (10 §10.6).
+        // 13 §13.6 "Job event payloads" (Q-089): schedule-anchored, whatever
+        // the actual start. Started and Completed carry the same value.
         private ulong PlannedStart(int j)
         {
-            if ((JobKind)(j & (Stride - 1)) == JobKind.Boarding)
-            {
-                return _fPlan1[j >> StrideBits];
-            }
-
-            return _jobs[j].CreatedAt;
+            return (JobKind)(j & (Stride - 1)) == JobKind.Boarding ? _fPlanReady[j >> StrideBits] : _fAnchor[j >> StrideBits];
         }
 
         private int FirstFree(int vehicleKind)
@@ -532,7 +614,8 @@ namespace AirportSim.Sim.Turnaround
             return -1;
         }
 
-        private int FindSlot(ulong flight)
+        // The index into _order of the flight, or the insertion point as its complement.
+        private int SearchOrder(ulong flight)
         {
             int lo = 0;
             int hi = _flightCount - 1;
@@ -542,7 +625,7 @@ namespace AirportSim.Sim.Turnaround
                 ulong at = _fFlight[_order[mid]];
                 if (at == flight)
                 {
-                    return _order[mid];
+                    return mid;
                 }
 
                 if (at < flight)
@@ -555,56 +638,39 @@ namespace AirportSim.Sim.Turnaround
                 }
             }
 
-            return -1;
+            return ~lo;
+        }
+
+        private int FindSlot(ulong flight)
+        {
+            int at = SearchOrder(flight);
+            return at >= 0 ? _order[at] : -1;
         }
 
         private int AddFlight(ulong flight)
         {
-            if (_flightCount == _flightCapacity)
-            {
-                Grow();
-            }
-
-            int slot = _flightCount;
+            int insert = ~SearchOrder(flight);
+            int slot = _freeSlots[--_freeCount];
             _fFlight[slot] = flight;
+            _fDone[slot] = 0;
             _fPrerequisitesDone[slot] = 0;
-
-            int lo = 0;
-            int hi = _flightCount;
-            while (lo < hi)
-            {
-                int mid = (lo + hi) >> 1;
-                if (_fFlight[_order[mid]] < flight)
-                {
-                    lo = mid + 1;
-                }
-                else
-                {
-                    hi = mid;
-                }
-            }
-
-            Array.Copy(_order, lo, _order, lo + 1, _flightCount - lo);
-            _order[lo] = slot;
+            Array.Copy(_order, insert, _order, insert + 1, _flightCount - insert);
+            _order[insert] = slot;
             _flightCount++;
             return slot;
         }
 
-        // The only allocation after construction: more flights have been on
-        // stand than the arrays hold.
-        private void Grow()
+        private void RemoveFlight(int slot)
         {
-            int capacity = _flightCapacity * 2;
-            Array.Resize(ref _fFlight, capacity);
-            Array.Resize(ref _fDeparture, capacity);
-            Array.Resize(ref _fPrerequisitesDone, capacity);
-            Array.Resize(ref _fPlan1, capacity);
-            Array.Resize(ref _fPlan2, capacity);
-            Array.Resize(ref _order, capacity);
-            Array.Resize(ref _jobs, capacity * Stride);
-            Array.Resize(ref _active, capacity * Stride);
-            Array.Resize(ref _due, capacity * Stride);
-            _flightCapacity = capacity;
+            int at = SearchOrder(_fFlight[slot]);
+            Array.Copy(_order, at + 1, _order, at, _flightCount - at - 1);
+            _flightCount--;
+            for (int k = 0; k < Stride; k++)
+            {
+                _jobs[(slot << StrideBits) + k] = default;
+            }
+
+            _freeSlots[_freeCount++] = slot;
         }
 
         private JobId JobIdOf(int j)

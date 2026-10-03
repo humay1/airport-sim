@@ -1,12 +1,13 @@
 namespace AirportSim.Sim.Turnaround
 {
     /// <summary>
-    /// A growable FIFO ring of ints. Growth allocates, and happens only when
-    /// the queue outgrows its capacity; steady-state use allocates nothing.
+    /// A fixed-capacity FIFO ring of ints. It never grows: a full queue
+    /// refuses the insertion, and the caller reports the broken invariant
+    /// (13-interfaces-turnaround.md §13.10, Q-092).
     /// </summary>
     internal sealed class IntQueue
     {
-        private int[] _items;
+        private readonly int[] _items;
         private int _head;
 
         public IntQueue(int capacity)
@@ -16,27 +17,16 @@ namespace AirportSim.Sim.Turnaround
 
         public int Count { get; private set; }
 
-        public int Peek()
-        {
-            return _items[_head];
-        }
-
-        public void Enqueue(int value)
+        public bool TryEnqueue(int value)
         {
             if (Count == _items.Length)
             {
-                var bigger = new int[_items.Length * 2];
-                for (int i = 0; i < Count; i++)
-                {
-                    bigger[i] = _items[(_head + i) % _items.Length];
-                }
-
-                _items = bigger;
-                _head = 0;
+                return false;
             }
 
             _items[(_head + Count) % _items.Length] = value;
             Count++;
+            return true;
         }
 
         public int Dequeue()
