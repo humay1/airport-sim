@@ -16,7 +16,10 @@ namespace AirportSim.Sim.Airside
         private const ulong CruiseLeadTicks = 1200UL;
         private const int StandWaitCapacity = 1024;
         private const int PendingCapacity = 2048;
-        private const int InitialSlots = 4096;
+        private const int TrackedCapacity = 4096;
+
+        // One more than the bound: a handoff creates the departure before it removes the arrival.
+        private const int SlotStorage = TrackedCapacity + 1;
         private const ulong Unscheduled = ulong.MaxValue;
 
         private readonly IScheduleSystem _schedule;
@@ -74,14 +77,15 @@ namespace AirportSim.Sim.Airside
         private int _waitCount;
 
         // Tracked aircraft, ascending FlightId.
-        private Slot[] _order = new Slot[InitialSlots];
-        private Slot[] _scr = new Slot[InitialSlots];
-        private Slot[] _askers = new Slot[InitialSlots];
-        private Slot[] _standReqs = new Slot[InitialSlots];
+        private readonly Slot[] _order = new Slot[SlotStorage];
+        private readonly Slot[] _scr = new Slot[SlotStorage];
+        private readonly Slot[] _askers = new Slot[SlotStorage];
+        private readonly Slot[] _standReqs = new Slot[SlotStorage];
         private int _n;
         private int _askerCount;
         private int _standReqCount;
-        private readonly Stack<Slot> _pool = new Stack<Slot>(InitialSlots);
+        private readonly Slot[] _pool = new Slot[SlotStorage];
+        private int _poolCount;
 
         // The pending list, ascending FlightId (12 ยง12.11).
         private readonly PendingEntry[] _pending = new PendingEntry[PendingCapacity];
@@ -225,9 +229,9 @@ namespace AirportSim.Sim.Airside
                 _standVacatedBy[i] = EventRef.None;
             }
 
-            for (int i = 0; i < InitialSlots; i++)
+            for (int i = 0; i < SlotStorage; i++)
             {
-                _pool.Push(new Slot());
+                _pool[_poolCount++] = new Slot();
             }
 
             _cand = new int[edges];
@@ -462,21 +466,12 @@ namespace AirportSim.Sim.Airside
 
         private Slot NewTrack(ulong flight, MovementKind kind)
         {
-            Slot s = _pool.Count > 0 ? _pool.Pop() : new Slot();
+            Slot s = _pool[--_poolCount];
             s.Reset();
             s.Flight = flight;
             s.Kind = kind;
             s.HoldSince = Unscheduled;
             s.DueAt = Unscheduled;
-            if (_n == _order.Length)
-            {
-                int cap = _n * 2;
-                Array.Resize(ref _order, cap);
-                Array.Resize(ref _scr, cap);
-                Array.Resize(ref _askers, cap);
-                Array.Resize(ref _standReqs, cap);
-            }
-
             int at = LowerBound(flight);
             Array.Copy(_order, at, _order, at + 1, _n - at);
             _order[at] = s;
@@ -491,7 +486,19 @@ namespace AirportSim.Sim.Airside
             _n--;
             _order[_n] = null!;
             s.Reset();
-            _pool.Push(s);
+            _pool[_poolCount++] = s;
+        }
+
+        /// <summary>12 ง12.12 "Tracked flights" (Q-085): throws before a track past the bound is created.</summary>
+        private void CheckTrackRoom(ulong flight, ulong t)
+        {
+            if (_n >= TrackedCapacity)
+            {
+                throw new SimInvariantException(
+                    "sim.airside: the tracked flights are full (capacity 4096), cannot track flight "
+                    + flight.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    t);
+            }
         }
 
         private int OrdinalOf(ContentId aircraft)

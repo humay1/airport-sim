@@ -113,6 +113,7 @@ namespace AirportSim.Sim.Airside
                 throw new SimInvariantException("sim.airside: pending arrival " + flight.ToString(CultureInfo.InvariantCulture) + " is not in the schedule", t);
             }
 
+            CheckTrackRoom(flight, t);
             Slot s = NewTrack(flight, MovementKind.Arrival);
             s.Phase = AircraftLegPhase.AwaitingApproach;
             s.PhaseEnteredAt = t;
@@ -437,6 +438,7 @@ namespace AirportSim.Sim.Airside
                 throw new SimInvariantException("sim.airside: departure " + flight.ToString(CultureInfo.InvariantCulture) + " is not in the schedule", t);
             }
 
+            CheckTrackRoom(flight, t);
             CreateDeparture(flight, r, stand, cause, null, ctx, t);
         }
 
