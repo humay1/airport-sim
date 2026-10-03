@@ -158,15 +158,16 @@ namespace AirportSim.Sim.Turnaround.Tests
         }
 
         /// <summary>
-        /// One day-0 row with valid defaults. A departure carries 100 pax at
-        /// entry node 1; an arrival 0 pax and no entry node (11 §11.4).
+        /// One row with valid defaults, on day 0 unless given. A departure
+        /// carries 100 pax at entry node 1; an arrival 0 pax and no entry node
+        /// (11 §11.4).
         /// </summary>
-        public static string Row(string flightRef, string movement, string sched, string rotation = "", string minTurn = "35", string repeat = "0")
+        public static string Row(string flightRef, string movement, string sched, string rotation = "", string minTurn = "35", string repeat = "0", string day = "0")
         {
             bool dep = movement == "D";
             return string.Join(",", new[]
             {
-                flightRef, "0", repeat, movement, "NVA", "a320", sched, rotation, minTurn,
+                flightRef, day, repeat, movement, "NVA", "a320", sched, rotation, minTurn,
                 dep ? "100" : "0", "business", dep ? "500" : "0", dep ? "10" : "0", dep ? "1" : "",
             });
         }
@@ -410,25 +411,33 @@ namespace AirportSim.Sim.Turnaround.Tests
     }
 
     /// <summary>
-    /// The 13 §13.11 Phase 0/1 setup, built in code. 13 §13.11 places it at
-    /// tests/fixtures/turnaround/phase1-four-vehicles.* in the file format
-    /// ITurnaroundSetupLoader reads; that format is not pinned yet (spec gap
-    /// reported with T-022), so the file is added when it is.
+    /// The 13 §13.11 Phase 0/1 setup (Q-086, Q-088), built in code, and the
+    /// same values in tests/fixtures/turnaround/phase1-five-vehicles.json
+    /// (13 §13.10a "File format"); test_fixture_file_loads_with_one_vehicle_per_kind
+    /// keeps the two equal. Rigs use this built copy, so that a Load bug
+    /// fails the loader tests and nothing else.
     ///
-    /// - Exactly four vehicles, one each of CleaningCrew, CateringTruck,
-    ///   FuelTruck and BaggageTractor. The tractor serves BaggageUnload,
-    ///   BaggageLoad and PushbackPrep, and the fuel truck every Fuel job, so
-    ///   peak concurrent demand for both exceeds supply over a day of
-    ///   tests/fixtures/schedule/phase0-200.csv and TurnaroundJobBlocked fires.
-    /// - All eight JobKinds, durations short against the schedule's smallest
-    ///   MinTurnaround (25 min = 250 ticks): unimpeded, a departure is ready to
-    ///   board 120 ticks after OnStand (the tractor's 50 + 20 runs inside the
-    ///   fuel truck's 120) and boarding completes at 220.
+    /// - Exactly five vehicles, one of each VehicleKind, ids 1 to 5. The one
+    ///   fuel truck serves every Fuel job (120 ticks) and the one tractor
+    ///   every BaggageUnload and BaggageLoad, so peak concurrent demand
+    ///   exceeds supply over a day of tests/fixtures/schedule/phase0-200.csv
+    ///   and TurnaroundJobBlocked fires.
+    /// - All eight JobKinds, RequiresVehicle per 13 §13.4's table, durations
+    ///   short against the schedule's smallest MinTurnaround (25 min = 250
+    ///   ticks): unimpeded, a departure is ready to board 120 ticks after
+    ///   OnStand (the fuel truck's 120 is the longest) and boarding completes
+    ///   at 220.
     /// </summary>
     internal static class Phase1Fixture
     {
+        public const string SourceName = "phase1-five-vehicles.json";
         public const ulong UnimpededReadyToBoardTicks = 120UL;
         public const ulong UnimpededBoardingCompleteTicks = 220UL;
+
+        public static byte[] Bytes()
+        {
+            return Repo.Read("tests", "fixtures", "turnaround", SourceName);
+        }
 
         public static JobDef[] Jobs()
         {
@@ -440,7 +449,7 @@ namespace AirportSim.Sim.Turnaround.Tests
                 new JobDef(JobKind.Catering, VehicleKind.CateringTruck, 90U, DelayCategory.Catering),
                 new JobDef(JobKind.Fuel, VehicleKind.FuelTruck, 120U, DelayCategory.Fuel),
                 new JobDef(JobKind.BaggageLoad, VehicleKind.BaggageTractor, 50U, DelayCategory.Loading),
-                new JobDef(JobKind.PushbackPrep, VehicleKind.BaggageTractor, 20U, DelayCategory.GroundHandling),
+                new JobDef(JobKind.PushbackPrep, VehicleKind.PushbackTug, 20U, DelayCategory.GroundHandling),
                 new JobDef(JobKind.Boarding, null, 100U, DelayCategory.GroundHandling),
             };
         }
@@ -451,12 +460,88 @@ namespace AirportSim.Sim.Turnaround.Tests
                 (1, VehicleKind.CleaningCrew),
                 (2, VehicleKind.CateringTruck),
                 (3, VehicleKind.FuelTruck),
-                (4, VehicleKind.BaggageTractor));
+                (4, VehicleKind.BaggageTractor),
+                (5, VehicleKind.PushbackTug));
         }
 
         public static TurnaroundSetup Setup()
         {
             return Setups.Of(Jobs(), Fleet());
+        }
+    }
+
+    /// <summary>13 §13.10a "File format" (Q-086): spellings and a file builder.</summary>
+    internal static class SetupFile
+    {
+        public static string Spell(JobKind k)
+        {
+            switch (k)
+            {
+                case JobKind.Deboard: return "deboard";
+                case JobKind.BaggageUnload: return "baggage_unload";
+                case JobKind.CabinClean: return "cabin_clean";
+                case JobKind.Catering: return "catering";
+                case JobKind.Fuel: return "fuel";
+                case JobKind.BaggageLoad: return "baggage_load";
+                case JobKind.PushbackPrep: return "pushback_prep";
+                default: return "boarding";
+            }
+        }
+
+        public static string Spell(VehicleKind k)
+        {
+            switch (k)
+            {
+                case VehicleKind.CleaningCrew: return "cleaning_crew";
+                case VehicleKind.CateringTruck: return "catering_truck";
+                case VehicleKind.FuelTruck: return "fuel_truck";
+                case VehicleKind.BaggageTractor: return "baggage_tractor";
+                default: return "pushback_tug";
+            }
+        }
+
+        public static string Spell(DelayCategory c)
+        {
+            switch (c)
+            {
+                case DelayCategory.GroundHandling: return "ground_handling";
+                case DelayCategory.Fuel: return "fuel";
+                case DelayCategory.Catering: return "catering";
+                case DelayCategory.Cleaning: return "cleaning";
+                case DelayCategory.Loading: return "loading";
+                case DelayCategory.Pushback: return "pushback";
+                default: throw new ArgumentException("no spelling in this kit for " + c);
+            }
+        }
+
+        /// <summary>A file in the 13 §13.10a shape, one entry per line, from the given entries.</summary>
+        public static byte[] Of(IEnumerable<JobDef> jobs, IEnumerable<VehicleDef> vehicles)
+        {
+            var j = new List<string>();
+            foreach (JobDef d in jobs)
+            {
+                j.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "    {{ \"kind\": \"{0}\", \"nominal_duration_ticks\": {1}, \"category\": \"{2}\" }}",
+                    Spell(d.Kind),
+                    d.NominalDurationTicks,
+                    Spell(d.Category)));
+            }
+
+            var v = new List<string>();
+            foreach (VehicleDef d in vehicles)
+            {
+                v.Add(string.Format(CultureInfo.InvariantCulture, "    {{ \"id\": {0}, \"kind\": \"{1}\" }}", d.Id.Value, Spell(d.Kind)));
+            }
+
+            string text = "{\n  \"schema_version\": 1,\n  \"jobs\": [\n" + string.Join(",\n", j) + "\n  ],\n  \"vehicles\": [\n" + string.Join(",\n", v) + "\n  ]\n}\n";
+            return Csv.Utf8(text);
+        }
+
+        /// <summary>The fixture's jobs and fleet with <paramref name="edit"/> applied to the jobs.</summary>
+        public static byte[] FixtureWith(Func<List<JobDef>, List<JobDef>> edit)
+        {
+            return Of(edit(new List<JobDef>(Phase1Fixture.Jobs())), Phase1Fixture.Fleet());
         }
     }
 

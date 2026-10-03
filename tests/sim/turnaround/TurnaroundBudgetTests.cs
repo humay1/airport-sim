@@ -120,7 +120,7 @@ namespace AirportSim.Sim.Turnaround.Tests
             shimmed.RunTo(TConst.TicksPerDay);
             plain.RunTo(TConst.TicksPerDay);
             Assert.True(handlers.Calls > 0L);
-            Assert.NotEmpty(plain.Rec.All);
+            Assert.NotEmpty(plain.Rec.Of<TurnaroundJobStarted>());
             Assert.Equal(plain.Rec.Trace(), shimmed.Rec.Trace());
             Assert.Equal(plain.Sink.Describe(), shimmed.Sink.Describe());
         }
