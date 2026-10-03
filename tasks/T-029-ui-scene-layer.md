@@ -172,7 +172,7 @@ calls `ISimHost.TrySubmit`; never subscribes to the event bus).
 tests/app/ui/**
 ```
 
-Written by the Test Author, against `tests/fixtures/render/phase1-layout.*`
+Written by the Test Author, against `tests/fixtures/render/phase1-layout.json`
 (`15` §15.12) plus a synthetic layout with overlapping boxes. Expect at
 least:
 
