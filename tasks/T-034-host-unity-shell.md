@@ -67,7 +67,7 @@ paraphrased:
   §12.13, `tests/fixtures/airside/phase1-single-runway.json`);
   `airside_rules.json` (the human-authored `data/balance/airside_rules.json`,
   D6, **not** written by this task); `turnaround.fixture` (`13` §13.11,
-  `tests/fixtures/turnaround/phase1-four-vehicles.*`); `flow.fixture` (the
+  `tests/fixtures/turnaround/phase1-five-vehicles.json`); `flow.fixture` (the
   `sim.flow` fixture T-023 runs); and `render_layout.fixture` (`15` §15.12,
   under `tests/fixtures/render/`). It also copies `data/` into
   `Assets/StreamingAssets/Content/`. Both directories are build output — the fixtures stay test fixtures beside their tests, never

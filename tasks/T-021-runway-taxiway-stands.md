@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN PROGRESS (implementation PR #91; test PR #78 approved and merging via #91). Spec answers Q-080..Q-083 (PR #93, `1154c2a`) are merged and apply. Q-085 (a tracked bound, PR #96) is open |
+| Status | MERGED (PR #91 with tests #78, 2026-10-03; spec Q-080..Q-083 PR #93 and Q-085 PR #96 applied) |
 | Module | `sim.airside` |
 | Assigned role | worker |
 | Depends on | T-003 (merged #18), T-005 (merged #26), T-008 (merged #54), T-026 (merged #29); all merged |

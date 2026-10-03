@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (synced 2026-10-02 to `19` §19.2d and §19.9, spec PR #95; not releasable until T-049 merges and the tests are authored) |
+| Status | MERGED (PR #105 with tests #102, 2026-10-03; `19` §19.2d and §19.9, spec PR #95) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-009 (merged #74), T-010 (merged #56), T-030 (merged #90), T-013 (merged #94), T-049 (not merged; adds `IFlowSystem.KindOf`) |
+| Depends on | T-009 (merged #74), T-010 (merged #56), T-030 (merged #90), T-013 (merged #94), T-049 (merged #99; adds `IFlowSystem.KindOf`) |
 | Spec source | `spec/19-interfaces-harness.md` §19.2 ("`Promotion` before `sim.flow` promotion (T-010)"), §19.2d (what the second run promotes, Q-084), §19.9 (the five tests); `spec/09-interfaces-flow.md` §9.1, §9.7 (`SetPromoted`/`AgentsAt`/`KindOf`, Q-033, Q-084), "Promotion rules"; `spec/02-determinism.md` "Gates" (`determinism_promotion`: "same day headless vs with camera parked on a gate"); spec PR #95 (`8f66470`) |
 | Blocked by | — |
 

@@ -281,7 +281,7 @@ never subscribes to the event bus).
 tests/app/render/**
 ```
 
-Written by the Test Author, against `tests/fixtures/render/phase1-layout.*`
+Written by the Test Author, against `tests/fixtures/render/phase1-layout.json`
 (binding requirements: §15.12 — positions/geometry for every taxi
 node/runway of `tests/fixtures/airside/phase1-single-runway.*`, a
 `FlowNodeBox` for every landside node used by the schedule/T-007/T-023

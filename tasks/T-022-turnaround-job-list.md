@@ -1,11 +1,13 @@
-# T-022 — Turnaround as job list, 4 vehicles, driver assignment
+# T-022 — Turnaround as job list, five vehicles, driver assignment
+
+(Title superseded 2026-10-03: Q-088 owner decision fixes the Phase 1 fleet at FIVE vehicles, a fixed job-to-vehicle table, `tests/fixtures/turnaround/phase1-five-vehicles.json`. The id is unchanged.)
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN PROGRESS (tests PR #100, being updated for spec PR #104 Q-086..Q-093; worker PR #103, being reworked). Spec PR #104 merged `7a8b405`: JSON setup format (Q-086), `tests/sim/turnaround` may also reference `sim.airside` for three tests (Q-087, `07` L3 exception), five-vehicle fixed table (Q-088, owner), PlannedStart/Resource values, creation order, Unblocked Cause, capacity + 2-day retention (Q-092), step order (Q-093) |
 | Module | `sim.turnaround` |
 | Assigned role | worker |
-| Depends on | T-008 (merged #54), T-021 (not merged; implementation PR #91), T-026 (merged #29) |
+| Depends on | T-008 (merged #54), T-021 (merged #91), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md` build order #5; `spec/13-interfaces-turnaround.md` (answers Q-006) §13.4, §13.9, §13.11; `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75); `spec/10-events.md` §10.2 (Q-080, PR #93) |
 | Blocked by | — |
 

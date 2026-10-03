@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (not releasable until T-021, T-022, T-024 and T-030 merge, and its tests are authored) |
+| Status | QUEUED (not releasable until T-022 and T-024 merge (T-021 #91 and T-030 #90 are merged), the Q-095 fixture fix merges, and its tests are authored) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
-| Depends on | T-021, T-022, T-024, T-030 |
+| Depends on | T-021 (merged #91), T-022, T-024, T-030 (merged #90), Q-095 fixture fix (test-author PR, no task id: `tests/fixtures/airside/phase1-single-runway.json` sinks 901-904 to 9, one line in `tests/sim/airside/AirsideTestKit.cs`) |
 | Spec source | `spec/19-interfaces-harness.md` §19.2c "Which systems it composes" (the Phase 1 stage) and "The fixture", §19.8 (last paragraph); `spec/16-interfaces-host.md` §16.3, §16.4, §16.8; `spec/07-conventions.md` L8 |
 | Blocked by | — |
 
