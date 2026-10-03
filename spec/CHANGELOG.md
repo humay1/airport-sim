@@ -3537,7 +3537,8 @@ Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
                turnaround test project also references `sim.airside`, for
                §13.11's three registered-airside tests only. No
                production reference changes.
-             - **Q-088 (LOW CONFIDENCE):** §13.4 fixes `RequiresVehicle`
+             - **Q-088 (HUMAN DECISION — owner, 2026-10-03, accepted as
+               written):** §13.4 fixes `RequiresVehicle`
                per `JobKind`; the file has no such key; `CreateSystem`
                re-runs §13.4's checks and throws `ArgumentException` on an
                in-code setup (BCL type, no new public type). The fixture
@@ -3551,9 +3552,13 @@ Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
              - **Q-092:** new constants `TURNAROUND_RETENTION_DAYS` = 2
                and `TURNAROUND_FLIGHTS_CAPACITY` = 4096 (§13.2, §13.10).
                Finished flights are pruned on a day's first tick, and
-               storage is preallocated. Overflow throws
-               `SimInvariantException`. Hash-moving only in runs longer
-               than a day. Two new tests.
+               storage is preallocated. That covers the job slots, the
+               finish-order list and one waiting list per `VehicleKind`,
+               each sized from `TURNAROUND_FLIGHTS_CAPACITY` (review of
+               #104 at `5c304b6`). Overflow throws
+               `SimInvariantException`, and nothing grows in the update
+               path. Hash-moving only in runs longer than a day. Two new
+               tests.
              - **Q-093:** §13.5's steps 1 and 3 run in `Tick`, and step 2
                runs in the phase-3 `OnStand` handler. This states the
                order the worker (PR #103) already implements.
@@ -3583,8 +3588,9 @@ Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
                the turnaround fixture or these payloads.
              - **Open, not answered here:** `14` §14.14's integrated day
                in `tests/sim/delay` will need the same reach as Q-087.
-             - **Scope:** none added. **PENDING HUMAN:** none; Q-088 is
-               flagged LOW CONFIDENCE for owner review (mapping and
-               fixture fleet size).
-Signed off:  not required (architecture; Q-088 LOW CONFIDENCE for owner
-             review)
+             - **LOW CONFIDENCE:** none.
+             - **Scope:** none added. **PENDING HUMAN:** none. The owner
+               decided Q-088 (mapping and the five-vehicle Phase 1 fleet)
+               on 2026-10-03.
+Signed off:  human for Q-088 (owner, 2026-10-03); not required for the
+             rest (architecture)

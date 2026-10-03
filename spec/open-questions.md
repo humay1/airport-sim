@@ -2671,7 +2671,7 @@ Answer:      A new hard bound, `TRACKED_FLIGHTS_CAPACITY` = 4096 tracks
              involved, so nothing is PENDING HUMAN.
 Status:      ANSWERED (spec/12-interfaces-airside.md#122-constants)
 
-<!-- Q-086 to Q-091: the T-022 Test Author (PR #100) and reviewer-100, via coordinator, one batch. -->
+<!-- Q-086 to Q-093: the T-022 batch, one PR (#104). Q-086 to Q-090 from the Test Author (PR #100), Q-091 from reviewer-100, Q-092 and Q-093 from the worker (PR #103), all via coordinator. -->
 
 ### Q-086 — `sim.turnaround`: the setup file format
 Raised by:   Test Author / T-022, via coordinator, 2026-10-03
@@ -2722,7 +2722,9 @@ Question:    §13.4 does not say whether `Load` rejects `RequiresVehicle`
              one `VehicleKind` may serve several `JobKind`s. Exactly four
              vehicles cannot cover the five `VehicleKind`s departures
              need; the PR #100 fixture has the tractor do pushback prep.
-Answer:      Architecture, LOW CONFIDENCE. §13.4 fixes the table:
+Answer:      HUMAN DECISION — owner, 2026-10-03: accepted as written
+             below (one vehicle per kind, a Phase 1 fleet of five with ids
+             1 to 5, the fixed table). §13.4 fixes the table:
              `BaggageUnload` and `BaggageLoad` on `BaggageTractor`,
              `CabinClean` `CleaningCrew`, `Catering` `CateringTruck`,
              `Fuel` `FuelTruck`, `PushbackPrep` `PushbackTug`, `Deboard`
@@ -2732,11 +2734,9 @@ Answer:      Architecture, LOW CONFIDENCE. §13.4 fixes the table:
              already say it, and a free mapping lets a fuel truck do the
              catering. The fixture becomes five vehicles, one per kind,
              renamed `phase1-five-vehicles.json` (`14` §14.14 and `16`
-             §16.3 updated). The size of the Phase 1 playtest fleet is
-             not a balance decision taken here: it is the existing test
-             fixture, grown by the one vehicle the table needs. If the
-             owner reads the mapping or the count as design, this is
-             the entry to overturn.
+             §16.3 updated). The fleet size and the mapping went to the
+             owner as a possible scope decision, and the owner confirmed
+             both.
 Status:      ANSWERED (spec/13-interfaces-turnaround.md#which-vehicle-serves-which-job-q-088)
 
 ### Q-089 — `sim.turnaround`: `PlannedStart` and `Resource`

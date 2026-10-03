@@ -441,7 +441,9 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 2. Jobs, ascending `JobId`: every field of `TurnaroundJob`.
 
 Not hashed, because derived or load-time immutable: `TurnaroundCatalogue`,
-`TurnaroundFleet`, `FreeVehicles()`, `JobsForFlight()`.
+`TurnaroundFleet`, `FreeVehicles()`, `JobsForFlight()`, the finish-order
+list and the per-`VehicleKind` waiting lists (both below, Q-092). Both
+are fully determined by the hashed jobs.
 
 ### Retention and the capacity bound (Q-092)
 
@@ -471,6 +473,27 @@ for that many flights' jobs (eight job slots each) is preallocated at
 construction and never grows. When the `OnStand` handler would create jobs
 for flight 4 097, it throws `SimInvariantException` (`08`) naming that
 `FlightId`, before creating any of its jobs, as `12` §12.2's bounds do.
+
+Every other variable-size structure in the update path is bounded by the
+same constant. Each is preallocated at construction to the capacity below
+and never grows:
+
+| Structure | Capacity | Why it is enough |
+|---|---|---|
+| job slots | `TURNAROUND_FLIGHTS_CAPACITY × 8` | at most one job per `JobKind` per flight (§13.3) |
+| finish-order list | `TURNAROUND_FLIGHTS_CAPACITY` | one entry per finished flight in state |
+| waiting list, one per `VehicleKind`: its `Blocked` jobs in ascending `EventId` of their `TurnaroundJobBlocked` (§13.5 step 3) | `TURNAROUND_FLIGHTS_CAPACITY` each | by §13.4's table, a flight has at most one job needing a given `VehicleKind`. An arrival's only tractor job is `BaggageUnload`, and a departure's is `BaggageLoad`. So each list holds at most one entry per flight in state |
+
+`Boarding`'s `JobDependency` wait is in no waiting list. It is resolved by
+§13.5 step 1 from its own flight's jobs.
+
+None of these can overflow while the flight bound holds. A full structure
+at an insertion is a broken invariant. It throws `SimInvariantException`
+naming the `FlightId` being inserted, and it never grows. A waiting list
+appends at its tail, because a new `Blocked` always has a higher `EventId`
+than every entry already there. It removes from anywhere in it without
+allocating. Its own layout is the worker's choice, provided it meets
+§13.10's O(active + blocked + vehicles) bound.
 
 Sizing works like `12` §12.2's (Q-085). At `01`'s max tier there are at
 most 800 movements, and so 800 `OnStand`s, in a calendar day. Assume no
