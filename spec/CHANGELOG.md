@@ -3522,3 +3522,109 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (engineering bound; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-03 — spec/13-interfaces-turnaround.md §13.2, §13.4, §13.5, §13.6, §13.9, §13.10, §13.10a, §13.11; spec/07-conventions.md L3; spec/14 §14.14; spec/16 §16.3; INDEX; open-questions — T-022 gaps: setup format, airside reach, job-to-vehicle table, payloads, creation order, `Unblocked` cause, retention bound, step placement (Q-086 to Q-093)
+Reason:      The T-022 Test Author (PR #100) could not write the loader
+             tests, the fixture file or the registered-airside tests, and
+             found four unpinned rules. reviewer-100 asked for one more,
+             and the T-022 worker (PR #103) found an unbounded store and
+             a step-order contradiction.
+Raised by:   Q-086 to Q-093
+Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
+               §13.4 checks with named tokens. `Load`'s signature and the
+               public type list are unchanged.
+             - **Q-087:** `07` L3 gains a second named exception: the
+               turnaround test project also references `sim.airside`, for
+               §13.11's three registered-airside tests only. No
+               production reference changes.
+             - **Q-088 (HUMAN DECISION — owner, 2026-10-03, accepted as
+               written):** §13.4 fixes `RequiresVehicle`
+               per `JobKind`; the file has no such key; `CreateSystem`
+               re-runs §13.4's checks and throws `ArgumentException` on an
+               in-code setup (BCL type, no new public type). The fixture
+               becomes `phase1-five-vehicles.json`, one vehicle per kind;
+               `14` §14.14 and `16` §16.3 renamed accordingly.
+             - **Q-089:** `PlannedStart` per job kind; `Resource` always
+               null at Phase 0/1.
+             - **Q-090:** creation events in ascending `JobKind`.
+             - **Q-091:** a vehicle `Unblocked`'s `Cause` is the
+               completion that freed that very vehicle.
+             - **Q-092:** new constants `TURNAROUND_RETENTION_DAYS` = 2
+               and `TURNAROUND_FLIGHTS_CAPACITY` = 4096 (§13.2, §13.10).
+               Finished flights are pruned on a day's first tick, and
+               storage is preallocated. That covers the job slots, the
+               finish-order list and one waiting list per `VehicleKind`,
+               each sized from `TURNAROUND_FLIGHTS_CAPACITY` (review of
+               #104 at `5c304b6`). Overflow throws
+               `SimInvariantException`, and nothing grows in the update
+               path. Hash-moving only in runs longer than a day. Two new
+               tests.
+             - **Q-093:** §13.5's steps 1 and 3 run in `Tick`, and step 2
+               runs in the phase-3 `OnStand` handler. This states the
+               order the worker (PR #103) already implements.
+             - **T-022 worker (PR #103, unmerged), choices overridden:**
+               the line-oriented setup format becomes Q-086's JSON;
+               `PlannedStart` = creation tick becomes Q-089's
+               schedule-anchored value (`10` §10.4); `Resource` =
+               the vehicle on an `Unblocked` becomes null (Q-089: a
+               `VehicleId` is not an allocator `EntityId`, and a paired
+               closing event carries its opener's fields). Job storage
+               that doubles on overflow becomes Q-092's preallocated
+               bound with pruning.
+             - **T-022 tests (PR #100, unmerged):** `Phase1Fixture` must
+               move `PushbackPrep` to `PushbackTug` and add a tug (five
+               vehicles), and `CreateSystem` now rejects the current one.
+               Add the fixture file, the two loader tests, the five new
+               tests of §13.11 (three for Q-086/Q-088/Q-090, two for
+               Q-092), and the second `ProjectReference`. The
+               existing Cause test's reading is confirmed.
+             - **T-022 worker:** the loader, the `CreateSystem`
+               validation, creation order and the payload values above.
+             - **Planner:** `tasks/T-034-host-unity-shell.md` names
+               `phase1-four-vehicles.*`; it becomes
+               `phase1-five-vehicles.json`. T-022's task file may name
+               the fixture or the one-reference rule.
+             - **Merged work:** none invalidated. No merged code reads
+               the turnaround fixture or these payloads.
+             - **Open, not answered here:** `14` §14.14's integrated day
+               in `tests/sim/delay` will need the same reach as Q-087.
+             - **LOW CONFIDENCE:** none.
+             - **Scope:** none added. **PENDING HUMAN:** none. The owner
+               decided Q-088 (mapping and the five-vehicle Phase 1 fleet)
+               on 2026-10-03.
+Signed off:  human for Q-088 (owner, 2026-10-03); not required for the
+             rest (architecture)
+
+## 2026-10-04 — spec/15-interfaces-render.md §15.2, §15.3, §15.4, §15.5, §15.8, §15.11, §15.12; spec/12-interfaces-airside.md §12.13; spec/07-conventions.md L4; spec/17 §17.10; INDEX; open-questions — T-020 gaps: layout format, departure sinks, frame budget window, `SourceRef` order, pacer exceptions, `RenderConstants`, floats in render tests, promotion in `Build` (Q-094 to Q-101)
+Reason:      The T-020 Test Author (PR #101) could not write the layout
+             loader tests, the fixture or the budget test, and found five
+             unpinned details. A real composition of the Phase 1 fixtures
+             throws because the airside fixture's sinks name no flow node.
+Raised by:   Q-094 to Q-101
+Impact:      - **Q-094:** §15.4 pins a JSON layout format and ordered
+               checks. `IRenderLayoutLoader.Load`'s signature is unchanged.
+               The fixture is `phase1-layout.json` (`17` §17.10 updated;
+               `16` §16.3 already says "under `tests/fixtures/render/`").
+             - **Q-095:** `tests/fixtures/airside/phase1-single-runway.json`
+               must change `departure_sink_node` 901 to 904 to 9. That is
+               merged Test-Author work (T-021) and is now out of spec,
+               so the **Planner** must route a Test Author fix. It
+               unblocks T-048, T-031 and T-025. No merged test should
+               change; the airside fixture's hash changes, but no golden
+               includes it.
+             - **Q-096:** the frame budget test uses 14 400 rebuilding
+               frames and `03`'s arithmetic. It is Slow only by L11a (b).
+             - **Q-097, Q-098:** clarifications. The pacer throws
+               `ArgumentOutOfRangeException`. One new test.
+             - **Q-099:** one new public type, `RenderConstants`. Any
+               public-type-list test in `tests/app/render` must include it.
+             - **Q-100:** `07` L4 gets one exception, for `tests/app/render/`
+               only. `tests/app/ui` is unchanged; if it needs the same, that
+               is a new question.
+             - **Q-101:** `Build` evaluates the promotion predicate itself.
+               No interface change. One new test.
+             - **Merged work:** only the airside fixture file (Q-095).
+             - **LOW CONFIDENCE:** none new.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).
