@@ -323,7 +323,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   (§13.4, §13.10a, §13.11, Q-086, Q-088); job payloads: schedule-anchored
   `PlannedStart`, `Resource` always null (§13.6, Q-089); creation in
   `JobKind` order (§13.5, Q-090); an `Unblocked`'s `Cause` is the
-  completion that freed its own vehicle (§13.5, §13.9, Q-091)**.
+  completion that freed its own vehicle (§13.5, §13.9, Q-091)**; **finished
+  flights pruned after two sim-days, at most 4 096 flights in state,
+  preallocated, overflow throws (§13.2, §13.10, Q-092); steps 1 and 3 in
+  `Tick`, step 2 in the phase-3 handler (§13.5, Q-093)**.
 - LC: distance-blind dispatch (§13.5); the fixed job-to-vehicle table and
   the five-vehicle fixture (§13.4, §13.11, Q-088).
 - Read if: T-022.

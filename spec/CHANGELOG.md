@@ -3523,11 +3523,13 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
 Signed off:  not required (engineering bound; no balance, scope or
              `01`/`02` change).
 
-## 2026-10-03 — spec/13-interfaces-turnaround.md §13.4, §13.5, §13.6, §13.9, §13.10a, §13.11; spec/07-conventions.md L3; spec/14 §14.14; spec/16 §16.3; INDEX; open-questions — T-022 gaps: setup format, airside reach, job-to-vehicle table, payloads, creation order, `Unblocked` cause (Q-086 to Q-091)
+## 2026-10-03 — spec/13-interfaces-turnaround.md §13.2, §13.4, §13.5, §13.6, §13.9, §13.10, §13.10a, §13.11; spec/07-conventions.md L3; spec/14 §14.14; spec/16 §16.3; INDEX; open-questions — T-022 gaps: setup format, airside reach, job-to-vehicle table, payloads, creation order, `Unblocked` cause, retention bound, step placement (Q-086 to Q-093)
 Reason:      The T-022 Test Author (PR #100) could not write the loader
              tests, the fixture file or the registered-airside tests, and
-             found four unpinned rules; reviewer-100 asked for one more.
-Raised by:   Q-086 to Q-091
+             found four unpinned rules. reviewer-100 asked for one more,
+             and the T-022 worker (PR #103) found an unbounded store and
+             a step-order contradiction.
+Raised by:   Q-086 to Q-093
 Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
                §13.4 checks with named tokens. `Load`'s signature and the
                public type list are unchanged.
@@ -3546,11 +3548,30 @@ Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
              - **Q-090:** creation events in ascending `JobKind`.
              - **Q-091:** a vehicle `Unblocked`'s `Cause` is the
                completion that freed that very vehicle.
+             - **Q-092:** new constants `TURNAROUND_RETENTION_DAYS` = 2
+               and `TURNAROUND_FLIGHTS_CAPACITY` = 4096 (§13.2, §13.10).
+               Finished flights are pruned on a day's first tick, and
+               storage is preallocated. Overflow throws
+               `SimInvariantException`. Hash-moving only in runs longer
+               than a day. Two new tests.
+             - **Q-093:** §13.5's steps 1 and 3 run in `Tick`, and step 2
+               runs in the phase-3 `OnStand` handler. This states the
+               order the worker (PR #103) already implements.
+             - **T-022 worker (PR #103, unmerged), choices overridden:**
+               the line-oriented setup format becomes Q-086's JSON;
+               `PlannedStart` = creation tick becomes Q-089's
+               schedule-anchored value (`10` §10.4); `Resource` =
+               the vehicle on an `Unblocked` becomes null (Q-089: a
+               `VehicleId` is not an allocator `EntityId`, and a paired
+               closing event carries its opener's fields). Job storage
+               that doubles on overflow becomes Q-092's preallocated
+               bound with pruning.
              - **T-022 tests (PR #100, unmerged):** `Phase1Fixture` must
                move `PushbackPrep` to `PushbackTug` and add a tug (five
                vehicles), and `CreateSystem` now rejects the current one.
-               Add the fixture file, the two loader tests, the three new
-               tests of §13.11, and the second `ProjectReference`. The
+               Add the fixture file, the two loader tests, the five new
+               tests of §13.11 (three for Q-086/Q-088/Q-090, two for
+               Q-092), and the second `ProjectReference`. The
                existing Cause test's reading is confirmed.
              - **T-022 worker:** the loader, the `CreateSystem`
                validation, creation order and the payload values above.

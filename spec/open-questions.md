@@ -2778,3 +2778,34 @@ Answer:      Architecture. The `TurnaroundJobCompleted`, in step 1 of this
              exists: a vehicle free at the end of a tick has no `Blocked`
              job of its kind waiting.
 Status:      ANSWERED (spec/13-interfaces-turnaround.md#135-vehicle-dispatch)
+
+### Q-092 — `sim.turnaround`: job retention and a storage bound
+Raised by:   Worker / T-022 (PR #103), via coordinator, 2026-10-03
+Blocking:    T-022 (no allocation in the update path)
+Question:    Nothing says when a flight's jobs leave state. The worker
+             keeps them forever and doubles storage on overflow, which
+             is unbounded growth and an allocation over a soak.
+Answer:      Architecture, following Q-085 and `14` §14.8. A flight whose
+             jobs are all `Completed` is pruned on the first tick of the
+             sim-day after the day after it finished
+             (`TURNAROUND_RETENTION_DAYS` = 2). At most
+             `TURNAROUND_FLIGHTS_CAPACITY` = 4096 flights have jobs in
+             state. Storage is preallocated, and the `OnStand` that would
+             exceed the bound throws `SimInvariantException`. Sizing: 800
+             `OnStand`s a day over three days is 2 400, if no flight stays
+             unfinished more than a day. Engineering bounds, not balance.
+             Two new tests.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#retention-and-the-capacity-bound-q-092)
+
+### Q-093 — `sim.turnaround`: §13.5's step order against the handler phase
+Raised by:   Worker / T-022 (PR #103), via coordinator, 2026-10-03
+Blocking:    none (clarification)
+Question:    §13.5 lists creation (step 2) before assignment (step 3).
+             But §13.9 puts creation in the `OnStand` handler, which runs
+             in phase 3, after `Tick`.
+Answer:      Architecture. The step numbers are names, not a sequence.
+             Steps 1 then 3 run in `Tick`, after the day-start pruning
+             (Q-092). Step 2 runs in the phase-3 handler, with immediate
+             assignment. This is what PR #103 implements, and the
+             observable order is unchanged.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#135-vehicle-dispatch)

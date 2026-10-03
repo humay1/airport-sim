@@ -61,9 +61,12 @@ add, as an amendment, not a local invention here.
 | Constant | Value | Meaning |
 |---|---|---|
 | `JOB_KIND_BITS` | 8 | §13.3, `JobId` derivation |
+| `TURNAROUND_RETENTION_DAYS` | 2 | §13.10 "Retention": a finished flight's jobs are kept on the current and the previous sim-day (Q-092) |
+| `TURNAROUND_FLIGHTS_CAPACITY` | 4096 flights | §13.10 "Retention": flights with jobs in state, a hard bound (Q-092) |
 
 No other module-specific constants; every duration and fleet size is
-construction data (§13.4), never hardcoded.
+construction data (§13.4), never hardcoded. The two bounds above are
+engineering sizing, not balance.
 
 ---
 
@@ -197,6 +200,17 @@ outcome, not a load failure.
 
 One deterministic rule, applied uniformly to every `VehicleKind`, every tick,
 in this order:
+
+**Where each step runs (Q-093).** The numbers name the steps; they are not
+one sequence inside `Tick`. Steps 1 and 3 run in `Tick` (phase 2, `08`
+§8.5), step 1 then step 3, after §13.10's pruning on a day's first tick.
+Step 2 runs in the `OnStand` handler (phase 3), which comes after `Tick` in
+the same tick, because `sim.airside` publishes `OnStand` in its own phase-2
+`Tick` (§13.9). So in one tick: completions, then assignment of freed
+vehicles to waiting jobs, then creation, with immediate assignment, for
+each `OnStand` dispatched that tick. A job created in a tick's step 2 is
+first considered by step 3 on the next tick. By then it is `Blocked`,
+because creation takes any free vehicle of its kind.
 
 1. **Completions first.** Any `Active` job with `DueAt == CurrentTick`
    transitions to `Completed`, emits `TurnaroundJobCompleted`, and frees its
@@ -429,6 +443,47 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 Not hashed, because derived or load-time immutable: `TurnaroundCatalogue`,
 `TurnaroundFleet`, `FreeVehicles()`, `JobsForFlight()`.
 
+### Retention and the capacity bound (Q-092)
+
+A flight is **finished** when all of its jobs are `Completed`: both jobs
+for an arrival, all six for a departure. Its finish tick is the largest
+`DueAt` among its jobs, so no new field is needed. A finished flight's
+jobs stay in state, and in the queries and the hash, until they are
+pruned:
+
+- On a tick with `CurrentTick % TICKS_PER_SIM_DAY == 0`, before step 1
+  (§13.5), `Tick` removes every finished flight whose finish tick is
+  below `(CurrentTick / TICKS_PER_SIM_DAY − (TURNAROUND_RETENTION_DAYS − 1))
+  × TICKS_PER_SIM_DAY`. That is, a flight is kept for the sim-day it
+  finished on and the next one. This mirrors `sim.delay`'s
+  `DELAY_RETENTION_DAYS` (`14` §14.8).
+- Pruning removes all of the flight's jobs at once. Afterwards `TryGetJob`
+  returns false for them and `JobsForFlight` returns an empty list, the
+  same as for a flight that never had jobs.
+- Finished flights are kept in finish order (ties broken by ascending
+  `FlightId`), so pruning removes a prefix. It never scans unfinished
+  flights. It is not an allocation.
+- A flight that never finishes is never pruned. An example is a
+  `Catering` job with no `CateringTruck` in the fleet (§13.4).
+
+At most `TURNAROUND_FLIGHTS_CAPACITY` flights have jobs in state. Storage
+for that many flights' jobs (eight job slots each) is preallocated at
+construction and never grows. When the `OnStand` handler would create jobs
+for flight 4 097, it throws `SimInvariantException` (`08`) naming that
+`FlightId`, before creating any of its jobs, as `12` §12.2's bounds do.
+
+Sizing works like `12` §12.2's (Q-085). At `01`'s max tier there are at
+most 800 movements, and so 800 `OnStand`s, in a calendar day. Assume no
+flight stays unfinished more than one sim-day after its `OnStand`. Then
+every flight in state reached `OnStand` on the current calendar day or one
+of the two before it: at most 2 400, under 4 096. Only two kinds of run
+reach the bound: a flight left unfinished for days, which is a fixture
+error at Phase 0/1 (a missing `VehicleKind`, or a fleet far too small for
+the schedule), or a schedule above the max tier. `sim.airside` reaches its
+own `TRACKED_FLIGHTS_CAPACITY` in the same runs (`12` §12.2). §13.4's
+"`Blocked` forever is legitimate" therefore holds for runs of a few
+sim-days, not for a soak.
+
 **RNG: none at Phase 0/1.** Dispatch is FIFO by `EventId`; job creation and
 duration are catalogue lookups. Same posture as `sim.schedule`
 (`11-interfaces-schedule.md` §11.9) and `sim.airside`
@@ -563,6 +618,14 @@ Done-condition tests this spec expects to exist, phrased per
 - `test_creation_events_follow_job_kind_order` (Q-090): a departure's
   creation events are published in ascending `JobKind`, `Boarding`'s
   `Blocked` last
+- `test_finished_flight_jobs_pruned_after_retention_days` (Q-092): a flight
+  that finishes on day `d` still answers `TryGetJob` at the last tick of
+  day `d + 1`, and does not at the first tick of day `d + 2`. An
+  unfinished flight is never pruned
+- `test_turnaround_flights_overflow_throws_sim_invariant` (Q-092): with
+  4 096 unfinished flights in state, the next `OnStand` throws
+  `SimInvariantException` naming its `FlightId`. Before that, the
+  creations allocate nothing
 - `test_vehicle_dispatch_assigns_lowest_event_id_first`
 - `test_boarding_waits_for_all_other_departure_jobs`
 - `test_deboard_complete_fires_once_per_arrival`
