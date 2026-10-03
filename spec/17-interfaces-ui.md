@@ -296,7 +296,7 @@ on the tasks that deliver those. The UI backend
 (`src/app/ui/Unity/**`) is a separate task, after `app.host`'s Unity project
 exists.
 
-**Fixture.** None of its own. Tests reuse `tests/fixtures/render/phase1-layout.*`
+**Fixture.** None of its own. Tests reuse `tests/fixtures/render/phase1-layout.json`
 (`15` §15.12), plus a synthetic layout with overlapping boxes.
 
 Done-condition tests, phrased per `07-conventions.md`:

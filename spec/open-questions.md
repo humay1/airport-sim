@@ -2670,3 +2670,100 @@ Answer:      A new hard bound, `TRACKED_FLIGHTS_CAPACITY` = 4096 tracks
              0/1 a fixture error. No balance, content or scope number is
              involved, so nothing is PENDING HUMAN.
 Status:      ANSWERED (spec/12-interfaces-airside.md#122-constants)
+
+<!-- Q-086 to Q-093: the T-022 batch, PR #104. Q-094 to Q-101: the T-020 batch (Test Author, PR #101), via coordinator. -->
+
+### Q-094 — `app.render`: the layout file format
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020 (`test_render_layout_rejects_missing_taxi_node_position`,
+             `test_render_layout_rejects_unknown_runway_geometry`, the
+             §15.12 fixture)
+Question:    §15.4 and `16` §16.3 leave the render-layout file format to
+             the worker, but only the Test Author writes the fixture.
+Answer:      Architecture, as Q-046. §15.4 "File format": strict JSON,
+             arrays `taxi_nodes`, `runways`, `flow_nodes` and four size
+             keys. `FormatException` with the `sourceName: ` prefix;
+             `line <n>` for parse failures; ordered checks naming the
+             lowest failing id or the size key. The fixture is
+             `tests/fixtures/render/phase1-layout.json`.
+Status:      ANSWERED (spec/15-interfaces-render.md#file-format-q-094)
+
+### Q-095 — `sim.airside` fixture: departure sinks name no flow node
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-048, T-031, T-025 (any real world+flow+schedule+airside
+             composition)
+Question:    The airside fixture's stands sink to 901 to 904, but the
+             flow fixture's only `Sink` is node 9. A composed run throws
+             `ArgumentException: Absorb: unknown node 901` at tick 200.
+Answer:      Architecture. The airside fixture changes: every stand's
+             `departure_sink_node` is 9 (§12.13), which equals the
+             harness's `PHASE0_DEPARTURE_SINK`. Shared sinks are legal.
+             Rejected: adding nodes 901 to 904 to the flow fixture, which
+             also needs walk-graph nodes and edges in the world fixture,
+             three files instead of one. The owning Test Author edits
+             `tests/fixtures/airside/phase1-single-runway.json` (four
+             numbers). Merged airside tests build stands in code or
+             replace whole fixture lines, so none should change.
+Status:      ANSWERED (spec/12-interfaces-airside.md#1213-the-phase-01-fixture-t-021)
+
+### Q-096 — `app.render`: the per-frame budget's window
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020 (`test_scene_build_within_frame_budget_at_max_tier`)
+Question:    `03`'s window rule (n = 14 400) covers per-tick budgets;
+             §15.11's is per frame.
+Answer:      Architecture. `03`'s window and arithmetic apply with "frame"
+             for "tick": 14 400 frames, each one `Update` plus one
+             rebuilding `Build`, `B` = 2000 µs. The fake tick advances by
+             one per frame so that every `Build` rebuilds. Slow only if
+             `07` L11a rule (b) says so.
+Status:      ANSWERED (spec/15-interfaces-render.md#1511-budget)
+
+### Q-097 — `app.render`: "`SourceRef` ascending"
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    none (clarification)
+Answer:      Lexicographic over the declared fields: `Kind` ordinal, then
+             `Id`, then `Sub` (§15.5). This is what the tests assume.
+Status:      ANSWERED (spec/15-interfaces-render.md#155-what-is-drawn)
+
+### Q-098 — `app.render`: the tick pacer's exception type
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020 (`07` requires exact types in tests)
+Answer:      `ArgumentOutOfRangeException` for both a negative `elapsed`
+             and an out-of-enum `speed`, `ParamName` set, `elapsed`
+             checked first, checked even when paused, and the accumulator
+             unchanged (§15.8). One new test.
+Status:      ANSWERED (spec/15-interfaces-render.md#158-the-tick-pacer-and-the-frame-order)
+
+### Q-099 — `app.render`: where the presentation constants live
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020
+Answer:      `public static class RenderConstants` in
+             `AirportSim.App.Render`, `public const` members with their
+             IDL names and pinned C# types (§15.2), following `07` L10's
+             `SimConstants` rule. One new public type.
+Status:      ANSWERED (spec/15-interfaces-render.md#152-constants)
+
+### Q-100 — `app.render`: floats in tests
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020
+Question:    `07` L4 and `08` §8.3 ban floating point in tests, but
+             §15.3 makes the render types `float`.
+Answer:      `08` §8.3 binds sim assemblies and their tests. `07` L4 gains
+             one exception: `tests/app/render/` may use `float` for the
+             values of `15`'s `float`-typed members. Expected values are
+             computed as the scene layer computes them and compared
+             exactly. Budget tests stay `long`-only.
+Status:      ANSWERED (spec/15-interfaces-render.md#153-the-two-layers)
+
+### Q-101 — `app.render`: how `Build` knows which boxes are promoted
+Raised by:   Test Author / T-020, via coordinator, 2026-10-04
+Blocking:    T-020
+Question:    The scene builder cannot see promotion state, so how does
+             `Build` choose the boxes whose agents it draws?
+Answer:      Architecture. `Build` applies §15.7's "desired promoted"
+             predicate to its own camera and graphics and calls `AgentsAt`
+             for exactly those boxes. `16` §16.6 passes the same inputs to
+             both, and `AgentsAt` returns empty on an unpromoted node, so a
+             mismatch draws nothing rather than failing. No new query or
+             shared state. One new test.
+Status:      ANSWERED (spec/15-interfaces-render.md#155-what-is-drawn)
