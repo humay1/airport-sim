@@ -78,7 +78,7 @@ namespace AirportSim.Sim.Turnaround.Tests
                 chunked.Host.Step(n < left ? n : (uint)left);
             }
 
-            Assert.NotEmpty(one.Rec.All);
+            Assert.NotEmpty(one.Rec.Of<TurnaroundJobStarted>());
             Assert.Equal(one.Rec.Trace(), chunked.Rec.Trace());
             Assert.Equal(one.Sink.Describe(), chunked.Sink.Describe());
             Assert.Equal(Snapshot(one), Snapshot(chunked));

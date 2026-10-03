@@ -8,18 +8,15 @@ namespace AirportSim.Sim.Turnaround.Tests
 {
     /// <summary>
     /// 07 "Testing": one headless sim-day of tests/fixtures/schedule/phase0-200.csv
-    /// with the 13 §13.11 setup (four vehicles), asserting 13's own rules at
-    /// every sim-hour and over the whole event stream.
-    ///
-    /// 13 §13.11 asks for sim.airside registered. The test project cannot
-    /// reference sim.airside under 07 L3 (spec gap reported with T-022), so
-    /// OnStand comes from the position-3 driver: an arrival 50 ticks after
-    /// STA, a departure at its planned OnStand.
+    /// with the 13 §13.11 setup (five vehicles) and sim.airside registered on
+    /// tests/fixtures/airside/phase1-single-runway.json (13 §13.11, Q-087),
+    /// asserting 13's own rules at every sim-hour and over the whole event
+    /// stream.
     /// </summary>
     public sealed class TurnaroundHeadlessDayTests
     {
         /// <summary>13 §13.3-§13.7 on the module's current state, for every flight the driver has put on stand.</summary>
-        private static void CheckState(Rig rig, JobDef[] jobs, VehicleDef[] fleet)
+        private static void CheckState(AirsideRig rig, JobDef[] jobs, VehicleDef[] fleet)
         {
             ulong now = rig.Host.CurrentTick;
             string at = " at tick " + now.ToString(CultureInfo.InvariantCulture);
@@ -27,7 +24,8 @@ namespace AirportSim.Sim.Turnaround.Tests
 
             foreach (Movement m in rig.Moves.Values)
             {
-                bool onStand = rig.Driver.TryGetOnStand(m.Flight, out _, out ulong onStandTick);
+                bool onStand = rig.Rec.OnStands.TryGetValue(m.Flight, out (EventId Id, ulong Tick) os);
+                ulong onStandTick = os.Tick;
                 IReadOnlyList<JobId> ids = rig.Turnaround.JobsForFlight(new FlightId(m.Flight));
                 if (!onStand)
                 {
@@ -117,7 +115,13 @@ namespace AirportSim.Sim.Turnaround.Tests
                 }
 
                 free.Sort();
-                Assert.Equal(free, rig.Free(k));
+                var listed = new List<ushort>();
+                foreach (VehicleId id in rig.Turnaround.FreeVehicles(k))
+                {
+                    listed.Add(id.Value);
+                }
+
+                Assert.Equal(free, listed);
             }
         }
 
@@ -126,7 +130,7 @@ namespace AirportSim.Sim.Turnaround.Tests
         {
             JobDef[] jobs = Phase1Fixture.Jobs();
             VehicleDef[] fleet = Phase1Fixture.Fleet();
-            var rig = new Rig(ScheduleFixture.Bytes(), Setups.Of(jobs, fleet), driveDays: 1);
+            var rig = new AirsideRig(ScheduleFixture.Bytes(), Setups.Of(jobs, fleet));
             for (ulong t = 600UL; t <= TConst.TicksPerDay; t += 600UL)
             {
                 rig.RunTo(t);
@@ -135,12 +139,20 @@ namespace AirportSim.Sim.Turnaround.Tests
 
             Recorder rec = rig.Rec;
 
-            // 13 §13.11: the four-vehicle fleet is contended over the day, and
-            // the unimpeded path still completes rotations.
+            // 13 §13.11: the five-vehicle fleet is contended over the day, and
+            // the unimpeded path still completes rotations, which sim.airside
+            // then closes and pushes back (12 §12.8 step 5).
             Assert.NotEmpty(rec.Of<TurnaroundJobBlocked>());
             Assert.NotEmpty(rec.Of<TurnaroundJobUnblocked>());
             Assert.NotEmpty(rec.Milestones(FlightMilestone.ReadyToBoard));
             Assert.NotEmpty(rec.Milestones(FlightMilestone.BoardingComplete));
+            foreach (Rec b in rec.Milestones(FlightMilestone.BoardingComplete))
+            {
+                if (b.Tick + 1UL < TConst.TicksPerDay)
+                {
+                    rig.AirsideMilestone(b.Flight, FlightMilestone.DoorsClosed);
+                }
+            }
 
             // 10 §10.4: each milestone at most once per flight; 13 §13.6: an
             // arrival's DeboardComplete always comes (Deboard needs no vehicle).
@@ -156,7 +168,7 @@ namespace AirportSim.Sim.Turnaround.Tests
 
             foreach (Movement m in rig.Moves.Values)
             {
-                if (!m.Departure && rig.Driver.TryGetOnStand(m.Flight, out _, out ulong t) && t + 60UL < TConst.TicksPerDay)
+                if (!m.Departure && rec.OnStands.TryGetValue(m.Flight, out (EventId Id, ulong Tick) os) && os.Tick + 60UL < TConst.TicksPerDay)
                 {
                     Assert.True(once.Contains((m.Flight, FlightMilestone.DeboardComplete)), "no DeboardComplete for arrival " + m.Flight);
                 }
@@ -183,7 +195,7 @@ namespace AirportSim.Sim.Turnaround.Tests
             foreach (KeyValuePair<(ulong, JobKind), string> kv in seq)
             {
                 Assert.True(legal.Contains(kv.Value), "job " + kv.Key.Item2 + " of flight " + kv.Key.Item1 + " went " + kv.Value);
-                TurnaroundJob j = rig.Job(kv.Key.Item1, kv.Key.Item2);
+                Assert.True(rig.Turnaround.TryGetJob(TConst.Job(kv.Key.Item1, kv.Key.Item2), out TurnaroundJob j), "job gone: " + kv.Key);
                 JobStatus expected = kv.Value.EndsWith("C", StringComparison.Ordinal) ? JobStatus.Completed : kv.Value.EndsWith("S", StringComparison.Ordinal) ? JobStatus.Active : JobStatus.Blocked;
                 Assert.True(j.Status == expected, "events " + kv.Value + " but state " + Show.Job(j));
             }

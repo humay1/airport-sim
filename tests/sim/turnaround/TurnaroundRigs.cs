@@ -441,13 +441,23 @@ namespace AirportSim.Sim.Turnaround.Tests
     internal sealed class Recorder
     {
         public readonly List<Rec> All = new List<Rec>();
+
+        /// <summary>Each flight's OnStand from position 3 (the driver or sim.airside): its EventId and tick.</summary>
+        public readonly Dictionary<ulong, (EventId Id, ulong Tick)> OnStands = new Dictionary<ulong, (EventId Id, ulong Tick)>();
         public ITurnaroundSystem? Turnaround;
 
         public Recorder(IEventBus bus, ushort subscriber)
         {
             var id = new SystemId(subscriber);
             bus.Subscribe<FlightMilestoneReached>(id, (in EventEnvelope env, in FlightMilestoneReached e, in TickContext ctx) =>
-                All.Add(new Rec(env, e, e.Flight.Value, null, null)));
+            {
+                if (e.Milestone == FlightMilestone.OnStand && env.Source.Value == TConst.AirsideSystemId)
+                {
+                    OnStands[e.Flight.Value] = (env.Id, env.Tick);
+                }
+
+                All.Add(new Rec(env, e, e.Flight.Value, null, null));
+            });
             bus.Subscribe<TurnaroundJobBlocked>(id, (in EventEnvelope env, in TurnaroundJobBlocked e, in TickContext ctx) =>
                 All.Add(new Rec(env, e, e.Flight.Value, e.Job, null)));
             bus.Subscribe<TurnaroundJobUnblocked>(id, (in EventEnvelope env, in TurnaroundJobUnblocked e, in TickContext ctx) =>
@@ -549,7 +559,8 @@ namespace AirportSim.Sim.Turnaround.Tests
             bool record = true,
             HandlerTimer? handlerTimer = null,
             IRandomService? trapRng = null,
-            bool probe = false)
+            bool probe = false,
+            List<(ulong Tick, ulong Flight, ulong Planned)>? script = null)
         {
             Ids = Csv.Ids(csv);
             foreach ((string _, Movement m) in Csv.Rows(csv, Math.Max(driveDays, 1)))
@@ -557,7 +568,7 @@ namespace AirportSim.Sim.Turnaround.Tests
                 Moves[m.Flight] = m;
             }
 
-            var script = new List<(ulong Tick, ulong Flight, ulong Planned)>();
+            script = script ?? new List<(ulong Tick, ulong Flight, ulong Planned)>();
             if (onStand != null)
             {
                 foreach ((string r, ulong t) in onStand)

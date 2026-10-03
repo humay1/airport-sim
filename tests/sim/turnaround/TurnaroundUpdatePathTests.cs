@@ -5,20 +5,16 @@ using Xunit;
 namespace AirportSim.Sim.Turnaround.Tests
 {
     /// <summary>
-    /// 03 "The update path" and "allocation test" (Q-061), 13 §13.10: all of
-    /// sim.turnaround's phase 1-3 code allocates nothing: Tick (completions,
-    /// Boarding's unblock, vehicle assignment, milestones) and the
-    /// FlightMilestoneReached handler that creates jobs. Metered with the
-    /// T-037 meter over ISimHost.Step, ticks 3601 to 4199, which hold no
-    /// checkpoint (every 600) and no schedule day boundary. Every other
-    /// registered system is a non-allocating probe, or sim.schedule with
-    /// nothing to publish there. The handler, and every Tick path, has already
-    /// run in the warm-up.
-    ///
-    /// 13 §13.11 asks for this with sim.airside registered. The test project
-    /// cannot reference sim.airside under 07 L3 (spec gap reported with T-022),
-    /// so OnStand comes from the position-3 driver; sim.turnaround learns of a
-    /// flight only through that event either way (13 §13.1).
+    /// 03 "The update path" and "allocation test" (Q-061), 13 §13.10/§13.11:
+    /// with sim.airside registered (Q-087), all of sim.turnaround's phase 1-3
+    /// code allocates nothing: Tick (completions, vehicle reassignment,
+    /// Boarding's unblock, milestones) and the FlightMilestoneReached handler
+    /// that creates jobs. Metered with the T-037 meter over ISimHost.Step,
+    /// ticks 3601 to 4199, which hold no checkpoint (every 600) and no
+    /// schedule day boundary; every row is day 0 and not repeated, so all
+    /// publication happens at tick 0. sim.airside's own update path allocates
+    /// nothing either (12 §12.12), so the whole Step is metered. Each path
+    /// has already run in the warm-up, with the same shape of traffic.
     /// </summary>
     public sealed class TurnaroundUpdatePathTests
     {
@@ -28,40 +24,38 @@ namespace AirportSim.Sim.Turnaround.Tests
         [Fact]
         public void test_turnaround_update_path_allocates_nothing_including_handlers()
         {
-            // One vehicle of each kind (ids 1-5 in VehicleKind order). Each
-            // batch is an arrival and two departures: the second departure
-            // waits for every vehicle, so Blocked, Unblocked, same-tick
-            // reassignment and Boarding's unblock all happen in each batch.
+            // Two rotations landing a minute apart in each batch, on the 13
+            // §13.11 setup (one vehicle of each kind): the second rotation's
+            // departure reaches its stand while the first's still holds the
+            // fuel truck (120 ticks), and its arrival's BaggageUnload contends
+            // with the first departure's BaggageLoad for the one tractor.
             byte[] csv = Csv.Of(
-                Csv.Row("A1", "A", "05:00"), Csv.Row("D1", "D", "06:00"), Csv.Row("D2", "D", "06:00"),
-                Csv.Row("A2", "A", "06:00"), Csv.Row("D3", "D", "07:00"), Csv.Row("D4", "D", "07:00"));
-            var rig = new Rig(
-                csv,
-                Setups.Unit(Setups.Plenty(1)),
-                onStand: new[]
-                {
-                    ("A1", 3000UL), ("D1", 3000UL), ("D2", 3010UL),
-                    ("A2", 3650UL), ("D3", 3650UL), ("D4", 3660UL),
-                },
-                record: false);
+                Csv.Row("W1A", "A", "03:00", "W1D"), Csv.Row("W1D", "D", "05:00", "W1A"),
+                Csv.Row("W2A", "A", "03:01", "W2D"), Csv.Row("W2D", "D", "05:00", "W2A"),
+                Csv.Row("R1A", "A", "06:20", "R1D"), Csv.Row("R1D", "D", "07:30", "R1A"),
+                Csv.Row("R2A", "A", "06:21", "R2D"), Csv.Row("R2D", "D", "07:30", "R2A"));
+            var rig = new AirsideRig(csv, Phase1Fixture.Setup(), record: false);
 
             rig.RunTo(WindowStart);
-            Assert.Equal(JobStatus.Completed, rig.Job("D2", JobKind.Boarding).Status);
-            Assert.Equal(JobStatus.Completed, rig.Job("A1", JobKind.Deboard).Status);
-            Assert.True(rig.Job("D2", JobKind.CabinClean).StartedAt > 3010UL, "warm-up: D2 never waited for a vehicle");
-            Assert.Empty(rig.Turnaround.JobsForFlight(new FlightId(rig.Id("D4"))));
+            Assert.Equal(JobStatus.Completed, rig.Job("W1D", JobKind.Boarding).Status);
+            Assert.Equal(JobStatus.Completed, rig.Job("W2D", JobKind.Boarding).Status);
+            TurnaroundJob w2Fuel = rig.Job("W2D", JobKind.Fuel);
+            Assert.True(w2Fuel.StartedAt > w2Fuel.CreatedAt, "warm-up: W2D's Fuel never waited for the truck");
+            Assert.Empty(rig.Turnaround.JobsForFlight(new FlightId(rig.Id("R1A"))));
 
             long start = Allocation.Start();
             rig.Host.Step((uint)(WindowEnd - WindowStart));
             long bytes = Allocation.Since(start);
             Assert.True(bytes == 0L, "the update path allocated " + bytes.ToString(CultureInfo.InvariantCulture) + " bytes in ticks 3601-4199");
 
-            // The window did the work it was meant to meter.
-            Assert.Equal(6, rig.Driver.Published);
-            Assert.Equal(2, rig.Turnaround.JobsForFlight(new FlightId(rig.Id("A2"))).Count);
-            Assert.Equal(JobStatus.Completed, rig.Job("A2", JobKind.Deboard).Status);
-            Assert.True(rig.Job("D4", JobKind.CabinClean).StartedAt > 3660UL, "window: D4 never waited for a vehicle");
-            Assert.Equal(JobStatus.Completed, rig.Job("D4", JobKind.Boarding).Status);
+            // The window did the work it was meant to meter: both rotations
+            // were created and handed off, R1D boarded, R2D waited for the truck.
+            Assert.Equal(JobStatus.Completed, rig.Job("R1A", JobKind.Deboard).Status);
+            Assert.Equal(JobStatus.Completed, rig.Job("R2A", JobKind.Deboard).Status);
+            Assert.Equal(6, rig.Turnaround.JobsForFlight(new FlightId(rig.Id("R2D"))).Count);
+            Assert.Equal(JobStatus.Completed, rig.Job("R1D", JobKind.Boarding).Status);
+            TurnaroundJob r2Fuel = rig.Job("R2D", JobKind.Fuel);
+            Assert.True(r2Fuel.StartedAt > r2Fuel.CreatedAt && r2Fuel.StartedAt != TConst.TickUnscheduled, "window: R2D's Fuel never waited for, or never got, the truck");
         }
     }
 }

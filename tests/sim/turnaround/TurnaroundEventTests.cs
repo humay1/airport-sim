@@ -191,7 +191,7 @@ namespace AirportSim.Sim.Turnaround.Tests
         [Fact]
         public void test_turnaround_event_causes_follow_cause_table()
         {
-            // A day of the 13 §13.11 setup: four vehicles against the Phase 0
+            // A day of the 13 §13.11 setup: five vehicles against the Phase 0
             // schedule, so vehicle waits happen as well as the unimpeded path.
             var rig = new Rig(ScheduleFixture.Bytes(), Phase1Fixture.Setup(), driveDays: 1);
             rig.RunTo(TConst.TicksPerDay);
@@ -211,8 +211,11 @@ namespace AirportSim.Sim.Turnaround.Tests
         [Fact]
         public void test_turnaround_event_job_payloads_carry_catalogue_category_and_resource_kind()
         {
-            // 13 §13.9, 10 §10.6 (Q-007): Blocked/Unblocked copy JobDef.Category;
-            // a vehicle wait names ResourceKind.Vehicle, Boarding's JobDependency.
+            // 13 §13.9, 10 §10.6 (Q-007), 13 §13.6 "Job event payloads" (Q-089):
+            // Blocked/Unblocked copy JobDef.Category; a vehicle wait names
+            // ResourceKind.Vehicle, Boarding's JobDependency; Resource is null on
+            // every one; an Unblocked repeats its Blocked's WaitingOn, Resource
+            // and Category.
             JobDef[] jobs = Phase1Fixture.Jobs();
             var rig = new Rig(ScheduleFixture.Bytes(), Phase1Fixture.Setup(), driveDays: 1);
             rig.RunTo(TConst.TicksPerDay);
@@ -225,10 +228,15 @@ namespace AirportSim.Sim.Turnaround.Tests
                 Assert.True(e.Category == Setups.Category(jobs, e.Job), "wrong category: " + r);
                 Assert.True(e.WaitingOn == (e.Job == JobKind.Boarding ? ResourceKind.JobDependency : ResourceKind.Vehicle), "wrong WaitingOn: " + r);
                 Assert.True(e.Job != JobKind.Deboard, "Deboard never blocks: " + r);
+                Assert.True(!e.Resource.HasValue, "Resource set on " + r);
             }
 
             foreach ((Rec r, TurnaroundJobUnblocked e) in unblocked)
             {
+                Assert.True(!e.Resource.HasValue, "Resource set on " + r);
+                (Rec Rec, TurnaroundJobBlocked Evt) opening = blocked.Find(b => b.Evt.Flight == e.Flight && b.Evt.Job == e.Job);
+                Assert.True(opening.Rec != null && opening.Rec.Id.CompareTo(r.Id) < 0, "Unblocked without an earlier Blocked: " + r);
+                Assert.True(opening.Evt.WaitingOn == e.WaitingOn && opening.Evt.Category == e.Category && opening.Evt.Resource == e.Resource, "Unblocked differs from its Blocked: " + r);
                 Assert.True(e.Category == Setups.Category(jobs, e.Job), "wrong category: " + r);
                 Assert.True(e.WaitingOn == (e.Job == JobKind.Boarding ? ResourceKind.JobDependency : ResourceKind.Vehicle), "wrong WaitingOn: " + r);
             }
@@ -245,6 +253,46 @@ namespace AirportSim.Sim.Turnaround.Tests
                 else
                 {
                     Assert.True(!r.Vehicle.HasValue, "a vehicle-less job got a vehicle: " + r);
+                }
+            }
+        }
+
+        [Fact]
+        public void test_turnaround_event_planned_start_follows_schedule_anchored_table()
+        {
+            // 13 §13.6 "Job event payloads" (Q-089): Deboard and BaggageUnload
+            // carry the arrival's STA; the five prerequisites the departure's
+            // planned OnStand (the PlannedTick of the OnStand received);
+            // Boarding the departure's planned ReadyToBoard. Started and
+            // Completed carry the same value, whatever the actual timing.
+            // A1: STA 3600, on stand late at 3700. D1: STD 4200, planned
+            // OnStand 3850, on stand late at 3900, its Fuel delayed by D0.
+            var rig = new Rig(
+                Csv.Of(Csv.Row("A1", "A", "06:00"), Csv.Row("D0", "D", "06:30"), Csv.Row("D1", "D", "07:00")),
+                Setups.Unit(Setups.Plenty(4, (VehicleKind.FuelTruck, 1))),
+                onStand: new[] { ("A1", 3700UL), ("D0", 3850UL), ("D1", 3900UL) });
+            rig.RunTo(5000UL);
+            ulong a1 = rig.Id("A1");
+            ulong d1 = rig.Id("D1");
+            var expected = new Dictionary<(ulong, JobKind), ulong>
+            {
+                [(a1, JobKind.Deboard)] = 3600UL,
+                [(a1, JobKind.BaggageUnload)] = 3600UL,
+                [(d1, JobKind.Boarding)] = 3850UL + 80UL,
+            };
+            foreach (JobKind k in TConst.BoardingPrerequisites)
+            {
+                expected[(d1, k)] = 3850UL;
+            }
+
+            foreach (KeyValuePair<(ulong, JobKind), ulong> kv in expected)
+            {
+                List<Rec> events = rig.Rec.ForJob(kv.Key.Item1, kv.Key.Item2).FindAll(r => r.Payload is TurnaroundJobStarted || r.Payload is TurnaroundJobCompleted);
+                Assert.True(events.Count == 2, kv.Key.Item2 + " of " + kv.Key.Item1 + ": expected Started and Completed\n" + rig.Rec.Dump());
+                foreach (Rec r in events)
+                {
+                    ulong planned = r.Payload is TurnaroundJobStarted s ? s.PlannedStart : ((TurnaroundJobCompleted)r.Payload).PlannedStart;
+                    Assert.True(planned == kv.Value, "PlannedStart " + planned + " on " + r + ", expected " + kv.Value);
                 }
             }
         }
