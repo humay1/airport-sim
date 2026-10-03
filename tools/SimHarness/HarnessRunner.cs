@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using AirportSim.Sim.Core;
+using AirportSim.Sim.Flow;
+using AirportSim.Sim.World;
 
 namespace AirportSim.Tools.SimHarness
 {
@@ -50,6 +53,74 @@ namespace AirportSim.Tools.SimHarness
             ISimHost host = BuildOne(content, compose, seed, sink);
             SubmitScript(host, ticks);
             host.Step(ticks);
+            return new RunOutcome(sink.ToArray(), host.WorldStateHash());
+        }
+
+        /// <summary>
+        /// Run 2 of the promotion gate (§19.2d): the recording builder finds the flow and
+        /// world systems, the lowest-id <see cref="NodeKind.Gate"/> is promoted once, and
+        /// each tick is <c>Step(1)</c> then one <c>AgentsAt</c> on it. With no gate it
+        /// steps exactly as <see cref="RunFull"/>.
+        /// </summary>
+        internal static RunOutcome RunPromoted(IContentIndex content, SimComposer compose, ulong seed, uint ticks)
+        {
+            var sink = new RecordingCheckpointSink();
+            var config = new SimHostConfig(seed, content, sink, new NullSimLog());
+            var recorder = new RecordingBuilder(SimHostFactory.CreateBuilder(in config));
+            compose(recorder);
+            ISimHost host = recorder.Build();
+
+            IFlowSystem? flow = null;
+            IWorldSystem? world = null;
+            IReadOnlyList<ISimSystem> systems = recorder.Recorded;
+            for (int i = 0; i < systems.Count; i++)
+            {
+                ISimSystem s = systems[i];
+                if (flow is null && s.Id == new SystemId(4) && s is IFlowSystem f)
+                {
+                    flow = f;
+                }
+                else if (world is null && s.Id == new SystemId(1) && s is IWorldSystem w)
+                {
+                    world = w;
+                }
+            }
+
+            bool found = false;
+            NodeId gate = default;
+            if (flow != null && world != null)
+            {
+                IReadOnlyList<NodeId> nodes = world.Nodes();
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    if (flow.KindOf(nodes[i]) == NodeKind.Gate)
+                    {
+                        gate = nodes[i];
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    flow.SetPromoted(gate, true);
+                }
+            }
+
+            SubmitScript(host, ticks);
+            if (found)
+            {
+                for (uint t = 0; t < ticks; t++)
+                {
+                    host.Step(1);
+                    _ = flow!.AgentsAt(gate).Count;
+                }
+            }
+            else
+            {
+                host.Step(ticks);
+            }
+
             return new RunOutcome(sink.ToArray(), host.WorldStateHash());
         }
 
