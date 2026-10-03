@@ -2566,3 +2566,107 @@ Answer:      **HUMAN DECISION, owner, 2026-10-02: `ReassignStand` stays
              by Q-081. HASH CHANGE: one more fed field per track.
              PENDING HUMAN: resolved by the owner's decision above.
 Status:      ANSWERED (spec/12-interfaces-airside.md#129-module-interface)
+
+### Q-084 — `tools.simharness`: how `Promotion` finds and promotes a node
+Raised by:   Test Author / T-014, via coordinator, 2026-10-02
+Blocking:    T-014
+Question:    Promotion is outcome-neutral, so the CLI output is the same
+             whether or not a node is promoted, and only a test's spy
+             `IFlowSystem` can observe it. `Promotion` gets an opaque
+             `SimComposer`, and `ISimHost` exposes no systems. (1) May the
+             gate hand `compose` a forwarding builder that records
+             `Register` calls, and is the flow system found by
+             `is IFlowSystem` or by `SystemId(4)`? (2) Does promotion apply
+             to every composer, or only to the §19.2a CLI composer? (3) Is
+             the node `world.Nodes()[0]` or the constant `NodeId(1)`, and
+             what happens with no world, no nodes or no flow? (4) What is
+             the exact observable contract?
+Why it matters: §19.1 says `compose` receives the factory's builder, and
+             §19.2 does not say how the gate reaches `sim.flow`. Without an
+             answer, T-014's tests cannot be written, and the empty
+             composition must still pass vacuously.
+Answer:      (1) Yes. Run 2 hands `compose` a harness-internal recording
+             builder that forwards `Services`, `Register` and `Build` to
+             the factory builder and records each `Register` that
+             returns. `flow` is the recorded system at `SystemId(4)` if it
+             implements `IFlowSystem`. `world` is the one at
+             `SystemId(1)` if it implements `IWorldSystem`. Both the
+             position and the type are required. (2) Every composer passed
+             to `Promotion`. No other gate or subcommand wraps or
+             promotes. (3) **HUMAN DECISION, owner, 2026-10-02: follow
+             `02` literally.** "Camera parked on a gate" means a real
+             `Gate`-kind node, whose passengers are drawn through
+             `AgentsAt` after every tick. Run 2 must still match run 1
+             exactly. The per-tick cadence is the owner's choice. The
+             camera's scene builder calls `AgentsAt` per rebuild (`15`
+             §15.6). The intended `flow.presentation` exercise does not
+             exist yet, because merged `AgentsAt` draws no RNG. So `09`
+             §9.7 gains the query
+             `NodeKind KindOf(NodeId)`. After `Build` and before the
+             script, the harness walks `world.Nodes()` in ascending order
+             with `flow.KindOf` and stops at the first `Gate`. If there is
+             none, including when there is no flow, no world or no node,
+             it calls nothing more and run 2 steps as run 1 does.
+             Otherwise it calls `SetPromoted(gate, true)` once, then steps
+             `Step(1)` `ticks` times, calling `AgentsAt(gate)` once after
+             each. The CLI promotes `NodeId(8)` in both fixture sets. The
+             earlier answer, promote `Nodes()[0]` and never call
+             `AgentsAt`, is withdrawn. (4) Run 1: no call to any system.
+             Run 2: one `Nodes()`, `KindOf` up to the first `Gate`, one
+             `SetPromoted(gate, true)` and `ticks` calls of
+             `AgentsAt(gate)`, and nothing else. There is no demotion. The
+             comparison and the report are unchanged. Tests are in §19.9,
+             each fully pinned, including the divergence string.
+             PENDING HUMAN: resolved by the owner's decision above.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192d-promotion-what-the-second-run-promotes-q-084)
+
+### Q-085 — `sim.airside`: no bound on tracked flights or hold queues
+Raised by:   Reviewer (reviewer-core) on PR #91, via coordinator, 2026-10-02
+Blocking:    T-021 (PR #91)
+Question:    §12.2 bounds only the stand-wait queue (1 024) and the
+             pending list (2 048). Nothing bounds the tracked flights or
+             the runway and taxi hold queues. Within every stated bound,
+             take one runway at `declared_capacity_per_hour` 1 (24
+             movements a day), 60 stands, and 800 daily rotation pairs
+             repeating daily. Runway-held arrivals then grow by at least
+             376 a day. Around day 11 the worker's 4 096-slot track pool
+             grows, which allocates in `Tick` (§12.12).
+Why it matters: "No allocation in the update path" cannot be met
+             without a bound.
+Answer:      A new hard bound, `TRACKED_FLIGHTS_CAPACITY` = 4096 tracks
+             (§12.2). It is engineering sizing, not balance.
+             - Every tracked flight has `ScheduledTick < t + 14 400`.
+               That covers arrivals from `STA − 1 200`, rotation-less
+               departures created after their `PublishTick` (including
+               a `MinTurnaround ≥ 1 440` departure created at
+               `PublishTick + 1`), and rotation departures created at a
+               same-day arrival's handoff (`11` §11.4).
+             - If no flight other than a rotation-less arrival on its
+               stand stays tracked 3 sim-days past its `ScheduledTick`,
+               every other track lies in `(t − 43 200, t + 14 400)`.
+               That is four sim-days, touching at most five calendar
+               days, so at most 4 000 at `01`'s max tier.
+             - Rotation-less arrivals on stand add at most one per
+               stand, 60 at `03`'s max tier.
+             So at most 4 060, under 4 096. Only three kinds of run can
+             reach the bound: a flight tracked 3 sim-days past its
+             schedule, a schedule above 800 movements in a calendar day,
+             or more than 96 stands holding rotation-less arrivals.
+             A first answer at `1bd2c4b` was 2048, from a 1 660 argument.
+             The review found it unsound: early rotation-less departures
+             reach about 2 196 tracks with no flight off stand for a day,
+             and its window was longer than one day. The hold queues get no constant of their
+             own. Every entry is a tracked flight in at most one queue,
+             so the bound covers them together, and their storage is
+             preallocated for that total. Exceeding the bound throws
+             `SimInvariantException` at the adding action, either S2's
+             arrival start or S5's rotation-less departure, as the other
+             §12.2 bounds do. The handoff never changes the count. No
+             static check at load: whether a layout serves a schedule is
+             dynamic, and a load-time check could only approximate it.
+             The #91 counter-example (a runway at one movement per hour)
+             now throws at about day 11. Its arrivals are held for
+             days, which is the first kind of run above, and at Phase
+             0/1 a fixture error. No balance, content or scope number is
+             involved, so nothing is PENDING HUMAN.
+Status:      ANSWERED (spec/12-interfaces-airside.md#122-constants)

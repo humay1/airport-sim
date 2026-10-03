@@ -3340,3 +3340,185 @@ Impact:      - **No merged code is invalidated.** `sim.airside` (PR #91)
 Signed off:  Q-083: owner, 2026-10-02 (`ReassignStand` stays open). The
              rest is not required (interface detail and state layout; no
              balance, scope or `01`/`02` change).
+
+## 2026-10-02 — spec/19-interfaces-harness.md §19.1, §19.2, §19.2d, §19.9; spec/09-interfaces-flow.md §9.7; INDEX; open-questions — Q-084: `Promotion` promotes and draws a real gate
+Reason:      T-014's Test Author was blocked. Promotion is outcome-neutral,
+             so it is observable only through a test's spy `IFlowSystem`.
+             §19 did not say how the gate reaches the flow system through
+             an opaque `SimComposer`, which composers it applies to, or
+             which node it promotes. The first version of this PR (at
+             `98c0082`) read `02`'s "camera parked on a gate" as "the lowest
+             node, never drawn". Its review (PR #95, finding 1) pointed out
+             that this decided what `02` means, which only the owner may
+             do. The owner then decided to follow `02` literally. Review
+             findings 2 and 3, an underivable test and an unpinned failure
+             string, are also fixed.
+Raised by:   Q-084 (Test Author / T-014); review of PR #95 at `98c0082`;
+             owner decision 2026-10-02
+Impact:      - **HUMAN DECISION, owner, 2026-10-02.** Run 2 promotes a real
+               `Gate`-kind node and draws its passengers through
+               `AgentsAt` after every tick. It must still match run 1
+               exactly. `02` is not edited. The owner's stated purpose,
+               exercising `flow.presentation`, is not met yet: merged
+               `AgentsAt` (`FlowSystem.cs`) draws from no RNG stream, and
+               `src/sim` has no `flow.presentation` stream. The gate
+               exercises the stream automatically once `sim.flow` derives
+               agent detail from it. The per-tick cadence is the owner's
+               own choice. The camera's scene builder calls `AgentsAt`
+               once per rebuild (`15` §15.6).
+             - **New §19.2d.** Run 2 hands `compose` a harness-internal
+               recording builder, which forwards `Services`, `Register`
+               and `Build` and records each `Register` that returns.
+               `flow` is the recorded `IFlowSystem` at `SystemId(4)`, and
+               `world` is the recorded `IWorldSystem` at `SystemId(1)`.
+               After `Build` and before the script, the harness walks
+               `world.Nodes()` in ascending order with `flow.KindOf` and
+               stops at the first `Gate`. It calls
+               `SetPromoted(gate, true)` once, then steps `Step(1)` `ticks`
+               times, with one `AgentsAt(gate)` after each step. If there
+               is no flow, no world or no `Gate`, it calls nothing more
+               and steps as run 1 does. This applies to every composer
+               passed to `Promotion`. Every other gate and subcommand is
+               unchanged. The CLI promotes `NodeId(8)`, the only `Gate` in
+               both fixture sets.
+             - **`09` §9.7, an interface addition:**
+               `NodeKind KindOf(NodeId node)`. It is an O(1),
+               allocation-free query that is not hashed, and an unknown
+               node throws `ArgumentException`. The test is
+               `test_kind_of_returns_graph_kinds_and_throws_on_unknown_node`.
+               §9.1 is unchanged, and neutrality holds on merged code.
+               `SetPromoted` writes only the promoted flags, and
+               `AgentsAt` writes only its reused view buffer. Both are
+               derived and unhashed (`09` §9.10), and neither draws any
+               RNG. `KindOf` is a query.
+             - **Merged `sim.flow` changes (follow-up task needed).**
+               `IFlowSystem` gains a member, so `FlowSystem` must
+               implement it, from its existing per-node kind array.
+               `tests/sim/schedule/ScheduleTestKit.cs`'s `RecordingFlow`
+               also implements `IFlowSystem` and must gain `KindOf`, or
+               the schedule tests stop compiling. Adding the method to
+               `RecordingFlow` first compiles on today's `main`. So the
+               follow-up task's Test Author adds it, together with the
+               `09` test, and then the worker adds the interface member.
+               The Planner creates this task (suggested T-049, `sim.flow`:
+               `KindOf`). **T-014 depends on it.** No other implementer of
+               `IFlowSystem` exists. No hash, golden or event changes.
+             - **§19.1** "One run" names the recording-builder exception.
+               **§19.2**'s bullet and table row point to §19.2d.
+             - **New §19.9:** five fully pinned T-014 tests. Every
+               composition, node list, kind, seed and tick count is given,
+               and so is the exact call sequence. Exactly one
+               `SetPromoted` is required per call (finding 2). The
+               divergence test expects exactly `FAIL
+               determinism_promotion tick=1200 at=system:2` (finding 3).
+               Re-review at `7a52e32` led to these fixes:
+               - a 1400-tick run has 3 checkpoints (0, 600 and 1200, by
+                 `08` §8.9), as merged `HarnessGatesTests` already
+                 asserts;
+               - the test world's record is pinned when flow is missing,
+                 and a world-only case is added;
+               - the false claim "every real `FlowGraph` has a `Gate`" is
+                 removed (a graph with no `Source` may have none);
+               - the camera citation is corrected to `15` §15.6;
+               - the neutrality reason is corrected (no RNG is drawn).
+             - **Merged harness code and tests (T-006, T-009, T-013,
+               T-030):** no behaviour changes. No `HarnessGatesTests`
+               composer registers an `IFlowSystem` at 4, so the empty
+               composition still passes vacuously with the same report.
+               The fresh-builder test holds. The CLI `promotion` line is
+               unchanged.
+             - **T-014:** the worker implements §19.2d in
+               `tools/SimHarness` only, with no new public type and no
+               signature change. Its task text ("the lowest registered
+               NodeId", "do not build a gate concept") is superseded by
+               §19.2d. The Planner aligns the task file and adds the
+               dependency on the `KindOf` task. Run 2 of `promotion --days
+               1` now makes 14 400 `Step(1)` and `AgentsAt` calls, and no
+               budget applies to it (T-014 "Performance budget").
+             - **LOW CONFIDENCE:** finding the systems by registry
+               position and type rather than by type alone. A test spy
+               must report `Id = SystemId(4)`. The review found this
+               conforming.
+             - **Scope:** one query on `IFlowSystem`, required by the
+               owner's decision. No new system or behaviour.
+             - **PENDING HUMAN:** resolved by the owner, 2026-10-02.
+Signed off:  owner, 2026-10-02 (the `02` reading: a real `Gate` node,
+             drawn through `AgentsAt` every tick, matching run 1 exactly).
+             The rest follows from that decision. The owner should review
+             the LOW CONFIDENCE marker.
+
+## 2026-10-02 — spec/12-interfaces-airside.md §12.2, §12.12, §12.13 — `TRACKED_FLIGHTS_CAPACITY` bounds tracked flights and hold queues (Q-085)
+Reason:      The PR #91 review found that nothing bounded the tracked
+             flights or the runway and taxi hold queues. A layout whose
+             runway capacity is far below the schedule's movement rate
+             grows the tracked set by hundreds of flights a day, inside
+             every stated bound, until the implementation's preallocated
+             pool grows. That allocates in `Tick`, which §12.12 forbids.
+             The new bound is 4096 tracks (§12.2 "Why 4096 tracks
+             hold"). Every tracked flight is scheduled less than a
+             sim-day ahead, early rotation-less departures included. So
+             a max-tier run whose flights each leave tracked state within
+             3 sim-days of their schedule has at most 4 060 tracks.
+             §12.2 lists the only runs that can reach the bound. A
+             first version at `1bd2c4b` set 2048 with a 1 660 argument.
+             The review of #96 found it unsound: rotation-less
+             departures with `MinTurnaround ≥ 1 440` are created almost
+             a day before `STD`, which reaches about 2 196 tracks, and
+             the window it used was longer than a day. It also bounds the hold queues together, because every
+             entry is a tracked flight in at most one queue. Overflow
+             throws `SimInvariantException` at the adding action, as the
+             other §12.2 bounds do. No load-time check is added, because
+             serviceability is dynamic.
+Raised by:   Q-085 (Reviewer, PR #91, via coordinator)
+Impact:      - **No merged code is invalidated.** `sim.airside` is not
+               merged.
+             - **No hash change.** The bound adds no state.
+             - **T-021 worker (PR #91):** size the track storage, and the
+               hold-queue storage for the same total, to
+               `TRACKED_FLIGHTS_CAPACITY` at `CreateSystem`, including
+               the handoff's create-before-remove order. Throw
+               `SimInvariantException` naming the flight and the tracked
+               flights before a track would be added past 4 096, in S2
+               and in S5, before anything is published. Remove the
+               growth paths (`new Slot()` when the pool is empty, the
+               `Array.Resize` calls and the pool growth). The current
+               4 096 pool is exactly the bound, so what remains is the
+               throw, the removal of growth, and room for the handoff's
+               create-before-remove order.
+             - **T-021 tests (Test Author, PR #78):** one new test,
+               `test_tracked_flights_overflow_throws_sim_invariant`
+               (§12.13), `Slow`. It throws at track 4 097, not 2 049.
+               A local version that assumes 2048 (for example with
+               track 2 049 at tick 15 340) must be re-derived for 4096.
+               §12.13 pins its shape:
+               - one runway at one movement per hour;
+               - only rotation-less arrivals, `100 ≤ N ≤ 800` a day, so
+                 no track is ever removed. At `N ≥ 100` the stand-wait
+                 queue holds at most 984 entries by the throw (landings
+                 paced at 600 ticks), and the pending list at most
+                 `2N`. Below 100 the stand-wait queue can overflow first
+                 (review of #96 at `7bc8b34`);
+               - arrivals ranked by `InboundAirborne` tick, then
+                 `FlightId`;
+               - as a precondition, `TrackedFlights().Count` equals the
+                 number of arrivals started at the end of every tick
+                 before the throw, with no throw and no allocation;
+               - the throw comes at `A_4097`'s `InboundAirborne` tick,
+                 naming it;
+               - after the throw, the test reads `08` §8.5a's partial
+                 state through the `IAirsideSystem` queries: exactly
+                 4 096 tracked, `A_4097` untracked. That reading holds
+                 even when `A_4096` shares the throwing tick. The
+                 throwing tick's events are never dispatched, so the
+                 test does not look for them.
+               At 400 arrivals a day that is about day 10. The
+               non-throwing case from `757a7e5` ("peaks near 2 200") is
+               replaced by this exact precondition, which an empty
+               implementation fails. No existing test changes, and the
+               fixture day stays far under the bound.
+             - **T-022, T-024, `app.render`:** none.
+             - **LOW CONFIDENCE:** none. The bound is an engineering
+               bound, sized as the existing two are.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (engineering bound; no balance, scope or
+             `01`/`02` change).
