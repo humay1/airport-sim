@@ -138,6 +138,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
   **one integration test project, `tests/integration/`, references both
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  **`sim.turnaround`'s test project also references `sim.airside`, for
+  `13` §13.11's registered-airside tests only (L3, Q-087)**;
   every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
@@ -316,7 +318,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `EventId`; `Boarding` waits on five jobs; unchanged by D6; factory plus
   `ITurnaroundSetupLoader` (§13.10a); **a binding `Cause` table for every
   emitted event, with creation-time events caused by the `OnStand`, and
-  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**.
+  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**; **a fixed
+  job-to-vehicle table and the fixture `phase1-five-vehicles.json` with one
+  vehicle per kind (§13.4, §13.11, Q-088, HD, owner, 2026-10-03); ordered
+  load checks and a pinned JSON setup format (§13.4, §13.10a, Q-086); job payloads: schedule-anchored
+  `PlannedStart`, `Resource` always null (§13.6, Q-089); creation in
+  `JobKind` order (§13.5, Q-090); an `Unblocked`'s `Cause` is the
+  completion that freed its own vehicle (§13.5, §13.9, Q-091)**; **finished
+  flights pruned after two sim-days, at most 4 096 flights in state,
+  job slots, finish-order list and per-kind waiting lists all preallocated,
+  overflow throws (§13.2, §13.10, Q-092); steps 1 and 3 in `Tick`, step 2
+  in the phase-3 handler (§13.5, Q-093)**.
 - LC: distance-blind dispatch (§13.5).
 - Read if: T-022.
 

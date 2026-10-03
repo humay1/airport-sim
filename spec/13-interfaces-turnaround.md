@@ -61,9 +61,12 @@ add, as an amendment, not a local invention here.
 | Constant | Value | Meaning |
 |---|---|---|
 | `JOB_KIND_BITS` | 8 | §13.3, `JobId` derivation |
+| `TURNAROUND_RETENTION_DAYS` | 2 | §13.10 "Retention": a finished flight's jobs are kept on the current and the previous sim-day (Q-092) |
+| `TURNAROUND_FLIGHTS_CAPACITY` | 4096 flights | §13.10 "Retention": flights with jobs in state, a hard bound (Q-092) |
 
 No other module-specific constants; every duration and fleet size is
-construction data (§13.4), never hardcoded.
+construction data (§13.4), never hardcoded. The two bounds above are
+engineering sizing, not balance.
 
 ---
 
@@ -122,7 +125,7 @@ content at Phase 0/1, it lives beside this module's tests.
 ```
 readonly struct JobDef {
   JobKind       Kind
-  VehicleKind?  RequiresVehicle       // null: Deboard, Boarding — no contended resource at Phase 0/1
+  VehicleKind?  RequiresVehicle       // fixed by Kind, table below (Q-088)
   uint32        NominalDurationTicks
   DelayCategory Category              // ground_handling, fuel, catering, cleaning, loading — 10-events.md §10.6
 }
@@ -133,23 +136,58 @@ readonly struct VehicleDef { VehicleId Id; VehicleKind Kind }
 readonly struct TurnaroundFleet { IReadOnlyList<VehicleDef> Vehicles }
 ```
 
-Load-time validation, hard failures naming the offending `JobKind`/`VehicleId`
-(`07-conventions.md`):
+### Which vehicle serves which job (Q-088)
 
-- `TurnaroundCatalogue.Jobs` must contain exactly one entry per `JobKind`
-  value, no duplicates, no omissions;
-- `Pushback` never appears as a `Category` here despite being a delay
-  category name in `10-events.md` §10.6 — `PushbackPrep`'s category is always
-  `ground_handling`; `pushback` as a category is reserved for a delay whose
-  root cause is the aircraft-side act itself (`sim.airside`'s `Pushback`
-  milestone), not this module's prep job. A catalogue that maps
-  `PushbackPrep` to `pushback` fails to load.
-- `VehicleDef.Id` unique within the fleet.
-- `NominalDurationTicks ≥ 1` for every entry (Q-080). A zero duration would
-  give a job started at tick `t` a `DueAt` of `t`, which §13.5 step 1 has
-  already passed, so the job would never complete. It would also put a
-  completion in the tick of its start, which §13.9's `Cause` table does
-  not cover.
+Binding and fixed by this spec, not content-declared, for the same reason
+as `Boarding`'s dependency (§13.6): `JobKind` and `VehicleKind` are fixed
+enums, and the vehicle a job needs is part of what the job *is*.
+
+| `JobKind` | `RequiresVehicle` |
+|---|---|
+| `Deboard` | null |
+| `BaggageUnload` | `BaggageTractor` |
+| `CabinClean` | `CleaningCrew` |
+| `Catering` | `CateringTruck` |
+| `Fuel` | `FuelTruck` |
+| `BaggageLoad` | `BaggageTractor` |
+| `PushbackPrep` | `PushbackTug` |
+| `Boarding` | null |
+
+`BaggageTractor` is the only `VehicleKind` that serves more than one
+`JobKind`. The file does not carry `RequiresVehicle` (§13.10a "File
+format"): `Load` fills it in from this table.
+
+### Validation
+
+These are hard failures, each naming the offending `JobKind` or
+`VehicleId` (`07-conventions.md`). They are checked in this order, and the
+first failure is thrown (Q-086):
+
+1. `TurnaroundCatalogue.Jobs` has exactly one entry per `JobKind` value,
+   with no duplicates and no omissions. Duplicates are checked first and
+   name the duplicated `JobKind` with the lowest ordinal. Otherwise, an
+   omission names the missing `JobKind` with the lowest ordinal.
+2. `RequiresVehicle` matches the table above for every entry. This can
+   only fail for a setup built in code (§13.10a), since the file has no
+   such field.
+3. `NominalDurationTicks ≥ 1` for every entry (Q-080). A zero duration would
+   give a job started at tick `t` a `DueAt` of `t`, which §13.5 step 1 has
+   already passed, so the job would never complete. It would also put a
+   completion in the tick of its start, which §13.9's `Cause` table does
+   not cover.
+4. Every `Category` is one of `ground_handling`, `fuel`, `catering`,
+   `cleaning` and `loading` (`10-events.md` §10.6). `PushbackPrep`'s is
+   always `ground_handling`. `pushback` is a delay category in `10`
+   §10.6, but it is reserved for a delay whose root cause is the
+   aircraft-side act itself (`sim.airside`'s `Pushback` milestone), not
+   this module's prep job, so a catalogue that maps `PushbackPrep` to
+   `pushback` fails to load.
+5. Every `VehicleDef.Id` is `≥ 1` and unique within the fleet. An id of
+   0 is reported before any duplicate. A duplicate names the lowest
+   duplicated id.
+
+Within checks 2 to 4, the failing `JobKind` with the lowest ordinal is
+named.
 
 `TurnaroundFleet` is not required to include every `VehicleKind` — a scenario
 with no catering demand can ship zero `CateringTruck`s, and any `Catering` job
@@ -163,6 +201,17 @@ outcome, not a load failure.
 One deterministic rule, applied uniformly to every `VehicleKind`, every tick,
 in this order:
 
+**Where each step runs (Q-093).** The numbers name the steps; they are not
+one sequence inside `Tick`. Steps 1 and 3 run in `Tick` (phase 2, `08`
+§8.5), step 1 then step 3, after §13.10's pruning on a day's first tick.
+Step 2 runs in the `OnStand` handler (phase 3), which comes after `Tick` in
+the same tick, because `sim.airside` publishes `OnStand` in its own phase-2
+`Tick` (§13.9). So in one tick: completions, then assignment of freed
+vehicles to waiting jobs, then creation, with immediate assignment, for
+each `OnStand` dispatched that tick. A job created in a tick's step 2 is
+first considered by step 3 on the next tick. By then it is `Blocked`,
+because creation takes any free vehicle of its kind.
+
 1. **Completions first.** Any `Active` job with `DueAt == CurrentTick`
    transitions to `Completed`, emits `TurnaroundJobCompleted`, and frees its
    `Vehicle` (if any) — the freed vehicle is eligible for assignment later in
@@ -174,10 +223,20 @@ in this order:
    completion event.
 2. **New jobs.** Jobs created this tick (§13.6): those with `RequiresVehicle
    = null` other than `Boarding` (i.e. `Deboard`) go straight to `Active`.
-   Those needing a vehicle attempt assignment immediately, same as a
-   re-evaluation (step 3) restricted to this tick's new arrivals. `Boarding`
+   Those needing a vehicle attempt assignment immediately. `Boarding`
    is always created `Blocked` on `JobDependency` (§13.6) regardless of this
-   step.
+   step. **Order (Q-090).** Within one `OnStand` handler call, the flight's
+   jobs are created one at a time in ascending `JobKind` ordinal, and each
+   is fully resolved before the next is created: its events are published
+   (`TurnaroundJobStarted` if it goes `Active`, `TurnaroundJobBlocked` if
+   it does not), then the next job is created. A job needing kind `K`
+   takes the free vehicle of kind `K` with the lowest `VehicleId`, if there
+   is one, and is otherwise `Blocked`. So when one free `BaggageTractor`
+   meets a departure, `BaggageLoad` takes it and nothing else competes for
+   it, since `BaggageUnload` belongs to arrivals. Step 3's ascending
+   `VehicleKind` order does **not** apply at creation. Two flights'
+   `OnStand`s in one tick are handled in their dispatch order, so the
+   earlier `OnStand` creates, and takes vehicles, first.
 3. **Vehicle assignment.** For each `VehicleKind` with at least one free
    vehicle, ascending `VehicleKind` ordinal: among all `Blocked` jobs requiring that
    kind, across every flight currently in turnaround, assign the free
@@ -190,7 +249,14 @@ in this order:
    StartedAt + NominalDurationTicks`, emit `TurnaroundJobUnblocked` then
    `TurnaroundJobStarted`, `Cause` of both set to the vehicle-freeing
    `TurnaroundJobCompleted` (or, if the vehicle was free at creation, no
-   `Blocked`/`Unblocked` pair is emitted at all — see §13.6).
+   `Blocked`/`Unblocked` pair is emitted at all — see §13.6). The
+   vehicle-freeing completion is the step 1 `TurnaroundJobCompleted`, in
+   this tick, of the job that held **the very vehicle assigned** (Q-091).
+   It is not the first or last completion of the tick, nor any completion
+   of the same `VehicleKind`. A free vehicle here was always freed in this
+   tick's step 1: a vehicle free at the end of a tick has no `Blocked` job
+   of its kind waiting, because step 3 would have assigned it, and
+   creation (step 2) takes a free vehicle before it blocks.
 
 `sim.turnaround` ignores physical distance between stands entirely — dispatch
 is FIFO by blocking order, never by which stand is closest.
@@ -257,7 +323,33 @@ unimpeded); `BoardingComplete` is planned `ReadyToBoard` plus `Boarding`'s
 `NominalDurationTicks`. `sim.delay` measures none of this module's three
 milestones (`DeboardComplete`, `ReadyToBoard`, `BoardingComplete`;
 `14-interfaces-delay.md` §14.4); their `PlannedTick`s are binding for the UI
-and for later checkpoints.
+and for later checkpoints. The departure's planned `OnStand` is read from
+the `PlannedTick` of the `OnStand` event the handler received, which is
+`max(0, STD − MinTurnaround)` in ticks (`12` §12.3). `sim.turnaround` does
+not recompute it.
+
+### Job event payloads (Q-089)
+
+`TurnaroundJobStarted.PlannedStart` and `TurnaroundJobCompleted.PlannedStart`
+are the job's planned start, by the same schedule-anchored rule. They do not
+depend on when the job actually started:
+
+| `JobKind` | `PlannedStart` |
+|---|---|
+| `Deboard`, `BaggageUnload` | the arrival's `ScheduledTick` (STA), as for `DeboardComplete` above |
+| `CabinClean`, `Catering`, `Fuel`, `BaggageLoad`, `PushbackPrep` | the departure's planned `OnStand` |
+| `Boarding` | the departure's planned `ReadyToBoard` |
+
+A job's `Started` and `Completed` carry the same value.
+
+`TurnaroundJobBlocked.Resource` and `TurnaroundJobUnblocked.Resource`
+(`EntityId?`) are **null on every event** at Phase 0/1, for a vehicle wait
+as well as for `Boarding`'s `JobDependency` wait. A vehicle wait is for any
+vehicle of the kind, not a particular one, and a `VehicleId` is not an
+`EntityId` (`08` §8.4's allocator does not issue it). `WaitingOn` is
+`Vehicle` for a vehicle wait and `JobDependency` for `Boarding`. An
+`Unblocked` carries the same `WaitingOn`, `Resource` and `Category` as its
+`Blocked`. The assigned vehicle is read from `TryGetJob(...).Vehicle`.
 
 No job for a flight is created more than once — `OnStand` fires exactly once
 per `FlightId` (`10-events.md` §10.3 rule 1), so job creation is naturally
@@ -316,7 +408,7 @@ same tick.
 |---|---|
 | `TurnaroundJobBlocked` | the flight's `OnStand` that the creating handler received. Every `Blocked` is emitted at creation, both on a vehicle and, for `Boarding`, on `JobDependency` |
 | `TurnaroundJobStarted` at creation | the same `OnStand`: `Deboard`, which goes straight to `Active`, and a job assigned a free vehicle at creation (§13.5 step 2) |
-| `TurnaroundJobUnblocked`, and the `TurnaroundJobStarted` that follows it | the vehicle-freeing `TurnaroundJobCompleted` (§13.5 step 3), or, for `Boarding`, the fifth prerequisite's `TurnaroundJobCompleted` (§13.5 step 1, §13.6) |
+| `TurnaroundJobUnblocked`, and the `TurnaroundJobStarted` that follows it | for a vehicle wait, the `TurnaroundJobCompleted` of the job that held the very vehicle now assigned, published in step 1 of this tick (§13.5 step 3, Q-091); for `Boarding`, the fifth prerequisite's `TurnaroundJobCompleted` (§13.5 step 1, §13.6) |
 | `TurnaroundJobCompleted` | None: it follows a duration of `NominalDurationTicks ≥ 1` (§13.4) |
 | `DeboardComplete` | the `Deboard` job's `TurnaroundJobCompleted` (§13.6) |
 | `ReadyToBoard` | the fifth prerequisite's `TurnaroundJobCompleted` (§13.6) |
@@ -349,7 +441,71 @@ Hashed state, fed in this declared order (`08-interfaces-core.md` §8.9):
 2. Jobs, ascending `JobId`: every field of `TurnaroundJob`.
 
 Not hashed, because derived or load-time immutable: `TurnaroundCatalogue`,
-`TurnaroundFleet`, `FreeVehicles()`, `JobsForFlight()`.
+`TurnaroundFleet`, `FreeVehicles()`, `JobsForFlight()`, the finish-order
+list and the per-`VehicleKind` waiting lists (both below, Q-092). Both
+are fully determined by the hashed jobs.
+
+### Retention and the capacity bound (Q-092)
+
+A flight is **finished** when all of its jobs are `Completed`: both jobs
+for an arrival, all six for a departure. Its finish tick is the largest
+`DueAt` among its jobs, so no new field is needed. A finished flight's
+jobs stay in state, and in the queries and the hash, until they are
+pruned:
+
+- On a tick with `CurrentTick % TICKS_PER_SIM_DAY == 0`, before step 1
+  (§13.5), `Tick` removes every finished flight whose finish tick is
+  below `(CurrentTick / TICKS_PER_SIM_DAY − (TURNAROUND_RETENTION_DAYS − 1))
+  × TICKS_PER_SIM_DAY`. That is, a flight is kept for the sim-day it
+  finished on and the next one. This mirrors `sim.delay`'s
+  `DELAY_RETENTION_DAYS` (`14` §14.8).
+- Pruning removes all of the flight's jobs at once. Afterwards `TryGetJob`
+  returns false for them and `JobsForFlight` returns an empty list, the
+  same as for a flight that never had jobs.
+- Finished flights are kept in finish order (ties broken by ascending
+  `FlightId`), so pruning removes a prefix. It never scans unfinished
+  flights. It is not an allocation.
+- A flight that never finishes is never pruned. An example is a
+  `Catering` job with no `CateringTruck` in the fleet (§13.4).
+
+At most `TURNAROUND_FLIGHTS_CAPACITY` flights have jobs in state. Storage
+for that many flights' jobs (eight job slots each) is preallocated at
+construction and never grows. When the `OnStand` handler would create jobs
+for flight 4 097, it throws `SimInvariantException` (`08`) naming that
+`FlightId`, before creating any of its jobs, as `12` §12.2's bounds do.
+
+Every other variable-size structure in the update path is bounded by the
+same constant. Each is preallocated at construction to the capacity below
+and never grows:
+
+| Structure | Capacity | Why it is enough |
+|---|---|---|
+| job slots | `TURNAROUND_FLIGHTS_CAPACITY × 8` | at most one job per `JobKind` per flight (§13.3) |
+| finish-order list | `TURNAROUND_FLIGHTS_CAPACITY` | one entry per finished flight in state |
+| waiting list, one per `VehicleKind`: its `Blocked` jobs in ascending `EventId` of their `TurnaroundJobBlocked` (§13.5 step 3) | `TURNAROUND_FLIGHTS_CAPACITY` each | by §13.4's table, a flight has at most one job needing a given `VehicleKind`. An arrival's only tractor job is `BaggageUnload`, and a departure's is `BaggageLoad`. So each list holds at most one entry per flight in state |
+
+`Boarding`'s `JobDependency` wait is in no waiting list. It is resolved by
+§13.5 step 1 from its own flight's jobs.
+
+None of these can overflow while the flight bound holds. A full structure
+at an insertion is a broken invariant. It throws `SimInvariantException`
+naming the `FlightId` being inserted, and it never grows. A waiting list
+appends at its tail, because a new `Blocked` always has a higher `EventId`
+than every entry already there. It removes from anywhere in it without
+allocating. Its own layout is the worker's choice, provided it meets
+§13.10's O(active + blocked + vehicles) bound.
+
+Sizing works like `12` §12.2's (Q-085). At `01`'s max tier there are at
+most 800 movements, and so 800 `OnStand`s, in a calendar day. Assume no
+flight stays unfinished more than one sim-day after its `OnStand`. Then
+every flight in state reached `OnStand` on the current calendar day or one
+of the two before it: at most 2 400, under 4 096. Only two kinds of run
+reach the bound: a flight left unfinished for days, which is a fixture
+error at Phase 0/1 (a missing `VehicleKind`, or a fleet far too small for
+the schedule), or a schedule above the max tier. `sim.airside` reaches its
+own `TRACKED_FLIGHTS_CAPACITY` in the same runs (`12` §12.2). §13.4's
+"`Blocked` forever is legitimate" therefore holds for runs of a few
+sim-days, not for a soak.
 
 **RNG: none at Phase 0/1.** Dispatch is FIFO by `EventId`; job creation and
 duration are catalogue lookups. Same posture as `sim.schedule`
@@ -380,21 +536,71 @@ TurnaroundFactory.CreateSystem(in SystemServices services, in TurnaroundSetup se
                                IScheduleSystem schedule) -> ITurnaroundSystem
 ```
 
-The file format stays the worker's choice (§13.11). `schedule` is required
-(§13.9).
+`schedule` is required (§13.9).
+
+`CreateSystem` accepts a setup returned by `Load` or one built in code, as
+tests do. It runs §13.4's five checks, in the same order, on the setup it
+is given. A failure throws `ArgumentException` whose message names the
+same `JobKind` (file spelling, below) or `VehicleId` (decimal) that `Load`
+would name (Q-088). It adds no new public type.
+
+### File format (Q-086)
+
+Binding. It replaces the earlier "the worker's choice". The file is the
+strict JSON subset of `08` §8.11 "The loader", with `18` §18.2's rules:
+UTF-8 without a BOM, objects, arrays, strings and integers only, and no
+fraction, exponent, `null`, `true` or `false`. Duplicate, unknown and
+missing keys are parse (shape) failures, and keys may come in any order.
+`sim.turnaround` hand-parses the file, with no package. The exact shape
+is:
+
+```
+{
+  "schema_version": 1,
+  "jobs":     [ { "kind": "<job kind>", "nominal_duration_ticks": <uint32>,
+                  "category": "<delay category>" }, ... ],
+  "vehicles": [ { "id": <uint16>, "kind": "<vehicle kind>" }, ... ]
+}
+```
+
+- Each object has exactly the keys shown. `schema_version` must be `1`.
+- `<job kind>` is one of `deboard`, `baggage_unload`, `cabin_clean`,
+  `catering`, `fuel`, `baggage_load`, `pushback_prep` and `boarding`.
+  `<vehicle kind>` is one of `cleaning_crew`, `catering_truck`,
+  `fuel_truck`, `baggage_tractor` and `pushback_tug`. `<delay category>`
+  is any of `06-delay-attribution.md`'s 21 spellings. Any other string
+  is a parse (shape) failure. A category that is spelled correctly but
+  not allowed for a job, for example `pushback`, fails §13.4 check 4.
+- There is no `requires_vehicle` key. `Load` sets `RequiresVehicle` from
+  §13.4's table.
+- An integer is `0` or `-?[1-9][0-9]*`. One outside its C# type's range
+  is a parse failure. Values inside the range (a duration of 0, an id of
+  0) parse, and fail §13.4's checks.
+- `jobs` and `vehicles` may be in any order, and either may be empty
+  (`jobs` then fails check 1). `Load` returns `Jobs` in ascending `JobKind`
+  ordinal and `Vehicles` in ascending `VehicleId`.
+- **Failures.** Every failure throws `FormatException` whose message
+  starts with `sourceName` followed by `": "`. A parse failure (syntax,
+  shape, C#-type range) contains the 1-based `line <n>`. A §13.4 failure
+  contains the named `JobKind` in its file spelling above (for example
+  `baggage_unload`) or the named `VehicleId` in decimal. A `null`
+  `sourceName` throws `ArgumentNullException`. Tests assert the exception
+  type, the `sourceName` prefix and the named token, and nothing else in
+  the message.
 
 ## 13.11 The Phase 0/1 fixture (T-022)
 
-`tests/fixtures/turnaround/phase1-four-vehicles.*` (format is the worker's
-choice, same posture as `12-interfaces-airside.md` §12.13), binding on the
-Test Author:
+`tests/fixtures/turnaround/phase1-five-vehicles.json`, in §13.10a's file
+format, binding on the Test Author (Q-086, Q-088; it was
+`phase1-four-vehicles.*`):
 
-- exactly four `VehicleDef`s in total, composition the Test Author's choice,
-  **except** at least one `VehicleKind` used by the companion fixtures must
-  have fewer vehicles than the peak concurrent demand for it, so
+- exactly five `VehicleDef`s, one of each `VehicleKind`, with ids 1 to 5.
+  At least one `VehicleKind` must have fewer vehicles than the peak
+  concurrent demand for it over the companion fixtures, so
   `TurnaroundJobBlocked` fires at least once in a single sim-day run — the
   same requirement in spirit as `12-interfaces-airside.md` §12.13's runway
-  capacity;
+  capacity. Four vehicles cannot meet both this and §13.4's table: a
+  missing `VehicleKind` blocks every departure forever;
 - `TurnaroundCatalogue` covering all eight `JobKind`s, durations short enough
   relative to `MinTurnaround` in the schedule fixture that a full rotation
   can plausibly complete within its scheduled ground time when no vehicle
@@ -408,10 +614,41 @@ Test Author:
   `12-interfaces-airside.md` §12.8 instead of its no-`sim.turnaround`
   fallback.
 
+**Reaching `sim.airside` (Q-087).** The test project
+`tests/sim/turnaround/AirportSim.Sim.Turnaround.Tests.csproj` has exactly
+two `ProjectReference`s, in this order:
+`../../../src/sim/turnaround/AirportSim.Sim.Turnaround.csproj`, then
+`../../../src/sim/airside/AirportSim.Sim.Airside.csproj` (`07` L3). Tests
+in it may construct `sim.airside` only for the tests below that say
+`sim.airside` is registered: the doors-close handshake test, the
+allocation test, and the headless day. Every other test drives `OnStand`
+without `sim.airside`, as before. A registered-airside test supplies `AirsideRules`
+directly (`12` §12.12a: no sim module parses JSON; the values are the
+Test Author's, since with `flow` null there is no boarding hold), and
+passes `flow` null and `turnaroundRegistered` true.
+
 Done-condition tests this spec expects to exist, phrased per
 `07-conventions.md`:
 
-- `test_catalogue_rejects_missing_job_kind`
+- `test_catalogue_rejects_missing_job_kind` (through `Load`, on bytes in
+  §13.10a's format)
+- `test_fixture_file_loads_with_one_vehicle_per_kind` (Q-086): `Load` on
+  `phase1-five-vehicles.json` returns eight jobs in ascending `JobKind`,
+  each with §13.4's `RequiresVehicle`, and five vehicles in ascending id
+- `test_create_system_rejects_wrong_required_vehicle` (Q-088): a setup
+  built in code with `PushbackPrep` on `BaggageTractor` throws
+  `ArgumentException` naming `pushback_prep`
+- `test_creation_events_follow_job_kind_order` (Q-090): a departure's
+  creation events are published in ascending `JobKind`, `Boarding`'s
+  `Blocked` last
+- `test_finished_flight_jobs_pruned_after_retention_days` (Q-092): a flight
+  that finishes on day `d` still answers `TryGetJob` at the last tick of
+  day `d + 1`, and does not at the first tick of day `d + 2`. An
+  unfinished flight is never pruned
+- `test_turnaround_flights_overflow_throws_sim_invariant` (Q-092): with
+  4 096 unfinished flights in state, the next `OnStand` throws
+  `SimInvariantException` naming its `FlightId`. Before that, the
+  creations allocate nothing
 - `test_vehicle_dispatch_assigns_lowest_event_id_first`
 - `test_boarding_waits_for_all_other_departure_jobs`
 - `test_deboard_complete_fires_once_per_arrival`
