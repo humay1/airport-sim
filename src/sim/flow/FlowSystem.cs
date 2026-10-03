@@ -679,6 +679,8 @@ namespace AirportSim.Sim.Flow
             _promoted[ordinal] = promoted;
         }
 
+        public NodeKind KindOf(NodeId node) => _kind[RequireOrdinal(node, nameof(node))];
+
         public IReadOnlyList<AgentView> AgentsAt(NodeId node)
         {
             int ordinal = RequireOrdinal(node, nameof(node));
