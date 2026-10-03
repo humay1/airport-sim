@@ -271,8 +271,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   Q-054)**; **flights found through a pending list, fed by a day-0 read and
   by `FlightPlanPublished`. Each entry leaves at its start tick, and a
   rotation-less departure starts at `max(due tick, PublishTick + 1)`
-  (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY` and
-  `PENDING_FLIGHTS_CAPACITY`. Overflow during a tick is
+  (§12.11)**; **hard bounds `STAND_WAIT_CAPACITY`,
+  `PENDING_FLIGHTS_CAPACITY` and `TRACKED_FLIGHTS_CAPACITY` (4096 tracks,
+  sound for max-tier runs whose flights leave within 3 sim-days of
+  schedule; it also bounds all hold queues together, Q-085). Overflow
+  during a tick is
   `SimInvariantException`, and overflow in `CreateSystem`'s day-0 read is
   `ArgumentException` (§12.2, §12.11, §12.12)**; **a taxi hold's `Blocking`
   is the snapshot occupant, or else this step's grantee, and is null on

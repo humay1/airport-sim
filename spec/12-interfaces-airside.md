@@ -65,14 +65,72 @@ calls into `sim.world` at all.
 | `RUNWAY_SLOT_ROUNDING` | ceiling | §12.5, capacity → separation |
 | `STAND_WAIT_CAPACITY` | 1024 entries | §12.7 stand-wait queue, a hard bound (Q-050) |
 | `PENDING_FLIGHTS_CAPACITY` | 2048 entries | §12.11 pending list, a hard bound |
+| `TRACKED_FLIGHTS_CAPACITY` | 4096 tracks | §12.9 tracked flights, a hard bound (Q-085). It also bounds the hold queues together |
 
-The two capacities are engineering bounds, not balance. They are sized
+The three capacities are engineering bounds, not balance. They are sized
 from `01`'s max tier, 800 daily movements. The pending list only holds
 flights scheduled within the next 24 hours (§12.11 "Why 2048 holds"). That
 window can span two calendar days, so it holds up to 1 600 entries, day 0
 at construction included. The stand-wait queue is larger than any one
 day's arrivals.
-Both are preallocated at `CreateSystem`, and neither ever grows.
+All three are preallocated at `CreateSystem`, and none ever grows.
+
+**Why 4096 tracks hold (Q-085).** The count runs over the flights' own
+`ScheduledTick`s, at a tick `t`.
+
+- **No track is of a flight scheduled a sim-day or more ahead.** Every
+  tracked flight has `ScheduledTick < t + 14 400`:
+  - an arrival is tracked from `max(0, STA − 1 200)`, so `STA ≤ t + 1 200`;
+  - a rotation-less departure is tracked from its start tick (§12.11). For
+    a later day that is after its `PublishTick = STD − 14 400`, so
+    `STD < t + 14 400`. For day 0, `STD < 14 400 ≤ t + 14 400`. That
+    covers a departure with `MinTurnaround ≥ 1 440` minutes created at
+    `PublishTick + 1`, almost a day before its `STD`;
+  - a departure with a rotation is tracked from its arrival's handoff, at
+    or after the arrival's `STA`. `11` §11.4 puts `STD` on the same
+    calendar day as `STA`, so `STD < t + 14 400`.
+- **The run property.** Assume no flight is still tracked `43 200` ticks
+  (3 sim-days) or more after its `ScheduledTick`, except a rotation-less
+  arrival on its stand. Then every other track has its `ScheduledTick` in
+  `(t − 43 200, t + 14 400)`. That window is 57 600 ticks, exactly four
+  sim-days, so it touches at most five calendar days. At `01`'s max tier
+  that is at most 4 000 movements.
+- **Rotation-less arrivals on stand** outside that window each occupy a
+  stand for good (§12.7). So there are at most as many as stands, 60 at
+  `03`'s max tier.
+
+That gives at most **4 060 tracks**, under 4 096, for any layout and
+schedule within `01`'s and `03`'s max tiers whose flights each leave
+tracked state within 3 sim-days of their `ScheduledTick`. A run in which
+every flight leaves within one sim-day uses a window of three calendar
+days, so at most 2 460 tracks.
+
+**Which runs can reach the bound.** Only these:
+
+- a run where some flight, other than a rotation-less arrival on its
+  stand, is still tracked 3 sim-days or more after its `ScheduledTick`.
+  For example, a runway whose `DeclaredCapacityPerHour` is far below the
+  movement rate holds arrivals for days;
+- a schedule above `01`'s max tier of 800 movements in a calendar day;
+- a layout with more than 96 stands holding rotation-less arrivals.
+
+The bound makes no claim that every run reaching it is unserviceable. It
+claims that a run matching none of the three conditions above stays at
+or under it.
+At Phase 0/1 the layout and schedule are fixed fixtures, so reaching it is
+a fixture error, as for the stand-wait queue (§12.12 "Hard bounds"). When
+construction exists, the bound is revisited by amendment.
+
+**The hold queues need no constant of their own (Q-085).** Every runway
+and taxi hold-queue entry is a tracked flight, and a flight is in at most
+one hold queue at a time (§12.9 `OpenHold`). So all hold queues together
+hold at most `TRACKED_FLIGHTS_CAPACITY` entries. Their storage is
+preallocated at `CreateSystem` for that total, and no entry allocates.
+
+**No static check at load (Q-085).** Whether a layout can serve a
+schedule depends on how runway holds, taxi holds and stand waits interact
+over time. A load-time check could only approximate that, so none is
+specified. The runtime bound is the check.
 
 `AircraftHeldForRunway`/`StandUnavailable` etc. carry no constant of their own;
 their thresholds are runway/stand content, never hardcoded.
@@ -1454,6 +1512,22 @@ O(stands). Stands are bounded by `03-module-map.md`'s max tier at 60.
   example because rotation-less arrivals hold stands for good (§12.7). At
   Phase 0/1 the layout is a fixed fixture, so this is a fixture error. When
   construction exists, the bound is revisited by amendment.
+- **Tracked flights (Q-085).** At most `TRACKED_FLIGHTS_CAPACITY` flights
+  are tracked at once (§12.2 "Why 4096 tracks hold"). Track storage, and
+  hold-queue storage for the same total, are preallocated at
+  `CreateSystem` and never grow. A track is added in two places only:
+  S2's arrival start, and S5's rotation-less departure, whether a new
+  request or from the stand-wait queue. If adding it would exceed the
+  bound, that action throws `SimInvariantException` (`08` §8.5a) at that
+  tick, before it publishes anything. The message names the flight and
+  the tracked flights, and nothing is created. The handoff (§12.8)
+  replaces the arrival's track with the departure's, so it never changes
+  the count and never throws. Its storage must cover the
+  create-before-remove order of §12.8 "The handed-off arrival" without
+  allocating. No track exists at construction, so `CreateSystem` has no
+  overflow case for it. Only the runs that §12.2 "Which runs can reach
+  the bound" lists can reach it. At Phase 0/1 that is a fixture error, as
+  above.
 - No allocation in the update path (`07-conventions.md`, `08` §8.5). The
   routing table and the day-0 read are done once at construction, off the
   tick path. The update path includes the module's event handlers and its
@@ -1542,6 +1616,52 @@ Done-condition tests this spec expects to exist, phrased per
   departure's `OnStand`, `DoorsClosed` and `Pushback` all fire in one tick,
   in that order, inside the arrival's turn.
 - `test_stand_wait_queue_overflow_throws_sim_invariant` (§12.12)
+- `test_tracked_flights_overflow_throws_sim_invariant` (Q-085, §12.12
+  "Tracked flights"). It is a `Slow` test, and every count in it is
+  derived from the schedule alone:
+  - **Setup.** The layout has one runway at `declared_capacity_per_hour`
+    1. The schedule has only rotation-less arrivals, `N` a day with
+    `repeat_daily`, and **`100 ≤ N ≤ 800`**. No track is ever removed,
+    because a rotation-less arrival is never handed off and there are no
+    departures. The two other bounds hold until the throw:
+    - **Stand-wait queue.** Only a landed arrival joins it, so it never
+      holds more than the landings so far. Landings are paced at 600
+      ticks (§12.5), so by tick `t` there are at most `⌊t / 600⌋ + 1`.
+      `A_4097` is on day `⌊4 096 / N⌋ ≤ 40`, so `t_4097 < 41 × 14 400 =
+      590 400`. That allows at most `⌊590 399 / 600⌋ + 1 = 984` landings, under
+      `STAND_WAIT_CAPACITY` (1 024), with any number of stands. Below
+      `N = 100` this fails: rotation-less arrivals hold their stands for
+      good, and the queue can overflow first.
+    - **Pending list.** It holds flights scheduled within the next sim-day
+      (§12.11 "Why 2048 holds"), which spans at most two calendar days,
+      so at most `2N ≤ 1 600`, under `PENDING_FLIGHTS_CAPACITY`.
+  - **Order.** Rank the arrivals by `InboundAirborne` tick,
+    `max(0, STA − 1 200)`, then by ascending `FlightId`, the S2 order
+    (§12.8a). Call the arrival of rank `k` `A_k`, and its
+    `InboundAirborne` tick `t_k`.
+  - **Precondition, to the bound.** At the end of every `Tick` `t` before
+    `t_4097`, `TrackedFlights().Count` equals the number of arrivals with
+    `InboundAirborne` tick `≤ t`. Every `A_k` with `t_k < t_4097` has its
+    `InboundAirborne` recorded at `t_k`. No `SimInvariantException` is
+    thrown before `t_4097`, and no `Tick` before it allocates.
+  - **The throw.** `Step` for the tick `t_4097` throws
+    `SimInvariantException` (`08` §8.5a) whose message names `A_4097` and
+    the tracked flights.
+  - **After the throw, the reading to use.** The test reads the
+    partial state that `08` §8.5a leaves, with nothing rolled back,
+    through the `IAirsideSystem` queries. `TrackedFlights().Count` is
+    exactly **4 096**, every `A_k` with `k ≤ 4 096` is tracked
+    (`TryGetTrack` true, in whatever phase it has reached), and `A_4097`
+    is not tracked. The test asserts no phase. This is the reading
+    whether or not `A_4096` and later ranks share `t_4097` with `A_4097`.
+    S2 starts those ranks before `A_4097` in the same tick, so the end of
+    the previous tick may show fewer than 4 096. Events of tick `t_4097`
+    are never dispatched, because phase 3 does not run. So the test does
+    not look for that tick's `InboundAirborne` events, and their absence
+    proves nothing.
+
+  An empty or non-tracking implementation fails the precondition, and an
+  implementation that throws early or late fails at an exact rank.
 - `test_pending_list_overflow_in_publication_handler_throws_sim_invariant`
   (§12.11 "Overflow")
 - `test_pending_list_overflow_in_day_zero_read_throws_argument_exception`

@@ -3446,3 +3446,79 @@ Signed off:  owner, 2026-10-02 (the `02` reading: a real `Gate` node,
              drawn through `AgentsAt` every tick, matching run 1 exactly).
              The rest follows from that decision. The owner should review
              the LOW CONFIDENCE marker.
+
+## 2026-10-02 — spec/12-interfaces-airside.md §12.2, §12.12, §12.13 — `TRACKED_FLIGHTS_CAPACITY` bounds tracked flights and hold queues (Q-085)
+Reason:      The PR #91 review found that nothing bounded the tracked
+             flights or the runway and taxi hold queues. A layout whose
+             runway capacity is far below the schedule's movement rate
+             grows the tracked set by hundreds of flights a day, inside
+             every stated bound, until the implementation's preallocated
+             pool grows. That allocates in `Tick`, which §12.12 forbids.
+             The new bound is 4096 tracks (§12.2 "Why 4096 tracks
+             hold"). Every tracked flight is scheduled less than a
+             sim-day ahead, early rotation-less departures included. So
+             a max-tier run whose flights each leave tracked state within
+             3 sim-days of their schedule has at most 4 060 tracks.
+             §12.2 lists the only runs that can reach the bound. A
+             first version at `1bd2c4b` set 2048 with a 1 660 argument.
+             The review of #96 found it unsound: rotation-less
+             departures with `MinTurnaround ≥ 1 440` are created almost
+             a day before `STD`, which reaches about 2 196 tracks, and
+             the window it used was longer than a day. It also bounds the hold queues together, because every
+             entry is a tracked flight in at most one queue. Overflow
+             throws `SimInvariantException` at the adding action, as the
+             other §12.2 bounds do. No load-time check is added, because
+             serviceability is dynamic.
+Raised by:   Q-085 (Reviewer, PR #91, via coordinator)
+Impact:      - **No merged code is invalidated.** `sim.airside` is not
+               merged.
+             - **No hash change.** The bound adds no state.
+             - **T-021 worker (PR #91):** size the track storage, and the
+               hold-queue storage for the same total, to
+               `TRACKED_FLIGHTS_CAPACITY` at `CreateSystem`, including
+               the handoff's create-before-remove order. Throw
+               `SimInvariantException` naming the flight and the tracked
+               flights before a track would be added past 4 096, in S2
+               and in S5, before anything is published. Remove the
+               growth paths (`new Slot()` when the pool is empty, the
+               `Array.Resize` calls and the pool growth). The current
+               4 096 pool is exactly the bound, so what remains is the
+               throw, the removal of growth, and room for the handoff's
+               create-before-remove order.
+             - **T-021 tests (Test Author, PR #78):** one new test,
+               `test_tracked_flights_overflow_throws_sim_invariant`
+               (§12.13), `Slow`. It throws at track 4 097, not 2 049.
+               A local version that assumes 2048 (for example with
+               track 2 049 at tick 15 340) must be re-derived for 4096.
+               §12.13 pins its shape:
+               - one runway at one movement per hour;
+               - only rotation-less arrivals, `100 ≤ N ≤ 800` a day, so
+                 no track is ever removed. At `N ≥ 100` the stand-wait
+                 queue holds at most 984 entries by the throw (landings
+                 paced at 600 ticks), and the pending list at most
+                 `2N`. Below 100 the stand-wait queue can overflow first
+                 (review of #96 at `7bc8b34`);
+               - arrivals ranked by `InboundAirborne` tick, then
+                 `FlightId`;
+               - as a precondition, `TrackedFlights().Count` equals the
+                 number of arrivals started at the end of every tick
+                 before the throw, with no throw and no allocation;
+               - the throw comes at `A_4097`'s `InboundAirborne` tick,
+                 naming it;
+               - after the throw, the test reads `08` §8.5a's partial
+                 state through the `IAirsideSystem` queries: exactly
+                 4 096 tracked, `A_4097` untracked. That reading holds
+                 even when `A_4096` shares the throwing tick. The
+                 throwing tick's events are never dispatched, so the
+                 test does not look for them.
+               At 400 arrivals a day that is about day 10. The
+               non-throwing case from `757a7e5` ("peaks near 2 200") is
+               replaced by this exact precondition, which an empty
+               implementation fails. No existing test changes, and the
+               fixture day stays far under the bound.
+             - **T-022, T-024, `app.render`:** none.
+             - **LOW CONFIDENCE:** none. The bound is an engineering
+               bound, sized as the existing two are.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (engineering bound; no balance, scope or
+             `01`/`02` change).
