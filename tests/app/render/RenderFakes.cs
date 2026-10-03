@@ -292,6 +292,11 @@ namespace AirportSim.App.Render.Tests
             return false;
         }
 
+        public NodeKind KindOf(NodeId node)
+        {
+            throw Guard.Forbidden("IFlowSystem.KindOf");
+        }
+
         public CohortId Inject(in CohortKey key, int count, NodeId at)
         {
             throw Guard.Forbidden("IFlowSystem.Inject");
@@ -509,6 +514,11 @@ namespace AirportSim.App.Render.Tests
         public bool TryGetLaneState(NodeId node, out LaneState lanes)
         {
             return _inner.TryGetLaneState(node, out lanes);
+        }
+
+        public NodeKind KindOf(NodeId node)
+        {
+            throw _guard.Forbidden("IFlowSystem.KindOf");
         }
 
         public CohortId Inject(in CohortKey key, int count, NodeId at)
