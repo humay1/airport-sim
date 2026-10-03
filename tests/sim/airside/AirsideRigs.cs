@@ -76,6 +76,13 @@ namespace AirportSim.Sim.Airside.Tests
             return false;
         }
 
+        // 09 §9.7 (Q-084). The stand-in holds no FlowGraph, so every node is
+        // unknown to it and throws, as an unknown node does on the real system.
+        public NodeKind KindOf(NodeId node)
+        {
+            throw new ArgumentException("FakeFlowBase has no flow graph: unknown node " + node.Value);
+        }
+
         public CohortId Inject(in CohortKey key, int count, NodeId at)
         {
             InjectCalls++;
