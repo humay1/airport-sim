@@ -3594,3 +3594,37 @@ Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
                on 2026-10-03.
 Signed off:  human for Q-088 (owner, 2026-10-03); not required for the
              rest (architecture)
+
+## 2026-10-04 — spec/15-interfaces-render.md §15.2, §15.3, §15.4, §15.5, §15.8, §15.11, §15.12; spec/12-interfaces-airside.md §12.13; spec/07-conventions.md L4; spec/17 §17.10; INDEX; open-questions — T-020 gaps: layout format, departure sinks, frame budget window, `SourceRef` order, pacer exceptions, `RenderConstants`, floats in render tests, promotion in `Build` (Q-094 to Q-101)
+Reason:      The T-020 Test Author (PR #101) could not write the layout
+             loader tests, the fixture or the budget test, and found five
+             unpinned details. A real composition of the Phase 1 fixtures
+             throws because the airside fixture's sinks name no flow node.
+Raised by:   Q-094 to Q-101
+Impact:      - **Q-094:** §15.4 pins a JSON layout format and ordered
+               checks. `IRenderLayoutLoader.Load`'s signature is unchanged.
+               The fixture is `phase1-layout.json` (`17` §17.10 updated;
+               `16` §16.3 already says "under `tests/fixtures/render/`").
+             - **Q-095:** `tests/fixtures/airside/phase1-single-runway.json`
+               must change `departure_sink_node` 901 to 904 to 9. That is
+               merged Test-Author work (T-021) and is now out of spec,
+               so the **Planner** must route a Test Author fix. It
+               unblocks T-048, T-031 and T-025. No merged test should
+               change; the airside fixture's hash changes, but no golden
+               includes it.
+             - **Q-096:** the frame budget test uses 14 400 rebuilding
+               frames and `03`'s arithmetic. It is Slow only by L11a (b).
+             - **Q-097, Q-098:** clarifications. The pacer throws
+               `ArgumentOutOfRangeException`. One new test.
+             - **Q-099:** one new public type, `RenderConstants`. Any
+               public-type-list test in `tests/app/render` must include it.
+             - **Q-100:** `07` L4 gets one exception, for `tests/app/render/`
+               only. `tests/app/ui` is unchanged; if it needs the same, that
+               is a new question.
+             - **Q-101:** `Build` evaluates the promotion predicate itself.
+               No interface change. One new test.
+             - **Merged work:** only the airside fixture file (Q-095).
+             - **LOW CONFIDENCE:** none new.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).

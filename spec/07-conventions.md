@@ -186,7 +186,9 @@ the test project and seeded with an integer literal inside the test. When the
 test fails, its message names the seed and the iteration index.
 `System.Random` is not used anywhere, tests included (`CLAUDE.md`: "No
 `Random` outside the seeded RNG service"). Integer arithmetic only, because
-`08` §8.3 bans floating point in tests too. Test code may use `net8.0`-only
+`08` §8.3 bans floating point in tests too. The one exception is
+`tests/app/render/`, for the values of `15`'s `float`-typed members only
+(`15` §15.3, Q-100). Test code may use `net8.0`-only
 APIs, for example the `Int128`/`BigInteger` oracle in `08` §8.3. None of that code ever reaches `src/**`. Each test
 project disables xUnit test parallelisation with the assembly-level attribute
 `[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]`, in
