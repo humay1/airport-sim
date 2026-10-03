@@ -5,7 +5,7 @@
 | Status | QUEUED |
 | Module | `sim.delay` |
 | Assigned role | worker |
-| Depends on | T-022 (not merged), T-023 (merged #71), T-026 (merged #29) |
+| Depends on | T-022 (not merged; in progress #100/#103), T-023 (merged #71), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md` build order #6; `spec/06-delay-attribution.md`; `spec/10-events.md` §10.5–§10.7; `spec/14-interfaces-delay.md` (answers Q-007); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
 | Blocked by | — |
 
@@ -308,6 +308,10 @@ slot is reused, its id is not.
 - [ ] No writes outside writable paths
 - [ ] Reviewer approved
 - [ ] Verifier gates green
+
+## Known spec gap for the Test Author (flagged 2026-10-04)
+
+`14` §14.14's integrated day in `tests/sim/delay` needs five modules and will hit the same project-reference reach problem Q-087 solved for `tests/sim/turnaround`. The Test Author batches this with their other gaps into one `spec/open-questions.md` entry before authoring. Any integrated run also depends on the Q-095 fixture fix (airside fixture sinks).
 
 ## Worker notes
 
