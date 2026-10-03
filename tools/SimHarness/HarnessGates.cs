@@ -94,6 +94,59 @@ namespace AirportSim.Tools.SimHarness
             return HarnessRunner.Hex16(r.FinalHash);
         }
 
+        /// <summary>
+        /// The pure budget statistic of §19.4 (Q-058): <c>03</c> "Budget tests: window and
+        /// arithmetic" (Q-045) with B = 6000 and n = TICKS_PER_SIM_DAY. Each raw sample
+        /// is rounded up to whole microseconds and capped at C = B x n + 1; the mean
+        /// passes iff the sum is at most B x n and is reported rounded up; p99 is the
+        /// nearest rank. Runs nothing, reads no clock, does not modify
+        /// <paramref name="samples"/>.
+        /// </summary>
+        public static GateResult BudgetFromSamples(IReadOnlyList<long> samples, long frequency)
+        {
+            const long B = 6000;
+            const long N = (long)SimConstants.TICKS_PER_SIM_DAY;
+            const long C = B * N + 1;
+            const long MaxFrequency = long.MaxValue / (C + 1);
+
+            if (samples is null)
+            {
+                throw new ArgumentNullException(nameof(samples));
+            }
+            if (samples.Count != N)
+            {
+                throw new ArgumentOutOfRangeException(nameof(samples), samples.Count, "samples must hold exactly TICKS_PER_SIM_DAY entries");
+            }
+            if (frequency <= 0 || frequency > MaxFrequency)
+            {
+                throw new ArgumentOutOfRangeException(nameof(frequency), frequency, "frequency is outside 03's bound");
+            }
+
+            long guard = (long.MaxValue - frequency + 1) / 1_000_000L;
+            long[] u = new long[N];
+            long sum = 0;
+            for (int i = 0; i < u.Length; i++)
+            {
+                long d = samples[i];
+                if (d < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(samples), d, "samples must not be negative");
+                }
+
+                long us = d > guard ? C : Math.Min((d * 1_000_000L + frequency - 1) / frequency, C);
+                u[i] = us;
+                sum += us;
+            }
+
+            Array.Sort(u);
+            long p99 = u[(99 * N + 99) / 100 - 1];
+            long meanUs = (sum + N - 1) / N;
+            bool passed = sum <= B * N && p99 <= 2 * B;
+            return new GateResult(passed, (passed ? "PASS" : "FAIL") + " budget ticks=" + N.ToString(CultureInfo.InvariantCulture) +
+                " mean_us=" + meanUs.ToString(CultureInfo.InvariantCulture) +
+                " p99_us=" + p99.ToString(CultureInfo.InvariantCulture));
+        }
+
         private static GateResult CompareTwoRuns(IContentIndex content, SimComposer compose, ulong seed, uint ticks, string gate, bool promoteSecondRun = false)
         {
             ValidateCommon(content, compose, ticks);
