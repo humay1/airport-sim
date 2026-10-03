@@ -6,6 +6,9 @@ namespace AirportSim.Sim.Core
     public enum LogKey : ushort
     {
         /// <summary>No key. Not written by real log lines.</summary>
-        None = 0
+        None = 0,
+
+        /// <summary>A ReassignStand command that failed its Apply checks. Spec: 12-interfaces-airside.md §12.10.</summary>
+        AirsideReassignStandNoOp = 1
     }
 }
