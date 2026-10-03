@@ -114,10 +114,11 @@ enforces "Comments and documentation" mechanically.
 
 **L3. Test project file, byte for byte.** `tests/sim/core/AirportSim.Sim.Core.Tests.csproj`
 is exactly the text below, with the same encoding rules as L2. Every other test
-project in L1, except the integration test project (below), is this file
+project in L1, except the integration test project and `sim.turnaround`'s
+test project (both below), is this file
 with the two names and the one `ProjectReference` changed. A test project
 references **only** the production project of the module it tests, with the
-same exception. The other modules it sees come through that project's own
+same two exceptions. The other modules it sees come through that project's own
 references. For the harness's test project, that one reference is
 `../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
 tests call the harness in process, through its public surface (`19`
@@ -136,6 +137,17 @@ process. It holds only tests that compare `app.host` with
 `test_host_composition_matches_harness_checkpoints`. Any other test there
 needs an amendment that names it. Neither `app.host` nor
 `tools.simharness` references the other.
+
+**`sim.turnaround`'s test project (Q-087).** It is this file with the two
+names changed to `AirportSim.Sim.Turnaround.Tests` and exactly two
+`ProjectReference`s, in this order:
+`../../../src/sim/turnaround/AirportSim.Sim.Turnaround.csproj`, then
+`../../../src/sim/airside/AirportSim.Sim.Airside.csproj`. The second exists
+only so that `13` §13.11's tests with `sim.airside` registered can run the
+real §12.8 handshake. `13` §13.11 names those tests, and any other use of
+`sim.airside` there needs an amendment. The production project
+`AirportSim.Sim.Turnaround` still does not reference `sim.airside` (`13`
+§13.1).
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
