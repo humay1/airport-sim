@@ -299,7 +299,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   field is stored state with a named writer, `EdgeProgress` advanced by S6
   each tick, and all 14 are fed (§12.9, §12.12, Q-082, hash change)**; **`ReassignStand` stays open during the door delay, and the
   stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
-  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**.
+  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**; **the fixture's stands
+  all sink to flow node 9 (§12.13, Q-095)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8); an
@@ -345,7 +346,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   invariant: every non-`Agent` primitive is identical at every setting, and
   no knob touches time, input or click targets**; **`Low` holds 60 fps at
   max tier on integrated graphics; the first-launch default is `Medium`
-  (owner, Q-034, §15.11, §15.14)**.
+  (owner, Q-034, §15.11, §15.14)**; **T-020 batch: a pinned JSON layout
+  format with ordered checks (§15.4, Q-094); the per-frame budget uses
+  `03`'s window over 14 400 rebuilding frames (§15.11, Q-096); `SourceRef`
+  order is lexicographic (§15.5, Q-097); the pacer throws
+  `ArgumentOutOfRangeException` (§15.8, Q-098); `RenderConstants` (§15.2,
+  Q-099); floats allowed in `tests/app/render` (§15.3, Q-100); `Build`
+  applies the promotion predicate itself (§15.5, Q-101)**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
