@@ -201,6 +201,9 @@ namespace AirportSim.App.Render.Tests
 
         public readonly CallGuard Guard;
         public readonly List<(uint Node, bool Promoted)> SetPromotedCalls = new List<(uint Node, bool Promoted)>();
+
+        /// <summary>Every AgentsAt node, in call order, while RecordPromotions is set.</summary>
+        public readonly List<uint> AgentsAtNodes = new List<uint>();
         public bool RecordPromotions = true;
         public long PopulationCalls;
         public long AgentsAtCalls;
@@ -326,6 +329,11 @@ namespace AirportSim.App.Render.Tests
         public IReadOnlyList<AgentView> AgentsAt(NodeId node)
         {
             AgentsAtCalls++;
+            if (RecordPromotions)
+            {
+                AgentsAtNodes.Add(node.Value);
+            }
+
             if (!_nodes.TryGetValue(node.Value, out NodeState? s))
             {
                 throw new ArgumentException("unknown node " + node.Value, nameof(node));

@@ -11,13 +11,13 @@ namespace AirportSim.App.Render.Tests
 
     internal static class RenderConst
     {
-        // 15 §15.2, as literals: the spec names no class holding the
-        // presentation constants, so the tests do not reference one.
-        public const float AgentZoomThreshold = 120f;
-        public const int MaxDrawnAgentsPerNode = 256;
-        public const int MaxDrawnLanesPerNode = 32;
-        public const uint MaxCatchupTicksPerFrame = 3;
-        public const long RealMicrosecondsPerTick1X = 100000;
+        // 15 §15.2, from RenderConstants (Q-099). §15.7 compares ViewHeight
+        // with AGENT_ZOOM_THRESHOLD converted to float.
+        public const float AgentZoomThreshold = RenderConstants.AGENT_ZOOM_THRESHOLD;
+        public const int MaxDrawnAgentsPerNode = RenderConstants.MAX_DRAWN_AGENTS_PER_NODE;
+        public const int MaxDrawnLanesPerNode = RenderConstants.MAX_DRAWN_LANES_PER_NODE;
+        public const uint MaxCatchupTicksPerFrame = RenderConstants.MAX_CATCHUP_TICKS_PER_FRAME;
+        public const long RealMicrosecondsPerTick1X = RenderConstants.REAL_MICROSECONDS_PER_TICK_1X;
 
         // 08 §8.1.
         public const ulong TicksPerDay = 14400UL;

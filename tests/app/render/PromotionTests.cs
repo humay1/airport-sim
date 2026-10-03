@@ -92,7 +92,7 @@ namespace AirportSim.App.Render.Tests
             c.Update(Cam.On(SmallScene.Queue5Box, 121f), Gfx.High());
             AssertCalls(s, "ViewHeight 121", (5, false));
 
-            c.Update(Cam.On(SmallScene.Queue5Box, 120f), Gfx.High());
+            c.Update(Cam.On(SmallScene.Queue5Box, RenderConst.AgentZoomThreshold), Gfx.High());
             AssertCalls(s, "back to ViewHeight 120", (5, true));
 
             c.Update(Cam.On(SmallScene.Queue5Box, 119f), Gfx.High());

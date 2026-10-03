@@ -298,6 +298,61 @@ namespace AirportSim.App.Render.Tests
         }
 
         [Fact]
+        public void test_scene_draws_agents_only_where_its_own_camera_promotes()
+        {
+            // Q-101: Build applies §15.7's desired-promoted predicate to its own
+            // camera and graphics, and calls AgentsAt for exactly those boxes,
+            // ascending NodeId. No IPromotionController is involved: the test
+            // promotes every node in the fake itself.
+            var s = new SmallScene();
+            s.Flow!.SetPopulation(SmallScene.Hall, 10);
+            s.Flow.SetPopulation(SmallScene.Queue5, 20);
+            s.Flow.SetPopulation(SmallScene.Queue6, 30);
+            foreach (uint node in new[] { SmallScene.Hall, SmallScene.Queue5, SmallScene.Queue6 })
+            {
+                s.Flow.SetPromoted(new NodeId(node), true);
+            }
+
+            ISceneBuilder b = s.Builder();
+
+            // Queue 5 only: AgentsAt for 5 alone, and its agents alone are drawn.
+            s.Flow.AgentsAtNodes.Clear();
+            List<DrawPrimitive> all = Build(b, Cam.On(SmallScene.Queue5Box, 60f), Gfx.High());
+            Assert.Equal(new uint[] { SmallScene.Queue5 }, s.Flow.AgentsAtNodes);
+            List<DrawPrimitive> agents = Prims.InLayer(all, DrawLayer.Agent);
+            Assert.Equal(20, agents.Count);
+            Assert.All(agents, a => Assert.Equal((ulong)SmallScene.Queue5, a.Source.Id));
+
+            // Both queues, view [170,530] × [180,280]: 5 then 6.
+            s.Flow.AgentsAtNodes.Clear();
+            all = Build(b, Cam.At(350f, 230f, 100f, 3.6f), Gfx.High());
+            Assert.Equal(new uint[] { SmallScene.Queue5, SmallScene.Queue6 }, s.Flow.AgentsAtNodes);
+            Assert.Equal(50, Prims.InLayer(all, DrawLayer.Agent).Count);
+
+            // Above the threshold, or with DrawAgents off: no AgentsAt call, no agent.
+            foreach ((CameraView cam, GraphicsSettings g, string what) in new[]
+            {
+                (Cam.On(SmallScene.Queue5Box, 121f), Gfx.High(), "ViewHeight 121"),
+                (Cam.On(SmallScene.Queue5Box, 60f), Gfx.Custom(false, 256), "DrawAgents off"),
+                (Cam.Away(), Gfx.High(), "nothing in view"),
+            })
+            {
+                s.Flow.AgentsAtNodes.Clear();
+                all = Build(b, cam, g);
+                Assert.True(s.Flow.AgentsAtNodes.Count == 0, what + ": AgentsAt called for " + string.Join(",", s.Flow.AgentsAtNodes));
+                Assert.Empty(Prims.InLayer(all, DrawLayer.Agent));
+            }
+
+            // The sim has not promoted queue 6: Build still asks, gets nothing, draws nothing.
+            s.Flow.SetPromoted(new NodeId(SmallScene.Queue6), false);
+            s.Flow.AgentsAtNodes.Clear();
+            all = Build(b, Cam.On(SmallScene.Queue6Box, 60f), Gfx.High());
+            Assert.Equal(new uint[] { SmallScene.Queue6 }, s.Flow.AgentsAtNodes);
+            Assert.Empty(Prims.InLayer(all, DrawLayer.Agent));
+            Assert.Empty(s.Guard.Violations);
+        }
+
+        [Fact]
         public void test_scene_lane_pips_follow_lane_state_and_skip_non_queue_nodes()
         {
             var s = new SmallScene();

@@ -41,7 +41,7 @@ namespace AirportSim.App.Render.Tests
                 long dt = Math.Min(left, rng.Range(1000, 250000));
                 left -= dt;
                 uint n = p.Advance(dt, false, GameSpeed.X1);
-                Assert.True(n <= 3U, "seed 0x7E570020, frame " + frame + ": " + n + " ticks");
+                Assert.True(n <= RenderConst.MaxCatchupTicksPerFrame, "seed 0x7E570020, frame " + frame + ": " + n + " ticks");
                 total += n;
                 frame++;
             }
@@ -148,14 +148,34 @@ namespace AirportSim.App.Render.Tests
         [Fact]
         public void test_tick_pacer_rejects_negative_elapsed_and_unknown_speed()
         {
+            // Q-098: ArgumentOutOfRangeException naming the parameter, elapsed
+            // checked first, both checked even when paused, accumulator unchanged.
             ITickPacer p = RenderFactory.CreatePacer();
-            Assert.ThrowsAny<ArgumentException>(() => p.Advance(-1, false, GameSpeed.X1));
-            Assert.ThrowsAny<ArgumentException>(() => p.Advance(long.MinValue, false, GameSpeed.X4));
-            Assert.ThrowsAny<ArgumentException>(() => p.Advance(-1, true, GameSpeed.X1));
-            foreach (int bad in new[] { 0, 3, 5, 8, -1, int.MaxValue })
+            Assert.Equal(0U, p.Advance(60000, false, GameSpeed.X1));
+
+            foreach (bool paused in new[] { false, true })
             {
-                Assert.ThrowsAny<ArgumentException>(() => p.Advance(1000, false, (GameSpeed)bad));
+                foreach (long elapsed in new[] { -1L, long.MinValue })
+                {
+                    var ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Advance(elapsed, paused, GameSpeed.X1));
+                    Assert.Equal("elapsedRealMicroseconds", ex.ParamName);
+                }
+
+                foreach (int bad in new[] { 0, 3, 5, 8, -1, int.MaxValue })
+                {
+                    var ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Advance(1000, paused, (GameSpeed)bad));
+                    Assert.Equal("speed", ex.ParamName);
+                }
+
+                // Both wrong: elapsed is named.
+                var both = Assert.Throws<ArgumentOutOfRangeException>(() => p.Advance(-5, paused, (GameSpeed)3));
+                Assert.Equal("elapsedRealMicroseconds", both.ParamName);
             }
+
+            // The 60 000 accumulated before the throws is still there, and nothing was added.
+            Assert.Equal(0U, p.Advance(39999, false, GameSpeed.X1));
+            Assert.Equal(1U, p.Advance(1, false, GameSpeed.X1));
+            Assert.Equal(0U, p.Advance(99999, false, GameSpeed.X1));
         }
     }
 }
