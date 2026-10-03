@@ -1579,7 +1579,13 @@ format" (Q-046), binding on the Test Author:
   incompatibility is covered;
 - `DeclaredCapacityPerHour` set low enough against the companion schedule
   fixture's movement density that `AircraftHeldForRunway` fires at least once
-  in a single sim-day run.
+  in a single sim-day run;
+- every stand's `departure_sink_node` is `9`, the one `Sink` node of
+  `tests/fixtures/flow/phase0-landside.flow.json` (`19` §19.2a's
+  `PHASE0_DEPARTURE_SINK`), so the fixture composes with the real
+  `sim.flow` (Q-095). Stands may share a sink, since §12.4 requires no
+  uniqueness. The earlier values 901 to 904 named no flow node, and a
+  composed run threw at the first `DoorsClosed`'s `Absorb`.
 
 Runs against `tests/fixtures/schedule/phase0-200.csv`
 (`11-interfaces-schedule.md` §11.10) with `sim.turnaround` **absent**, so

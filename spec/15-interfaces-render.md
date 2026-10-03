@@ -75,6 +75,14 @@ and none of them affects a sim outcome.
 World units are metres at Phase 1, with +Y pointing up the screen. They mean
 nothing to the sim.
 
+**In C# (Q-099).** The table lives in `public static class RenderConstants`
+in `AirportSim.App.Render`, as `public const` members with their IDL names
+(`07` L10). The types are: `AGENT_ZOOM_THRESHOLD`, `MAX_DRAWN_AGENTS_PER_NODE`
+and `MAX_DRAWN_LANES_PER_NODE` are `int`, `MAX_CATCHUP_TICKS_PER_FRAME` is
+`uint` (the type `ITickPacer.Advance` returns), and
+`REAL_MICROSECONDS_PER_TICK_1X` is `long`. §15.7 compares `ViewHeight` with
+`AGENT_ZOOM_THRESHOLD` converted to `float`, which is exact for 120.
+
 > **LOW CONFIDENCE — `AGENT_ZOOM_THRESHOLD = 120`.** "Close enough to see
 > individual passengers" has no measured value yet. The number trades what the
 > player sees against how many agent views are derived per frame; it moves no
@@ -103,6 +111,14 @@ Rules binding on the scene layer:
   no `System.Random`, and holds no static mutable state. That is not a
   determinism rule, since presentation cannot move the sim; it is what makes
   its tests exact and repeatable.
+- **Floats in its tests (Q-100).** `08` §8.3's ban covers sim assemblies
+  and their tests. The no-floating-point sentence of `07` L4 binds every
+  test project except `tests/app/render/`, where `float` may appear to
+  build and check the
+  values of this file's `float`-typed members (`WorldPoint`, `CameraView`,
+  `DrawPrimitive.Size`). Expected values are written as the scene layer
+  computes them from integer inputs, for example `(float)x`, and compared
+  exactly, with no tolerance. Budget tests stay `long`-only (`07` L11).
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
 - It targets `netstandard2.1` with `LangVersion 9`, the same as the sim
@@ -140,19 +156,62 @@ interface IRenderLayoutLoader {
 ```
 
 Coordinates and sizes are integers so that a layout file carries no floats,
-following the spirit of `04-data-schemas.md`. The file format is the worker's
-choice, with the same posture as `12-interfaces-airside.md` §12.13.
+following the spirit of `04-data-schemas.md`.
 
-Load-time validation. Each is a hard failure naming the file and the offending
-id (`07-conventions.md`):
+### File format (Q-094)
 
-- when `airside` is given: every `TaxiNodeDef` has exactly one
-  `TaxiNodePosition`, and no position names an unknown `TaxiNodeId`; every
-  `RunwayDef` has exactly one `RunwayGeometry`, and none names an unknown
-  `RunwayId`;
-- `FlowNodeBox.Node` is unique; `MinX < MaxX`, `MinY < MaxY`,
-  `FillCapacity > 0`;
-- every size is `> 0`.
+Binding. It replaces the earlier "the worker's choice". The file is the
+strict JSON subset of `08` §8.11 "The loader", with `18` §18.2's rules:
+UTF-8 without a BOM, objects, arrays, strings and integers only, and no
+fraction, exponent, `null`, `true` or `false`. Duplicate, unknown and
+missing keys are parse (shape) failures, and keys may come in any order.
+The scene layer hand-parses the file, with no package. The exact shape is:
+
+```
+{
+  "schema_version": 1,
+  "taxi_nodes": [ { "node": <uint16>, "x": <int32>, "y": <int32> }, ... ],
+  "runways":    [ { "runway": <uint16>, "x0": <int32>, "y0": <int32>,
+                    "x1": <int32>, "y1": <int32>, "width": <int32> }, ... ],
+  "flow_nodes": [ { "node": <uint32>, "min_x": <int32>, "min_y": <int32>,
+                    "max_x": <int32>, "max_y": <int32>, "fill_capacity": <int32> }, ... ],
+  "stand_size": <int32>, "aircraft_size": <int32>, "agent_size": <int32>,
+  "taxiway_width": <int32>
+}
+```
+
+- Each object has exactly the keys shown. `schema_version` must be `1`.
+- An integer is `0` or `-?[1-9][0-9]*`. One outside its C# type's range is
+  a parse failure. Values inside the range parse, and the checks below
+  apply to them.
+- The arrays may be in any order, and any of them may be empty. `Load`
+  returns `TaxiNodes`, `Runways` and `FlowNodes` in ascending id order.
+- **Failures.** Every failure throws `FormatException` whose message starts
+  with `sourceName` followed by `": "`. A parse failure (syntax, shape,
+  C#-type range) contains the 1-based `line <n>`. A validation failure
+  contains the named id in decimal, or for a size the key name. A `null`
+  `sourceName` throws `ArgumentNullException`. Tests assert the exception
+  type, the `sourceName` prefix and the named id or key, and nothing else
+  in the message.
+- The §15.12 fixture is `tests/fixtures/render/phase1-layout.json`.
+
+Load-time validation. Each is a hard failure (`07-conventions.md`). They
+are checked in this order, the first failure is thrown, and within one
+check the lowest failing id is named (Q-094):
+
+1. every size (`stand_size`, `aircraft_size`, `agent_size`,
+   `taxiway_width`) is `> 0`, checked in that key order, naming the key;
+2. `TaxiNodePosition.Node` ids are unique, and so are
+   `RunwayGeometry.Runway` ids. A duplicate names the id. This is checked
+   with or without `airside`;
+3. every `RunwayGeometry.Width > 0`, naming the `RunwayId`; then
+   `FlowNodeBox.Node` is unique and `≥ 1`, `MinX < MaxX`, `MinY < MaxY` and
+   `FillCapacity > 0`, naming the failing box's `Node`;
+4. only when `airside` is given, and in this order: no position names a
+   `TaxiNodeId` absent from the layout (names that id); every `TaxiNodeDef`
+   has a position (names the lowest one without); no geometry names an
+   unknown `RunwayId` (names that id); every `RunwayDef` has a geometry
+   (names the lowest one without).
 
 `IFlowSystem` has no node enumeration, so the loader cannot check that a
 `FlowNodeBox` names a real node. The integration test in §15.12 covers that.
@@ -175,7 +234,8 @@ widening `09-interfaces-flow.md`.
 
 Everything is a `DrawPrimitive` (§15.9). Draw order is `DrawLayer`
 ascending, and within a layer by `SourceRef` ascending (§15.9), which gives a
-total, stable order.
+total, stable order. `SourceRef` order is lexicographic over its declared
+fields (Q-097): `Kind` ordinal, then `Id`, then `Sub`, each ascending.
 
 | Source | Primitive | Geometry | `ColourRole` | `DrawLayer` |
 |---|---|---|---|---|
@@ -187,6 +247,17 @@ total, stable order.
 | lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` |
 | agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize` | `Agent` | `Agent` |
 | each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` |
+
+**Which boxes are promoted (Q-101).** The scene builder holds no reference
+to the promotion controller and reads no promotion state from `sim.flow`
+(`IFlowSystem` has no such query). In `Build(camera, graphics)` it applies
+§15.7's **desired promoted** predicate itself, to the `camera` and
+`graphics` it is given. A `FlowNodeBox` is promoted for drawing iff that
+predicate holds, and `AgentsAt` is called for exactly those boxes,
+ascending `NodeId`. `16` §16.6 passes the same camera and graphics to
+`Promotion.Update` and `Scene.Build` in one frame, so the two agree in a
+playable build. If they ever disagree, `AgentsAt` on a node the sim has not
+promoted returns empty (`09` §9.7), and the box simply draws no agents.
 
 **Agents.** `AgentsAt(node)` is sorted by `(Cohort, Index)` and truncated to
 `GraphicsSettings.MaxDrawnAgentsPerNode` (§15.14), which never exceeds
@@ -221,7 +292,8 @@ gets no pips.
 
 **Absent modules.** If `RenderSources.Airside` is null, no runway, taxiway,
 stand or aircraft primitive is produced, and the airside half of the layout is
-not validated. If `Flow` is null, no landside primitive is produced. A build
+not checked against an airside layout (§15.4 check 4 is skipped; check 2
+still runs). If `Flow` is null, no landside primitive is produced. A build
 that has only some sim modules still renders what it has.
 
 **Not drawn at Phase 1**, each additive by amendment: vehicles and turnaround
@@ -332,7 +404,10 @@ interface ITickPacer {
 - Changing `speed` between calls keeps the accumulator, so no partial tick is
   lost or duplicated.
 - A negative `elapsed`, or a `speed` outside the enum, is a programmer error
-  and throws.
+  and throws `ArgumentOutOfRangeException` (Q-098, `07` "Error handling"),
+  with `ParamName` `elapsedRealMicroseconds` or `speed`. `elapsed` is
+  checked first. Both are checked even when `paused` is true, before
+  anything else, and a throwing call leaves the accumulator unchanged.
 - Who chooses `paused` and `speed` is `app.ui` (`17-interfaces-ui.md` §17.4).
   `app.render` holds neither.
 
@@ -477,6 +552,17 @@ layer:
   `MAX_DRAWN_AGENTS_PER_NODE` agents each, and with the `High` preset
   (§15.14), which is the most expensive. A lower preset never costs more
   (§15.14, monotonicity).
+- **Window and arithmetic (Q-096).** `03`'s window and arithmetic
+  ("Budget tests: window and arithmetic", Q-044, Q-045) apply with "tick"
+  read as "frame". One sample is one frame's `IPromotionController.Update`
+  plus one **rebuilding** `ISceneBuilder.Build`. The window is
+  `n = 14 400` consecutive such frames, after warm-up, and `B = 2000` µs.
+  The mean passes iff `Σu ≤ B × n`, and p99 passes iff `p99 ≤ 2 × B`
+  (4.0 ms). To make every sampled `Build` a rebuild, the fake host's
+  `CurrentTick` advances by one between frames. The camera is held fixed,
+  so every frame promotes the same 16 nodes and the controller makes no
+  `SetPromoted` call after warm-up. Whether the test is `Slow` is decided
+  by `07` L11a rule (b) alone (it steps no sim ticks).
 - **No allocation** in `Build` or `Update` after the first call. The primitive
   buffer is reused, which is why `RenderFrame.Primitives` is valid only until
   the next `Build`. Presentation is not bound by the sim's zero-allocation
@@ -516,8 +602,8 @@ against §15.10, once `app.host`'s Unity project exists (`16` §16.11).
 and `IAirsideSystem` including `Layout()` (T-021, as amended). T-020 therefore
 depends on T-009, T-010 and T-021, not on T-009 alone.
 
-**Fixture.** `tests/fixtures/render/phase1-layout.*`, binding on the Test
-Author:
+**Fixture.** `tests/fixtures/render/phase1-layout.json`, in §15.4's file
+format (Q-094), binding on the Test Author:
 
 - positions for every taxi node, and geometry for the runway, of
   `tests/fixtures/airside/phase1-single-runway.json`
@@ -551,6 +637,11 @@ Author:
 - `test_tick_pacer_speed_change_keeps_accumulated_time`
 - `test_tick_pacer_caps_catch_up_and_drops_backlog`
 - `test_tick_pacer_paused_steps_nothing`
+- `test_tick_pacer_rejects_negative_elapsed_and_unknown_speed` (Q-098)
+- `test_scene_draws_agents_only_where_its_own_camera_promotes` (Q-101): a
+  `Build` whose camera makes a box desired-promoted calls `AgentsAt` for
+  it, and one whose camera does not makes no `AgentsAt` call for it, with
+  no `IPromotionController` involved
 - `test_render_loop_is_outcome_neutral_with_scripted_camera` — integration.
   Run one sim-day with the real `sim.schedule`, `sim.flow` and `sim.airside`.
   Run it once through the frame order of `16-interfaces-host.md` §16.6, which

@@ -19,13 +19,12 @@ namespace AirportSim.Tools.SimHarness
         }
 
         /// <summary>
-        /// Two runs, the second "camera parked", must compare equal. Vacuous until
-        /// T-010 gives it something to promote (§19.2) — this task does not stub the
-        /// comparison.
+        /// Two runs, the second "camera parked" on the lowest-id gate (§19.2d), must
+        /// compare equal.
         /// </summary>
         public static GateResult Promotion(IContentIndex content, SimComposer compose, ulong seed, uint ticks)
         {
-            return CompareTwoRuns(content, compose, seed, ticks, "determinism_promotion");
+            return CompareTwoRuns(content, compose, seed, ticks, "determinism_promotion", promoteSecondRun: true);
         }
 
         /// <summary>
@@ -95,11 +94,13 @@ namespace AirportSim.Tools.SimHarness
             return HarnessRunner.Hex16(r.FinalHash);
         }
 
-        private static GateResult CompareTwoRuns(IContentIndex content, SimComposer compose, ulong seed, uint ticks, string gate)
+        private static GateResult CompareTwoRuns(IContentIndex content, SimComposer compose, ulong seed, uint ticks, string gate, bool promoteSecondRun = false)
         {
             ValidateCommon(content, compose, ticks);
             RunOutcome a = HarnessRunner.RunFull(content, compose, seed, ticks);
-            RunOutcome b = HarnessRunner.RunFull(content, compose, seed, ticks);
+            RunOutcome b = promoteSecondRun
+                ? HarnessRunner.RunPromoted(content, compose, seed, ticks)
+                : HarnessRunner.RunFull(content, compose, seed, ticks);
 
             if (HarnessRunner.TryCompare(in a, in b, ticks, out ulong tick, out string where))
             {
