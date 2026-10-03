@@ -138,6 +138,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
   **one integration test project, `tests/integration/`, references both
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  **`sim.turnaround`'s test project also references `sim.airside`, for
+  `13` §13.11's registered-airside tests only (L3, Q-087)**;
   every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
@@ -299,7 +301,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   field is stored state with a named writer, `EdgeProgress` advanced by S6
   each tick, and all 14 are fed (§12.9, §12.12, Q-082, hash change)**; **`ReassignStand` stays open during the door delay, and the
   stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
-  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**.
+  §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**; **the fixture's stands
+  all sink to flow node 9 (§12.13, Q-095)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8); an
@@ -315,7 +318,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `EventId`; `Boarding` waits on five jobs; unchanged by D6; factory plus
   `ITurnaroundSetupLoader` (§13.10a); **a binding `Cause` table for every
   emitted event, with creation-time events caused by the `OnStand`, and
-  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**.
+  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**; **a fixed
+  job-to-vehicle table and the fixture `phase1-five-vehicles.json` with one
+  vehicle per kind (§13.4, §13.11, Q-088, HD, owner, 2026-10-03); ordered
+  load checks and a pinned JSON setup format (§13.4, §13.10a, Q-086); job payloads: schedule-anchored
+  `PlannedStart`, `Resource` always null (§13.6, Q-089); creation in
+  `JobKind` order (§13.5, Q-090); an `Unblocked`'s `Cause` is the
+  completion that freed its own vehicle (§13.5, §13.9, Q-091)**; **finished
+  flights pruned after two sim-days, at most 4 096 flights in state,
+  job slots, finish-order list and per-kind waiting lists all preallocated,
+  overflow throws (§13.2, §13.10, Q-092); steps 1 and 3 in `Tick`, step 2
+  in the phase-3 handler (§13.5, Q-093)**.
 - LC: distance-blind dispatch (§13.5).
 - Read if: T-022.
 
@@ -345,7 +358,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   invariant: every non-`Agent` primitive is identical at every setting, and
   no knob touches time, input or click targets**; **`Low` holds 60 fps at
   max tier on integrated graphics; the first-launch default is `Medium`
-  (owner, Q-034, §15.11, §15.14)**.
+  (owner, Q-034, §15.11, §15.14)**; **T-020 batch: a pinned JSON layout
+  format with ordered checks (§15.4, Q-094); the per-frame budget uses
+  `03`'s window over 14 400 rebuilding frames (§15.11, Q-096); `SourceRef`
+  order is lexicographic (§15.5, Q-097); the pacer throws
+  `ArgumentOutOfRangeException` (§15.8, Q-098); `RenderConstants` (§15.2,
+  Q-099); floats allowed in `tests/app/render` (§15.3, Q-100); `Build`
+  applies the promotion predicate itself (§15.5, Q-101)**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
