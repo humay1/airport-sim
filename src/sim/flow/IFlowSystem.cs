@@ -52,5 +52,11 @@ namespace AirportSim.Sim.Flow
 
         /// <summary>The promoted agent views on <paramref name="node"/>; empty unless promoted.</summary>
         IReadOnlyList<AgentView> AgentsAt(NodeId node);
+
+        /// <summary>
+        /// The <see cref="NodeKind"/> the system's graph gives <paramref name="node"/>. Throws
+        /// <see cref="System.ArgumentException"/> for an unknown node. A query: callable at any time.
+        /// </summary>
+        NodeKind KindOf(NodeId node);
     }
 }
