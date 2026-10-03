@@ -22,9 +22,6 @@ namespace AirportSim.Tools.SimHarness
         // saveload/promotion/budget run with this fixed seed (§19.3); only determinism takes --seed.
         private const ulong FixedSeed = 12345UL;
 
-        private const long BudgetMeanCeilingUs = 6000;
-        private const long BudgetP99CeilingUs = 12000;
-
         /// <summary>
         /// Runs one invocation. A call with no arguments keeps T-001's original
         /// behaviour; it is not a gate.
@@ -179,35 +176,18 @@ namespace AirportSim.Tools.SimHarness
             ISimHost host = HarnessRunner.BuildOne(content, composition.Compose, FixedSeed, checkpoints);
 
             uint ticks = TicksPerDay;
-            long[] samplesUs = new long[ticks];
-            long frequency = Stopwatch.Frequency;
+            long[] samples = new long[ticks];
             for (uint i = 0; i < ticks; i++)
             {
                 long start = Stopwatch.GetTimestamp();
                 host.Step(1);
                 long end = Stopwatch.GetTimestamp();
-                samplesUs[i] = ((end - start) * 1_000_000L) / frequency;
+                samples[i] = end - start;
             }
 
-            long sum = 0;
-            for (int i = 0; i < samplesUs.Length; i++)
-            {
-                sum += samplesUs[i];
-            }
-            long meanUs = sum / samplesUs.Length;
-
-            long[] sorted = (long[])samplesUs.Clone();
-            Array.Sort(sorted);
-            long n = sorted.Length;
-            long p99Index = ((99 * n) + 99) / 100 - 1;
-            long p99Us = sorted[p99Index];
-
-            bool passed = meanUs <= BudgetMeanCeilingUs && p99Us <= BudgetP99CeilingUs;
-            string line = (passed ? "PASS" : "FAIL") + " budget ticks=" + ticks.ToString(CultureInfo.InvariantCulture) +
-                " mean_us=" + meanUs.ToString(CultureInfo.InvariantCulture) +
-                " p99_us=" + p99Us.ToString(CultureInfo.InvariantCulture);
-            stdout.Write(line + "\n");
-            return passed ? 0 : 1;
+            GateResult r = HarnessGates.BudgetFromSamples(samples, Stopwatch.Frequency);
+            stdout.Write(r.Report + "\n");
+            return r.Passed ? 0 : 1;
         }
 
         private static int RunSoak(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr)

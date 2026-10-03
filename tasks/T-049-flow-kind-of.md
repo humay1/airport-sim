@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (not releasable until T-021 merges; then Test Author first, and the worker after the tests are authored) |
+| Status | MERGED (PR #99 with tests #98, 2026-10-03) |
 | Module | `sim.flow` |
 | Assigned role | worker (tests by the Test Author, first) |
-| Depends on | T-021 (not merged; implementation PR #91). T-007 (merged #48) and T-023 (merged #71) are the existing `IFlowSystem` surface |
+| Depends on | T-021 (merged #91). T-007 (merged #48) and T-023 (merged #71) are the existing `IFlowSystem` surface |
 | Spec source | `spec/09-interfaces-flow.md` §9.7 (`NodeKind KindOf(NodeId node)` and the `KindOf(node)` paragraph, Q-084, spec PR #95, merged `8f66470`); `spec/19-interfaces-harness.md` §19.2d (its first caller) |
 | Blocked by | — |
 
