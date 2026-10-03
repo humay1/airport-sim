@@ -435,9 +435,10 @@ namespace AirportSim.Sim.Airside.Tests
             return (ushort)(10 + stand);
         }
 
+        /// <summary>Every stand sinks to the flow fixture's one Sink, node 9 (12 §12.13, Q-095).</summary>
         public static uint Sink(ushort stand)
         {
-            return 900U + stand;
+            return 9U;
         }
 
         public static string MaxSize(ushort stand)
