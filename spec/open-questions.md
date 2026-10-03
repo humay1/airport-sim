@@ -2670,3 +2670,111 @@ Answer:      A new hard bound, `TRACKED_FLIGHTS_CAPACITY` = 4096 tracks
              0/1 a fixture error. No balance, content or scope number is
              involved, so nothing is PENDING HUMAN.
 Status:      ANSWERED (spec/12-interfaces-airside.md#122-constants)
+
+<!-- Q-086 to Q-091: the T-022 Test Author (PR #100) and reviewer-100, via coordinator, one batch. -->
+
+### Q-086 — `sim.turnaround`: the setup file format
+Raised by:   Test Author / T-022, via coordinator, 2026-10-03
+Blocking:    T-022 (`test_catalogue_rejects_missing_job_kind`,
+             `test_catalogue_rejects_zero_nominal_duration`, the §13.11
+             fixture file), T-024 integrated day, T-031/T-034 bundle
+Question:    §13.10a and §13.11 left the setup file format to the worker,
+             but only the Test Author writes `tests/fixtures/**`, and
+             `ITurnaroundSetupLoader.Load` takes only bytes.
+Answer:      Architecture, as Q-030, Q-032 and Q-046. §13.10a "File
+             format": strict JSON subset (`18` §18.2 rules), keys
+             `schema_version`, `jobs` (`kind`, `nominal_duration_ticks`,
+             `category`) and `vehicles` (`id`, `kind`), enum values in
+             lower snake case, no `requires_vehicle` key. Parse failures
+             are `FormatException` with the `sourceName: ` prefix and
+             `line <n>`; §13.4's checks run in a fixed order and name the
+             `JobKind` (file spelling) or `VehicleId`. The fixture is
+             `tests/fixtures/turnaround/phase1-five-vehicles.json` (Q-088).
+             `Load`'s signature is unchanged. One new test.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#file-format-q-086)
+
+### Q-087 — `sim.turnaround`: the test project cannot reach `sim.airside`
+Raised by:   Test Author / T-022, via coordinator, 2026-10-03
+Blocking:    T-022 (`test_airside_doors_close_after_boarding_complete_with_turnaround_registered`,
+             and the "`sim.airside` registered" condition of the
+             allocation test and the headless day)
+Question:    `07` L3 lets `tests/sim/turnaround` reference only
+             `AirportSim.Sim.Turnaround`, which sees Core and Schedule.
+             §13.11 requires `sim.airside` registered.
+Answer:      Architecture. A second named exception in `07` L3, as Q-077:
+             the turnaround test project has two `ProjectReference`s,
+             Turnaround then Airside, used only by the three
+             registered-airside tests §13.11 names. Rejected: moving the
+             tests to `tests/integration/`, which Q-077 limits to the D7
+             test and whose project T-031 creates after T-022, so T-022
+             would wait on its successor; and referencing `sim.airside`
+             from the production project, which §13.1 forbids. Note for
+             T-024: `14` §14.14's integrated day needs five modules from
+             `tests/sim/delay` and will hit the same wall; it is not
+             answered here.
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-088 — `sim.turnaround`: which vehicle serves which job
+Raised by:   Test Author / T-022, via coordinator, 2026-10-03
+Blocking:    T-022
+Question:    §13.4 does not say whether `Load` rejects `RequiresVehicle`
+             on `Deboard`/`Boarding` (or null on the others), or whether
+             one `VehicleKind` may serve several `JobKind`s. Exactly four
+             vehicles cannot cover the five `VehicleKind`s departures
+             need; the PR #100 fixture has the tractor do pushback prep.
+Answer:      Architecture, LOW CONFIDENCE. §13.4 fixes the table:
+             `BaggageUnload` and `BaggageLoad` on `BaggageTractor`,
+             `CabinClean` `CleaningCrew`, `Catering` `CateringTruck`,
+             `Fuel` `FuelTruck`, `PushbackPrep` `PushbackTug`, `Deboard`
+             and `Boarding` none. The file cannot state it; `CreateSystem`
+             rejects an in-code setup that differs (`ArgumentException`,
+             no new public type). Treated as structural: the enum names
+             already say it, and a free mapping lets a fuel truck do the
+             catering. The fixture becomes five vehicles, one per kind,
+             renamed `phase1-five-vehicles.json` (`14` §14.14 and `16`
+             §16.3 updated). The size of the Phase 1 playtest fleet is
+             not a balance decision taken here: it is the existing test
+             fixture, grown by the one vehicle the table needs. If the
+             owner reads the mapping or the count as design, this is
+             the entry to overturn.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#which-vehicle-serves-which-job-q-088)
+
+### Q-089 — `sim.turnaround`: `PlannedStart` and `Resource`
+Raised by:   Test Author / T-022, via coordinator, 2026-10-03
+Blocking:    T-022
+Question:    `TurnaroundJobStarted/Completed.PlannedStart` has no value
+             rule, and `TurnaroundJobBlocked.Resource` is pinned only for
+             `Boarding`.
+Answer:      Architecture. §13.6 "Job event payloads": `PlannedStart` is
+             STA for arrival jobs, the received `OnStand`'s `PlannedTick`
+             for the five departure prerequisites, planned `ReadyToBoard`
+             for `Boarding`; the same on `Started` and `Completed`.
+             `Resource` is null on every `Blocked`/`Unblocked`: a vehicle
+             wait is for any vehicle of the kind, and `VehicleId` is not
+             an `EntityId`.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#job-event-payloads-q-089)
+
+### Q-090 — `sim.turnaround`: publish order of creation events
+Raised by:   Test Author / T-022, via coordinator, 2026-10-03
+Blocking:    none (clarification)
+Question:    §13.5 step 2 does not say whether a departure's creation
+             events go in ascending `JobKind` or step 3's `VehicleKind`
+             order.
+Answer:      Architecture. Ascending `JobKind`, each job fully resolved
+             (events published, vehicle taken) before the next is
+             created; lowest free `VehicleId` of the kind. Step 3's order
+             does not apply at creation. One new test.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#135-vehicle-dispatch)
+
+### Q-091 — `sim.turnaround`: the `Cause` of a vehicle `Unblocked`
+Raised by:   Reviewer (reviewer-100) on PR #100, via coordinator, 2026-10-03
+Blocking:    none (clarification)
+Question:    §13.9 says "the vehicle-freeing `TurnaroundJobCompleted`",
+             which is ambiguous when several vehicles of a kind free in
+             one tick.
+Answer:      Architecture. The `TurnaroundJobCompleted`, in step 1 of this
+             tick, of the job that held the very vehicle now assigned
+             (the reading PR #100 assumes). Such a completion always
+             exists: a vehicle free at the end of a tick has no `Blocked`
+             job of its kind waiting.
+Status:      ANSWERED (spec/13-interfaces-turnaround.md#135-vehicle-dispatch)

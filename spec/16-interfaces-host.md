@@ -108,7 +108,7 @@ interface IScenarioBundle {
 | `schedule.csv` | `11-interfaces-schedule.md` §11.4 | `IScheduleLoader.Load` |
 | `airside.fixture` | `12-interfaces-airside.md` §12.4 "File format" (JSON, Q-046) | `IAirsideLayoutLoader.Parse` |
 | `airside_rules.json` | `04-data-schemas.md` (`AirsideRules`, `12` §12.4); required whenever `sim.airside` is listed | the host parses it into `AirsideRules`, both keys, `boarding_hold_max_minutes` and `doors_open_delay_minutes` (Q-047) |
-| `turnaround.fixture` | `13-interfaces-turnaround.md` §13.4, in the format of T-022's fixture | `ITurnaroundSetupLoader.Load` |
+| `turnaround.fixture` | `13-interfaces-turnaround.md` §13.4, in §13.10a's file format (Q-086) | `ITurnaroundSetupLoader.Load` |
 | `flow.fixture` | `sim.flow`'s opaque `FlowGraph`, in the format of T-007/T-023's fixtures | `IFlowGraphLoader.Load` |
 | `render_layout.fixture` | `15-interfaces-render.md` §15.4 | `IRenderLayoutLoader.Load` |
 
@@ -157,7 +157,7 @@ name says nothing about the format.
   | `schedule.csv` | `11` §11.10, `tests/fixtures/schedule/phase0-200.csv` |
   | `airside.fixture` | `12` §12.13, `tests/fixtures/airside/phase1-single-runway.json` |
   | `airside_rules.json` | `data/balance/airside_rules.json` |
-  | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-four-vehicles.*` |
+  | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-five-vehicles.json` |
   | `flow.fixture` | the `sim.flow` fixture T-023 runs |
   | `render_layout.fixture` | `15` §15.12's fixture, under `tests/fixtures/render/` |
 

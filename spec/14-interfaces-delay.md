@@ -632,7 +632,7 @@ One headless sim-day with `sim.schedule`, `sim.flow`, `sim.airside`,
 `tests/fixtures/schedule/phase0-200.csv` (`11-interfaces-schedule.md` §11.10),
 `tests/fixtures/airside/phase1-single-runway.json`
 (`12-interfaces-airside.md` §12.13) and
-`tests/fixtures/turnaround/phase1-four-vehicles.*`
+`tests/fixtures/turnaround/phase1-five-vehicles.json`
 (`13-interfaces-turnaround.md` §13.11). Assert every invariant below over
 every retained flight, after every tick. Do **not** assert that a particular
 leaf kind appears: those fixtures guarantee that a runway hold and a vehicle

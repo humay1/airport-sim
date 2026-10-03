@@ -138,6 +138,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
   **one integration test project, `tests/integration/`, references both
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
+  **`sim.turnaround`'s test project also references `sim.airside`, for
+  `13` §13.11's registered-airside tests only (L3, Q-087)**;
   every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
@@ -315,8 +317,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `EventId`; `Boarding` waits on five jobs; unchanged by D6; factory plus
   `ITurnaroundSetupLoader` (§13.10a); **a binding `Cause` table for every
   emitted event, with creation-time events caused by the `OnStand`, and
-  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**.
-- LC: distance-blind dispatch (§13.5).
+  `NominalDurationTicks ≥ 1` (§13.4, §13.9, Q-080)**; **a fixed
+  job-to-vehicle table, ordered load checks, a pinned JSON setup format and
+  the fixture `phase1-five-vehicles.json` with one vehicle per kind
+  (§13.4, §13.10a, §13.11, Q-086, Q-088); job payloads: schedule-anchored
+  `PlannedStart`, `Resource` always null (§13.6, Q-089); creation in
+  `JobKind` order (§13.5, Q-090); an `Unblocked`'s `Cause` is the
+  completion that freed its own vehicle (§13.5, §13.9, Q-091)**.
+- LC: distance-blind dispatch (§13.5); the fixed job-to-vehicle table and
+  the five-vehicle fixture (§13.4, §13.11, Q-088).
 - Read if: T-022.
 
 ### `14-interfaces-delay.md` — `sim.delay`

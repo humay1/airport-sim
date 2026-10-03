@@ -3522,3 +3522,48 @@ Impact:      - **No merged code is invalidated.** `sim.airside` is not
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (engineering bound; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-03 — spec/13-interfaces-turnaround.md §13.4, §13.5, §13.6, §13.9, §13.10a, §13.11; spec/07-conventions.md L3; spec/14 §14.14; spec/16 §16.3; INDEX; open-questions — T-022 gaps: setup format, airside reach, job-to-vehicle table, payloads, creation order, `Unblocked` cause (Q-086 to Q-091)
+Reason:      The T-022 Test Author (PR #100) could not write the loader
+             tests, the fixture file or the registered-airside tests, and
+             found four unpinned rules; reviewer-100 asked for one more.
+Raised by:   Q-086 to Q-091
+Impact:      - **Q-086:** §13.10a pins a JSON setup format and ordered
+               §13.4 checks with named tokens. `Load`'s signature and the
+               public type list are unchanged.
+             - **Q-087:** `07` L3 gains a second named exception: the
+               turnaround test project also references `sim.airside`, for
+               §13.11's three registered-airside tests only. No
+               production reference changes.
+             - **Q-088 (LOW CONFIDENCE):** §13.4 fixes `RequiresVehicle`
+               per `JobKind`; the file has no such key; `CreateSystem`
+               re-runs §13.4's checks and throws `ArgumentException` on an
+               in-code setup (BCL type, no new public type). The fixture
+               becomes `phase1-five-vehicles.json`, one vehicle per kind;
+               `14` §14.14 and `16` §16.3 renamed accordingly.
+             - **Q-089:** `PlannedStart` per job kind; `Resource` always
+               null at Phase 0/1.
+             - **Q-090:** creation events in ascending `JobKind`.
+             - **Q-091:** a vehicle `Unblocked`'s `Cause` is the
+               completion that freed that very vehicle.
+             - **T-022 tests (PR #100, unmerged):** `Phase1Fixture` must
+               move `PushbackPrep` to `PushbackTug` and add a tug (five
+               vehicles), and `CreateSystem` now rejects the current one.
+               Add the fixture file, the two loader tests, the three new
+               tests of §13.11, and the second `ProjectReference`. The
+               existing Cause test's reading is confirmed.
+             - **T-022 worker:** the loader, the `CreateSystem`
+               validation, creation order and the payload values above.
+             - **Planner:** `tasks/T-034-host-unity-shell.md` names
+               `phase1-four-vehicles.*`; it becomes
+               `phase1-five-vehicles.json`. T-022's task file may name
+               the fixture or the one-reference rule.
+             - **Merged work:** none invalidated. No merged code reads
+               the turnaround fixture or these payloads.
+             - **Open, not answered here:** `14` §14.14's integrated day
+               in `tests/sim/delay` will need the same reach as Q-087.
+             - **Scope:** none added. **PENDING HUMAN:** none; Q-088 is
+               flagged LOW CONFIDENCE for owner review (mapping and
+               fixture fleet size).
+Signed off:  not required (architecture; Q-088 LOW CONFIDENCE for owner
+             review)
