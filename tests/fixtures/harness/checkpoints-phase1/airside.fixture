@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "runways": [
+    { "id": 1, "threshold_node": 1, "active_direction_deg": 270, "declared_capacity_per_hour": 15, "occupancy_ticks": 10 }
+  ],
+  "nodes": [
+    { "id": 1, "kind": "runway_threshold" },
+    { "id": 2, "kind": "junction" },
+    { "id": 3, "kind": "junction" },
+    { "id": 11, "kind": "stand_position" },
+    { "id": 12, "kind": "stand_position" },
+    { "id": 13, "kind": "stand_position" },
+    { "id": 14, "kind": "stand_position" }
+  ],
+  "edges": [
+    { "id": 1, "from": 1, "to": 2, "traversal_ticks": 30, "bidirectional": true },
+    { "id": 2, "from": 2, "to": 11, "traversal_ticks": 20, "bidirectional": true },
+    { "id": 3, "from": 2, "to": 3, "traversal_ticks": 15, "bidirectional": true },
+    { "id": 4, "from": 3, "to": 12, "traversal_ticks": 10, "bidirectional": true },
+    { "id": 5, "from": 3, "to": 13, "traversal_ticks": 15, "bidirectional": true },
+    { "id": 6, "from": 3, "to": 14, "traversal_ticks": 20, "bidirectional": true }
+  ],
+  "stands": [
+    { "id": 1, "node": 11, "max_aircraft_size_category": "medium", "departure_sink_node": 9 },
+    { "id": 2, "node": 12, "max_aircraft_size_category": "super", "departure_sink_node": 9 },
+    { "id": 3, "node": 13, "max_aircraft_size_category": "heavy", "departure_sink_node": 9 },
+    { "id": 4, "node": 14, "max_aircraft_size_category": "super", "departure_sink_node": 9 }
+  ]
+}
