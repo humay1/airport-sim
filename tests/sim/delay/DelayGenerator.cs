@@ -135,8 +135,10 @@ namespace AirportSim.Sim.Delay.Tests
     /// overlaps and intervals spanning a checkpoint, job-dependency waits,
     /// intervals and missed passengers after finalisation, rotation pairs and
     /// rotation-less flights, departures that never finalise, and day
-    /// boundaries crossed. A Stand interval's close carries its opener's Stand
-    /// value, so every reading of 14 §14.5's key pairs them.
+    /// boundaries crossed. The Stand family's key is the flight alone (Q-107):
+    /// a flight has at most one open Stand interval, opened with Stand null as
+    /// sim.airside does (or a stand, for the explanation's A) and closed by a
+    /// StandAssigned naming whatever stand was granted.
     /// </summary>
     internal static class Generator
     {
@@ -244,11 +246,12 @@ namespace AirportSim.Sim.Delay.Tests
 
             s.Milestone(landed, f, FlightMilestone.Landed, planLanded);
 
-            // OnStand window: taxi holds and stand waits.
-            Window(rng, s, f, landed, onStand, new[] { Fam.Taxi(1), Fam.Taxi(2), Fam.Taxi(3), Fam.StandNull(), Fam.Stand(4) }, 3);
+            // OnStand window: taxi holds and stand waits. While the spanning stand
+            // wait is open no second Stand interval may open (one key per flight).
+            Window(rng, s, f, landed, onStand, spanning ? new[] { Fam.Taxi(1), Fam.Taxi(2), Fam.Taxi(3) } : new[] { Fam.Taxi(1), Fam.Taxi(2), Fam.Taxi(3), Fam.StandNull(), Fam.Stand(4) }, 3);
             if (spanning)
             {
-                s.StandAssigned((ulong)rng.Range((long)landed, (long)onStand), f, SpanningStand);
+                s.StandAssigned((ulong)rng.Range((long)landed, (long)onStand), f, (ushort)rng.Range(1, 12));
             }
 
             s.Milestone(onStand, f, FlightMilestone.OnStand, planOnStand);
@@ -375,7 +378,8 @@ namespace AirportSim.Sim.Delay.Tests
         }
 
         /// <summary>
-        /// Up to <paramref name="max"/> distinct keys, each with one interval in
+        /// Up to <paramref name="max"/> distinct keys (at most one Stand-family
+        /// entry, Q-107), each with one interval in
         /// [lo, hi] and sometimes a second after it, so intervals of one window
         /// overlap freely but no key is ever open twice.
         /// </summary>
@@ -388,6 +392,12 @@ namespace AirportSim.Sim.Delay.Tests
                 int pick = (int)rng.Range(0, pool.Count - 1);
                 Fam fam = pool[pick];
                 pool.RemoveAt(pick);
+                if (fam.Family == 2 || fam.Family == 3)
+                {
+                    // Both are the Stand family, whose key is the flight (Q-107).
+                    pool.RemoveAll(p => p.Family == 2 || p.Family == 3);
+                }
+
                 ulong a = (ulong)rng.Range((long)lo, (long)hi);
                 ulong b = (ulong)rng.Range((long)a, (long)hi);
                 Interval(rng, s, f, fam, a, b);
@@ -413,11 +423,11 @@ namespace AirportSim.Sim.Delay.Tests
                     break;
                 case 2:
                     s.StandUnavailable(a, f, null, null);
-                    s.StandAssigned(b, f, null);
+                    s.StandAssigned(b, f, (ushort)rng.Range(1, 12));
                     break;
                 case 3:
                     s.StandUnavailable(a, f, fam.Key, (ulong)rng.Range(1, 999));
-                    s.StandAssigned(b, f, fam.Key);
+                    s.StandAssigned(b, f, rng.Permille(500) ? (ushort?)null : (ushort)rng.Range(1, 12));
                     break;
                 case 4:
                     {

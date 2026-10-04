@@ -189,12 +189,13 @@ namespace AirportSim.Sim.Delay.Tests
                 case StandUnavailable e:
                     {
                         ulong a = e.Stand.HasValue ? e.Stand.Value.Value + 1UL : 0UL;
-                        Open(env, e.Flight.Value, Stand, a, DelayCategory.StandUnavailable, DelaySource.StandUnavailable, a, e.Occupying.HasValue ? e.Occupying.Value.Value : 0UL);
+                        // Q-107: the Stand family's key is the flight alone.
+                        Open(env, e.Flight.Value, Stand, 0UL, DelayCategory.StandUnavailable, DelaySource.StandUnavailable, a, e.Occupying.HasValue ? e.Occupying.Value.Value : 0UL);
                         break;
                     }
 
                 case StandAssigned e:
-                    Close(env, e.Flight.Value, Stand, e.Stand.HasValue ? e.Stand.Value.Value + 1UL : 0UL);
+                    Close(env, e.Flight.Value, Stand, 0UL);
                     break;
                 case TurnaroundJobBlocked e:
                     if (e.WaitingOn != ResourceKind.JobDependency)

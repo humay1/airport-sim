@@ -124,6 +124,44 @@ namespace AirportSim.Sim.Delay.Tests
         }
 
         [Fact]
+        public void test_delay_checkpoint_for_unknown_flight_throws_with_tick()
+        {
+            // §14.4 (Q-108). OnStand, a checkpoint of either kind, for a flight
+            // never published: throw, and no record is created.
+            var never = new Script();
+            never.Plan(0, Arr, MovementKind.Arrival);
+            never.Milestone(1000, 99, FlightMilestone.OnStand, 1000);
+            var a = new DelayRig(never);
+            a.AssertThrowsAt(1000, "checkpoint for unpublished flight 99");
+
+            // The same for a pruned flight: arrival 21, finalised at 200 on day 0,
+            // is pruned at 28800; its OnStand again at 28900 throws.
+            var pruned = new Script();
+            pruned.Plan(0, 21, MovementKind.Arrival);
+            pruned.Milestone(100, 21, FlightMilestone.Landed, 100);
+            pruned.Milestone(200, 21, FlightMilestone.OnStand, 200);
+            pruned.Milestone(28900, 21, FlightMilestone.OnStand, 28900);
+            var b = new DelayRig(pruned);
+            b.RunTo(28900);
+            Assert.False(b.Delay.TryGetFlightDelay(new FlightId(21), out _), "flight 21 should have been pruned at 28800");
+            b.AssertThrowsAt(28900, "checkpoint for pruned flight 21");
+
+            // A non-checkpoint milestone for an unknown flight is ignored, with
+            // no lookup and no state change.
+            var ignored = new Script();
+            ignored.Plan(0, Arr, MovementKind.Arrival);
+            ignored.Milestone(1000, 99, FlightMilestone.DoorsOpen, 1000);
+            ignored.Milestone(1010, 99, FlightMilestone.BoardingComplete, DConst.TickUnscheduled);
+            var c = new DelayRig(ignored);
+            c.RunTo(1);
+            ulong hash = c.Delay.ComputeStateHash();
+            c.RunThrough(1100);
+            Assert.Equal(hash, c.Delay.ComputeStateHash());
+            Assert.False(c.Delay.TryGetFlightDelay(new FlightId(99), out _));
+            Assert.Equal(new List<FlightId> { new FlightId(Arr) }, new List<FlightId>(c.Delay.RetainedFlights()));
+        }
+
+        [Fact]
         public void test_delay_checkpoint_window_starts_at_publication_then_at_last_checkpoint()
         {
             // §14.6 step 1 and §14.3: LastCheckpointActual is the tick
