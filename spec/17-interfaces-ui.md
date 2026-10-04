@@ -58,6 +58,15 @@ The scene layer references `app.render`'s scene layer (for `CameraView`,
 wall-clock read, no `System.Random`, no static mutable state, and
 `07-conventions.md` "Runtime portability" rules 3, 4 and 7.
 
+**Floats in tests (Q-102).** `tests/app/ui/` may use `float` only for the
+values of `float`-typed members and parameters (`ScreenPoint`, the screen
+size, `CameraView`, `WorldPoint`). Every such value is dyadic and chosen so
+that every intermediate result of §17.3's mapping is exact, and results are
+compared exactly (`07` L4). The one exemption: the NaN and ±infinity inputs
+that §17.7's argument checks require (a non-finite screen size, a
+non-finite click, Q-104) are written as such. They are the only non-dyadic
+values a test may write.
+
 ---
 
 ## 17.3 Input
@@ -156,6 +165,31 @@ sim.
   or malformed value decodes to false, and the caller then uses the default,
   `Medium` (`15` §15.14, owner, Q-034). The host stores and loads it (`16` §16.6). It is never in
   `bundle.json`, a checkpoint dump, a command or a save.
+- **Preference grammar (Q-103).** The decoder accepts exactly the text the
+  encoder can produce, and nothing looser:
+  - The text is exactly eight fields separated by single U+0020 spaces, with
+    nothing before the first field or after the last. Any other whitespace,
+    including a trailing space, tab, CR or LF, is malformed. A `null` text
+    decodes false and does not throw.
+  - Field 1 is `graphics` and field 2 is `1`, both exact and case-sensitive.
+  - Field 3 is one of `Low`, `Medium`, `High`, `Custom`, exact and
+    case-sensitive. A number is malformed.
+  - The two boolean fields are exactly `0` or `1`.
+  - The three integer fields are one or more ASCII digits `0`–`9`, with no
+    sign (`-` or `+`), no leading zero unless the field is exactly `0`, no
+    decimal point, no exponent and no group separator, and a value that fits
+    in `int32`. Anything else is malformed.
+  - Well-formed text decodes true even when a value is out of range or the
+    values do not match the named preset. The result is `Validate` of the
+    values as written, with `Preset` as written, which `Validate` leaves
+    unchanged (`15` §15.14). So `graphics 1 Low 1 0 0 100 0` decodes to
+    `Preset = Low` with `MaxDrawnAgentsPerNode = 1`.
+  - After a false decode, the `out` value is `default(GraphicsSettings)`.
+  - `EncodeGraphicsPreference(in GraphicsSettings settings)` writes the
+    values as given, without `Validate`, with booleans as `0`/`1` and
+    integers in the grammar above. A `Preset` outside `GraphicsPreset`, or a
+    negative integer knob, throws `ArgumentOutOfRangeException` with
+    `ParamName` `settings`, because it has no encoding.
 
 ---
 
@@ -165,7 +199,9 @@ sim.
    `FlowNodeBox` of the validated `RenderLayout` (`15` §15.4) that contains
    the point, with closed intervals. If several boxes contain it, the one
    drawn on top wins, which is the highest `NodeId`, matching `15` §15.5's
-   ascending draw order. No box: the click is ignored.
+   ascending draw order. No box: the click is ignored. A click is never an
+   error: one whose world point has a non-finite coordinate hits no box
+   (Q-104).
 2. **Lane request.** `PrimaryClick` on a hit requests **one more** open
    server at that node; `SecondaryClick` requests **one fewer**. At Phase 1 a
    security checkpoint is drawn as its node's box, so clicking anywhere in
@@ -244,6 +280,34 @@ UiFactory.CreateController(in RenderLayout layout, ILaneCommandSink sink,
 UiFactory.CreateLaneCommandSink(ISimHost host, IFlowSystem flow) -> ILaneCommandSink   // Q-010
 ```
 
+**Argument checks (Q-104).** A misused call is a programmer error and throws
+the `07` "Error handling" type below, with `ParamName` set to the parameter
+named here. Checks run in the order listed, before anything else. A throwing
+call changes no state, calls no sink and calls no sim member.
+
+- `CreateController`: `layout.FlowNodes` is `null` → `ArgumentException`
+  (`layout`); `sink` is `null` → `ArgumentNullException` (`sink`);
+  `initialGraphics.Preset` outside `GraphicsPreset` →
+  `ArgumentOutOfRangeException` (`initialGraphics`).
+- `CreateLaneCommandSink`: `host` is `null` → `ArgumentNullException`
+  (`host`); then `flow` is `null` → `ArgumentNullException` (`flow`).
+- `IUiController.Update`, every call, even with no inputs:
+  1. `inputs` is `null` → `ArgumentNullException` (`inputs`).
+  2. `screenWidth` is not finite or is not `> 0` → `ArgumentOutOfRangeException`
+     (`screenWidth`). Then the same for `screenHeight`.
+  3. Every input, in list order, before any input is applied: a `Kind`
+     outside `UiInputKind`, a `SetSpeed` whose `Speed` is outside
+     `GameSpeed`, or a `SetGraphicsPreset` whose `Preset` is outside
+     `GraphicsPreset` → `ArgumentOutOfRangeException` (`inputs`). Only the
+     field the `Kind` uses is checked. The check applies whether or not the
+     settings panel is open, although the modal rule of §17.4a would then
+     ignore the input. `Custom` is in the enum and is ignored, not an error
+     (§17.4a). A click's `At` is never checked (§17.5).
+- The production sink's `Request`: `delta` other than `+1` or `−1` →
+  `ArgumentOutOfRangeException` (`delta`), before `TryGetLaneState` is
+  called. Any `node` value is legal; one that is not a lane is ignored
+  (§17.5).
+
 Controller tests use a fake sink. Sink tests use a fake host and a fake flow.
 When `sim.flow` is not registered, `app.host` passes a sink that ignores every
 request.
@@ -279,7 +343,15 @@ Specified so that its task cannot drift.
 
 ## 17.9 Budget
 
-- No allocation in `Update` or `Frame` after the first call.
+- No allocation in `Update` or `Frame` after the first call. This counts
+  the controller's own work only; what its sink does is the sink's (Q-105).
+- **The production sink (Q-105).** `Request` allocates nothing on a call for
+  a node that this sink has handled before (step 4 of §17.5 reached
+  `TryGetLaneState` for it). It may allocate on the first call for a node,
+  to grow its pending-target store. It may build every payload in one
+  reused 8-byte buffer, because admission copies the payload (`08` §8.7).
+  Allocations made inside `ISimHost.TrySubmit` are the host's and are not
+  counted. A throwing call (§17.7) is not counted either.
 - `Update` is O(inputs × flow-node boxes). At Phase 1 that is a handful of
   inputs against at most a few hundred boxes, so it carries no time budget of
   its own. `app.ui` adds nothing to the sim's 6 ms.
@@ -328,7 +400,16 @@ Done-condition tests, phrased per `07-conventions.md`:
 - `test_ui_set_graphics_preset_applies_preset_values_and_ignores_custom`
 - `test_ui_set_graphics_settings_marks_custom_and_validates`
 - `test_ui_world_clicks_ignored_while_settings_open`
-- `test_ui_graphics_preference_round_trips_and_rejects_malformed`
+- `test_ui_graphics_preference_round_trips_and_rejects_malformed` — covers
+  the §17.4a grammar (Q-103), including the `out` value after a false
+  decode
+- `test_ui_graphics_preference_decode_validates` (Q-103) — out-of-range and
+  preset-mismatched values decode true, to `Validate` of the values as
+  written
+- `test_ui_misused_calls_throw_named_exception_and_change_nothing` (Q-104,
+  §17.7)
+- `test_ui_update_and_frame_allocate_nothing_after_first_call` (§17.9)
+- `test_ui_lane_request_allocates_nothing_after_warm_up` (Q-105, §17.9)
 - `test_ui_graphics_changes_do_not_change_outcome` — integration, as
   `test_ui_pause_and_speed_do_not_change_outcome`, with scripted graphics
   inputs.

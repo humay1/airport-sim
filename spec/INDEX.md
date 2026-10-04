@@ -414,7 +414,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   graphics settings panel (§17.4a, D10: modal, pauses while open (owner,
   Q-034), stored as a player preference); the production lane sink computes `clamp(base ± 1)` from a
   pending target or `TryGetLaneState`, and submits `SetServersOpen` for the
-  next tick (§17.5, Q-010).
+  next tick (§17.5, Q-010). **T-029 batch: floats allowed in `tests/app/ui`,
+  dyadic and exact (§17.2, `07` L4, Q-102); a strict preference grammar,
+  with out-of-range or preset-mismatched values decoding true through
+  `Validate` (§17.4a, Q-103); argument checks and exception types (§17.7,
+  Q-104); the lane sink's own allocation rule (§17.9, Q-105)**.
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
 - Read if: the UI scene-layer and UI backend tasks.
 

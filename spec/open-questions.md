@@ -3012,3 +3012,73 @@ Answer:      All three confirmed and written down. (1) "Throw" is
              requires every `Publish<T>` call in the assembly to have `T`
              = `DelayEvent` (§14.14).
 Status:      ANSWERED (spec/14-interfaces-delay.md#done-condition-tests)
+
+### Q-102 — `app.ui`: floats in tests
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    `07` L4 bans floating point in tests except
+             `tests/app/render/` (Q-100), but `17`'s `ScreenPoint`, screen
+             size and `CameraView` are `float`.
+Answer:      `07` L4 gains a second exception: `tests/app/ui/` may use
+             `float` for the values of `15`'s and `17`'s `float`-typed
+             members and parameters only. Every such value is dyadic and
+             chosen so that every intermediate result is exact, and results
+             are compared exactly. The render exception is unchanged.
+             Amended 2026-10-04 (T-024 batch): the NaN and ±infinity
+             inputs that Q-104's argument checks require (a non-finite
+             screen size, a non-finite click) are exempt from "dyadic".
+             They are the only non-dyadic values a test may write.
+Status:      ANSWERED (spec/17-interfaces-ui.md#172-the-two-layers)
+
+### Q-103 — `app.ui`: graphics preference text edge cases
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    May a number carry a sign or leading zeros? Is a preset name
+             whose values differ from that preset accepted? What is the
+             `out` value after a false decode? Are out-of-range values and
+             trailing whitespace handled as the draft tests assume?
+Answer:      The decoder accepts only what the encoder can produce. Integers
+             are ASCII digits only, with no `-`, no `+`, no leading zero
+             except `0` itself, and they fit `int32`. A preset name with
+             mismatched values decodes true and keeps that name. Well-formed
+             text with out-of-range values decodes true and is clamped by
+             `Validate`. Any trailing or extra whitespace is malformed. A
+             `null` text decodes false. After a false decode, `out` is
+             `default(GraphicsSettings)`. The encoder writes values as
+             given and throws `ArgumentOutOfRangeException` (`settings`)
+             for a value it cannot encode.
+             Amended 2026-10-04 (T-024 batch): §17.4a said "exactly nine
+             fields", but its format line and encoder give eight
+             (`graphics`, `1`, the preset, five knobs). It now says eight.
+Status:      ANSWERED (spec/17-interfaces-ui.md#174a-graphics-settings-d10)
+
+### Q-104 — `app.ui`: invalid input and exception types
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029 (`07` requires exact types in tests)
+Question:    What happens for a screen size ≤ 0, `SetSpeed` outside
+             `GameSpeed`, a delta other than ±1, and `null` inputs, sink,
+             host or flow?
+Answer:      Each throws, in a fixed order, before anything else, and a
+             throwing call changes no state and calls nothing.
+             `ArgumentNullException` for `null` `inputs`, `sink`, `host`,
+             `flow`. `ArgumentOutOfRangeException` for a non-finite or
+             non-positive `screenWidth`/`screenHeight`, for an out-of-enum
+             `Kind`, `Speed` or `Preset` in any input (`inputs`, all inputs
+             checked before any is applied, even while the panel is open),
+             for an out-of-enum `initialGraphics.Preset`, and for a `delta`
+             other than ±1. `ArgumentException` (`layout`) for a `null`
+             `layout.FlowNodes`. A click is never an error. One new test.
+Status:      ANSWERED (spec/17-interfaces-ui.md#177-types-and-interfaces-scene-layer)
+
+### Q-105 — `app.ui`: does the allocation rule cover the lane sink?
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    Does §17.9's "no allocation in `Update`" cover the production
+             sink's `Request`?
+Answer:      Yes, as its own rule. `Update`'s rule counts the controller's
+             own work. The production sink's `Request` allocates nothing for
+             a node it has handled before. It may allocate on a node's first
+             request, and it may reuse one 8-byte payload buffer, because
+             admission copies the payload (`08` §8.7). Allocations inside
+             `TrySubmit` are the host's.
+Status:      ANSWERED (spec/17-interfaces-ui.md#179-budget)
