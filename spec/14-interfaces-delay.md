@@ -50,6 +50,14 @@ of attributed delay ticks. It performs no inference and no reconstruction
   this module's queries, not part of it at Phase 0/1;
 - following `EventRef Cause` chains across events (§14.7, "Cause chains").
 
+**What "throw" means (Q-112).** Every "throw" in this file is `new
+SimInvariantException(message, tick)` (`08` §8.5a), where `tick` is the
+current tick, which is the tick of the event being handled. The host wraps
+it exactly once (`08` §8.5a). A test that drives `ISimHost.Step` therefore
+sees the host's `SimInvariantException`, with that `Tick` and
+`HasWorldHash` true, and its `InnerException` is the module's
+`SimInvariantException` with the same `Tick` and `HasWorldHash` false.
+
 ---
 
 ## 14.2 Constants
@@ -80,7 +88,9 @@ All types below appear in event payloads or are returned by queries; the ones
 carried by `DelayEvent` (`DelayEventId`, `DelaySource`, `DelayExplanation`,
 `DelayCategory`, and `DelayNode` and `DelayNodeKind`, since `DelayEvent`
 carries a `DelayNode`, `10` §10.9, Q-018) are declared in `sim.core` with the
-other event types.
+other event types. `FlightDelay`, which no event carries, is declared in
+`AirportSim.Sim.Delay` beside `IDelaySystem` and `DelayFactory` (`07` L6,
+Q-112).
 
 ```
 struct DelayEventId { uint64 Value }         // sim.delay-allocated, §14.7; 0 = none
@@ -198,6 +208,16 @@ is `late(k)` minus what the tree already holds (§14.6). This is exactly
 A checkpoint with `PlannedTick == TICK_UNSCHEDULED` is an emitter bug: throw.
 Finishing early (`ActualTick < PlannedTick`) is lateness 0, never negative.
 
+**A checkpoint for a flight with no record (Q-108).** A checkpoint
+milestone for a flight `sim.delay` has no record of (no
+`FlightPlanPublished` seen, or already pruned) is an emitter bug: throw,
+as §14.5 does for intervals. This is checked before any other rule of
+§14.6, so the record is not created and no state changes. A
+non-checkpoint milestone is ignored whether or not the flight has a
+record; `sim.delay` does not look the flight up for it. A checkpoint for a
+retained, finalised flight is the "after its terminal checkpoint" case of
+§14.6 and throws there.
+
 > **LOW CONFIDENCE — the checkpoint set.** It is the smallest set that captures
 > every blocking family Phase 1 emits (§14.5) and matches the usual on-block /
 > off-block conventions. It is not a player-facing number yet: which lateness
@@ -223,7 +243,7 @@ changes an interval.
 |---|---|---|---|---|---|
 | Runway | `AircraftHeldForRunway` | `AircraftHeldForRunwayReleased` | `(Flight, Runway)` | `runway_congestion` | `RunwayHold` |
 | Taxiway | `AircraftHeldOnTaxiway` | `AircraftHeldOnTaxiwayReleased` | `(Flight, Taxiway)` | `taxi_congestion` | `TaxiwayHold` |
-| Stand | `StandUnavailable` | `StandAssigned` | `(Flight, Stand)` | `stand_unavailable` | `StandUnavailable` |
+| Stand | `StandUnavailable` | `StandAssigned` | `(Flight)` only, Q-107 | `stand_unavailable` | `StandUnavailable` |
 | Turnaround | `TurnaroundJobBlocked` | `TurnaroundJobUnblocked` | `(Flight, Turnaround, JobKind)` | the event's `category` field (`10-events.md` §10.6) | `TurnaroundJobWait` |
 | Passenger hold (D6) | `DepartureHeldForPassengers` | `DepartureHeldForPassengersReleased` | `(Flight, PassengerHold)` | `passenger_late` | `PassengerHold` |
 
@@ -234,6 +254,21 @@ opening event's tick and `EndTick` the closing event's tick. While open,
 
 Binding details:
 
+- **Keys (Q-107).** A key is the family plus the listed fields of the
+  event, read from the opening and the closing event alike: `Runway` is
+  the `RunwayId`, `Taxiway` the `TaxiEdgeId`, `JobKind` the job kind.
+  `Turnaround` and `PassengerHold` name the family only. The Stand
+  family's key is the flight alone, and no `StandId` is part of it:
+  `sim.airside` emits `StandUnavailable` with `Stand` null (`12` §12.7)
+  and `StandAssigned` with the granted stand, so a key that included the
+  stand would never pair. A flight therefore has at most one open Stand
+  interval, and its next `StandAssigned` closes it whatever either
+  event's `Stand` field holds. The closing event's `Stand` and
+  `Occupying` are not read. The explanation's `A` and `B` come from the
+  opening event only (§14.3). A second `StandUnavailable` while the
+  flight's Stand interval is open throws, as any duplicate open does
+  (below). An arrival assigned a stand at once emits neither event (`12`
+  §12.7) and opens no interval.
 - **Job-dependency waits are not blocking intervals.** A `TurnaroundJobBlocked`
   or `TurnaroundJobUnblocked` with `waitingOn == ResourceKind.JobDependency`
   (`Boarding` waiting on its five prerequisites,
@@ -582,7 +617,30 @@ state to its hash, the same posture as `sim.schedule`, `sim.airside` and
 Budget: **0.40 ms/tick at max tier** (`03-module-map.md`). It covers the
 module's event handlers as well as its `Tick`, since nearly all of its work
 runs in handlers. A budget test times them with `03`'s handler shims
-("Timing a module's handlers", Q-064). The shape:
+("Timing a module's handlers", Q-064).
+
+**The budget test's load (Q-110).** `03`'s max-tier fixture names
+movements, passengers, stands and runways, but `sim.delay` sees only
+events. For this module, the max-tier load is the event stream of **800
+published flights per sim-day**: four copies of
+`tests/fixtures/schedule/phase0-200.csv`'s movements, with their kinds,
+rotations, STA/STD and `MinTurnaround`. Each copy gets distinct
+`FlightId`s, and rotations stay within a copy. The §14.14 seeded
+generator adds checkpoints, lateness and intervals of every family, at
+the same density it uses for the other §14.14 tests. The drivers' own
+work is not timed. Every other rule is `03`'s: one sim-day window after
+warm-up, mean and p99, the handler shims. This is a module test.
+`tools/SimHarness budget` stays the authoritative measurement (`07` L11).
+Once T-048 adds `sim.delay` to the harness composition, that measurement
+runs this module against the real emitters.
+
+> **LOW CONFIDENCE — a synthetic load.** The generator's event density
+> per flight is the Test Author's choice. It may be lighter or heavier
+> than what the Phase 1 modules emit. If the harness measurement
+> disagrees with this test, the harness wins, and the remedy is `03`'s
+> reserve or the owner, as for Q-064.
+
+The shape:
 
 - Per event, O(1) amortised: intervals arrive in `OpenerId` order, so the
   retained-interval store is append-ordered and needs no sort; lookup of an
@@ -625,6 +683,14 @@ late checkpoints, rotation pairs and rotation-less flights, job-dependency
 waits, flights that never finalise, and day boundaries crossed. This is how
 `06-delay-attribution.md`'s "1000 randomly generated flight days" is realised.
 
+**"1000 flight days" (Q-111).** It means 1000 **sim-days** of generated
+flights, one day's flight programme each, not 1000 single-flight
+lifetimes. They run as one continuous run of 14 400 000 ticks, so that
+retention, pruning and unfinalised flights carry across day boundaries
+as they do in play. The test is Slow by `07` L11a rule (a), which the
+owner already decided. The number 1000 is `06`'s and is not changed here.
+Its CI cost in the Slow run is the owner's to weigh (see the Q-111 entry).
+
 ### Integrated day
 
 One headless sim-day with `sim.schedule`, `sim.flow`, `sim.airside`,
@@ -641,21 +707,93 @@ Leaf coverage per `DelaySource` is the synthetic streams' job. No new fixture
 is needed; T-024 owns `tests/fixtures/delay/**` only if the Test Author finds
 one necessary.
 
+**Setup (Q-106).** The test is
+`test_delay_integrated_day_holds_every_invariant`, in
+`tests/sim/delay/`. That project reaches `sim.airside` and
+`sim.turnaround`, and through them `sim.schedule`, `sim.flow` and
+`sim.world`, by `07` L3's third exception. No other test there may
+construct a module other than `sim.delay`. The test composes the six
+Phase 1 systems exactly as `16` §16.4 steps 3 and 4 do: construction in
+dependency order, registration in registry order (`08` §8.5), with
+`airside(schedule, flow, turnaroundRegistered: true)`. The builder is
+made as in step 1, from the test's seed and content index, with the
+test's own checkpoint and log sinks. It reads no bundle. Its inputs are:
+
+| Input | Source | Loaded with |
+|---|---|---|
+| content | built in code, below | `ContentIndexFactory.Create` of the test's definitions (`08` §8.11a) |
+| walk graph | `tests/fixtures/world/phase0-landside.json` | `WorldFactory.CreateGraphLoader().Load` |
+| flow graph | `tests/fixtures/flow/phase0-landside.flow.json` | `FlowFactory.CreateGraphLoader().Load(…, world)` |
+| schedule | `tests/fixtures/schedule/phase0-200.csv` | `ScheduleFactory.CreateLoader().Load` |
+| airside layout | `tests/fixtures/airside/phase1-single-runway.json` (stand sinks are node 9 since Q-095) | `AirsideFactory.CreateLayoutLoader()` |
+| airside rules | built in code (`12` §12.12a: no sim module parses JSON) | — |
+| turnaround setup | `tests/fixtures/turnaround/phase1-five-vehicles.json` | `TurnaroundFactory.CreateSetupLoader()` (`13` §13.10a) |
+
+**The content (Q-106).** It is built in code, as `tests/sim/airside`'s
+kit does, because no content fixture on `main` declares the size
+categories the airside fixture's stands name. The Phase 0 harness content
+declares only `size_c`, and `12` §12.4 makes `CreateSystem` throw on an
+unresolved id. The definitions are exactly:
+
+- size categories `small` 1, `medium` 2, `heavy` 3, `super` 4 (id,
+  ordinal);
+- the nine aircraft that `phase0-200.csv` names, with these size
+  categories: `atr72` and `crj900` `small`; `a320`, `a321` and `b738`
+  `medium`; `a359`, `b744` and `b789` `heavy`; `a388` `super`;
+- the pax profiles `business` and `leisure`, and the queue profile
+  `security_standard`, with the values of the files of the same ids under
+  `tests/fixtures/harness/phase0-content/` (`19` §19.2a).
+
+These are fixture sizing, not balance. They are the same categories and
+mapping that `tests/sim/airside` uses. Every pinned id then resolves:
+
+- the schedule's `aircraft_type` and `pax_profile` ids are all defined;
+- the flow graph's only `queue_profile` is `security_standard`;
+- every stand's `max_aircraft_size_category` (`medium`, `heavy`,
+  `super`) is defined, and every aircraft fits at least one stand
+  (`a388` fits stands 2 and 4);
+- every stand's `departure_sink_node` 9 is the flow graph's `Sink`
+  (Q-095), and the schedule's `entry_node` values are its sources;
+- the turnaround fixture names no content id. Its five vehicles are one
+  per `VehicleKind` (Q-088).
+
+`AirsideRules` are the Test Author's fixture values, not balance, as in
+`13` §13.11. `BoardingHoldMaxMinutes` must be above 0, so that the
+passenger-hold family can occur. The seed is an integer literal in the
+test. The run is one sim-day, 14 400 ticks, so it is not Slow by `07`
+L11a rule (a). If this composition fails to load or to run, the failure
+is filed as an open question, as Q-095 was. The test does not work
+around it.
+
 ### Done-condition tests
 
 The six `06-delay-attribution.md` requires, with the `test_` prefix of
 `07-conventions.md`:
 
 - `test_sum_of_leaves_equals_total` — on `Ticks`, after every handler, over
-  1000 generated flight-days
+  1000 generated flight-days, which are sim-days (Q-111); Slow
 - `test_no_orphan_nodes`
 - `test_no_cycles`
 - `test_depth_capped`
 - `test_survives_save_load` — tree, records, intervals and counter identical
-  after a round trip mid-day, with intervals open across the save
+  after a round trip mid-day, with intervals open across the save. **Until
+  `sim.save` exists (Q-109)** there is no save seam (`08` §8.8), and the
+  round trip takes the replay form that the owner approved for
+  `determinism_save_load` (`19` §19.5). The "save" is the input stream to
+  the save tick. A fresh run of the same stream to that tick must give
+  equal `ComputeStateHash()`, which covers the records, the retained
+  intervals and the counter (§14.13), equal answers to every §14.10 query
+  for every retained flight and node, and an equal `DelayEvent` sequence
+  so far. Both runs then continue to a later tick and must stay equal. At
+  least one interval must be open at the save tick and be allocated at a
+  checkpoint after it. When `sim.save` is specified, this test is amended
+  to a real snapshot round trip, as the gate is
 - `test_delay_module_never_writes` — static: `src/sim/delay` references no
   type outside `sim.core`, holds no reference to any other `ISimSystem`, and
-  publishes no event type other than `DelayEvent`
+  publishes no event type other than `DelayEvent`. "Publishes" is checked
+  on every call to `IEventPublisher.Publish<T>` in the assembly: each must
+  have `T` = `DelayEvent` (Q-112). `Publish<T>` is the bus's only publishing
+  entry point (`08` §8.6)
 
 Plus the rules this file adds:
 
@@ -672,3 +810,11 @@ Plus the rules this file adds:
 - `test_delay_unfinalised_flight_survives_day_boundary`
 - `test_delay_unmatched_close_event_throws_with_tick`
 - `test_delay_tick_consumes_no_rng`
+- `test_delay_integrated_day_holds_every_invariant` (Q-106; setup under
+  "Integrated day")
+- `test_delay_checkpoint_for_unknown_flight_throws_with_tick` (Q-108): a
+  checkpoint for a flight with no `FlightPlanPublished`, and one for a
+  pruned flight, each throw per §14.1 "What throw means"
+- `test_delay_stand_interval_pairs_null_stand_with_assigned_stand`
+  (Q-107): `StandUnavailable` with `Stand` null is closed by
+  `StandAssigned` with a stand, and the leaf's `A` is 0
