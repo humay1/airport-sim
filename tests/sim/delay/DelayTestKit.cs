@@ -229,8 +229,9 @@ namespace AirportSim.Sim.Delay.Tests
         }
 
         /// <summary>
-        /// StandAssigned carrying the same Stand value as its opener: every
-        /// reading of 14 §14.5's (Flight, Stand) key pairs these two.
+        /// StandAssigned. The Stand family's key is the flight alone (14 §14.5,
+        /// Q-107): it closes the flight's open Stand interval whatever either
+        /// event's Stand holds.
         /// </summary>
         public Step StandAssigned(ulong tick, ulong flight, ushort? stand)
         {
@@ -771,17 +772,21 @@ namespace AirportSim.Sim.Delay.Tests
         }
 
         /// <summary>
-        /// Runs to <paramref name="tick"/>, then asserts that tick throws: the host
-        /// wraps (08 §8.5a) a SimInvariantException carrying the tick (07 "Error
-        /// handling": an emitter bug sim.delay detects is a broken invariant).
+        /// Runs to <paramref name="tick"/>, then asserts that tick throws per 14
+        /// §14.1 "What throw means" (Q-112): the host's SimInvariantException with
+        /// that Tick and HasWorldHash true, wrapping sim.delay's own
+        /// SimInvariantException with the same Tick and HasWorldHash false.
         /// </summary>
         public void AssertThrowsAt(ulong tick, string what)
         {
             RunTo(tick);
             SimInvariantException ex = Assert.Throws<SimInvariantException>(() => Host.Step(1));
             Assert.Equal(tick, ex.Tick);
+            Assert.True(ex.HasWorldHash, what + ": the host's wrapper carries no world hash");
             Assert.True(ex.InnerException is SimInvariantException, what + ": expected sim.delay to throw SimInvariantException, got " + (ex.InnerException == null ? "nothing inside the host's wrapper" : ex.InnerException.GetType().Name + ": " + ex.InnerException.Message));
-            Assert.Equal(tick, ((SimInvariantException)ex.InnerException!).Tick);
+            var inner = (SimInvariantException)ex.InnerException!;
+            Assert.Equal(tick, inner.Tick);
+            Assert.False(inner.HasWorldHash, what + ": sim.delay's exception must leave HasWorldHash false");
         }
 
         public FlightDelay Record(ulong flight)
@@ -1042,9 +1047,23 @@ namespace AirportSim.Sim.Delay.Tests
         /// </summary>
         public static void CheckFlight(IDelaySystem d, ulong flight, string context)
         {
+            try
+            {
+                CheckFlightCore(d, flight, context);
+            }
+            catch (Xunit.Sdk.XunitException ex)
+            {
+                // The tree text is built only on failure: CheckFlight runs after
+                // every handler of long runs.
+                throw new Xunit.Sdk.XunitException(ex.Message + "\n" + Show.Tree(d, flight));
+            }
+        }
+
+        private static void CheckFlightCore(IDelaySystem d, ulong flight, string context)
+        {
             var f = new FlightId(flight);
             Assert.True(d.TryGetFlightDelay(f, out FlightDelay r), context + ": flight " + flight.ToString(CultureInfo.InvariantCulture) + " has no record");
-            string where = context + "\n" + Show.Tree(d, flight);
+            string where = context;
             Assert.True(r.Flight == f, where);
             Assert.True(r.Root.Value != 0UL, "root id is DELAY_EVENT_ID_NONE: " + where);
             Assert.True(d.TryGetNode(r.Root, out DelayNode root), "root node missing: " + where);

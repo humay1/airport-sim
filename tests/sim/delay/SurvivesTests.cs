@@ -8,13 +8,13 @@ namespace AirportSim.Sim.Delay.Tests
     /// <summary>
     /// 06 survives_save_load, 14 §14.14: tree, records, intervals and counter
     /// identical after a round trip mid-day, with intervals open across the
-    /// save. There is no save seam yet (08 §8.8 "Save seam", 19 §19.5,
-    /// Q-027), so the round trip takes the replay form the owner approved for
-    /// determinism_save_load: the "save" is the input stream, and a fresh run
-    /// to the save tick must reproduce the saved state exactly, then continue
-    /// identically. Retained intervals and the counter are not queryable, so
-    /// they are compared through the hash (§14.13 hashes both) and through
-    /// what they produce after the save.
+    /// save. Until sim.save exists (Q-109) the round trip takes the replay
+    /// form the owner approved for determinism_save_load (19 §19.5): the
+    /// "save" is the input stream to the save tick, and a fresh run to that
+    /// tick must give an equal ComputeStateHash (records, retained intervals,
+    /// counter: §14.13), equal answers to every §14.10 query and an equal
+    /// DelayEvent sequence; both runs then continue and must stay equal, with
+    /// an interval open at the save allocated at a checkpoint after it.
     /// </summary>
     public sealed class SurvivesTests
     {
@@ -42,7 +42,28 @@ namespace AirportSim.Sim.Delay.Tests
         private static List<string> State(GeneratedRun run)
         {
             var lines = new List<string> { "hash " + run.Rig.Delay.ComputeStateHash().ToString("X16", CultureInfo.InvariantCulture) };
+            var flights = new List<string>();
+            foreach (FlightId f in run.Rig.Delay.RetainedFlights())
+            {
+                flights.Add(f.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
+            lines.Add("retained " + string.Join(",", flights));
             lines.AddRange(Show.Snapshot(run.Rig.Delay));
+
+            // Every §14.10 node query, removed and pruned ids included, up to
+            // past the highest id handed out so far.
+            ulong max = 0UL;
+            foreach (DelayNode n in Invariants.AllNodes(run.Rig.Delay))
+            {
+                max = n.Id.Value > max ? n.Id.Value : max;
+            }
+
+            for (ulong id = 0UL; id <= max + 2UL; id++)
+            {
+                lines.Add(run.Rig.Delay.TryGetNode(new DelayEventId(id), out DelayNode node) ? Show.Node(node) : "no node " + id.ToString(CultureInfo.InvariantCulture));
+            }
+
             foreach ((EventEnvelope env, DelayEvent evt) in run.Rig.R.Delays)
             {
                 lines.Add(DelayModel.PublishedText(env.Tick, env.Cause.Id, evt.Node));
@@ -66,11 +87,18 @@ namespace AirportSim.Sim.Delay.Tests
             replay.Rig.RunTo(Save);
             Assert.Equal(saved, State(replay));
 
-            // Both continue to the end of day 2, identically, and the interval
-            // open across the save is allocated after it.
-            original.RunDays(2);
-            replay.RunDays(2);
-            Assert.Equal(State(original), State(replay));
+            // Q-109: both continue past the save, staying equal at every sim-hour
+            // to the end of day 2, and the interval open across the save is
+            // allocated at a checkpoint after it.
+            for (ulong t = Save + 600UL; t <= 3UL * DConst.TicksPerDay; t += 600UL)
+            {
+                original.Rig.RunTo(t);
+                replay.Rig.RunTo(t);
+                original.Fail();
+                replay.Fail();
+                Assert.Equal(State(original), State(replay));
+            }
+
             DelayNode leaf = original.Rig.Leaf(Overlay, DelaySource.TurnaroundJobWait);
             Assert.Equal(400UL, leaf.Ticks);
             Assert.Equal(opener.Ref.Id, leaf.SourceEvent.Id);

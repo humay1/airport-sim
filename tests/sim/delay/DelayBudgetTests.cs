@@ -16,10 +16,11 @@ namespace AirportSim.Sim.Delay.Tests
     /// Pass iff Σu ≤ B × n and the nearest-rank p99 ≤ 2 × B. The authoritative
     /// measurement stays tools/SimHarness budget.
     ///
-    /// sim.delay sees only events, so the max-tier load is the event stream of
-    /// 800 daily movements: four copies of tests/fixtures/schedule/phase0-200.csv
-    /// (03's movement count), with lateness and blocking intervals from the
-    /// seeded generator. The drivers' own work is not timed.
+    /// The load is 14 §14.13's (Q-110): the event stream of 800 published
+    /// flights per sim-day, four copies of tests/fixtures/schedule/phase0-200.csv
+    /// with distinct FlightIds and rotations within a copy, with checkpoints,
+    /// lateness and intervals from the seeded generator at its usual density.
+    /// The drivers' own work is not timed.
     /// </summary>
     public sealed class DelayBudgetTests
     {
@@ -53,7 +54,8 @@ namespace AirportSim.Sim.Delay.Tests
             var s = new Script();
             for (int day = 0; day <= lastDay; day++)
             {
-                Generator.Day(rng, ScheduleFixture.Day(load, day), s, 10);
+                // Q-110: the same density as the other §14.14 tests (GeneratedRun's 40‰ stuck).
+                Generator.Day(rng, ScheduleFixture.Day(load, day), s, 40);
             }
 
             return s;
