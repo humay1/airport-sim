@@ -2921,10 +2921,14 @@ Answer:      Architecture, as Q-087. A third named exception in `07` L3:
              Airside, Turnaround, used only by
              `test_delay_integrated_day_holds_every_invariant`. Schedule,
              flow and world come through Airside. §14.14 "Setup" pins the
-             composition (`16` §16.4 steps 3 and 4), the inputs (the
-             Phase 0 harness content, walk graph, flow graph and schedule,
-             the Q-095 airside fixture, `phase1-five-vehicles.json`) and
-             the rules built in code, with `BoardingHoldMaxMinutes` > 0.
+             composition (`16` §16.4 steps 3 and 4) and the inputs. The
+             content is built in code with `tests/sim/airside`'s size
+             categories, because the harness content declares only
+             `size_c` (review of #117). The other inputs are the Phase 0
+             walk graph, flow graph and schedule, the Q-095 airside
+             fixture and `phase1-five-vehicles.json`. The rules are built
+             in code, with `BoardingHoldMaxMinutes` > 0. Every
+             cross-fixture id is checked there.
              Rejected: `tests/integration/`, which Q-077 limits to the D7
              test and whose project T-031 creates, and T-031 depends on
              T-024; and moving the test to T-048's harness tests, which

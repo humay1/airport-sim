@@ -721,13 +721,41 @@ test's own checkpoint and log sinks. It reads no bundle. Its inputs are:
 
 | Input | Source | Loaded with |
 |---|---|---|
-| content | the Phase 0 harness content, manifest `tests/fixtures/harness/phase0-content.files` (`19` §19.2a) | `ContentLoaderFactory.Create().Load`, then `ContentIndexFactory.Create` (`08` §8.11), through the test's own `IContentSource` over the manifest |
+| content | built in code, below | `ContentIndexFactory.Create` of the test's definitions (`08` §8.11a) |
 | walk graph | `tests/fixtures/world/phase0-landside.json` | `WorldFactory.CreateGraphLoader().Load` |
 | flow graph | `tests/fixtures/flow/phase0-landside.flow.json` | `FlowFactory.CreateGraphLoader().Load(…, world)` |
 | schedule | `tests/fixtures/schedule/phase0-200.csv` | `ScheduleFactory.CreateLoader().Load` |
 | airside layout | `tests/fixtures/airside/phase1-single-runway.json` (stand sinks are node 9 since Q-095) | `AirsideFactory.CreateLayoutLoader()` |
 | airside rules | built in code (`12` §12.12a: no sim module parses JSON) | — |
 | turnaround setup | `tests/fixtures/turnaround/phase1-five-vehicles.json` | `TurnaroundFactory.CreateSetupLoader()` (`13` §13.10a) |
+
+**The content (Q-106).** It is built in code, as `tests/sim/airside`'s
+kit does, because no content fixture on `main` declares the size
+categories the airside fixture's stands name. The Phase 0 harness content
+declares only `size_c`, and `12` §12.4 makes `CreateSystem` throw on an
+unresolved id. The definitions are exactly:
+
+- size categories `small` 1, `medium` 2, `heavy` 3, `super` 4 (id,
+  ordinal);
+- the nine aircraft that `phase0-200.csv` names, with these size
+  categories: `atr72` and `crj900` `small`; `a320`, `a321` and `b738`
+  `medium`; `a359`, `b744` and `b789` `heavy`; `a388` `super`;
+- the pax profiles `business` and `leisure`, and the queue profile
+  `security_standard`, with the values of the files of the same ids under
+  `tests/fixtures/harness/phase0-content/` (`19` §19.2a).
+
+These are fixture sizing, not balance. They are the same categories and
+mapping that `tests/sim/airside` uses. Every pinned id then resolves:
+
+- the schedule's `aircraft_type` and `pax_profile` ids are all defined;
+- the flow graph's only `queue_profile` is `security_standard`;
+- every stand's `max_aircraft_size_category` (`medium`, `heavy`,
+  `super`) is defined, and every aircraft fits at least one stand
+  (`a388` fits stands 2 and 4);
+- every stand's `departure_sink_node` 9 is the flow graph's `Sink`
+  (Q-095), and the schedule's `entry_node` values are its sources;
+- the turnaround fixture names no content id. Its five vehicles are one
+  per `VehicleKind` (Q-088).
 
 `AirsideRules` are the Test Author's fixture values, not balance, as in
 `13` §13.11. `BoardingHoldMaxMinutes` must be above 0, so that the

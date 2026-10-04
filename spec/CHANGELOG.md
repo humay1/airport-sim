@@ -3639,7 +3639,11 @@ Impact:      - **Q-106:** `07` L3 gains a third exception. The delay test
                project has three `ProjectReference`s (Delay, Airside,
                Turnaround), for `test_delay_integrated_day_holds_every_invariant`
                only. §14.14 "Setup" pins its composition and inputs. No
-               new fixture. The production project is unchanged.
+               new fixture. The production project is unchanged. Its
+               content is built in code (small, medium, heavy, super),
+               because the harness content declares only `size_c`, which
+               the airside fixture's stands cannot resolve (review of
+               #117).
              - **Q-107:** the Stand key is `(Flight)` only. PR #115's
                generator opens a null-stand and a stand-4 interval for
                one flight concurrently. Under this rule that throws, so
