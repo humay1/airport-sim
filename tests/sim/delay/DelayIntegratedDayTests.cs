@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using AirportSim.Sim.Airside;
 using AirportSim.Sim.Core;
 using AirportSim.Sim.Flow;
@@ -32,43 +31,76 @@ namespace AirportSim.Sim.Delay.Tests
         private const uint BoardingHoldMaxMinutes = 10U;
         private const uint DoorsOpenDelayMinutes = 2U;
 
-        /// <summary>The 19 §19.2a content source: Files() is the manifest's lines, under phase0-content/.</summary>
-        private sealed class ManifestSource : IContentSource
+        private static readonly (string Id, int Ordinal)[] Sizes =
         {
-            private readonly List<string> _files = new List<string>();
-            private readonly Dictionary<string, byte[]> _bytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            ("small", 1), ("medium", 2), ("heavy", 3), ("super", 4),
+        };
 
-            public ManifestSource()
+        private static readonly (string Id, string Size)[] Aircraft =
+        {
+            ("atr72", "small"), ("crj900", "small"),
+            ("a320", "medium"), ("a321", "medium"), ("b738", "medium"),
+            ("a359", "heavy"), ("b744", "heavy"), ("b789", "heavy"),
+            ("a388", "super"),
+        };
+
+        // The values of tests/fixtures/harness/phase0-content/pax_profiles/*.json.
+        private static readonly (uint Minutes, uint Share)[] Business =
+        {
+            (30, 50), (45, 150), (60, 300), (75, 250), (90, 200), (120, 50),
+        };
+
+        private static readonly (uint Minutes, uint Share)[] Leisure =
+        {
+            (45, 50), (60, 250), (90, 300), (120, 250), (150, 100), (180, 50),
+        };
+
+        /// <summary>
+        /// 14 §14.14 "The content (Q-106)", built in code (08 §8.11a): fixture
+        /// sizing, not balance. Profiles carry the harness content files' values:
+        /// walk speed 1.3 m/s; security_standard serves 15 per server-minute,
+        /// stands 1000, thresholds 10 and 3 minutes, category security_queue.
+        /// </summary>
+        private static IContentIndex Content()
+        {
+            var defs = new List<IContentDefinition>();
+            foreach ((string id, int ordinal) in Sizes)
             {
-                string manifest = Encoding.UTF8.GetString(Repo.Read("tests", "fixtures", "harness", "phase0-content.files"));
-                Assert.EndsWith("\n", manifest);
-                foreach (string line in manifest.Substring(0, manifest.Length - 1).Split('\n'))
-                {
-                    Assert.False(line.Length == 0 || line.IndexOf('\r') >= 0, "bad manifest line: '" + line + "'");
-                    _files.Add(line);
-                    var parts = new List<string> { "tests", "fixtures", "harness", "phase0-content" };
-                    parts.AddRange(line.Split('/'));
-                    _bytes.Add(line, Repo.Read(parts.ToArray()));
-                }
+                defs.Add(new SizeCategoryDefinition(new ContentId(id), ordinal));
             }
 
-            public IReadOnlyList<string> Files()
+            foreach ((string id, string size) in Aircraft)
             {
-                return _files;
+                defs.Add(new AircraftDefinition(new ContentId(id), new ContentId(size)));
             }
 
-            public byte[] ReadAll(string path)
-            {
-                return (byte[])_bytes[path].Clone();
-            }
+            defs.Add(Profile("business", Business));
+            defs.Add(Profile("leisure", Leisure));
+            defs.Add(new QueueProfileDefinition(new ContentId("security_standard"), Fx.FromInt(15), 1000, Fx.FromInt(10), Fx.FromInt(3), DelayCategory.SecurityQueue));
+            return ContentIndexFactory.Create(defs);
         }
 
+        private static PaxProfileDefinition Profile(string id, (uint Minutes, uint Share)[] curve)
+        {
+            var buckets = new List<ShowUpBucket>();
+            foreach ((uint m, uint s) in curve)
+            {
+                buckets.Add(new ShowUpBucket(m, s));
+            }
+
+            return new PaxProfileDefinition(new ContentId(id), Fx.FromRatio(13, 10), buckets);
+        }
+
+        // Slow by 07 L11a rule (b)'s prompt: about 12-15 s in the Test Author's
+        // Release run (rule (a) does not apply: one sim-day). CI's measurement
+        // decides from then on.
         [Fact]
+        [Trait("Category", "Slow")]
         public void test_delay_integrated_day_holds_every_invariant()
         {
             // Step 1: the builder, from the test's seed and content index, with the
             // test's own checkpoint and log sinks. No bundle is read.
-            IContentIndex content = ContentIndexFactory.Create(ContentLoaderFactory.Create().Load(new ManifestSource()));
+            IContentIndex content = Content();
             var sink = new RecordingCheckpointSink();
             ISimHostBuilder b = SimHostFactory.CreateBuilder(new SimHostConfig(0x0024_1D4FUL, content, sink, new NullLog()));
             SystemServices sv = b.Services;
@@ -97,8 +129,10 @@ namespace AirportSim.Sim.Delay.Tests
             string? failure = null;
             int runwayHolds = 0;
             int vehicleWaits = 0;
+            bool dispatched = true;
             rec.After = (env, payload, flight) =>
             {
+                dispatched = true;
                 if (payload is AircraftHeldForRunway)
                 {
                     runwayHolds++;
@@ -137,7 +171,16 @@ namespace AirportSim.Sim.Delay.Tests
             {
                 host.Step(1);
                 Assert.True(failure == null, failure);
-                Invariants.CheckAll(delay, "after tick " + (host.CurrentTick - 1UL).ToString(CultureInfo.InvariantCulture));
+
+                // sim.delay's state changes only in its handlers and in its Tick at
+                // a day boundary (§14.8), so a tick with neither leaves the last
+                // full check standing; every other tick gets a full check.
+                ulong done = host.CurrentTick - 1UL;
+                if (dispatched || done % DConst.TicksPerDay == 0UL)
+                {
+                    Invariants.CheckAll(delay, "after tick " + done.ToString(CultureInfo.InvariantCulture));
+                    dispatched = false;
+                }
             }
 
             // The day ran: the fixtures' runway holds and vehicle waits occurred,
