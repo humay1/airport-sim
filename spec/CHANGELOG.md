@@ -3628,3 +3628,38 @@ Impact:      - **Q-094:** §15.4 pins a JSON layout format and ordered
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
+
+## 2026-10-04 — spec/17-interfaces-ui.md §17.2, §17.4a, §17.5, §17.7, §17.9, §17.10; spec/07-conventions.md L4; INDEX; open-questions — T-029 gaps: floats in UI tests, preference grammar, argument checks, lane sink allocation (Q-102 to Q-105)
+Reason:      The T-029 Test Author (PR #113) found four gaps: `07` L4 bans
+             floats in `tests/app/ui` although `17`'s types are `float`; the
+             preference text's edge cases were open; no exception type was
+             named for misused calls, which `07` "Error handling" requires;
+             and §17.9 did not say whether the lane sink's `Request` is
+             covered by the allocation rule.
+Raised by:   Q-102 to Q-105
+Impact:      - **Q-102:** `07` L4 gets a second float exception, for
+               `tests/app/ui/` only, with values dyadic and exact. The
+               render exception (Q-100) is unchanged, so merged T-020 tests
+               are unaffected.
+             - **Q-103:** §17.4a pins the decoder's grammar: ASCII digits
+               only, no sign, no leading zero, `int32` range, single spaces
+               only, `null` decodes false, `out` is `default` after false.
+               The encoder names its parameter `settings` and throws
+               `ArgumentOutOfRangeException` for a value with no encoding.
+             - **Q-104:** §17.7 names every argument check, its order and its
+               BCL type. Checks run before any input is applied, so a
+               throwing `Update` changes nothing. One new test.
+             - **Q-105:** §17.9 splits the allocation rule: `Update` counts
+               the controller's own work, and the production sink has its
+               own rule, steady-state per node. Two allocation tests the
+               draft already has are now listed in §17.10.
+             - **Merged work:** none. `app.ui` has no merged code; The parts of PR
+               #113's draft tests the Architect read do not contradict
+               Q-102, Q-103 or Q-105. Q-104's test is new.
+             - **LOW CONFIDENCE:** Q-103's acceptance of a preset name whose
+               values do not match that preset (it keeps the name, as
+               `Validate` does). The narrower alternative, rejecting it,
+               would reset a hand-edited preference to `Medium`.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).
