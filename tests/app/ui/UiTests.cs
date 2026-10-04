@@ -735,7 +735,7 @@ namespace AirportSim.App.Ui.Tests
 
             Assert.True(loop.Sim.Flow.TryGetLaneState(new NodeId(queue), out LaneState after));
             Assert.True(after.ServersOpen == target, "ServersOpen " + after.ServersOpen + " after the click, expected " + target);
-            Assert.Equal(1, loop.Sim.Host.CommandLogSince(0UL).Count);
+            Assert.Single(loop.Sim.Host.CommandLogSince(0UL));
             Assert.Empty(loop.Guard.Violations);
         }
     }
