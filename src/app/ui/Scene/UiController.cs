@@ -34,6 +34,11 @@ namespace AirportSim.App.Ui
                 _boxes[i] = layout.FlowNodes[i];
             }
 
+            if (!IsDefined(initialGraphics.Preset))
+            {
+                throw new ArgumentOutOfRangeException(nameof(initialGraphics), "the preset is outside GraphicsPreset");
+            }
+
             _sink = sink;
             _graphics = RenderFactory.ValidateGraphics(initialGraphics);
         }
@@ -54,9 +59,45 @@ namespace AirportSim.App.Ui
                 throw new ArgumentNullException(nameof(inputs));
             }
 
-            if (!(screenWidth > 0f) || !(screenHeight > 0f))
+            if (!(screenWidth > 0f) || float.IsInfinity(screenWidth))
             {
-                throw new ArgumentOutOfRangeException(nameof(screenWidth), "the screen must be larger than zero in both directions");
+                throw new ArgumentOutOfRangeException(nameof(screenWidth), "the width must be finite and greater than zero");
+            }
+
+            if (!(screenHeight > 0f) || float.IsInfinity(screenHeight))
+            {
+                throw new ArgumentOutOfRangeException(nameof(screenHeight), "the height must be finite and greater than zero");
+            }
+
+            // Every input is checked before any is applied, panel open or not (17 §17.7, Q-104).
+            for (int i = 0; i < inputs.Count; i++)
+            {
+                UiInput check = inputs[i];
+                switch (check.Kind)
+                {
+                    case UiInputKind.SetSpeed:
+                        if (check.Speed != GameSpeed.X1 && check.Speed != GameSpeed.X2 && check.Speed != GameSpeed.X4)
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(inputs), "SetSpeed carries a value outside GameSpeed");
+                        }
+
+                        break;
+                    case UiInputKind.SetGraphicsPreset:
+                        if (!IsDefined(check.Preset))
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(inputs), "SetGraphicsPreset carries a value outside GraphicsPreset");
+                        }
+
+                        break;
+                    case UiInputKind.TogglePause:
+                    case UiInputKind.PrimaryClick:
+                    case UiInputKind.SecondaryClick:
+                    case UiInputKind.ToggleSettings:
+                    case UiInputKind.SetGraphicsSettings:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(inputs), "an input has a Kind outside UiInputKind");
+                }
             }
 
             for (int i = 0; i < inputs.Count; i++)
@@ -89,11 +130,6 @@ namespace AirportSim.App.Ui
                     case UiInputKind.SetSpeed:
                         if (!_settingsOpen)
                         {
-                            if (input.Speed != GameSpeed.X1 && input.Speed != GameSpeed.X2 && input.Speed != GameSpeed.X4)
-                            {
-                                throw new ArgumentOutOfRangeException(nameof(inputs), "SetSpeed carries a value outside GameSpeed");
-                            }
-
                             _speed = input.Speed;
                         }
 
@@ -116,6 +152,11 @@ namespace AirportSim.App.Ui
                         break;
                 }
             }
+        }
+
+        private static bool IsDefined(GraphicsPreset p)
+        {
+            return p >= GraphicsPreset.Low && p <= GraphicsPreset.Custom;
         }
 
         private void Click(ScreenPoint at, int delta, in CameraView camera, float w, float h)

@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using AirportSim.App.Render;
 using AirportSim.Sim.Core;
@@ -23,6 +24,16 @@ namespace AirportSim.App.Ui
         /// <summary>Encodes the graphics preference text (§17.4a).</summary>
         public static string EncodeGraphicsPreference(in GraphicsSettings settings)
         {
+            if (settings.Preset < GraphicsPreset.Low || settings.Preset > GraphicsPreset.Custom)
+            {
+                throw new ArgumentOutOfRangeException(nameof(settings), "the preset is outside GraphicsPreset");
+            }
+
+            if (settings.MaxDrawnAgentsPerNode < 0 || settings.FrameRateCap < 0 || settings.ResolutionScalePercent < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(settings), "a negative knob has no encoding");
+            }
+
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "graphics 1 {0} {1} {2} {3} {4} {5}",
@@ -90,12 +101,29 @@ namespace AirportSim.App.Ui
         private static bool TryNumber(string s, out int value)
         {
             value = 0;
-            if (s.Length == 0 || s[0] == '+')
+            if (s.Length == 0 || (s[0] == '0' && s.Length > 1))
             {
                 return false;
             }
 
-            return int.TryParse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out value);
+            long acc = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c < '0' || c > '9')
+                {
+                    return false;
+                }
+
+                acc = (acc * 10) + (c - '0');
+                if (acc > int.MaxValue)
+                {
+                    return false;
+                }
+            }
+
+            value = (int)acc;
+            return true;
         }
     }
 }
