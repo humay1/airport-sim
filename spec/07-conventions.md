@@ -114,17 +114,17 @@ enforces "Comments and documentation" mechanically.
 
 **L3. Test project file, byte for byte.** `tests/sim/core/AirportSim.Sim.Core.Tests.csproj`
 is exactly the text below, with the same encoding rules as L2. Every other test
-project in L1, except the integration test project and `sim.turnaround`'s
-test project (both below), is this file
+project in L1, except the integration test project, `sim.turnaround`'s
+test project and `sim.delay`'s test project (all three below), is this file
 with the two names and the one `ProjectReference` changed. A test project
 references **only** the production project of the module it tests, with the
-same two exceptions. The other modules it sees come through that project's own
+same three exceptions. The other modules it sees come through that project's own
 references. For the harness's test project, that one reference is
 `../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
 tests call the harness in process, through its public surface (`19`
 §19.1). They never spawn a process (Q-025).
 
-**The integration test project (Q-077).** It is the only exception to "one
+**The integration test project (Q-077).** It is the first exception to "one
 reference". It is this file with the two names changed to
 `AirportSim.Integration.Tests` and exactly two `ProjectReference`s, in this
 order: `../../src/app/host/AirportSim.App.Host.csproj`, then
@@ -148,6 +148,19 @@ real §12.8 handshake. `13` §13.11 names those tests, and any other use of
 `sim.airside` there needs an amendment. The production project
 `AirportSim.Sim.Turnaround` still does not reference `sim.airside` (`13`
 §13.1).
+
+**`sim.delay`'s test project (Q-106).** It is this file with the two names
+changed to `AirportSim.Sim.Delay.Tests` and exactly three
+`ProjectReference`s, in this order:
+`../../../src/sim/delay/AirportSim.Sim.Delay.csproj`, then
+`../../../src/sim/airside/AirportSim.Sim.Airside.csproj`, then
+`../../../src/sim/turnaround/AirportSim.Sim.Turnaround.csproj`. `sim.world`,
+`sim.flow` and `sim.schedule` come transitively through `sim.airside`'s own
+references (L2). The second and third exist only for `14` §14.14's
+integrated day, `test_delay_integrated_day_holds_every_invariant`; any other
+use of a module other than `sim.delay` there needs an amendment. The
+production project `AirportSim.Sim.Delay` still references Core only (L2,
+`14` §14.13a).
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -190,7 +203,9 @@ test fails, its message names the seed and the iteration index.
 `tests/app/render/` may use `float` for the values of `15`'s `float`-typed
 members only (`15` §15.3, Q-100). `tests/app/ui/` may use `float` for the
 values of `15`'s and `17`'s `float`-typed members and parameters only
-(`17` §17.2, Q-102). There, every float value a test writes is dyadic and is
+(`17` §17.2, Q-102). There, every float value a test writes is dyadic,
+except the NaN and ±infinity inputs that `17`'s argument checks require
+(Q-104), and is
 chosen so that every intermediate result of the computation under test is
 exactly representable as a `float`, and results are compared exactly, with
 no tolerance. Test code may use `net8.0`-only
