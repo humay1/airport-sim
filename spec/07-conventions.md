@@ -114,17 +114,17 @@ enforces "Comments and documentation" mechanically.
 
 **L3. Test project file, byte for byte.** `tests/sim/core/AirportSim.Sim.Core.Tests.csproj`
 is exactly the text below, with the same encoding rules as L2. Every other test
-project in L1, except the integration test project and `sim.turnaround`'s
-test project (both below), is this file
+project in L1, except the integration test project, `sim.turnaround`'s
+test project and `sim.delay`'s test project (all three below), is this file
 with the two names and the one `ProjectReference` changed. A test project
 references **only** the production project of the module it tests, with the
-same two exceptions. The other modules it sees come through that project's own
+same three exceptions. The other modules it sees come through that project's own
 references. For the harness's test project, that one reference is
 `../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
 tests call the harness in process, through its public surface (`19`
 §19.1). They never spawn a process (Q-025).
 
-**The integration test project (Q-077).** It is the only exception to "one
+**The integration test project (Q-077).** It is the first exception to "one
 reference". It is this file with the two names changed to
 `AirportSim.Integration.Tests` and exactly two `ProjectReference`s, in this
 order: `../../src/app/host/AirportSim.App.Host.csproj`, then
@@ -148,6 +148,19 @@ real §12.8 handshake. `13` §13.11 names those tests, and any other use of
 `sim.airside` there needs an amendment. The production project
 `AirportSim.Sim.Turnaround` still does not reference `sim.airside` (`13`
 §13.1).
+
+**`sim.delay`'s test project (Q-106).** It is this file with the two names
+changed to `AirportSim.Sim.Delay.Tests` and exactly three
+`ProjectReference`s, in this order:
+`../../../src/sim/delay/AirportSim.Sim.Delay.csproj`, then
+`../../../src/sim/airside/AirportSim.Sim.Airside.csproj`, then
+`../../../src/sim/turnaround/AirportSim.Sim.Turnaround.csproj`. `sim.world`,
+`sim.flow` and `sim.schedule` come transitively through `sim.airside`'s own
+references (L2). The second and third exist only for `14` §14.14's
+integrated day, `test_delay_integrated_day_holds_every_invariant`; any other
+use of a module other than `sim.delay` there needs an amendment. The
+production project `AirportSim.Sim.Delay` still references Core only (L2,
+`14` §14.13a).
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">

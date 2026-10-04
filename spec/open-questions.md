@@ -2906,3 +2906,109 @@ Answer:      Architecture. `Build` applies §15.7's "desired promoted"
              mismatch draws nothing rather than failing. No new query or
              shared state. One new test.
 Status:      ANSWERED (spec/15-interfaces-render.md#155-what-is-drawn)
+
+<!-- Q-106 to Q-112: the T-024 batch (Test Author, PR #115), via coordinator. -->
+
+### Q-106 — `sim.delay`: the integrated day cannot reach the other modules
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    T-024 (`14` §14.14 "Integrated day")
+Question:    §14.14's integrated day registers `sim.schedule`, `sim.flow`,
+             `sim.airside` and `sim.turnaround`, but `07` L3 lets
+             `tests/sim/delay` reference only `sim.delay`. It also names
+             no setup for those modules.
+Answer:      Architecture, as Q-087. A third named exception in `07` L3:
+             the delay test project has three `ProjectReference`s, Delay,
+             Airside, Turnaround, used only by
+             `test_delay_integrated_day_holds_every_invariant`. Schedule,
+             flow and world come through Airside. §14.14 "Setup" pins the
+             composition (`16` §16.4 steps 3 and 4), the inputs (the
+             Phase 0 harness content, walk graph, flow graph and schedule,
+             the Q-095 airside fixture, `phase1-five-vehicles.json`) and
+             the rules built in code, with `BoardingHoldMaxMinutes` > 0.
+             Rejected: `tests/integration/`, which Q-077 limits to the D7
+             test and whose project T-031 creates, and T-031 depends on
+             T-024; and moving the test to T-048's harness tests, which
+             would take a done-condition out of T-024.
+Status:      ANSWERED (spec/14-interfaces-delay.md#integrated-day)
+
+### Q-107 — `sim.delay`: the Stand family's key never pairs
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    T-024
+Question:    §14.5 keys the Stand family `(Flight, Stand)`, but `12` §12.7
+             emits `StandUnavailable` with `Stand` null and `StandAssigned`
+             with the granted stand.
+Answer:      Architecture. The Stand key is `(Flight)` only. A flight has
+             at most one open Stand interval, closed by its next
+             `StandAssigned` whatever either `Stand` field holds. `A` and
+             `B` come from the opening event. §14.5 "Keys" also states what
+             the other keys' names mean (`RunwayId`, `TaxiEdgeId`,
+             `JobKind`; `Turnaround` and `PassengerHold` are family
+             names). One new test.
+Status:      ANSWERED (spec/14-interfaces-delay.md#145-blocking-intervals)
+
+### Q-108 — `sim.delay`: a checkpoint for an unknown or pruned flight
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    T-024
+Question:    §14.4 and §14.6 have no rule for a checkpoint milestone of a
+             flight with no record, although intervals, missed passengers
+             and a second `FlightPlanPublished` each have one.
+Answer:      Architecture. Throw, as §14.5 does for intervals, before any
+             state changes. A non-checkpoint milestone is ignored without
+             a lookup. A checkpoint for a retained finalised flight
+             already throws as "after terminal" (§14.6). One new test.
+Status:      ANSWERED (spec/14-interfaces-delay.md#144-the-delay-clock-checkpoints)
+
+### Q-109 — `sim.delay`: `test_survives_save_load` has no save seam
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    T-024
+Question:    No save seam exists (`08` §8.8). Does the replay form (equal
+             hash, queries and `DelayEvent`s at a mid-day save tick, with
+             an interval open across it) satisfy "intervals and counter
+             identical"?
+Answer:      Yes. It applies the owner's `19` §19.5 decision (2026-09-26)
+             to the module test, and decides nothing new. The hash covers
+             the intervals and the counter (§14.13). §14.14 adds that both
+             runs continue past the save tick and stay equal, and that
+             the open interval is allocated after it. The test becomes a
+             snapshot round trip when `sim.save` is specified.
+Status:      ANSWERED (spec/14-interfaces-delay.md#done-condition-tests)
+
+### Q-110 — `sim.delay`: the budget test's load
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    T-024 (`test_delay_budget_max_tier_day_mean_and_p99_within_budget`)
+Question:    `03`'s max-tier fixture defines no event stream for an
+             event-only consumer.
+Answer:      Architecture. The draft's load is adopted: 800 flights a
+             sim-day, four copies of `phase0-200.csv` with distinct
+             `FlightId`s and rotations within a copy, and the generator's
+             checkpoints, lateness and intervals of every family. `03`'s
+             window and statistic otherwise. **LOW CONFIDENCE:** the
+             synthetic density may differ from the real emitters'. The
+             harness measurement wins once T-048 adds `sim.delay`.
+Status:      ANSWERED (spec/14-interfaces-delay.md#1413-state-hashing-rng-and-budget)
+
+### Q-111 — `sim.delay`: "1000 randomly generated flight days"
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    none (clarification)
+Question:    Is it 1000 sim-days or 1000 flight×day lifetimes?
+Answer:      Clarification of the existing text: 1000 sim-days of
+             generated flights, in one continuous run (14 400 000 ticks),
+             Slow by `07` L11a rule (a). The count is `06`'s and is not
+             changed. **For the owner, not decided here:** this adds one
+             long test to every pre-merge Slow run of a PR that touches
+             code. If its CI time is too high, lowering the count is a
+             test-scale and CI-cost decision for the owner, not an agent.
+             No action is needed unless the owner asks.
+Status:      ANSWERED (spec/14-interfaces-delay.md#synthetic-event-streams)
+
+### Q-112 — `sim.delay`: three assumptions to confirm
+Raised by:   Test Author / T-024, via coordinator, 2026-10-04
+Blocking:    none (clarification)
+Answer:      All three confirmed and written down. (1) "Throw" is
+             `new SimInvariantException(message, tick)` with the current
+             tick. The host wraps it once, so a test sees the host's
+             exception with the inner one (§14.1). (2) `FlightDelay` is in
+             `AirportSim.Sim.Delay` (§14.3). (3) The never-writes check
+             requires every `Publish<T>` call in the assembly to have `T`
+             = `DelayEvent` (§14.14).
+Status:      ANSWERED (spec/14-interfaces-delay.md#done-condition-tests)

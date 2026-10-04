@@ -140,6 +140,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
   **`sim.turnaround`'s test project also references `sim.airside`, for
   `13` §13.11's registered-airside tests only (L3, Q-087)**;
+  **`sim.delay`'s test project also references `sim.airside` and
+  `sim.turnaround`, for `14` §14.14's integrated day only (L3, Q-106)**;
   every load failure is `FormatException`
   (Q-030); exact
   exception types; **Slow tests (L11a, owner, 2026-09-29):
@@ -340,9 +342,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   (§14.8); **fifth interval family: passenger hold, `passenger_late`,
   `DelaySource.PassengerHold` (§14.3, §14.5, §14.9, HD, D6)**; **the
   0.40 ms budget covers the event handlers, timed by `03`'s shims (§14.13,
-  Q-064)**.
+  Q-064)**; **the Stand key is the flight alone (§14.5, Q-107)**; "throw"
+  is `SimInvariantException` with the tick, wrapped by the host (§14.1,
+  Q-112); the integrated day's setup, the replay-form save/load test and
+  1000 sim-days for the sum test (§14.14, Q-106, Q-109, Q-111).
 - LC (all accepted as provisional, HD, D8): 2-day retention (§14.2);
   the checkpoint set (§14.4); the cap and recovery order (§14.6).
+  LC, not yet reviewed: the synthetic budget load (§14.13, Q-110).
 - Read if: T-024.
 
 ### `15-interfaces-render.md` — `app.render`
