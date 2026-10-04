@@ -18,14 +18,14 @@ namespace AirportSim.App.Ui
 
         internal UiController(in RenderLayout layout, ILaneCommandSink sink, in GraphicsSettings initialGraphics)
         {
-            if (sink is null)
-            {
-                throw new ArgumentNullException(nameof(sink));
-            }
-
             if (layout.FlowNodes is null)
             {
                 throw new ArgumentException("the layout has no flow node list", nameof(layout));
+            }
+
+            if (sink is null)
+            {
+                throw new ArgumentNullException(nameof(sink));
             }
 
             _boxes = new FlowNodeBox[layout.FlowNodes.Count];
