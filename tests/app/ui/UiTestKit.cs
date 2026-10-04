@@ -13,12 +13,13 @@ namespace AirportSim.App.Ui.Tests
     // 15 §15.4/§15.8/§15.9/§15.14, 16 §16.6, 08 §8.5/§8.7, 09 §9.7b/§9.8 and
     // 07-conventions.md only.
     //
-    // Floats appear only to build and check the values of the float-typed
-    // members of 15 and 17 (ScreenPoint, WorldPoint, CameraView, screen
-    // size), following 15 §15.3's rule for tests/app/render (Q-100). Every
-    // screen and camera value below is chosen so that 17 §17.3's mapping is
-    // exact in binary floating point, so expected world points are exact
-    // whatever order the scene layer evaluates the formula in.
+    // Floats appear only for the values of the float-typed members and
+    // parameters of 15 and 17 (ScreenPoint, WorldPoint, CameraView, screen
+    // size), per 17 §17.2 and 07 L4 (Q-102). Every value is dyadic and chosen
+    // so that every intermediate result of 17 §17.3's mapping is exact, and
+    // results are compared exactly, with no tolerance, whatever order the
+    // scene layer evaluates the formula in. The only non-dyadic values are
+    // the NaN and infinities that 17 §17.5/§17.7 (Q-104) name as inputs.
 
     internal static class UiConst
     {

@@ -115,6 +115,7 @@ namespace AirportSim.App.Ui.Tests
         public readonly List<Submitted> Submits = new List<Submitted>();
         public ulong Tick;
         public CommandRejection Answer = CommandRejection.None;
+        public long CurrentTickReads;
 
         public FakeHost(CallGuard guard, ulong tick)
         {
@@ -122,7 +123,14 @@ namespace AirportSim.App.Ui.Tests
             Tick = tick;
         }
 
-        public ulong CurrentTick => Tick;
+        public ulong CurrentTick
+        {
+            get
+            {
+                CurrentTickReads++;
+                return Tick;
+            }
+        }
 
         public void Step(uint ticks)
         {
