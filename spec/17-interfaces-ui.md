@@ -62,7 +62,10 @@ wall-clock read, no `System.Random`, no static mutable state, and
 values of `float`-typed members and parameters (`ScreenPoint`, the screen
 size, `CameraView`, `WorldPoint`). Every such value is dyadic and chosen so
 that every intermediate result of §17.3's mapping is exact, and results are
-compared exactly (`07` L4).
+compared exactly (`07` L4). The one exemption: the NaN and ±infinity inputs
+that §17.7's argument checks require (a non-finite screen size, a
+non-finite click, Q-104) are written as such. They are the only non-dyadic
+values a test may write.
 
 ---
 
@@ -164,7 +167,7 @@ sim.
   `bundle.json`, a checkpoint dump, a command or a save.
 - **Preference grammar (Q-103).** The decoder accepts exactly the text the
   encoder can produce, and nothing looser:
-  - The text is exactly nine fields separated by single U+0020 spaces, with
+  - The text is exactly eight fields separated by single U+0020 spaces, with
     nothing before the first field or after the last. Any other whitespace,
     including a trailing space, tab, CR or LF, is malformed. A `null` text
     decodes false and does not throw.

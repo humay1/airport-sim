@@ -3629,6 +3629,53 @@ Impact:      - **Q-094:** §15.4 pins a JSON layout format and ordered
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
 
+## 2026-10-04 — spec/14-interfaces-delay.md §14.1, §14.3, §14.4, §14.5, §14.13, §14.14; spec/07-conventions.md L3; INDEX; open-questions — T-024 gaps: test-project reach and integrated-day setup, Stand key, checkpoint for an unknown flight, save/load replay form, budget load, "1000 flight days", three confirmations (Q-106 to Q-112)
+Reason:      The T-024 Test Author (PR #115) could not write the integrated
+             day, which needs four other modules that `07` L3 puts out of
+             reach. The Stand family's key could never pair with what
+             `sim.airside` emits, and four further details were unpinned.
+Raised by:   Q-106 to Q-112
+Impact:      - **Q-106:** `07` L3 gains a third exception. The delay test
+               project has three `ProjectReference`s (Delay, Airside,
+               Turnaround), for `test_delay_integrated_day_holds_every_invariant`
+               only. §14.14 "Setup" pins its composition and inputs. No
+               new fixture. The production project is unchanged. Its
+               content is built in code (small, medium, heavy, super),
+               because the harness content declares only `size_c`, which
+               the airside fixture's stands cannot resolve (review of
+               #117).
+             - **Q-107:** the Stand key is `(Flight)` only. PR #115's
+               generator opens a null-stand and a stand-4 interval for
+               one flight concurrently. Under this rule that throws, so
+               the Test Author must change it. The draft is unmerged.
+               One new test.
+             - **Q-108:** a checkpoint for a flight with no record throws.
+               One new test.
+             - **Q-109:** the replay form satisfies
+               `test_survives_save_load` until `sim.save`, by the owner's
+               `19` §19.5 decision. Both runs must also continue equal
+               past the save tick.
+             - **Q-110:** the budget load is the draft's 800-flight
+               synthetic stream. **LOW CONFIDENCE**, below.
+             - **Q-111, Q-112:** clarifications that match the draft.
+             - **UI fixes folded in (Q-102, Q-103 amended in place):**
+               `17` §17.4a's "nine fields" is now eight, which matches its
+               format line and encoder. `17` §17.2 and `07` L4 exempt the
+               NaN and ±infinity inputs that Q-104 requires from
+               "dyadic". No test or code changes.
+             - **Merged work:** none invalidated. `sim.delay` has no code
+               on `main`, and `sim.airside`/`sim.turnaround` are only
+               referenced, not changed.
+             - **LOW CONFIDENCE (new):** §14.13's synthetic budget load
+               (Q-110). If the harness measurement after T-048 disagrees,
+               the harness wins.
+             - **For the owner (not decided):** the CI cost of
+               `test_sum_of_leaves_equals_total`'s 1000 sim-days in every
+               pre-merge Slow run (Q-111). The count is unchanged.
+             - **Scope:** none added. **PENDING HUMAN:** none blocking.
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).
+
 ## 2026-10-04 — spec/17-interfaces-ui.md §17.2, §17.4a, §17.5, §17.7, §17.9, §17.10; spec/07-conventions.md L4; INDEX; open-questions — T-029 gaps: floats in UI tests, preference grammar, argument checks, lane sink allocation (Q-102 to Q-105)
 Reason:      The T-029 Test Author (PR #113) found four gaps: `07` L4 bans
              floats in `tests/app/ui` although `17`'s types are `float`; the
