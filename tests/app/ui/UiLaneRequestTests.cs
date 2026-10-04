@@ -105,11 +105,15 @@ namespace AirportSim.App.Ui.Tests
             sink.Request(new NodeId(8), 1);
             sink.Request(new NodeId(8), 1);
 
+            // Every submit is checked field by field: node, count, tick.
             (uint Node, int Count)[] expected = { (5U, 2), (6U, 1), (8U, 2) };
             Assert.True(host.Submits.Count == expected.Length, "expected " + expected.Length + " submits, got " + host.Show());
             for (int i = 0; i < expected.Length; i++)
             {
-                Assert.True(host.Submits[i].Node == expected[i].Node && host.Submits[i].Count == expected[i].Count && host.Submits[i].Tick == 301UL, "submit " + i + ": " + host.Show());
+                Submitted s = host.Submits[i];
+                Assert.True(s.Node == expected[i].Node, "submit " + i + ": node " + s.Node + ", expected " + expected[i].Node + ": " + host.Show());
+                Assert.True(s.Count == expected[i].Count, "submit " + i + ": count " + s.Count + ", expected " + expected[i].Count + ": " + host.Show());
+                Assert.True(s.Tick == 301UL, "submit " + i + ": tick " + s.Tick + ", expected 301: " + host.Show());
             }
 
             Assert.Empty(guard.Violations);
@@ -119,9 +123,11 @@ namespace AirportSim.App.Ui.Tests
         [Trait("Category", "Budget")]
         public void test_ui_lane_request_allocates_nothing_after_warm_up()
         {
-            // 17 §17.9: Update allocates nothing after the first call, and the
-            // sink's Request runs inside Update. The warm-up touches every
-            // node and path the metered window uses.
+            // 17 §17.9 (Q-105): Request allocates nothing for a node this sink
+            // has handled before. The warm-up hands it every node the metered
+            // window uses, the non-lane node 4 included, so each later call is
+            // steady state. CountingHost's TrySubmit allocates nothing, and no
+            // call in the window throws.
             var guard = new CallGuard();
             var host = new CountingHost(guard, 1000UL);
             var flow = new FakeFlow(guard).Lanes(5, 6, 3).Lanes(6, 4, 0).Lanes(7, 2, 2);

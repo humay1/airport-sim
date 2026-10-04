@@ -37,6 +37,130 @@ namespace AirportSim.App.Ui.Tests
             Assert.True(sink.Show() == expected, what + ": expected requests " + expected + ", got " + sink.Show());
         }
 
+        /// <summary>Everything a controller exposes, graphics included, and what its sink received.</summary>
+        private static string Snapshot(IUiController ui, RecordingSink sink)
+        {
+            UiFrame f = ui.Frame();
+            return "pacing " + ui.Pacing.Paused + "/" + ui.Pacing.Speed + " frame " + f.Pacing.Paused + "/" + f.Pacing.Speed + " open " + f.SettingsOpen
+                + " graphics " + Gfx.Show(ui.Graphics) + " frame graphics " + Gfx.Show(f.Graphics) + " requests " + sink.Show();
+        }
+
+        // ------------------------------------------------------------ misuse (§17.7, Q-104)
+
+        [Fact]
+        public void test_ui_misused_calls_throw_named_exception_and_change_nothing()
+        {
+            RenderLayout layout = Layouts.Fixture();
+
+            // CreateController: layout.FlowNodes null, then sink null, then initialGraphics.Preset out of the enum.
+            var unused = new RecordingSink();
+            GraphicsSettings badPreset = new GraphicsSettings((GraphicsPreset)4, true, 64, 60, 100, false);
+            Assert.Equal("layout", Assert.Throws<ArgumentException>(() => UiFactory.CreateController(default(RenderLayout), unused, Gfx.Of(GraphicsPreset.High))).ParamName);
+            Assert.Equal("layout", Assert.Throws<ArgumentException>(() => UiFactory.CreateController(default(RenderLayout), null!, badPreset)).ParamName);
+            Assert.Equal("sink", Assert.Throws<ArgumentNullException>(() => UiFactory.CreateController(layout, null!, Gfx.Of(GraphicsPreset.High))).ParamName);
+            Assert.Equal("sink", Assert.Throws<ArgumentNullException>(() => UiFactory.CreateController(layout, null!, badPreset)).ParamName);
+            Assert.Equal("initialGraphics", Assert.Throws<ArgumentOutOfRangeException>(() => UiFactory.CreateController(layout, unused, badPreset)).ParamName);
+            GraphicsSettings negativePreset = new GraphicsSettings((GraphicsPreset)(-1), true, 64, 60, 100, false);
+            Assert.Equal("initialGraphics", Assert.Throws<ArgumentOutOfRangeException>(() => UiFactory.CreateController(layout, unused, negativePreset)).ParamName);
+            Assert.Empty(unused.Requests);
+
+            // CreateLaneCommandSink: host null, then flow null; nothing is called.
+            var guard = new CallGuard();
+            var host = new FakeHost(guard, 40UL);
+            var flow = new FakeFlow(guard).Lanes(5, 6, 2);
+            Assert.Equal("host", Assert.Throws<ArgumentNullException>(() => UiFactory.CreateLaneCommandSink(null!, flow)).ParamName);
+            Assert.Equal("host", Assert.Throws<ArgumentNullException>(() => UiFactory.CreateLaneCommandSink(null!, null!)).ParamName);
+            Assert.Equal("flow", Assert.Throws<ArgumentNullException>(() => UiFactory.CreateLaneCommandSink(host, null!)).ParamName);
+
+            // The production sink's Request: a delta other than ±1 throws before TryGetLaneState, lane or not.
+            ILaneCommandSink laneSink = UiFactory.CreateLaneCommandSink(host, flow);
+            foreach (int delta in new[] { 0, 2, -2, int.MaxValue, int.MinValue })
+            {
+                foreach (uint node in new uint[] { 5, 4 })
+                {
+                    long laneCalls = flow.LaneCalls;
+                    long tickReads = host.CurrentTickReads;
+                    ArgumentOutOfRangeException e = Assert.Throws<ArgumentOutOfRangeException>(() => laneSink.Request(new NodeId(node), delta));
+                    Assert.Equal("delta", e.ParamName);
+                    Assert.True(flow.LaneCalls == laneCalls && host.CurrentTickReads == tickReads && host.Submits.Count == 0, "Request(" + node + ", " + delta + ") touched the sim before throwing");
+                }
+            }
+
+            laneSink.Request(new NodeId(5), 1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => laneSink.Request(new NodeId(5), 2));
+            laneSink.Request(new NodeId(5), 1);
+            Assert.True(host.Submits.Count == 2 && host.Submits[0].Count == 3 && host.Submits[1].Count == 4, "a throwing Request changed the pending target: " + host.Show());
+            Assert.Empty(guard.Violations);
+
+            // IUiController.Update, from a state that is not the initial one.
+            var sink = new RecordingSink();
+            IUiController ui = UiFactory.CreateController(layout, sink, Gfx.Of(GraphicsPreset.Medium));
+            Screen.Update(ui, In.Speed(GameSpeed.X2), In.Pause(), In.Preset(GraphicsPreset.Low), In.Click(440f, 230f));
+
+            void Misuse<T>(IReadOnlyList<UiInput>? inputs, float w, float h, string param, string what)
+                where T : ArgumentException
+            {
+                string before = Snapshot(ui, sink);
+                T e = Assert.Throws<T>(() => ui.Update(inputs!, Screen.Identity, w, h));
+                Assert.True(e.ParamName == param, what + ": ParamName " + e.ParamName + ", expected " + param);
+                string after = Snapshot(ui, sink);
+                Assert.True(after == before, what + ": a throwing Update changed state.\n before " + before + "\n after  " + after);
+            }
+
+            // Every valid kind, a hit among them, so a partly applied list shows.
+            UiInput[] prefix = { In.Pause(), In.Speed(GameSpeed.X4), In.Click(540f, 230f), In.Preset(GraphicsPreset.High), In.Graphics(Gfx.Custom(true, 7, 0, 63, false)), In.Settings() };
+            UiInput badKind = new UiInput((UiInputKind)7, GameSpeed.X1, default, GraphicsPreset.Low, default);
+            UiInput negativeKind = new UiInput((UiInputKind)(-1), GameSpeed.X1, default, GraphicsPreset.Low, default);
+            UiInput badSpeed = In.Speed((GameSpeed)3);
+            UiInput zeroSpeed = In.Speed((GameSpeed)0);
+            UiInput bigSpeed = In.Speed((GameSpeed)8);
+            UiInput badPresetInput = In.Preset((GraphicsPreset)4);
+
+            // 1. inputs null, first.
+            Misuse<ArgumentNullException>(null, Screen.W, Screen.H, "inputs", "null inputs");
+            Misuse<ArgumentNullException>(null, 0f, float.NaN, "inputs", "null inputs and a bad screen");
+
+            // 2. screenWidth, then screenHeight: finite and > 0, checked with no inputs too.
+            foreach (float bad in new[] { 0f, -0f, -1024f, float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+            {
+                Misuse<ArgumentOutOfRangeException>(Array.Empty<UiInput>(), bad, Screen.H, "screenWidth", "screenWidth " + bad + ", no inputs");
+                Misuse<ArgumentOutOfRangeException>(prefix, bad, Screen.H, "screenWidth", "screenWidth " + bad);
+                Misuse<ArgumentOutOfRangeException>(prefix, Screen.W, bad, "screenHeight", "screenHeight " + bad);
+                Misuse<ArgumentOutOfRangeException>(prefix.Append(badKind).ToArray(), bad, bad, "screenWidth", "both sizes " + bad + " and a bad input");
+            }
+
+            // 3. Every input checked before any is applied, wherever the bad one sits.
+            foreach (UiInput bad in new[] { badKind, negativeKind, badSpeed, zeroSpeed, bigSpeed, badPresetInput })
+            {
+                string what = "a " + bad.Kind + " input (speed " + (int)bad.Speed + ", preset " + (int)bad.Preset + ")";
+                Misuse<ArgumentOutOfRangeException>(prefix.Append(bad).ToArray(), Screen.W, Screen.H, "inputs", what + " after valid ones");
+                Misuse<ArgumentOutOfRangeException>(new[] { bad }.Concat(prefix).ToArray(), Screen.W, Screen.H, "inputs", what + " before valid ones");
+            }
+
+            // Also while the settings panel is open, where the modal rule would ignore the input.
+            Screen.Update(ui, In.Settings());
+            Assert.True(ui.Frame().SettingsOpen, "the panel did not open");
+            Misuse<ArgumentOutOfRangeException>(new[] { In.Preset(GraphicsPreset.High), badSpeed }, Screen.W, Screen.H, "inputs", "a bad SetSpeed with the panel open");
+            Misuse<ArgumentOutOfRangeException>(new[] { In.Settings(), badKind }, Screen.W, Screen.H, "inputs", "a bad Kind with the panel open");
+            Screen.Update(ui, In.Settings());
+
+            // Only the field the Kind uses is checked, Custom is ignored, and a click is never an error.
+            string start = Snapshot(ui, sink);
+            Screen.Update(
+                ui,
+                new UiInput(UiInputKind.TogglePause, (GameSpeed)3, default, (GraphicsPreset)9, default),
+                new UiInput(UiInputKind.TogglePause, (GameSpeed)0, default, (GraphicsPreset)(-1), default),
+                new UiInput(UiInputKind.SetSpeed, GameSpeed.X4, default, (GraphicsPreset)9, default),
+                new UiInput(UiInputKind.SetGraphicsPreset, (GameSpeed)3, default, GraphicsPreset.Custom, default),
+                new UiInput(UiInputKind.PrimaryClick, (GameSpeed)3, new ScreenPoint(float.NaN, 230f), (GraphicsPreset)9, default),
+                In.Click(float.PositiveInfinity, 230f),
+                In.RightClick(float.NegativeInfinity, float.NaN),
+                new UiInput(UiInputKind.SecondaryClick, (GameSpeed)0, new ScreenPoint(540f, 230f), (GraphicsPreset)4, default));
+            Pace.AssertBoth(true, GameSpeed.X4, ui, "after the non-throwing inputs");
+            Assert.True(sink.Show() == "[(5,+1) (6,-1)]", "non-finite clicks must hit nothing, the last click must hit box 6: " + sink.Show() + " (started from " + start + ")");
+            Gfx.AssertSame(Gfx.Of(GraphicsPreset.Low), ui.Graphics, "SetGraphicsPreset(Custom) is ignored");
+        }
+
         // ------------------------------------------------------------ surface
 
         [Fact]
