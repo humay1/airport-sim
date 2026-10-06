@@ -62,8 +62,9 @@ namespace AirportSim.App.Host.Tests
         {
             // 16 §16.8 "Run's stages and failures" (Q-120): every failure is the
             // return value 3, never an exception; stages 1 to 3 leave no file, an
-            // existing OutputPath is never overwritten, and a 3 writes one
-            // message to Console.Error. Success returns 0 and writes nothing.
+            // existing OutputPath is never overwritten, and a 3 writes exactly
+            // one "FAIL checkpoints " line to Console.Error. Success returns 0
+            // and writes nothing.
             using var tmp = new TempDir();
             IHeadlessRun run = HostFactory.CreateHeadlessRun(HostFactory.CreateSimComposer(B.Content(B.Phase1Content)));
             TextWriter oldOut = Console.Out;
@@ -100,7 +101,13 @@ namespace AirportSim.App.Host.Tests
                     Exception? e = Record.Exception(() => code = run.Run(bundle, new CheckpointRunRequest(1, path)));
                     Assert.True(e == null, label + ": Run threw " + e);
                     Assert.True(code == 3, label + ": Run returned " + code);
-                    Assert.False(string.IsNullOrWhiteSpace(errText.ToString()), label + ": no message on Console.Error");
+                    // Exactly one line, starting "FAIL checkpoints " (Q-120); its
+                    // stage words and detail are not asserted.
+                    string err = errText.ToString();
+                    string line = err.EndsWith("\r\n", StringComparison.Ordinal) ? err.Substring(0, err.Length - 2)
+                        : err.EndsWith("\n", StringComparison.Ordinal) ? err.Substring(0, err.Length - 1) : err;
+                    Assert.True(line.Length < err.Length && line.IndexOf('\n') < 0 && line.IndexOf('\r') < 0, label + ": Console.Error is not exactly one line: '" + err + "'");
+                    Assert.True(line.StartsWith("FAIL checkpoints ", StringComparison.Ordinal), label + ": the Console.Error line does not start with 'FAIL checkpoints ': '" + err + "'");
                     if (newFile != null)
                     {
                         Assert.False(File.Exists(newFile) || Directory.Exists(newFile), label + ": created " + newFile);
