@@ -68,7 +68,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   failure procedure.
 - Key: no floats in sim state; single seeded RNG with per-system streams; no
   hash-order iteration; five gates block merges. It is unchanged by D1–D9.
-  The proposed Mono-vs-CoreCLR gate is in `16` §16.9 and not yet adopted.
+  The Mono-vs-CoreCLR check is in `16` §16.9: adopted by the owner as a
+  non-required step of `unity-build`, so it is not in `02`'s table (Q-115).
 - LC: none.
 - Read if: any sim or harness task (all of it).
 
@@ -387,7 +388,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 ### `16-interfaces-host.md` — `app.host` (new, D7)
 - Owns: the Unity project `unity/AirportSim/`, the headless composition root,
   the scenario bundle, the frame loop, the bootstrap, the checkpoint dump, the
-  proposed cross-runtime gate.
+  non-required cross-runtime check.
 - Key: **Mono backend and the CI-tested assemblies as plugins (§16.2)**;
   composition is a pure function of the bundle's bytes (§16.4); frame order
   is UI, then promotion, then `Step`, then build (§16.6); the byte-exact
@@ -412,9 +413,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   batch-mode smoke; backends are `file:` local packages, `.meta` files
   are committed, the build step is an editor build callback, and
   `TryParse` ignores engine arguments (§16.2, §16.3, §16.7, §16.8,
-  Q-114)**.
-- LC: Unity mechanics no agent can run (§16.2, Q-114);
-  the gate runs nightly on the real player (§16.9, proposed, not adopted);
+  Q-114)**; **`cross_runtime`: in `unity-build`, after the smoke, the
+  harness `checkpoints --days 1` over the player's staged
+  `AirportSim_Data/StreamingAssets/{Scenario,Content}` is `cmp`'d whole
+  with the smoke's dump; non-required, HD owner 2026-10-06 (§16.9,
+  Q-115)**.
+- LC: Unity mechanics no agent can run (§16.2, Q-114); the staged
+  streaming-assets path and its byte copies (§16.9, Q-115);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
   Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
   Q-069).
@@ -514,13 +519,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: Q-115 (HUMAN DECISION: should `unity-build` become the
-  §16.9 gate), not blocking. Every other question from Q-002 on is answered
+- Open now: none. Every question from Q-002 on is answered
   (Q-016 by the owner: `--fast`
-  green until T-006 merges); Q-001 was deleted (D9).
+  green until T-006 merges; Q-115 by the owner: §16.9 adopted as
+  non-required); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
-  balance values (`04`), adoption of the cross-runtime gate (`16` §16.9,
-  Q-115), the `.gitignore` entries for the Unity build output (`16`
+  balance values (`04`), whether §16.9 later becomes required (`16`
+  §16.12), the `.gitignore` entries for the Unity build output (`16`
   §16.12),
   and review of the Q-034 LOW CONFIDENCE proposals: the `Low` and `Medium`
   values (`15` §15.14) and the 2 GB memory budget (`16` §16.10); and the

@@ -3172,4 +3172,15 @@ Why it matters: it is the only check of Mono against CoreCLR. Adopting it
              `unity.yml` (owner) and decides whether the job becomes
              required, which `01-architecture.md`'s "no engine, no licence"
              gate rationale keeps out of the per-merge gates.
-Status:      OPEN — HUMAN DECISION (owner)
+Answer:      HUMAN DECISION, owner, 2026-10-06. Yes, as a **non-required**
+             step `cross_runtime` of `unity-build`, right after the smoke,
+             wherever the job runs (PRs on its paths, nightly, by hand). It
+             starts once T-034's build step makes the smoke run. It is not
+             a row of `02-determinism.md`, which lists required gates, and
+             `01` is unchanged. The harness runs `checkpoints --days 1` over
+             the player's staged `AirportSim_Data/StreamingAssets/Scenario`
+             and `Content`, and the two dumps are compared whole, byte for
+             byte. After some weeks of clean runs the owner decides whether
+             to make it required. LOW CONFIDENCE: the staged path and its
+             byte copies depend on Unity's player build.
+Status:      ANSWERED (spec/16-interfaces-host.md#169-the-cross-runtime-determinism-check--adopted-not-required-d1-q-115)

@@ -34,7 +34,7 @@ playable build), not for T-020.
   and nothing else (§16.7);
 - **the headless checkpoint run** and the checkpoint dump format (§16.8), used
   to prove the host composes the same sim as `tools.simharness` and by the
-  proposed cross-runtime gate (§16.9).
+  non-required cross-runtime check (§16.9).
 
 `app.host` explicitly does **not** own, and must not do:
 
@@ -57,7 +57,7 @@ playable build), not for T-020.
 | Engine references | **none**, asserted by test | Unity 6 |
 | Target | `netstandard2.1`, `LangVersion 9` (`01-architecture.md`, D1) | compiled by Unity |
 | Built by | `AirportSim.sln` | the Unity editor / player build |
-| Tested in CI | yes, §16.11 | build-checked only: `unity-build` (below), not a required check and not a determinism gate; behaviour is checked by review, and by §16.9 if that gate is adopted |
+| Tested in CI | yes, §16.11 | build-checked only: `unity-build` (below), not a required check and not a determinism gate; behaviour is checked by review, and by §16.9's non-required `cross_runtime` step |
 
 Binding Unity project settings:
 
@@ -134,11 +134,14 @@ owner-owned, like `ci/`. It runs on pull requests and pushes touching
    step 3: the player runs as `-batchmode -nographics -logFile -
    -airportsim-checkpoints 1 <path>`, must exit 0, and the dump's first
    line must be `airport-sim-checkpoints 1` (§16.8).
+5. **`cross_runtime`**, only when the smoke ran: the harness dump of the
+   same staged bundle is compared with the smoke's dump, byte for byte
+   (§16.9, owner, Q-115).
 
 "Unity build green" in a task's Done-when means this job passed on the
 PR's head. It checks that the project, the backends and the bootstrap
 compile and that a player builds. The smoke checks that batch mode runs a
-day. Neither compares a hash: that is §16.9, which stays proposed.
+day, and `cross_runtime` that the day's dump equals CoreCLR's (§16.9).
 
 > **LOW CONFIDENCE — Unity mechanics no agent can run.** Local packages
 > by `file:` path, hand-written `.meta` GUIDs and the build step's
@@ -529,9 +532,9 @@ playtest bundle is compared by §16.9's procedure.
 > Phase 1 test bundle, not on the shipped playtest bundle, because the
 > playtest bundle does not exist when the headless host merges. A
 > difference that only the playtest bundle's files expose is caught by
-> §16.9's procedure, by hand, until that gate is adopted. That procedure
-> reads the build step's copy of the playtest bundle (§16.9 step 1), so
-> it can run as soon as the Unity shell task has committed the bundle.
+> §16.9's `cross_runtime` step, which reads the player's staged copy of
+> the playtest bundle (§16.9 step 1) and runs as soon as the Unity shell
+> task's build step assembles it.
 
 **Where the D7 test lives (Q-077).** `tests/integration/`, the one test
 project that references both `src/app/host` and `tools/SimHarness` (`07`
@@ -543,7 +546,7 @@ in `tests/app/host/`.
 
 ---
 
-## 16.9 The cross-runtime determinism gate — PROPOSED (D1)
+## 16.9 The cross-runtime determinism check — ADOPTED, NOT REQUIRED (D1, Q-115)
 
 **Why.** The contract of `02-determinism.md` is "bit-identical ... on every
 machine". D1 ships the sim on Unity's Mono and tests it on CoreCLR, and every
@@ -551,57 +554,93 @@ existing gate runs CoreCLR only. A violation of `07-conventions.md` "Runtime
 portability" can pass every one of those gates, for example a tie in
 `List<T>.Sort` that CoreCLR happens to resolve the same way on every run.
 
-**`determinism_cross_runtime`:**
+**Status: adopted as a non-required check.** HUMAN DECISION, owner,
+2026-10-06 (Q-115). It is the step `cross_runtime` of the `unity-build`
+job (§16.2), right after the smoke, and it runs wherever that job runs:
+pull requests and pushes on its paths, nightly, and by hand. Like the
+job, it is **not** a required status check, and it is **not** a row of
+`02-determinism.md`'s gate table, which lists required gates only. After
+some weeks of clean runs the owner decides whether to make it required.
+That decision, and any `02` row it brings, are the owner's. It starts to
+run when the smoke does, that is once T-034's build step assembles
+`StreamingAssets/Scenario/` (§16.3). Until then it is skipped with the
+smoke. The workflow is owner-owned, so no task writes it.
 
-1. **CoreCLR:** `tools.simharness checkpoints --bundle
-   unity/AirportSim/Assets/StreamingAssets/Scenario --content
-   unity/AirportSim/Assets/StreamingAssets/Content --days 10 --out a`
-   (`19` §19.2c). It runs after the player build step (§16.3). That step
-   assembles the playtest bundle, meaning every file of §16.3's
-   playtest-bundle table, `world.fixture` included, in
-   `Assets/StreamingAssets/Scenario/`, and copies `data/`
-   into `Assets/StreamingAssets/Content/`. So the harness reads exactly
-   the bytes the player reads. Both directories are build output and are
-   never committed. `unity/AirportSim/Scenario/` holds only `bundle.json`
-   and is not a complete bundle, so it is never passed as `--bundle`.
-2. **Mono:** the Unity player build of `unity/AirportSim/` (Mono backend,
-   §16.2), built by that same build step, started as
-   `-batchmode -nographics -airportsim-checkpoints 10 b`.
-3. **Pass:** `a` and `b` are byte-identical (§16.8).
+**`cross_runtime`, exactly.** All paths below are relative to the
+workspace root, the repository root, where `unity-builder` writes
+`build/`.
 
-`B`, the scenario that both sides run, is the Phase 1 playtest bundle,
-with every Phase 1 system registered.
-Ten days matches `determinism_cross_process`. The Mono side must be the
+1. **The bundle both sides read** is the player's own staged copy:
+   `build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario/` and
+   `build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Content/`.
+   That is where the Linux player's
+   `Application.streamingAssetsPath` points, so the harness reads the very
+   bytes the player read. They are not the project's
+   `Assets/StreamingAssets/` directories: Unity may write `.meta` files
+   there, and the harness lists the content directory (`19` §19.2c). If
+   either staged directory is missing, the step fails (below). It never
+   falls back to another path.
+2. **Mono (the player's dump)** is the smoke's own output (§16.2 step 4,
+   §16.7): `build/StandaloneLinux64/AirportSim -batchmode -nographics
+   -logFile - -airportsim-checkpoints 1 "$PWD/checkpoints.txt"`. It must
+   exit 0. No second player run is made.
+3. **CoreCLR (the reference dump):**
+   `dotnet run --project tools/SimHarness -c Release --no-build --
+   checkpoints --bundle
+   "$PWD/build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario"
+   --content
+   "$PWD/build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Content"
+   --days 1 --out "$RUNNER_TEMP/harness-checkpoints.txt"`, after the
+   job's Release build (§16.2 step 2), which already built the harness.
+   It must exit 0 and print its `WROTE checkpoints` line (`19` §19.3).
+   The paths are fully qualified, so the harness uses them as given (`19`
+   §19.2c "Paths"). The `--out` file must not exist beforehand.
+4. **The seed** is not an argument on either side. Both read it from the
+   staged bundle's `bundle.json`, whose source is the committed
+   `unity/AirportSim/Scenario/bundle.json` (§16.3). The days are **1** on
+   both sides, as the smoke runs.
+5. **The comparison** is the whole of both files, byte for byte (`cmp`),
+   with no normalisation: no line-ending, BOM, whitespace or trailing
+   newline conversion. Both writers emit the §16.8 format, UTF-8 without a
+   BOM, LF only, with a final newline, so any such difference is a
+   failure of one writer. Pass: the files are identical.
+6. **Failure.** The step exits 1 and prints exactly one first line,
+   then context:
+   - dumps differ: `FAIL cross_runtime days=1 line=<n>`, where `<n>` is
+     the 1-based number of the first differing line (a missing line
+     counts as differing), then `harness: <that line of the harness
+     dump>` and `player:  <that line of the player dump>`, with
+     `<missing>` for a line that does not exist. By §16.8, line 3 names
+     the systems, and from line 4 on the line's first field is the tick,
+     and each later column is one system's hash in that order;
+   - the harness exits non-zero: `FAIL cross_runtime harness exit=<code>`,
+     then its stderr;
+   - a staged directory is missing:
+     `FAIL cross_runtime missing <path>`.
+
+Ten days, as `determinism_cross_process` runs, is not used here: one day
+keeps a single player run per job, and the owner may lengthen it with
+the decision to make the check required. The Mono side must be the
 **real player**. Unity ships its own fork of Mono and its own class
 libraries, so a pass on a standalone upstream Mono proves little about the
 shipped build.
 
-**Status: proposed, not a gate.** The player build needs the Unity editor and
-a licence on the build agent, which is what `01-architecture.md` keeps out of
-the per-merge gates. Making this a gate means adding a row to
-`02-determinism.md`'s gate table (locked) and a step to `ci/` (human-only).
-Both are **escalated to the owner**. The proposed cadence is nightly, beside
-`soak_500_days`, and additionally on any change to the Unity version, the
-target framework or the plugin set. Until the owner adopts it, the Planner
-can task its pieces so it can be run by hand: the harness `checkpoints`
-subcommand, `IHeadlessRun`, the dump writer and the bootstrap's batch mode.
+**When it fails.** It is not required, so it does not block a merge. A
+failure is still a determinism defect. It is reported to the owner and
+handled as `02-determinism.md` "When a gate fails" describes for the
+soak. It is never fixed by editing either dump, the comparison or the
+day count.
 
-**Since `c48e163` (open for the owner, Q-115).** CI now builds the real
-Linux player nightly and on Unity-path changes (`unity-build`, §16.2), and
-its smoke already runs `-airportsim-checkpoints 1`. So step 2 exists, and
-step 1 could run in the same job, after step 3 of `unity-build`, over the
-directories its build step assembles. Adopting that as §16.9 still needs
-the owner: the `02-determinism.md` gate-table row, the workflow change,
-the day count (1 as the smoke runs, or 10 as above), and whether the job
-then becomes required. Until then the smoke compares nothing, and no task
-adds a comparison to it.
-
-> **LOW CONFIDENCE — nightly, and the real player.** Nightly means a
-> Mono-only drift can merge and live for up to a day before it is caught. The
-> nightly failure then follows `02-determinism.md` "When a gate fails", as
-> the soak does. Per-merge would catch it at once but puts Unity in every
-> merge's path. Using the real player is slower and needs a licence, but a
-> standalone Mono run does not test the class libraries that ship.
+> **LOW CONFIDENCE — Unity behaviour (Q-115).** Two things depend on how
+> Unity's Linux player build behaves, and no agent can check them. First,
+> that the staged streaming assets are at `AirportSim_Data/StreamingAssets/`
+> under `build/StandaloneLinux64/`, from `unity-builder`'s `buildName`
+> `AirportSim`. Second, that they are byte copies of the build step's
+> files, with no `.meta` files. The first `unity-build` run after T-034
+> checks both: a `missing` failure, or a harness content-load failure
+> naming a `.meta` file, is a spec question, filed. Nightly, plus PRs on
+> the Unity paths only, still means a Mono-only drift from a sim-only PR
+> can live up to a day before it is caught.
 
 ---
 
@@ -645,6 +684,13 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
   among them are the owner's. CI checks it only through `unity-build`
   (§16.2). Its build step is what makes the smoke run, so its Done-when
   includes `unity-build` green **with the smoke step run**, not skipped.
+  That PR is also the first run of §16.9's `cross_runtime` step, so its
+  Done-when includes that step **run, not skipped**, and its result
+  quoted in the PR. A `missing` failure or a harness load failure on the
+  staged files is T-034's to fix. A difference between two dumps that
+  both loaded and ran is a determinism defect reported to the owner, not
+  fixed in T-034. T-034 adds nothing for the step: the comparison lives in the
+  owner's workflow, and the bundle and batch mode already exist.
 - **Engine backends** (`15` §15.10, `17` §17.8): each one's Done-when
   includes `unity-build` green on its PR, with its package referenced
   from `Packages/manifest.json` (§16.2). The smoke is skipped until the
@@ -676,8 +722,9 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
 - **Gate assignment** (`18` §18.5): deferred to the owner; Phase 0/1 pools
   gates.
-- **§16.9 adoption**: an owner decision, because it touches
-  `02-determinism.md` and `ci/` (and now `unity.yml`, Q-115).
+- **§16.9 as a required check**: adopted as non-required (owner,
+  2026-10-06, Q-115). Making it required, with any `02-determinism.md`
+  row, is the owner's later decision.
 - **Ignored build output** (§16.2): the owner adds
   `unity/AirportSim/Assets/StreamingAssets/`, its `.meta` and
   `unity/AirportSim/Packages/packages-lock.json` to `.gitignore`.

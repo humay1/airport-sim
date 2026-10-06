@@ -3780,3 +3780,37 @@ Impact:      - **Q-113 (fix for T-048):** the bundles get their own airside
                `.meta` and `Packages/packages-lock.json` (§16.12).
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
+
+## 2026-10-06 — spec/16 §16.1, §16.2, §16.8 (D7 note), §16.9 (rewritten), §16.11, §16.12; INDEX; open-questions — Q-115 HUMAN DECISION: the cross-runtime check is adopted, non-required, inside `unity-build`
+Reason:      The owner decided Q-115: adopt §16.9's Mono-against-CoreCLR
+             byte comparison as a non-required step of `unity-build`, from
+             the first run with the smoke, and decide later, after clean
+             runs, whether to make it required.
+Raised by:   Q-115 (owner decision, relayed by the coordinator)
+Impact:      - **§16.9 is executable.** Step `cross_runtime`, after the
+               smoke: the harness runs `checkpoints --days 1` over the
+               player's staged
+               `build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario`
+               and `.../Content`, with fully qualified paths and `--no-build`
+               after the job's Release build. Its dump is compared with the
+               smoke's `checkpoints.txt` whole, byte for byte, with no
+               normalisation. The seed comes from the staged `bundle.json`
+               on both sides. Failure lines are pinned. Ten days and the
+               old project-directory paths are dropped.
+             - **Not in `02`, `01` unchanged.** `02`'s table lists required
+               gates; this check is not one. Making it required is the
+               owner's later decision (§16.12).
+             - **Workflow (owner):** one step in `unity.yml`, which the
+               coordinator prepares. No task writes it.
+             - **T-034:** its Done-when also includes the step having run
+               (not skipped), with the result quoted in the PR. A staging
+               or load failure is T-034's to fix. A dump difference is a
+               determinism defect for the owner. No new code for T-034.
+             - **Merged work:** none affected.
+             - **LOW CONFIDENCE:** the staged streaming-assets path under
+               `AirportSim_Data/` and that the staged files are byte copies
+               with no `.meta` files. Both depend on Unity's player build,
+               which no agent can run. The first run after T-034 checks them.
+             - **Scope:** none added (D1 already proposed the check).
+               **PENDING HUMAN:** whether it becomes required.
+Signed off:  human (owner, 2026-10-06, Q-115).
