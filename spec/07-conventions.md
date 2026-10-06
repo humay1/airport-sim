@@ -199,13 +199,16 @@ the test project and seeded with an integer literal inside the test. When the
 test fails, its message names the seed and the iteration index.
 `System.Random` is not used anywhere, tests included (`CLAUDE.md`: "No
 `Random` outside the seeded RNG service"). Integer arithmetic only, because
-`08` §8.3 bans floating point in tests too. There are two exceptions.
+`08` §8.3 bans floating point in tests too. There are three exceptions.
 `tests/app/render/` may use `float` for the values of `15`'s `float`-typed
 members only (`15` §15.3, Q-100). `tests/app/ui/` may use `float` for the
 values of `15`'s and `17`'s `float`-typed members and parameters only
-(`17` §17.2, Q-102). There, every float value a test writes is dyadic,
+(`17` §17.2, Q-102). `tests/app/host/` may use `float` for the values of
+`15`'s, `16`'s and `17`'s `float`-typed members and parameters only, such
+as `CameraView` and `FrameInput`'s screen size (`16` §16.11, Q-116).
+There, every float value a test writes is dyadic,
 except the NaN and ±infinity inputs that `17`'s argument checks require
-(Q-104), and is
+(Q-104), which `tests/app/host/` never writes, and is
 chosen so that every intermediate result of the computation under test is
 exactly representable as a `float`, and results are compared exactly, with
 no tolerance. Test code may use `net8.0`-only

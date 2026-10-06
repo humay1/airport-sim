@@ -698,13 +698,13 @@ Unity ships production CoreCLR (.NET 10).
 `unity/AirportSim/`: scenes, settings and the build
 (`16-interfaces-host.md` §16.2).
 
-**(c) The composition root — DECIDED, with its construction step open.**
+**(c) The composition root — DECIDED.**
 HUMAN DECISION — owner (delegated), 2026-09-23 (D7). `app.host`'s headless
 part (`src/app/host/`) builds `ISimHost` and the systems from a scenario
 bundle and hands read-only views to presentation (`16` §16.3 to §16.5). A
 thin Unity bootstrap only calls it (§16.7), and it also runs the frame loop
-(§16.6). How each module's system is constructed is still unpublished; that
-is `open-questions.md` Q-009.
+(§16.6). How each module's system is constructed is published in `08`
+§8.11a and each module's Construction section (Q-009).
 
 **(d) Game speeds — DECIDED.** HUMAN DECISION — owner (delegated),
 2026-09-23 (D4). Pause, 1x, 2x and 4x. Higher speeds wait for T-011's budget

@@ -420,9 +420,19 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `AirportSim_Data/StreamingAssets/{Scenario,Content}`); the harness
   `checkpoints --days 1` over them is `cmp`'d whole with the dump; it
   never affects "`unity-build` green"; HD owner 2026-10-06 (§16.9,
-  Q-115)**.
-- LC: Unity mechanics no agent can run (§16.2, Q-114); the staged
-  streaming-assets path and its byte copies (§16.9, Q-115);
+  Q-115)**; **host load failures are `FormatException` starting with the
+  bundle file name, checked in a pinned order, and the layout's
+  `sourceName` is `render_layout.fixture` (§16.4, §16.5, Q-118, Q-121);
+  `HostFactory.LoadContent` returns the content loader's list (§16.3,
+  Q-117); `FrameInput` members are PascalCase (§16.6, Q-119); `Run`
+  returns 3 on any failure and never overwrites (§16.8, Q-120); engine
+  arguments never sit between the token and its values (§16.8, Q-122); a
+  composer may compose many times (§16.4, Q-123); the player is
+  `AirportSim.x86_64`, and the build step refreshes the asset database
+  (§16.3, §16.9, Q-124)**.
+- LC: Unity mechanics no agent can run (§16.2, Q-114); that the staged
+  streaming assets are byte copies (§16.9, Q-115); where `Run`'s
+  console message goes in the player (§16.8, Q-120);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
   Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
   Q-069).
