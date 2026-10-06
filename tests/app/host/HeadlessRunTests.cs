@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using AirportSim.Sim.Core;
 using Xunit;
 using B = AirportSim.App.Host.Tests.Bundles;
@@ -54,6 +55,67 @@ namespace AirportSim.App.Host.Tests
             Assert.Equal(2UL * SimConstants.TICKS_PER_SIM_DAY, kit.Host.CurrentTick);
             Dumps.AssertBytesEqual(kit.Dump(B.Seed), dump, "Run's two-day dump");
             CheckpointDumpTests.AssertShape(dump, "systems sim.world sim.schedule sim.airside sim.flow sim.turnaround sim.delay", 6, 48);
+        }
+
+        [Fact]
+        public void test_headless_run_failure_returns_3_and_writes_no_file()
+        {
+            // 16 §16.8 "Run's stages and failures" (Q-120): every failure is the
+            // return value 3, never an exception; stages 1 to 3 leave no file, an
+            // existing OutputPath is never overwritten, and a 3 writes one
+            // message to Console.Error. Success returns 0 and writes nothing.
+            using var tmp = new TempDir();
+            IHeadlessRun run = HostFactory.CreateHeadlessRun(HostFactory.CreateSimComposer(B.Content(B.Phase1Content)));
+            TextWriter oldOut = Console.Out;
+            TextWriter oldErr = Console.Error;
+            try
+            {
+                // Control: the same run with a fresh path succeeds, silently.
+                var outText = new StringWriter();
+                var errText = new StringWriter();
+                Console.SetOut(outText);
+                Console.SetError(errText);
+                int ok = run.Run(B.Phase1Bundle(), new CheckpointRunRequest(1, tmp.File("ok")));
+                Assert.Equal(0, ok);
+                Assert.True(File.Exists(tmp.File("ok")), "the control run wrote no dump");
+                Assert.True(outText.ToString().Length == 0 && errText.ToString().Length == 0, "a successful Run wrote to the console");
+
+                byte[] existing = B.Utf8("not a dump\n");
+                File.WriteAllBytes(tmp.File("existing"), existing);
+                Directory.CreateDirectory(tmp.File("dir"));
+                var cases = new List<(string Label, MemoryBundle Bundle, string Path, string? NewFile)>
+                {
+                    ("an existing OutputPath file", B.Phase1Bundle(), tmp.File("existing"), null),
+                    ("an existing OutputPath directory", B.Phase1Bundle(), tmp.File("dir"), null),
+                    ("a missing parent directory", B.Phase1Bundle(), Path.Combine(tmp.File("missing"), "dump"), Path.Combine(tmp.File("missing"), "dump")),
+                    ("a bundle with a load failure (no schedule.csv)", B.Phase1Bundle().Remove("schedule.csv"), tmp.File("load"), tmp.File("load")),
+                    ("a bundle with a load failure (bad bundle.json)", B.Phase1Bundle().Put("bundle.json", B.Utf8("{")), tmp.File("json"), tmp.File("json")),
+                };
+
+                foreach ((string label, MemoryBundle bundle, string path, string? newFile) in cases)
+                {
+                    errText = new StringWriter();
+                    Console.SetError(errText);
+                    int code = -1;
+                    Exception? e = Record.Exception(() => code = run.Run(bundle, new CheckpointRunRequest(1, path)));
+                    Assert.True(e == null, label + ": Run threw " + e);
+                    Assert.True(code == 3, label + ": Run returned " + code);
+                    Assert.False(string.IsNullOrWhiteSpace(errText.ToString()), label + ": no message on Console.Error");
+                    if (newFile != null)
+                    {
+                        Assert.False(File.Exists(newFile) || Directory.Exists(newFile), label + ": created " + newFile);
+                    }
+                }
+
+                Assert.Equal(existing, File.ReadAllBytes(tmp.File("existing")));
+                Assert.Empty(Directory.GetFileSystemEntries(tmp.File("dir")));
+                Assert.False(Directory.Exists(tmp.File("missing")), "Run created the missing parent directory");
+            }
+            finally
+            {
+                Console.SetOut(oldOut);
+                Console.SetError(oldErr);
+            }
         }
 
         [Fact]
