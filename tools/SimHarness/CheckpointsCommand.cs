@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using AirportSim.Sim.Airside;
 using AirportSim.Sim.Core;
+using AirportSim.Sim.Delay;
 using AirportSim.Sim.Flow;
 using AirportSim.Sim.Schedule;
+using AirportSim.Sim.Turnaround;
 using AirportSim.Sim.World;
 
 namespace AirportSim.Tools.SimHarness
@@ -22,6 +25,9 @@ namespace AirportSim.Tools.SimHarness
         private const string WorldFile = "world.fixture";
         private const string ScheduleFile = "schedule.csv";
         private const string FlowFile = "flow.fixture";
+        private const string AirsideFile = "airside.fixture";
+        private const string AirsideRulesFile = "airside_rules.json";
+        private const string TurnaroundFile = "turnaround.fixture";
 
         private const string World = "sim.world";
         private const string Schedule = "sim.schedule";
@@ -82,6 +88,9 @@ namespace AirportSim.Tools.SimHarness
             byte[]? worldBytes = listed.Contains(World) ? ReadBundleFile(bundleDir, WorldFile) : null;
             byte[]? scheduleBytes = listed.Contains(Schedule) ? ReadBundleFile(bundleDir, ScheduleFile) : null;
             byte[]? flowBytes = listed.Contains(Flow) ? ReadBundleFile(bundleDir, FlowFile) : null;
+            byte[]? airsideBytes = listed.Contains(Airside) ? ReadBundleFile(bundleDir, AirsideFile) : null;
+            byte[]? rulesBytes = listed.Contains(Airside) ? ReadBundleFile(bundleDir, AirsideRulesFile) : null;
+            byte[]? turnaroundBytes = listed.Contains(Turnaround) ? ReadBundleFile(bundleDir, TurnaroundFile) : null;
 
             IContentIndex content = LoadContent(contentDir);
 
@@ -94,6 +103,9 @@ namespace AirportSim.Tools.SimHarness
             IWorldSystem? world = null;
             IFlowSystem? flow = null;
             IScheduleSystem? schedule = null;
+            ISimSystem? airside = null;
+            ISimSystem? turnaround = null;
+            ISimSystem? delay = null;
             if (worldBytes != null)
             {
                 WalkGraph walk = WorldFactory.CreateGraphLoader().Load(worldBytes, WorldFile);
@@ -109,6 +121,21 @@ namespace AirportSim.Tools.SimHarness
                 ScheduleTable table = ScheduleFactory.CreateLoader().Load(scheduleBytes, ScheduleFile);
                 schedule = ScheduleFactory.CreateSystem(services, table, flow);
             }
+            if (airsideBytes != null)
+            {
+                AirsideLayout layout = AirsideFactory.CreateLayoutLoader().Parse(airsideBytes, AirsideFile);
+                AirsideRules rules = ParseRules(rulesBytes!);
+                airside = AirsideFactory.CreateSystem(services, layout, rules, schedule!, flow, listed.Contains(Turnaround));
+            }
+            if (turnaroundBytes != null)
+            {
+                TurnaroundSetup setup = TurnaroundFactory.CreateSetupLoader().Load(turnaroundBytes, TurnaroundFile);
+                turnaround = TurnaroundFactory.CreateSystem(services, setup, schedule!);
+            }
+            if (listed.Contains(Delay))
+            {
+                delay = DelayFactory.CreateSystem(services);
+            }
 
             // Registry order (08 §8.5): world, schedule, flow.
             var registered = new List<ISimSystem>(3);
@@ -120,9 +147,21 @@ namespace AirportSim.Tools.SimHarness
             {
                 registered.Add(schedule);
             }
+            if (airside != null)
+            {
+                registered.Add(airside);
+            }
             if (flow != null)
             {
                 registered.Add(flow);
+            }
+            if (turnaround != null)
+            {
+                registered.Add(turnaround);
+            }
+            if (delay != null)
+            {
+                registered.Add(delay);
             }
             foreach (ISimSystem system in registered)
             {
@@ -295,20 +334,68 @@ namespace AirportSim.Tools.SimHarness
             return text.Length == 1 || text[0] != '0';
         }
 
-        /// <summary>This stage composes world, schedule and flow only; flow needs world (16 §16.4).</summary>
+        /// <summary>
+        /// A listed system whose downward interface is not listed is exit 3 (16 �16.4): flow needs
+        /// world; schedule's flow is optional; airside and turnaround need schedule.
+        /// </summary>
         private static void CheckComposable(HashSet<string> listed)
         {
-            foreach (string name in new[] { Airside, Turnaround, Delay })
+            RequireDownward(listed, Flow, World);
+            RequireDownward(listed, Airside, Schedule);
+            RequireDownward(listed, Turnaround, Schedule);
+        }
+
+        private static void RequireDownward(HashSet<string> listed, string system, string needed)
+        {
+            if (listed.Contains(system) && !listed.Contains(needed))
             {
-                if (listed.Contains(name))
+                throw new HarnessFailure(BundleFileName + ": " + system + " is listed without its downward interface " + needed);
+            }
+        }
+
+        /// <summary>04-data-schemas.md's airside_rules.json: schema_version 1 and both uint32 keys, nothing else.</summary>
+        private static AirsideRules ParseRules(byte[] bytes)
+        {
+            object parsed;
+            try
+            {
+                parsed = StrictJson.Parse(bytes);
+            }
+            catch (FormatException ex)
+            {
+                throw new HarnessFailure(AirsideRulesFile + ": " + ex.Message);
+            }
+            if (!(parsed is Dictionary<string, object> root))
+            {
+                throw new HarnessFailure(AirsideRulesFile + ": the document is not an object");
+            }
+            foreach (string key in root.Keys)
+            {
+                if (key != "schema_version" && key != "boarding_hold_max_minutes" && key != "doors_open_delay_minutes")
                 {
-                    throw new HarnessFailure("the bundle lists " + name + ", which this harness stage does not compose");
+                    throw new HarnessFailure(AirsideRulesFile + ": unknown key '" + key + "'");
                 }
             }
-            if (listed.Contains(Flow) && !listed.Contains(World))
+            if (!root.TryGetValue("schema_version", out object? version) || !(version is long v) || v != 1)
             {
-                throw new HarnessFailure(BundleFileName + ": " + Flow + " is listed without its downward interface " + World);
+                throw new HarnessFailure(AirsideRulesFile + ": schema_version must be 1");
             }
+            return new AirsideRules(
+                ReadUInt32(root, "boarding_hold_max_minutes"),
+                ReadUInt32(root, "doors_open_delay_minutes"));
+        }
+
+        private static uint ReadUInt32(Dictionary<string, object> root, string key)
+        {
+            if (!root.TryGetValue(key, out object? value))
+            {
+                throw new HarnessFailure(AirsideRulesFile + ": missing key '" + key + "'");
+            }
+            if (!(value is long n) || n < 0 || n > uint.MaxValue)
+            {
+                throw new HarnessFailure(AirsideRulesFile + ": '" + key + "' must be a uint32");
+            }
+            return (uint)n;
         }
 
         // ---------------------------------------------------------------- content
