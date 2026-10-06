@@ -17,4 +17,8 @@ unity/AirportSim/*.csproj
 unity/AirportSim/*.sln
 unity/AirportSim/Assets/Plugins/AirportSim/
 unity/AirportSim/Assets/Plugins/AirportSim.meta
+# Bundle + content copied in by the build step (spec 16 §16.3, Q-114)
+unity/AirportSim/Assets/StreamingAssets/
+unity/AirportSim/Assets/StreamingAssets.meta
+unity/AirportSim/Packages/packages-lock.json
 /build/
