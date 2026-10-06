@@ -28,10 +28,16 @@ step "unit + integration tests"
 if [ "${SKIP_UNIT_TESTS:-0}" = "1" ]; then
   echo "  (skipped: SKIP_UNIT_TESTS=1)"
 elif [ -f AirportSim.sln ]; then
-  filter=()
-  [ "${SKIP_SLOW:-0}" = "1" ] && filter=(--filter "Category!=Slow")
-  dotnet test AirportSim.sln -c Release --nologo --no-build  --logger "console;verbosity=normal" "${filter[@]}" \
+  # Budget tests are wall-clock timed; running them beside other test
+  # assemblies made them flake (WorldBudgetTests, render scene budget).
+  # Run everything else in parallel, then Budget alone and serially.
+  slow=""
+  [ "${SKIP_SLOW:-0}" = "1" ] && slow="&Category!=Slow"
+  dotnet test AirportSim.sln -c Release --nologo --no-build  --logger "console;verbosity=normal" --filter "Category!=Budget$slow" \
     && ok "tests pass" || fail "tests"
+  dotnet test AirportSim.sln -c Release --nologo --no-build -m:1 --logger "console;verbosity=normal" --filter "Category=Budget$slow" \
+    -- xUnit.ParallelizeTestCollections=false \
+    && ok "budget tests pass (serial)" || fail "budget tests"
 else
   echo "  (skipped, no solution yet)"
 fi
