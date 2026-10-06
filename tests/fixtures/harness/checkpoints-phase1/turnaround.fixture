@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "jobs": [
+    { "kind": "deboard", "nominal_duration_ticks": 60, "category": "ground_handling" },
+    { "kind": "baggage_unload", "nominal_duration_ticks": 40, "category": "loading" },
+    { "kind": "cabin_clean", "nominal_duration_ticks": 80, "category": "cleaning" },
+    { "kind": "catering", "nominal_duration_ticks": 90, "category": "catering" },
+    { "kind": "fuel", "nominal_duration_ticks": 120, "category": "fuel" },
+    { "kind": "baggage_load", "nominal_duration_ticks": 50, "category": "loading" },
+    { "kind": "pushback_prep", "nominal_duration_ticks": 20, "category": "ground_handling" },
+    { "kind": "boarding", "nominal_duration_ticks": 100, "category": "ground_handling" }
+  ],
+  "vehicles": [
+    { "id": 1, "kind": "cleaning_crew" },
+    { "kind": "catering_truck", "id": 2 },
+    { "id": 3, "kind": "fuel_truck" },
+    { "id": 4, "kind": "baggage_tractor" },
+    { "id": 5, "kind": "pushback_tug" }
+  ]
+}
