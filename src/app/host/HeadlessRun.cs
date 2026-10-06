@@ -11,9 +11,12 @@ namespace AirportSim.App.Host
     /// The headless checkpoint run and its dump, version 1. Spec: 16 §16.8. It
     /// composes the bundle, submits no command (Q-071), steps
     /// <c>TICKS_PER_SIM_DAY</c> exactly <c>Days</c> times, and has no presentation.
+    /// Every failure is a return value of 3 with one line on the error stream (Q-120).
     /// </summary>
     internal sealed class HeadlessRun : IHeadlessRun
     {
+        private const uint MaxDays = 298261;
+
         private readonly ISimComposer _composer;
 
         internal HeadlessRun(ISimComposer composer)
@@ -28,39 +31,107 @@ namespace AirportSim.App.Host
                 throw new ArgumentNullException(nameof(bundle));
             }
 
-            if (string.IsNullOrEmpty(request.OutputPath))
+            if (request.Days < 1 || request.Days > MaxDays)
             {
-                return 1;
+                throw new ArgumentOutOfRangeException(nameof(request), "Days is outside 1 to 298261");
             }
 
+            if (string.IsNullOrEmpty(request.OutputPath))
+            {
+                throw new ArgumentOutOfRangeException(nameof(request), "OutputPath is null or empty");
+            }
+
+            string path = request.OutputPath;
+
+            // Stage 1: the output path.
+            string? failure = CheckOutputPath(path);
+            if (failure != null)
+            {
+                return Fail(failure);
+            }
+
+            // Stage 2: composition.
+            ulong seed;
+            ComposedSim sim;
+            var sink = new RecordingSink();
             try
             {
-                // The dump header names the seed, which ISimHost does not expose: read it from the same bundle.json.
-                ulong seed = SimComposer.ReadBundleJson(bundle, out HashSet<string> _);
-                var sink = new RecordingSink();
-                ComposedSim sim = _composer.Compose(bundle, sink);
+                seed = SimComposer.ReadBundleJson(bundle, out HashSet<string> _);
+                sim = _composer.Compose(bundle, sink);
+            }
+            catch (Exception e)
+            {
+                return Fail("FAIL checkpoints load " + e.GetType().Name + ": " + e.Message);
+            }
 
+            // Stage 3: the run.
+            byte[] dump;
+            try
+            {
                 uint day = checked((uint)SimConstants.TICKS_PER_SIM_DAY);
                 for (uint d = 0; d < request.Days; d++)
                 {
                     sim.Host.Step(day);
                 }
 
-                File.WriteAllBytes(request.OutputPath, Render(seed, in sim, sink));
-                return 0;
+                dump = Render(seed, in sim, sink);
             }
-            catch (FormatException)
+            catch (Exception e)
             {
-                return 1;
+                return Fail("FAIL checkpoints run " + e.GetType().Name + ": " + e.Message);
             }
-            catch (IOException)
+
+            // Stage 4: a new file, never overwriting one.
+            try
             {
-                return 1;
+                using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    file.Write(dump, 0, dump.Length);
+                }
             }
-            catch (UnauthorizedAccessException)
+            catch (Exception e)
             {
-                return 1;
+                return Fail("FAIL checkpoints write " + path + " " + e.GetType().Name + ": " + e.Message);
             }
+
+            return 0;
+        }
+
+        /// <summary>Stage 1: null when fine, else the failure line.</summary>
+        private static string? CheckOutputPath(string path)
+        {
+            try
+            {
+                if (File.Exists(path) || Directory.Exists(path))
+                {
+                    return "FAIL checkpoints output-exists " + path;
+                }
+
+                string? parent = Path.GetDirectoryName(Path.GetFullPath(path));
+                if (parent != null && !Directory.Exists(parent))
+                {
+                    return "FAIL checkpoints output-no-parent " + path;
+                }
+
+                return null;
+            }
+            catch (Exception)
+            {
+                return "FAIL checkpoints output-no-parent " + path;
+            }
+        }
+
+        /// <summary>One line on the error stream, plain ASCII: anything outside U+0020 to U+007E becomes '?'.</summary>
+        private static int Fail(string line)
+        {
+            var ascii = new StringBuilder(line.Length);
+            foreach (char c in line)
+            {
+                ascii.Append(c >= ' ' && c <= '~' ? c : '?');
+            }
+
+            Console.Error.WriteLine(ascii.ToString());
+            return 3;
         }
 
         /// <summary>

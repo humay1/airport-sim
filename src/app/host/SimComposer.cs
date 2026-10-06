@@ -63,11 +63,39 @@ namespace AirportSim.App.Host
             ISimHostBuilder builder = SimHostFactory.CreateBuilder(in config);
             SystemServices services = builder.Services;
 
-            // Steps 2 and 3: each file with its module's loader, systems in dependency order.
+            // Step 2: each file with its module's loader, in the row order of 16 §16.3.
+            // The flow graph is validated against the world system, so that one load
+            // follows the world system's construction.
+            WalkGraph walk = default;
+            if (listed.Contains(World))
+            {
+                walk = WorldFactory.CreateGraphLoader().Load(bundle.ReadAll(WorldFile), WorldFile);
+            }
+
+            ScheduleTable table = default;
+            if (listed.Contains(Schedule))
+            {
+                table = ScheduleFactory.CreateLoader().Load(bundle.ReadAll(ScheduleFile), ScheduleFile);
+            }
+
+            AirsideLayout layout = default;
+            AirsideRules rules = default;
+            if (listed.Contains(Airside))
+            {
+                layout = AirsideFactory.CreateLayoutLoader().Parse(bundle.ReadAll(AirsideFile), AirsideFile);
+                rules = ReadRules(bundle.ReadAll(AirsideRulesFile));
+            }
+
+            TurnaroundSetup setup = default;
+            if (listed.Contains(Turnaround))
+            {
+                setup = TurnaroundFactory.CreateSetupLoader().Load(bundle.ReadAll(TurnaroundFile), TurnaroundFile);
+            }
+
+            // Step 3: construction in dependency order.
             IWorldSystem? world = null;
             if (listed.Contains(World))
             {
-                WalkGraph walk = WorldFactory.CreateGraphLoader().Load(bundle.ReadAll(WorldFile), WorldFile);
                 world = WorldFactory.CreateSystem(in services, in walk);
             }
 
@@ -81,22 +109,18 @@ namespace AirportSim.App.Host
             IScheduleSystem? schedule = null;
             if (listed.Contains(Schedule))
             {
-                ScheduleTable table = ScheduleFactory.CreateLoader().Load(bundle.ReadAll(ScheduleFile), ScheduleFile);
                 schedule = ScheduleFactory.CreateSystem(in services, in table, flow);
             }
 
             IAirsideSystem? airside = null;
             if (listed.Contains(Airside))
             {
-                AirsideLayout layout = AirsideFactory.CreateLayoutLoader().Parse(bundle.ReadAll(AirsideFile), AirsideFile);
-                AirsideRules rules = ReadRules(bundle.ReadAll(AirsideRulesFile));
                 airside = AirsideFactory.CreateSystem(in services, in layout, in rules, schedule!, flow, listed.Contains(Turnaround));
             }
 
             ITurnaroundSystem? turnaround = null;
             if (listed.Contains(Turnaround))
             {
-                TurnaroundSetup setup = TurnaroundFactory.CreateSetupLoader().Load(bundle.ReadAll(TurnaroundFile), TurnaroundFile);
                 turnaround = TurnaroundFactory.CreateSystem(in services, in setup, schedule!);
             }
 
@@ -260,8 +284,8 @@ namespace AirportSim.App.Host
             RequireFile(bundle, listed, Schedule, ScheduleFile);
             RequireFile(bundle, listed, Airside, AirsideFile);
             RequireFile(bundle, listed, Airside, AirsideRulesFile);
-            RequireFile(bundle, listed, Flow, FlowFile);
             RequireFile(bundle, listed, Turnaround, TurnaroundFile);
+            RequireFile(bundle, listed, Flow, FlowFile);
         }
 
         private static void RequireFile(IScenarioBundle bundle, HashSet<string> listed, string system, string file)
