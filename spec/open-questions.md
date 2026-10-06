@@ -3246,12 +3246,18 @@ Why it matters: the bootstrap quits with `Run`'s value, and an escaping
              exception does not end a batch-mode player.
 Answer:      `Run` mirrors the harness's `checkpoints` stages: an existing
              `OutputPath` or a missing parent, any load failure and any
-             exception during the run return 3, with one message on
-             `System.Console.Error`, and never overwrite. Success is 0.
-             Only programmer error throws (`null` bundle, a request
-             `TryParse` cannot return). A new done-condition test,
+             exception during the run return 3, and never overwrite.
+             Success is 0 and writes nothing. Only programmer error throws
+             (`null` bundle, a request `TryParse` cannot return). A new
+             done-condition test,
              `test_headless_run_failure_returns_3_and_writes_no_file`.
-             LOW CONFIDENCE: where the console message goes in the player.
+             Where the message goes (delegated by the owner, coordinator
+             ruling 2026-10-06): one plain-ASCII line,
+             `FAIL checkpoints <stage> <detail>`, by one
+             `Console.Error.WriteLine`, stages pinned in §16.8. The
+             bootstrap (§16.7) routes `Console.Error` to `Debug.LogError`
+             around `Run`, so the line reaches the player log and the
+             smoke's stdout, then quits with the code.
 Status:      ANSWERED (spec/16-interfaces-host.md#168-the-headless-checkpoint-run-and-the-dump-format)
 
 ### Q-121 — `app.host`: the render layout's `sourceName`

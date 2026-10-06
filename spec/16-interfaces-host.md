@@ -484,9 +484,16 @@ enough for the Reviewer to check line by line against this list:
 - **Batch mode:** pass the process arguments to
   `IHostCommandLine.TryParse` (§16.8): the engine's command-line arguments
   with the first one, the executable, removed. If it returns a checkpoint
-  run, call `IHeadlessRun.Run`, then quit with its exit code. If it returns
-  false, quit with exit code 2 (Q-114). Either way, no frame loop runs and
-  nothing is drawn.
+  run: replace `System.Console.Error` with `Console.SetError` by a
+  `TextWriter` that forwards each completed line, without its line break,
+  to `Debug.LogError`; call `IHeadlessRun.Run`; restore the original
+  `Console.Error`; then call `Application.Quit` with `Run`'s exit code
+  (Q-120). So `Run`'s failure line (§16.8) lands in the player log, and on
+  standard output under `-logFile -`, which is the smoke's log
+  (§16.2). A Windows player has no console, so without the forwarding the
+  line would be lost. The writer holds no logic beyond splitting lines. If
+  `TryParse` returns false, quit with exit code 2 (Q-114). Either way, no
+  frame loop runs and nothing is drawn.
 - It calls no sim member, never branches on sim state, and never reads a
   bundle file itself.
 
@@ -552,22 +559,39 @@ failure as a return value. It mirrors the harness's `checkpoints` stages
    dump is written to it.
 
 Any exception in stages 1 to 4, `SimInvariantException` included,
-returns 3. On a 3, `Run` writes exactly one message to
-`System.Console.Error`: the exception's `ToString()`, or, for a stage 1
-path failure, a message naming `OutputPath` and the failure. A failure in
-stages 1 to 3 leaves no file. A write failure in stage 4 may leave a
-partial file, and no test depends on it. On success `Run` returns 0 and
-writes nothing to the console. It returns no other value.
+returns 3. A failure in stages 1 to 3 leaves no file. A write failure in
+stage 4 may leave a partial file, and no test depends on it. On success
+`Run` returns 0 and writes nothing to `System.Console.Error` or
+`System.Console.Out`. It returns no other value. The exit code is the
+machine contract; the failure line below is the human one.
+
+**The failure line (Q-120, coordinator ruling within the owner's
+delegation, 2026-10-06).** On a 3, `Run` makes exactly one call,
+`System.Console.Error.WriteLine(line)`, and writes nothing else to the
+console. `line` is one of:
+
+| Stage | `line` |
+|---|---|
+| 1, `OutputPath` exists | `FAIL checkpoints output-exists <OutputPath>` |
+| 1, its parent directory does not exist | `FAIL checkpoints output-no-parent <OutputPath>` |
+| 2, any exception | `FAIL checkpoints load <type>: <message>` |
+| 3, any exception | `FAIL checkpoints run <type>: <message>` |
+| 4, any exception | `FAIL checkpoints write <OutputPath> <type>: <message>` |
+
+`<OutputPath>` is the request's value as given. `<type>` is the
+exception's `GetType().Name` and `<message>` its `Message`, so a load
+failure names its bundle file (§16.4 "Load failures"). There is no stack
+trace and no inner exception. The line is plain ASCII: every character
+of it outside U+0020 to U+007E, a line break included, is written as
+`?`. The harness's `checkpoints` subcommand names no stage words of its
+own (`19` §19.3), so these are `Run`'s. In the player, the bootstrap
+routes this line to the engine log (§16.7).
 
 The only exceptions `Run` throws are for programmer error, before stage
 1 (`07` "Error handling"): `ArgumentNullException` for a `null` bundle,
 and `ArgumentOutOfRangeException` for a request `TryParse` cannot return,
 that is `Days` outside 1 to 298 261 or `OutputPath` `null` or empty.
-
-> **LOW CONFIDENCE — where the message goes in the player.** In the
-> player, `System.Console.Error` is Mono's standard error, which the
-> Architect expects `unity-build`'s smoke to show in its log. No agent can
-> check it, and no test or gate depends on it.
+They write nothing to the console.
 
 **Checkpoint dump, version 1.** UTF-8 without a BOM, LF line endings, a
 final newline, single spaces, and invariant formatting throughout:
@@ -845,8 +869,10 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - `test_frame_loop_settings_opened_this_frame_steps_nothing` (Q-034)
 - `test_headless_run_failure_returns_3_and_writes_no_file` (Q-120): an
   existing `OutputPath`, left byte-unchanged; a missing parent directory;
-  and a bundle with a load failure. Each returns 3, throws nothing and
-  leaves no new file
+  and a bundle with a load failure. Each returns 3, throws nothing,
+  leaves no new file, and writes exactly its one §16.8 failure line to a
+  captured `Console.Error` (`output-exists`, `output-no-parent`, `load`);
+  a successful `Run` writes nothing there
 
 Host tests may use `float` only as `07` L4's `tests/app/host/` exception
 allows (Q-116).

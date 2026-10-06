@@ -3825,7 +3825,7 @@ Impact:      - **§16.9 is executable.** `unity-build` (step 5) only sets
                **PENDING HUMAN:** whether it becomes required.
 Signed off:  human (owner, 2026-10-06, Q-115).
 
-## 2026-10-06 — spec/16 §16.2, §16.3, §16.4, §16.5, §16.6, §16.8, §16.9, §16.11; 07 L4; 15 §15.13(c); INDEX; open-questions — T-031 gaps (Q-116 to Q-123) and Unity findings (Q-124)
+## 2026-10-06 — spec/16 §16.2, §16.3, §16.4, §16.5, §16.6, §16.7, §16.8, §16.9, §16.11; 07 L4; 15 §15.13(c); INDEX; open-questions — T-031 gaps (Q-116 to Q-123) and Unity findings (Q-124)
 Reason:      T-031's Test Author (PR #127, `4ff428f`) found eight gaps in
              the headless host's surface: floats in host tests, the return
              type of `HostFactory.LoadContent`, the exception type of host
@@ -3854,10 +3854,21 @@ Impact:      - **07 L4 (Q-116):** a third float exception, for
                No test reads them by name.
              - **§16.8 (Q-120):** `Run` returns 3 on any failure (an
                existing `OutputPath` or missing parent, a load failure, any
-               run exception), writes one message to `Console.Error`, and
-               never overwrites; it throws only for programmer error. New
-               done-condition test
-               `test_headless_run_failure_returns_3_and_writes_no_file`.
+               run exception), and never overwrites; it throws only for
+               programmer error. It writes one plain-ASCII line,
+               `FAIL checkpoints <stage> <detail>` (stages
+               `output-exists`, `output-no-parent`, `load`, `run`,
+               `write`), with one `Console.Error.WriteLine`, and nothing on
+               success. New done-condition test
+               `test_headless_run_failure_returns_3_and_writes_no_file`,
+               which also checks the line.
+             - **§16.7 (Q-120, coordinator ruling within the owner's
+               delegation, 2026-10-06):** in batch mode the bootstrap sets
+               `Console.Error` to a writer forwarding each line to
+               `Debug.LogError`, calls `Run`, restores it, and calls
+               `Application.Quit(code)`, so the line reaches the player
+               log and the smoke's stdout (a Windows player has no
+               console).
              - **§16.8 (Q-122):** engine arguments never sit between the
                token and its values; `null` handling pinned; the stale
                "recognises exactly" comment is replaced.
@@ -3875,11 +3886,12 @@ Impact:      - **07 L4 (Q-116):** a third float exception, for
              - **Task files (Planner):** T-031's interface block takes the
                PascalCase `FrameInput`, the `LoadContent` line in
                Construction, the new test, and the Q-122 wording; T-034
-               takes the refresh call and the Q-124 failure rule.
+               takes the refresh call, the Q-124 failure rule and the
+               §16.7 `Console.Error` forwarding.
              - **Merged work:** none affected. No host or Unity shell code
                is merged.
-             - **LOW CONFIDENCE:** where `Run`'s console message goes in
-               the player (§16.8).
+             - **LOW CONFIDENCE:** none added (where `Run`'s message goes
+               was ruled, above).
              - **Scope:** none added.
 Signed off:  not required (interfaces and clarifications; no balance,
              scope or `01`/`02` change).
