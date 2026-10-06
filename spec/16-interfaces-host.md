@@ -57,12 +57,13 @@ playable build), not for T-020.
 | Engine references | **none**, asserted by test | Unity 6 |
 | Target | `netstandard2.1`, `LangVersion 9` (`01-architecture.md`, D1) | compiled by Unity |
 | Built by | `AirportSim.sln` | the Unity editor / player build |
-| Tested in CI | yes, §16.11 | no, except through §16.9 if that gate is adopted |
+| Tested in CI | yes, §16.11 | build-checked only: `unity-build` (below), not a required check and not a determinism gate; behaviour is checked by review, and by §16.9 if that gate is adopted |
 
 Binding Unity project settings:
 
 - **Editor version.** One Unity 6 LTS version, pinned in
-  `ProjectSettings/ProjectVersion.txt`. Changing it changes the shipped
+  `ProjectSettings/ProjectVersion.txt`: **`6000.3.25f1`** (owner, `c48e163`).
+  Changing it changes the shipped
   runtime, so it is recorded in `CHANGELOG.md` like a spec change.
 - **Scripting backend: Mono**, for every player target (D1: "the shipped
   runtime (Mono)"). IL2CPP is a different runtime with its own class
@@ -70,17 +71,81 @@ Binding Unity project settings:
 - **API compatibility level: .NET Standard 2.1.**
 - **Plugins are the tested binaries.** The sim, the `app.render` and `app.ui`
   scene layers and this host are consumed as precompiled plugins. They come
-  from the Release `dotnet build` of `AirportSim.sln`, and the host's build
-  step copies them into `unity/AirportSim/Assets/Plugins/AirportSim/`. They
+  from the Release `dotnet build` of `AirportSim.sln`, and are copied into
+  `unity/AirportSim/Assets/Plugins/AirportSim/` **before** Unity opens the
+  project, because the project's scripts compile against them. In CI that
+  copy is `unity.yml`'s plugin step (below); a local build runs the same
+  two commands by hand. The Unity project holds no plugin-copy code. They
   are build outputs and are never committed. Unity never recompiles them from
   source, so the player runs exactly the assemblies CI tested.
-- **Backends by reference.** The engine backends are included into the
-  project by reference, not by copy. The mechanism, for example local
-  packages, is the host task's choice.
+- **Backends by reference: local packages (Q-114).** Each engine backend
+  directory is a Unity local package: `src/app/render/Unity/` is
+  `com.airportsim.render.unity` and `src/app/ui/Unity/` is
+  `com.airportsim.ui.unity`, each with a `package.json` and one `.asmdef`
+  at its root. `unity/AirportSim/Packages/manifest.json` references each
+  by path, `"file:../../../src/app/render/Unity"` and
+  `"file:../../../src/app/ui/Unity"`. The backend task adds its own
+  package's one dependency line, and that line is the only write it makes
+  under `unity/` (T-032, T-033). Nothing under `src/app/*/Unity/` is in
+  `AirportSim.sln`.
+- **Committed `.meta` files.** No agent runs the Unity editor, and
+  `Main.unity` refers to scripts by GUID. So every asset under
+  `unity/AirportSim/Assets/` and under each backend package that is
+  committed has its `.meta` file committed beside it, written by the task
+  that adds the asset, with a GUID it chooses (32 lowercase hexadecimal
+  digits, unique in the repository). A `.meta` that Unity generates in CI
+  is never relied on.
 - **One scene**, `Assets/Scenes/Main.unity`, holding the bootstrap and the
   backends' components. There is no other scene at Phase 1.
 - **Players:** Windows and Linux desktop, with macOS best-effort
   (`01-architecture.md`).
+
+### The skeleton and the Unity build check (owner, `c48e163`)
+
+**The skeleton** is committed: `ProjectSettings/ProjectVersion.txt`
+(`6000.3.25f1`), `ProjectSettings/EditorBuildSettings.asset` with
+`Assets/Scenes/Main.unity` as its one scene, an empty
+`Packages/manifest.json` (`"dependencies": {}`), and `Assets/Scenes.meta`,
+`Assets/Scenes/Main.unity` and its `.meta`. The scene holds nothing yet.
+The Unity shell task extends this skeleton and does not recreate it.
+
+**Ignored paths.** The root `.gitignore`'s Unity block ignores, under
+`unity/AirportSim/`: `Library/`, `Temp/`, `Logs/`, `UserSettings/`,
+`Build/`, `obj/`, `*.csproj`, `*.sln`, `Assets/Plugins/AirportSim/` and
+`Assets/Plugins/AirportSim.meta`, and `/build/` at the root. The build
+step's output (§16.3) is not ignored yet: `Assets/StreamingAssets/` and
+`Assets/StreamingAssets.meta`, and Unity's `Packages/packages-lock.json`.
+The `.gitignore` is not a module file, so the owner adds them. Until
+then, no task commits any of them.
+
+**`unity-build`** is the job of `.github/workflows/unity.yml`. It is
+owner-owned, like `ci/`. It runs on pull requests and pushes touching
+`unity/**`, `src/app/**` or the workflow, nightly, and by hand, and it is
+**not a required status check**. Its steps:
+
+1. It skips cleanly when `ProjectSettings/ProjectVersion.txt` is absent.
+2. `dotnet build AirportSim.sln -c Release`, then it copies every
+   `src/**/bin/Release/netstandard2.1/*.dll` into
+   `Assets/Plugins/AirportSim/` (the plugin copy above).
+3. `game-ci/unity-builder@v6` builds the `StandaloneLinux64` player
+   (Mono, §16.2), with the editor version read from `ProjectVersion.txt`.
+4. **The smoke**, only when
+   `unity/AirportSim/Assets/StreamingAssets/Scenario/` holds a file after
+   step 3: the player runs as `-batchmode -nographics -logFile -
+   -airportsim-checkpoints 1 <path>`, must exit 0, and the dump's first
+   line must be `airport-sim-checkpoints 1` (§16.8).
+
+"Unity build green" in a task's Done-when means this job passed on the
+PR's head. It checks that the project, the backends and the bootstrap
+compile and that a player builds. The smoke checks that batch mode runs a
+day. Neither compares a hash: that is §16.9, which stays proposed.
+
+> **LOW CONFIDENCE — Unity mechanics no agent can run.** Local packages
+> by `file:` path, hand-written `.meta` GUIDs and the build step's
+> pre-build callback (§16.3) are the Architect's reading of how Unity 6
+> behaves, with no editor to check them. `unity-build` is the check: a
+> backend or shell PR whose job fails on one of these is a spec question,
+> filed, not a workaround.
 
 Rules binding on the headless host, the same as `15` §15.3: no wall-clock
 read (elapsed time is passed in), no `System.Random`, no static mutable state,
@@ -142,9 +207,11 @@ name says nothing about the format.
   build step. Tests may supply definitions directly.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
-  `11` §11.10, `12` §12.13, `13` §13.11 and `15` §15.12, the `sim.flow`
-  fixture T-023 runs, the walk graph that fixture is validated against
-  (`18` §18.6, `tests/fixtures/world/phase0-landside.json`), and the
+  `11` §11.10, `13` §13.11 and `15` §15.12, the `sim.flow` fixture T-023
+  runs (`tests/fixtures/flow/phase0-landside.flow.json`), the walk graph
+  that fixture is validated against
+  (`18` §18.6, `tests/fixtures/world/phase0-landside.json`), the Phase 1
+  checkpoints bundle's `airside.fixture` (`19` §19.2c, Q-113), and the
   human-authored `data/balance/airside_rules.json`
   (D6). Its `bundle.json` lists all six Phase 1 systems, so it needs one
   file for each row of the table above. The build step copies each source
@@ -155,17 +222,38 @@ name says nothing about the format.
   | `bundle.json` | `unity/AirportSim/Scenario/bundle.json` |
   | `world.fixture` | `18` §18.6, `tests/fixtures/world/phase0-landside.json` |
   | `schedule.csv` | `11` §11.10, `tests/fixtures/schedule/phase0-200.csv` |
-  | `airside.fixture` | `12` §12.13, `tests/fixtures/airside/phase1-single-runway.json` |
+  | `airside.fixture` | `19` §19.2c, `tests/fixtures/harness/checkpoints-phase1/airside.fixture` (Q-113) |
   | `airside_rules.json` | `data/balance/airside_rules.json` |
   | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-five-vehicles.json` |
-  | `flow.fixture` | the `sim.flow` fixture T-023 runs |
-  | `render_layout.fixture` | `15` §15.12's fixture, under `tests/fixtures/render/` |
+  | `flow.fixture` | `tests/fixtures/flow/phase0-landside.flow.json`, the `sim.flow` fixture T-023 runs |
+  | `render_layout.fixture` | `15` §15.12, `tests/fixtures/render/phase1-layout.json` |
 
   (Q-069, review of #83 at `a8e3edb`: the walk graph was missing from this
   list. The bundle lists `sim.world`, which needs `world.fixture`, and it
   lists `sim.flow`, which needs `sim.world`.) The copies are build output: the
   fixtures stay test fixtures, beside their tests (`07-conventions.md`), and
   are not moved into `data/`.
+- **The build step (Q-114)** is an editor build callback in the Unity
+  project, under `unity/AirportSim/Assets/Editor/`, that runs at the start
+  of every player build, before streaming assets are collected. It
+  deletes and recreates `Assets/StreamingAssets/Scenario/` and
+  `Assets/StreamingAssets/Content/`. It copies each row of the table above
+  into the first, by its exact name, and every file under `data/` into the
+  second, at the same relative path. Sources are found relative to the
+  repository root, two levels above the project directory. A missing
+  source fails the build, naming the file. So a plain player build, the
+  one `unity-build` runs (§16.2), assembles both directories with no
+  workflow step, and the smoke runs whenever the bundle is complete. It is
+  the only code that copies them, and it is engine-side code with no
+  decision in it, checked by review like the bootstrap (§16.7).
+- **The bundle's content ids resolve in `data/` (Q-113).** The player's
+  content is a copy of `data/`, so every content id named by a playtest
+  bundle file resolves in `data/`. `airside.fixture` is therefore not
+  `12` §12.13's fixture, whose size categories (`medium`, `heavy`,
+  `super`) exist only in the test kits' in-code content. It is that
+  fixture with `data/`'s size ids, which `19` §19.2c pins, and the check
+  listed there covers every row of the table above. `render_layout.fixture`
+  names no content id.
 
 ---
 
@@ -328,9 +416,9 @@ state just produced. Nothing touches the sim while `Step` is running
 
 ## 16.7 The Unity bootstrap contract
 
-The bootstrap is engine code and cannot be tested in CI, so it holds no
-decisions. It must stay small enough for the Reviewer to check line by line
-against this list:
+The bootstrap is engine code. CI only compiles it and runs its batch mode
+once (`unity-build`, §16.2), so it holds no decisions. It must stay small
+enough for the Reviewer to check line by line against this list:
 
 - **At scene start:** build an `IScenarioBundle` over
   `StreamingAssets/Scenario/`, call `ISimComposer.Compose` and then
@@ -344,8 +432,10 @@ against this list:
   conversion is fine here: this is presentation), call `RunFrame`, and pass
   `Render` and `Ui` to their backends to draw.
 - **Batch mode:** pass the process arguments to
-  `IHostCommandLine.TryParse` (§16.8). If it returns a checkpoint run, call
-  `IHeadlessRun.Run`, then quit with its exit code. No frame loop runs and
+  `IHostCommandLine.TryParse` (§16.8): the engine's command-line arguments
+  with the first one, the executable, removed. If it returns a checkpoint
+  run, call `IHeadlessRun.Run`, then quit with its exit code. If it returns
+  false, quit with exit code 2 (Q-114). Either way, no frame loop runs and
   nothing is drawn.
 - It calls no sim member, never branches on sim state, and never reads a
   bundle file itself.
@@ -365,6 +455,18 @@ interface IHeadlessRun {
   int Run(IScenarioBundle bundle, in CheckpointRunRequest request)   // 0 on success
 }
 ```
+
+**`TryParse` (Q-114).** The engine adds its own arguments, for example
+`-batchmode -nographics -logFile -`, so `args` holds more than the three
+tokens above. `TryParse` returns true exactly when the ordinal token
+`-airportsim-checkpoints` occurs exactly once in `args`, and the two
+arguments after it are `<days>` and `<outputPath>`. `<days>` is ASCII
+digits with no sign and no leading zero, parsed with the invariant
+culture, from 1 to 298 261 (the bound of `19` §19.3's `--days`).
+`<outputPath>` is any non-empty string. Then `Days` and `OutputPath` are
+those two values. Every argument that is not the token or one of its two
+values is ignored, wherever it is. In every other case, the token absent
+included, it returns false and `request` is `default`. It throws nothing.
 
 `Run` composes the bundle (§16.4) with a sink that records every checkpoint.
 It submits **no command** (Q-071). It then calls `Step(TICKS_PER_SIM_DAY)`
@@ -484,6 +586,16 @@ target framework or the plugin set. Until the owner adopts it, the Planner
 can task its pieces so it can be run by hand: the harness `checkpoints`
 subcommand, `IHeadlessRun`, the dump writer and the bootstrap's batch mode.
 
+**Since `c48e163` (open for the owner, Q-115).** CI now builds the real
+Linux player nightly and on Unity-path changes (`unity-build`, §16.2), and
+its smoke already runs `-airportsim-checkpoints 1`. So step 2 exists, and
+step 1 could run in the same job, after step 3 of `unity-build`, over the
+directories its build step assembles. Adopting that as §16.9 still needs
+the owner: the `02-determinism.md` gate-table row, the workflow change,
+the day count (1 as the smoke runs, or 10 as above), and whether the job
+then becomes required. Until then the smoke compares nothing, and no task
+adds a comparison to it.
+
 > **LOW CONFIDENCE — nightly, and the real player.** Nightly means a
 > Mono-only drift can merge and live for up to a day before it is caught. The
 > nightly failure then follows `02-determinism.md` "When a gate fails", as
@@ -525,11 +637,18 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
   harness-equivalence test need the module factories to exist (T-007/T-023,
   T-008, T-021, T-022, T-024, and the `sim.world` task). Tests may supply
   content definitions directly.
-- **Unity project shell:** `unity/AirportSim/**`, including the bootstrap and
-  the playtest `bundle.json`. It waits for the headless host, for the
+- **Unity project shell:** `unity/AirportSim/**`, including the bootstrap,
+  the build step (§16.3) and the playtest `bundle.json`. It extends the
+  committed skeleton (§16.2). It waits for the headless host, for the
   `app.render` and `app.ui` backends, and for the Phase 1 content files in
   `data/` (`04-data-schemas.md`). The pax-profile and queue-profile values
-  among them are the owner's. It is not testable in CI (§16.2).
+  among them are the owner's. CI checks it only through `unity-build`
+  (§16.2). Its build step is what makes the smoke run, so its Done-when
+  includes `unity-build` green **with the smoke step run**, not skipped.
+- **Engine backends** (`15` §15.10, `17` §17.8): each one's Done-when
+  includes `unity-build` green on its PR, with its package referenced
+  from `Packages/manifest.json` (§16.2). The smoke is skipped until the
+  shell's build step exists.
 
 Done-condition tests for the headless host, phrased per `07-conventions.md`:
 
@@ -558,7 +677,10 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - **Gate assignment** (`18` §18.5): deferred to the owner; Phase 0/1 pools
   gates.
 - **§16.9 adoption**: an owner decision, because it touches
-  `02-determinism.md` and `ci/`.
+  `02-determinism.md` and `ci/` (and now `unity.yml`, Q-115).
+- **Ignored build output** (§16.2): the owner adds
+  `unity/AirportSim/Assets/StreamingAssets/`, its `.meta` and
+  `unity/AirportSim/Packages/packages-lock.json` to `.gitignore`.
 - **D10 values** (`15` §15.14): decided by the owner on 2026-09-27
   (Q-034): the low-end target (integrated graphics), the first-launch
   default (`Medium`) and the pause. The `Low` and `Medium` values and the

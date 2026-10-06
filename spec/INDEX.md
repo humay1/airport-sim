@@ -304,7 +304,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   each tick, and all 14 are fed (§12.9, §12.12, Q-082, hash change)**; **`ReassignStand` stays open during the door delay, and the
   stored `AircraftTrack.PlannedOnStand` keeps `DoorsOpen`'s plan (§12.3,
   §12.9, §12.10, Q-083, HD, owner, 2026-10-02)**; **the fixture's stands
-  all sink to flow node 9 (§12.13, Q-095)**.
+  all sink to flow node 9 (§12.13, Q-095)**; **the fixture's size
+  categories are test-kit content, not `data/`'s; compositions over
+  `data/` use the harness bundle's copy (§12.13, Q-113)**.
 - LC: `InboundAirborne` is a formality (§12.6); rotation-less departures get
   no ground time in the fallback (§12.7); hold timing measured from the
   actual doors-close point, and released at a zero count (§12.8); an
@@ -345,7 +347,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   Q-064)**; **the Stand key is the flight alone (§14.5, Q-107)**; "throw"
   is `SimInvariantException` with the tick, wrapped by the host (§14.1,
   Q-112); the integrated day's setup, the replay-form save/load test and
-  1000 sim-days for the sum test (§14.14, Q-106, Q-109, Q-111).
+  1000 sim-days for the sum test (§14.14, Q-106, Q-109, Q-111); **any of
+  the four checkpoint milestones throws for an unknown flight (§14.4,
+  Q-108); the hash's lists are count-prefixed (§14.13)**.
 - LC (all accepted as provisional, HD, D8): 2-day retention (§14.2);
   the checkpoint set (§14.4); the cap and recovery order (§14.6).
   LC, not yet reviewed: the synthetic budget load (§14.13, Q-110).
@@ -370,7 +374,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   order is lexicographic (§15.5, Q-097); the pacer throws
   `ArgumentOutOfRangeException` (§15.8, Q-098); `RenderConstants` (§15.2,
   Q-099); floats allowed in `tests/app/render` (§15.3, Q-100); `Build`
-  applies the promotion predicate itself (§15.5, Q-101)**.
+  applies the promotion predicate itself (§15.5, Q-101)**; **the backend
+  is the local package `com.airportsim.render.unity`, build-checked by
+  `unity-build` (§15.3, §15.10, Q-114)**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
@@ -398,8 +404,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   sim-day per `Step` (§16.8, Q-071, Q-074); D7 runs on two test bundles,
   `tests/fixtures/harness/checkpoints-phase0/` and `-phase1/`, not on the
   playtest bundle (§16.8, Q-070)**; **the D7 test lives in
-  `tests/integration/` and calls both sides in process (§16.8, Q-077)**.
-- LC: the gate runs nightly on the real player (§16.9, proposed, not adopted);
+  `tests/integration/` and calls both sides in process (§16.8, Q-077)**;
+  **the playtest bundle's `airside.fixture` is the Phase 1 checkpoints
+  bundle's, with `data/`'s size ids, and every bundle content id resolves
+  in `data/` (§16.3, Q-113)**; **Unity `6000.3.25f1`, the committed
+  skeleton, and the owner's non-required `unity-build` job with its
+  batch-mode smoke; backends are `file:` local packages, `.meta` files
+  are committed, the build step is an editor build callback, and
+  `TryParse` ignores engine arguments (§16.2, §16.3, §16.7, §16.8,
+  Q-114)**.
+- LC: Unity mechanics no agent can run (§16.2, Q-114);
+  the gate runs nightly on the real player (§16.9, proposed, not adopted);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
   Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
   Q-069).
@@ -418,7 +433,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   dyadic and exact (§17.2, `07` L4, Q-102); a strict preference grammar,
   with out-of-range or preset-mismatched values decoding true through
   `Validate` (§17.4a, Q-103); argument checks and exception types (§17.7,
-  Q-104); the lane sink's own allocation rule (§17.9, Q-105)**.
+  Q-104); the lane sink's own allocation rule (§17.9, Q-105)**; **the
+  backend is the local package `com.airportsim.ui.unity`, build-checked by
+  `unity-build` (§17.2, §17.8, Q-114)**.
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
 - Read if: the UI scene-layer and UI backend tasks.
 
@@ -474,7 +491,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   writes the `16` §16.8 dump to a new file; T-030 composes world,
   schedule and flow, and a Phase 1 stage task adds the other three
   before T-031; it is the only place the harness lists a directory, the
-  content one (§19.2c, Q-066 to Q-076)**.
+  content one (§19.2c, Q-066 to Q-076)**; **the Phase 1 bundle's
+  `airside.fixture` is the T-021 fixture with `data/`'s size ids, and
+  every content id of the bundle is listed as resolving in `data/`
+  (§19.2c, Q-113)**.
 - LC: the `budget` load before a max-tier fixture exists (§19.4); the
   listed `checkpoints` content directory (§19.2c, Q-072); finding the
   systems by position and type (§19.2d, Q-084). **HD (owner,
@@ -494,11 +514,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 
 ### `open-questions.md`
 - Owns: questions the spec does not answer, and their status.
-- Open now: none. Every question in the file from Q-002 on is answered
+- Open now: Q-115 (HUMAN DECISION: should `unity-build` become the
+  §16.9 gate), not blocking. Every other question from Q-002 on is answered
   (Q-016 by the owner: `--fast`
   green until T-006 merges); Q-001 was deleted (D9).
   Owner items still pending: gate assignment (`18` §18.5), the Phase 1
-  balance values (`04`), adoption of the cross-runtime gate (`16` §16.9),
+  balance values (`04`), adoption of the cross-runtime gate (`16` §16.9,
+  Q-115), the `.gitignore` entries for the Unity build output (`16`
+  §16.12),
   and review of the Q-034 LOW CONFIDENCE proposals: the `Low` and `Medium`
   values (`15` §15.14) and the 2 GB memory budget (`16` §16.10); and the
   Q-037 recommendation of 60 pooled `Gate` nodes for the 90k max-tier

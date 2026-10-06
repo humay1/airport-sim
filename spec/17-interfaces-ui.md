@@ -49,7 +49,7 @@ At Phase 1, `app.ui` owns:
 | Directory | `src/app/ui/Scene/` | `src/app/ui/Unity/` |
 | Engine references | **none**, asserted by test | Unity 6 |
 | Target | `netstandard2.1`, `LangVersion 9` (D1) | compiled by Unity, in `app.host`'s project (`16` §16.2) |
-| Tested in CI | yes, §17.10 | no |
+| Tested in CI | yes, §17.10 | build-checked only, by `unity-build` (`16` §16.2), which is not a required check; no behaviour test |
 
 The scene layer references `app.render`'s scene layer (for `CameraView`,
 `WorldPoint`, `GameSpeed`, `RenderLayout`), following `03-module-map.md`
@@ -338,6 +338,11 @@ Specified so that its task cannot drift.
   in `FrameInput` (`16` §16.6).
 - It calls **no** sim member and never branches on sim state. Like
   `15` §15.10, it must stay small enough to review line by line.
+- **Packaging (Q-114).** It is the local package
+  `com.airportsim.ui.unity` at `src/app/ui/Unity/`, with committed `.meta`
+  files, referenced from the Unity project's `Packages/manifest.json`
+  (`16` §16.2). Its task adds that one line. CI only compiles it
+  (`unity-build`).
 
 ---
 
