@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (extends committed skeleton `unity/AirportSim/` from c48e163, does not create it; rescope pending spec PR) |
+| Status | QUEUED (extends committed skeleton `unity/AirportSim/` from c48e163, does not create it; rescoped 2026-10-06 per Q-114, `16` §16.2/§16.3) |
 | Module | `app.host` (Unity project shell) |
 | Assigned role | worker |
 | Depends on | T-027, T-028, T-031, T-032, T-033 |
@@ -15,8 +15,19 @@
 unity/AirportSim/**
 ```
 
-Including the bootstrap script and the playtest `bundle.json`
-(`unity/AirportSim/Scenario/bundle.json`). Not testable in CI (`16` §16.2).
+Including the bootstrap script, the playtest `bundle.json`
+(`unity/AirportSim/Scenario/bundle.json`) and the editor build step under
+`unity/AirportSim/Assets/Editor/` (Q-114, `16` §16.3). Not behaviour-tested in
+CI (`16` §16.2); `unity-build` compiles it.
+
+**Scope (Q-114).** Extend the committed skeleton, add the bootstrap, and add
+the editor build step. The build step is an editor build callback that runs at
+the start of every player build, before streaming assets are collected: it
+deletes and recreates `Assets/StreamingAssets/Scenario/` and
+`Assets/StreamingAssets/Content/`, copies each row of `16` §16.3's table into
+the first by its exact name and every file under `data/` into the second, finds
+sources relative to the repository root, and fails the build naming any missing
+source. It is the only code that copies them.
 
 ## Readable specs
 
@@ -63,8 +74,8 @@ paraphrased:
   each row of §16.3's playtest-bundle table, under its exact name:
   `bundle.json`; `world.fixture` (`18` §18.6,
   `tests/fixtures/world/phase0-landside.json`); `schedule.csv` (`11`
-  §11.10, `tests/fixtures/schedule/phase0-200.csv`); `airside.fixture` (`12`
-  §12.13, `tests/fixtures/airside/phase1-single-runway.json`);
+  §11.10, `tests/fixtures/schedule/phase0-200.csv`); `airside.fixture` (`19`
+  §19.2c, `tests/fixtures/harness/checkpoints-phase1/airside.fixture`, Q-113);
   `airside_rules.json` (the human-authored `data/balance/airside_rules.json`,
   D6, **not** written by this task); `turnaround.fixture` (`13` §13.11,
   `tests/fixtures/turnaround/phase1-five-vehicles.json`); `flow.fixture` (the
@@ -100,6 +111,8 @@ sim's 6 ms; `RunFrame`'s cost is T-031's).
       does not (all eight files of the §16.3 table, `world.fixture` included)
 - [ ] No write to `data/pax_profiles/**`, `data/queue_profiles/**` or
       `data/balance/**`
+- [ ] Editor build step under `Assets/Editor/` assembles both StreamingAssets directories (`16` §16.3)
+- [ ] `unity-build` green with the smoke step run, not skipped (`16` §16.11)
 - [ ] Reviewer approved
 
 ## Worker notes

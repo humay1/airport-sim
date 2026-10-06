@@ -223,7 +223,10 @@ Written by the Test Author. Expect at least:
 - `test_frame_loop_pause_pressed_this_frame_steps_nothing`
 - `test_bundle_rejects_listed_system_without_file`
 - `test_bundle_unlisted_system_is_not_registered`
-- `test_command_line_parses_checkpoint_run_and_rejects_others`
+- `test_command_line_parses_checkpoint_run_and_rejects_others` -- must also
+  cover `TryParse` ignoring the engine's own arguments (`-batchmode`,
+  `-nographics`, `-logFile -`), wherever they sit among the three tokens
+  (`16` §16.8, Q-114)
 - `test_checkpoint_dump_format_is_byte_exact`
 - `test_headless_run_result_independent_of_step_batch_size` -- no seam:
   `IHeadlessRun` submits no command (Q-071) and calls
