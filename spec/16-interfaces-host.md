@@ -144,12 +144,16 @@ and the bootstrap compile, that a player builds, and that batch mode runs
 a day. It never includes the separate `cross-runtime` job (§16.9), whose
 result does not decide any task's Done-when.
 
-> **LOW CONFIDENCE — Unity mechanics no agent can run.** Local packages
-> by `file:` path, hand-written `.meta` GUIDs and the build step's
-> pre-build callback (§16.3) are the Architect's reading of how Unity 6
-> behaves, with no editor to check them. `unity-build` is the check: a
-> backend or shell PR whose job fails on one of these is a spec question,
-> filed, not a workaround.
+**Checked against Unity's documentation (2026-10-06, Q-124).** A `file:`
+path in `Packages/manifest.json` resolves relative to the `Packages/`
+directory, so the two lines above, three levels up, name the backend
+directories.
+
+> **LOW CONFIDENCE — Unity mechanics no agent can run.** Hand-written
+> `.meta` GUIDs and the build step's pre-build callback (§16.3) are the
+> Architect's reading of how Unity 6 behaves, with no editor to check
+> them. `unity-build` is the check: a backend or shell PR whose job fails
+> on one of these is a spec question, filed, not a workaround.
 
 Rules binding on the headless host, the same as `15` §15.3: no wall-clock
 read (elapsed time is passed in), no `System.Random`, no static mutable state,
@@ -205,10 +209,14 @@ name says nothing about the format.
   "Runtime portability" rule 4).
 - The content is part of the input as well. The composer takes it as
   definitions (`HostFactory.CreateSimComposer(content)`, §16.4). In the
-  player those come from `HostFactory.LoadContent(IContentSource source)`,
-  which calls `08` §8.11's `IContentLoader` over
-  `Assets/StreamingAssets/Content/`, a build-time copy of `data/` made by the
-  build step. Tests may supply definitions directly.
+  player those come from
+  `HostFactory.LoadContent(IContentSource source) -> IReadOnlyList<IContentDefinition>`
+  (Q-117), over `Assets/StreamingAssets/Content/`, a build-time copy of
+  `data/` made by the build step. It returns exactly
+  `ContentLoaderFactory.Create().Load(source)` (`08` §8.11), and lets that
+  loader's `FormatException` through unchanged. It adds no check, no
+  filtering and no ordering of its own. Tests may supply definitions
+  directly.
 - **The Phase 1 playtest bundle** is `unity/AirportSim/Scenario/bundle.json`,
   committed and owned by `app.host`, plus the Phase 1 fixtures named in
   `11` §11.10, `13` §13.11 and `15` §15.12, the `sim.flow` fixture T-023
@@ -245,7 +253,11 @@ name says nothing about the format.
   into the first, by its exact name, and every file under `data/` into the
   second, at the same relative path. Sources are found relative to the
   repository root, two levels above the project directory. A missing
-  source fails the build, naming the file. So a plain player build, the
+  source fails the build, naming the file. After the last copy, and
+  before it returns, it calls
+  `AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)`, so
+  that the player build collects the files just copied (Q-124, checked
+  against Unity's documentation 2026-10-06). So a plain player build, the
   one `unity-build` runs (§16.2), assembles both directories with no
   workflow step, and the smoke runs whenever the bundle is complete. It is
   the only code that copies them, and it is engine-side code with no
@@ -309,6 +321,14 @@ Rules:
   the OS, file-system order or the clock.
 - Composition happens once per session. There is no recomposition and no hot
   swap while a sim is running.
+- **One composer, many calls (Q-123).** An `ISimComposer` may be called
+  any number of times. Each `Compose` builds a new `ISimHost` and new
+  systems, and shares no mutable object with any other call's result. The
+  composer holds only the content it was created with, and no call changes
+  it, so the results of two calls on one bundle are the same as from two
+  composers. "Once per session" binds a session's sim, not the composer.
+  The same holds for `IHeadlessRun.Run` (§16.8) and
+  `IPresentationComposer.Compose` (§16.5).
 - Every checkpoint (`08` §8.9) goes to the given sink.
 - A listed system whose required downward interface is not listed (flow
   without world, airside or turnaround without schedule) is a load failure.
@@ -317,6 +337,33 @@ Rules:
   the equivalence test compares, but it must not construct any system
   another way. It does not reference `app.host` (a test checks this, `19`
   §19.8), and `app.host` does not reference it.
+
+**Load failures (Q-118).** Every load failure of `ISimComposer.Compose`
+and of `IPresentationComposer.Compose` (§16.5) throws `FormatException`
+(`07-conventions.md` "Error handling"). Its message starts with the
+name of the bundle file at fault, followed by `": "`:
+
+| Failure | Message starts with |
+|---|---|
+| `bundle.json` missing, or breaking §16.3's strict form | `bundle.json: ` |
+| a listed system whose downward interface is not listed (above); the message names both systems | `bundle.json: ` |
+| a file of a listed system missing (§16.3) | that file's name, for example `schedule.csv: ` |
+| `airside_rules.json` breaking `04-data-schemas.md`'s `AirsideRules` | `airside_rules.json: ` |
+| `render_layout.fixture` missing (§16.5) | `render_layout.fixture: ` |
+
+A loader's or a factory's own `FormatException` passes through
+unchanged. Its message already starts with the `sourceName`, which is
+the bundle file name (step 2), or with the module name (`07`). The host
+never catches, wraps or replaces it. `Compose` checks in this order and
+throws at the first failure: `bundle.json`; the downward interfaces; the
+presence of every listed system's files, in the row order of §16.3's
+table. All three come inside step 1, after the parse and **before**
+`ContentIndexFactory.Create` and `CreateBuilder`. Then come step 1's
+`ContentIndexFactory.Create` and `CreateBuilder`, whose content failures
+start with the module name (`07`); then step 2's loads, in the row order
+of §16.3's table; then step 3's factories. That is the order of the
+harness's stage 2 (`19` §19.2c). A `null` argument to either composer
+throws `ArgumentNullException`, before any check.
 
 ---
 
@@ -338,9 +385,12 @@ interface IPresentationComposer {
 
 - Builds `RenderSources { Host, Airside, Flow }` (`15` §15.9) from the
   `ComposedSim`.
-- Loads `render_layout.*` through `IRenderLayoutLoader`, passing
-  `Airside.Layout()` when `sim.airside` is registered. A layout failure is a
-  hard load failure.
+- Loads `render_layout.fixture` through `IRenderLayoutLoader`, passing
+  `Airside.Layout()` when `sim.airside` is registered, and `null`
+  otherwise. Its `sourceName` is exactly `render_layout.fixture`, as for
+  every bundle file (§16.4 step 2, Q-073, Q-121). The file is required
+  whatever `systems` lists. A layout failure is a hard load failure
+  (§16.4 "Load failures").
 - Constructs the scene builder, the promotion controller and the pacer with
   `RenderFactory` (`15` §15.9), and the UI controller and its lane sink with
   `UiFactory` (`17` §17.7).
@@ -362,12 +412,12 @@ module and `app.render` may not reference `app.ui`. This is the **only**
 place a playable build calls `ISimHost.Step`.
 
 ```
-readonly struct FrameInput {
-  CameraView             camera                   // from the render backend
-  float                  screenWidth              // pixels, > 0
-  float                  screenHeight             // pixels, > 0
-  IReadOnlyList<UiInput> ui                       // from the UI backend, arrival order (17 §17.3)
-  int64                  elapsedRealMicroseconds  // engine frame delta, converted by the bootstrap
+readonly struct FrameInput {                      // members PascalCase (Q-119)
+  CameraView             Camera                   // from the render backend
+  float                  ScreenWidth              // pixels, > 0
+  float                  ScreenHeight             // pixels, > 0
+  IReadOnlyList<UiInput> Ui                       // from the UI backend, arrival order (17 §17.3)
+  int64                  ElapsedRealMicroseconds  // engine frame delta, converted by the bootstrap
 }
 
 interface IPreferenceStore {                      // D10; implemented by the bootstrap over the engine's player preferences
@@ -385,13 +435,13 @@ interface IFrameLoop { FrameOutput RunFrame(in FrameInput input) }
 
 Each `RunFrame`, in this order:
 
-1. `Ui.Update(input.ui, input.camera, input.screenWidth, input.screenHeight)`.
+1. `Ui.Update(input.Ui, input.Camera, input.ScreenWidth, input.ScreenHeight)`.
    This may submit commands and change the pacing state and the graphics
    settings (`17` §17.4, §17.4a, §17.5).
-2. `Promotion.Update(input.camera, Ui.Graphics)`.
-3. `n = Pacer.Advance(input.elapsedRealMicroseconds, Ui.Pacing.Paused,
+2. `Promotion.Update(input.Camera, Ui.Graphics)`.
+3. `n = Pacer.Advance(input.ElapsedRealMicroseconds, Ui.Pacing.Paused,
    Ui.Pacing.Speed)`; if `n > 0`, `Host.Step(n)`.
-4. `render = Scene.Build(input.camera, Ui.Graphics)`.
+4. `render = Scene.Build(input.Camera, Ui.Graphics)`.
 5. If `Ui.Graphics` differs from the value last written, write
    `UiFactory.EncodeGraphicsPreference(Ui.Graphics)` to the
    `IPreferenceStore` under the key `airportsim.graphics` (D10).
@@ -438,9 +488,16 @@ enough for the Reviewer to check line by line against this list:
 - **Batch mode:** pass the process arguments to
   `IHostCommandLine.TryParse` (§16.8): the engine's command-line arguments
   with the first one, the executable, removed. If it returns a checkpoint
-  run, call `IHeadlessRun.Run`, then quit with its exit code. If it returns
-  false, quit with exit code 2 (Q-114). Either way, no frame loop runs and
-  nothing is drawn.
+  run: replace `System.Console.Error` with `Console.SetError` by a
+  `TextWriter` that forwards each completed line, without its line break,
+  to `Debug.LogError`; call `IHeadlessRun.Run`; restore the original
+  `Console.Error`; then call `Application.Quit` with `Run`'s exit code
+  (Q-120). So `Run`'s failure line (§16.8) lands in the player log, and on
+  standard output under `-logFile -`, which is the smoke's log
+  (§16.2). A Windows player has no console, so without the forwarding the
+  line would be lost. The writer holds no logic beyond splitting lines. If
+  `TryParse` returns false, quit with exit code 2 (Q-114). Either way, no
+  frame loop runs and nothing is drawn.
 - It calls no sim member, never branches on sim state, and never reads a
   bundle file itself.
 
@@ -453,10 +510,10 @@ readonly struct CheckpointRunRequest { uint32 Days; string OutputPath }
 
 interface IHostCommandLine {
   bool TryParse(IReadOnlyList<string> args, out CheckpointRunRequest request)
-}   // recognises exactly: -airportsim-checkpoints <days> <outputPath>
+}   // finds -airportsim-checkpoints <days> <outputPath> among the other arguments (below)
 
 interface IHeadlessRun {
-  int Run(IScenarioBundle bundle, in CheckpointRunRequest request)   // 0 on success
+  int Run(IScenarioBundle bundle, in CheckpointRunRequest request)   // 0 on success, 3 on failure (below)
 }
 ```
 
@@ -472,6 +529,13 @@ those two values. Every argument that is not the token or one of its two
 values is ignored, wherever it is. In every other case, the token absent
 included, it returns false and `request` is `default`. It throws nothing.
 
+So the engine's arguments may come before the three tokens, after them,
+or both, but never between the token and its values (Q-122): in
+`-airportsim-checkpoints -batchmode 1 p`, `<days>` is `-batchmode`, so
+`TryParse` returns false. A `null` `args` returns false. A `null`
+element as `<days>` or `<outputPath>` returns false; a `null` element
+anywhere else is ignored like any other argument.
+
 `Run` composes the bundle (§16.4) with a sink that records every checkpoint.
 It submits **no command** (Q-071). It then calls `Step(TICKS_PER_SIM_DAY)`
 exactly `Days` times, so that `Days × TICKS_PER_SIM_DAY` ticks run, with no
@@ -483,6 +547,55 @@ has no seam: `test_headless_run_result_independent_of_step_batch_size`
 composes the same bundle with `ISimComposer.Compose`, steps it in other
 batches, renders that run's dump with its own code, and compares it with
 `Run`'s file, as `19` §19.8 does for the harness.
+
+**`Run`'s stages and failures (Q-120).** The bootstrap quits with `Run`'s
+return value (§16.7), and an exception that escapes a script in a
+batch-mode player does not end the process, so `Run` reports every
+failure as a return value. It mirrors the harness's `checkpoints` stages
+(`19` §19.2c):
+
+1. If `OutputPath` exists, as a file or a directory, or its parent
+   directory does not exist, `Run` returns 3. `OutputPath` is used as
+   given; a relative path is relative to the process's current directory.
+2. Composition (§16.4), with §16.4's "Load failures".
+3. The run, as above.
+4. `OutputPath` is created as a new file, never overwriting one, and the
+   dump is written to it.
+
+Any exception in stages 1 to 4, `SimInvariantException` included,
+returns 3. A failure in stages 1 to 3 leaves no file. A write failure in
+stage 4 may leave a partial file, and no test depends on it. On success
+`Run` returns 0 and writes nothing to `System.Console.Error` or
+`System.Console.Out`. It returns no other value. The exit code is the
+machine contract; the failure line below is the human one.
+
+**The failure line (Q-120, coordinator ruling within the owner's
+delegation, 2026-10-06).** On a 3, `Run` makes exactly one call,
+`System.Console.Error.WriteLine(line)`, and writes nothing else to the
+console. `line` is one of:
+
+| Stage | `line` |
+|---|---|
+| 1, `OutputPath` exists | `FAIL checkpoints output-exists <OutputPath>` |
+| 1, its parent directory does not exist | `FAIL checkpoints output-no-parent <OutputPath>` |
+| 2, any exception | `FAIL checkpoints load <type>: <message>` |
+| 3, any exception | `FAIL checkpoints run <type>: <message>` |
+| 4, any exception | `FAIL checkpoints write <OutputPath> <type>: <message>` |
+
+`<OutputPath>` is the request's value as given. `<type>` is the
+exception's `GetType().Name` and `<message>` its `Message`, so a load
+failure names its bundle file (§16.4 "Load failures"). There is no stack
+trace and no inner exception. The line is plain ASCII: every character
+of it outside U+0020 to U+007E, a line break included, is written as
+`?`. The harness's `checkpoints` subcommand names no stage words of its
+own (`19` §19.3), so these are `Run`'s. In the player, the bootstrap
+routes this line to the engine log (§16.7).
+
+The only exceptions `Run` throws are for programmer error, before stage
+1 (`07` "Error handling"): `ArgumentNullException` for a `null` bundle,
+and `ArgumentOutOfRangeException` for a request `TryParse` cannot return,
+that is `Days` outside 1 to 298 261 or `OutputPath` `null` or empty.
+They write nothing to the console.
 
 **Checkpoint dump, version 1.** UTF-8 without a BOM, LF line endings, a
 final newline, single spaces, and invariant formatting throughout:
@@ -639,8 +752,9 @@ Every `FAIL` line is the step's first line of output, and the step exits
 1, which makes only `cross-runtime` red.
 
 **The two sides.** Mono is the smoke's own run (§16.2 step 4, §16.7):
-`build/StandaloneLinux64/AirportSim -batchmode -nographics -logFile -
--airportsim-checkpoints 1 "$PWD/checkpoints.txt"`. No second player run
+`build/StandaloneLinux64/AirportSim.x86_64 -batchmode -nographics -logFile -
+-airportsim-checkpoints 1 "$PWD/checkpoints.txt"` (the player's file
+name is `unity-builder`'s `buildName` plus `.x86_64`, Q-124). No second player run
 is made. CoreCLR is step 2's harness run over the downloaded copies of
 the directories the player read. **The seed** is not an argument on
 either side. Both read it from the staged `bundle.json`, whose source is
@@ -657,22 +771,28 @@ shipped build.
 **When it fails.** It is not required and it is a separate job, so it
 blocks no merge and no task's Done-when. A `missing` failure or a
 harness load failure on the staged files points at the build step
-(§16.3) and is reported to the task that owns it. A dump difference is a
+(§16.3), and the task that owns it (T-034) fixes it within the spec. If
+the fix needs anything the spec does not say, for example another staged
+path, a filter on `.meta` files or a workflow change, that task files a
+spec question and stops (Q-124). A dump difference is a
 determinism defect. It is reported to the owner and
 handled as `02-determinism.md` "When a gate fails" describes for the
 soak. It is never fixed by editing either dump, the comparison or the
 day count.
 
-> **LOW CONFIDENCE — Unity behaviour (Q-115).** Two things depend on how
-> Unity's Linux player build behaves, and no agent can check them. First,
-> that the staged streaming assets are at `AirportSim_Data/StreamingAssets/`
-> under `build/StandaloneLinux64/`, from `unity-builder`'s `buildName`
-> `AirportSim`. Second, that they are byte copies of the build step's
-> files, with no `.meta` files. The first `cross-runtime` run after T-034
-> checks both: a `missing` failure, or a harness content-load failure
-> naming a `.meta` file, is a spec question, filed. Nightly, plus PRs on
-> the Unity paths only, still means a Mono-only drift from a sim-only PR
-> can live up to a day before it is caught.
+**Confirmed (2026-10-06, Q-124).** `unity-builder`'s log of run
+37526054729 shows the player `build/StandaloneLinux64/AirportSim.x86_64`
+beside its data directory `build/StandaloneLinux64/AirportSim_Data/`, so
+the staged streaming assets are under `AirportSim_Data/StreamingAssets/`.
+
+> **LOW CONFIDENCE — Unity behaviour (Q-115).** One thing still depends
+> on how Unity's Linux player build behaves, and no agent can check it:
+> that the staged files are byte copies of the build step's files, with
+> no `.meta` files. The first `cross-runtime` run after T-034 checks it. A
+> harness content-load failure naming a `.meta` file is handled as "When
+> it fails" says. Nightly, plus PRs on the Unity paths only, still means
+> a Mono-only drift from a sim-only PR can live up to a day before it is
+> caught.
 
 ---
 
@@ -721,7 +841,9 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
   result line quoted in the PR, whatever that result is. Its colour is
   not part of "`unity-build` green". A `missing` failure or a harness
   load failure on the staged files points at T-034's build step, and
-  T-034 fixes it. A difference between two dumps that both loaded and ran
+  T-034 fixes it within the spec, or files a spec question and stops if
+  the fix needs anything the spec does not say (§16.9 "When it fails",
+  Q-124). A difference between two dumps that both loaded and ran
   is a determinism defect reported to the owner, not fixed in T-034.
   T-034 adds nothing for the job: the workflow is the owner's, and the
   bundle and batch mode already exist.
@@ -749,6 +871,15 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
 - `test_presentation_uses_stored_graphics_preference_or_default` — the
   default is `Medium` (Q-034)
 - `test_frame_loop_settings_opened_this_frame_steps_nothing` (Q-034)
+- `test_headless_run_failure_returns_3_and_writes_no_file` (Q-120): an
+  existing `OutputPath`, left byte-unchanged; a missing parent directory;
+  and a bundle with a load failure. Each returns 3, throws nothing,
+  leaves no new file, and writes exactly its one §16.8 failure line to a
+  captured `Console.Error` (`output-exists`, `output-no-parent`, `load`);
+  a successful `Run` writes nothing there
+
+Host tests may use `float` only as `07` L4's `tests/app/host/` exception
+allows (Q-116).
 
 ---
 

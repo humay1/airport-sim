@@ -3188,3 +3188,126 @@ Answer:      HUMAN DECISION, owner, 2026-10-06. Yes, as a **non-required**
              to make it required. LOW CONFIDENCE: the staged path and its
              byte copies depend on Unity's player build.
 Status:      ANSWERED (spec/16-interfaces-host.md#169-the-cross-runtime-determinism-check--adopted-not-required-d1-q-115)
+
+### Q-116 — `app.host`: floats in tests
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    `07` L4 has no float exception for `tests/app/host/`, but
+             `CameraView` and `FrameInput`'s screen size are `float`.
+Why it matters: the frame-loop and presentation tests cannot be written
+             without floats.
+Answer:      `07` L4 gains a third exception: `tests/app/host/` may use
+             `float` for the values of `15`'s, `16`'s and `17`'s
+             `float`-typed members and parameters only, dyadic and
+             exact, never NaN or infinity (the Q-102 rule).
+Status:      ANSWERED (spec/07-conventions.md#solution-layout-and-build-q-013)
+
+### Q-117 — `app.host`: `HostFactory.LoadContent`'s return type
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    §16.3 names `HostFactory.LoadContent(IContentSource)` with no
+             return type, and the task's Construction block omits it.
+Why it matters: L10 leaves the worker no choice of public shape.
+Answer:      `-> IReadOnlyList<IContentDefinition>`, exactly
+             `ContentLoaderFactory.Create().Load(source)`, its
+             `FormatException` passed through, with nothing added.
+Status:      ANSWERED (spec/16-interfaces-host.md#163-the-scenario-bundle)
+
+### Q-118 — `app.host`: the exception type of host load failures
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    §16 calls a missing file, a bad `bundle.json`, a missing
+             downward system and a bad or missing render layout "load
+             failures" but names no exception type or message form.
+Why it matters: tests assert the exact type (`07`).
+Answer:      `FormatException`, its message starting with the bundle file
+             at fault and `": "` (a table in §16.4 pins which file); a
+             loader's own `FormatException` passes through unchanged. The
+             check order is pinned. A `null` argument throws
+             `ArgumentNullException`. This is what the tests assume.
+Status:      ANSWERED (spec/16-interfaces-host.md#164-composition)
+
+### Q-119 — `app.host`: `FrameInput`'s C# member names
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    `FrameInput`'s IDL members were lowercase, so `07` L10
+             ("the IDL name") gave lowercase C# properties.
+Why it matters: every other struct's properties are PascalCase.
+Answer:      The IDL is now PascalCase: `Camera`, `ScreenWidth`,
+             `ScreenHeight`, `Ui`, `ElapsedRealMicroseconds`. The tests
+             use only the constructor, which is unchanged.
+Status:      ANSWERED (spec/16-interfaces-host.md#166-the-frame-loop)
+
+### Q-120 — `app.host`: how `IHeadlessRun.Run` fails
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    Exit code or throw? What if `OutputPath` already exists?
+Why it matters: the bootstrap quits with `Run`'s value, and an escaping
+             exception does not end a batch-mode player.
+Answer:      `Run` mirrors the harness's `checkpoints` stages: an existing
+             `OutputPath` or a missing parent, any load failure and any
+             exception during the run return 3, and never overwrite.
+             Success is 0 and writes nothing. Only programmer error throws
+             (`null` bundle, a request `TryParse` cannot return). A new
+             done-condition test,
+             `test_headless_run_failure_returns_3_and_writes_no_file`.
+             Where the message goes (delegated by the owner, coordinator
+             ruling 2026-10-06): one plain-ASCII line,
+             `FAIL checkpoints <stage> <detail>`, by one
+             `Console.Error.WriteLine`, stages pinned in §16.8. The
+             bootstrap (§16.7) routes `Console.Error` to `Debug.LogError`
+             around `Run`, so the line reaches the player log and the
+             smoke's stdout, then quits with the code.
+Status:      ANSWERED (spec/16-interfaces-host.md#168-the-headless-checkpoint-run-and-the-dump-format)
+
+### Q-121 — `app.host`: the render layout's `sourceName`
+Raised by:   test-author / T-031 (PR #127)
+Blocking:    T-031
+Question:    §16.4 step 2's `sourceName` rule names the system loaders;
+             §16.5 said `render_layout.*`.
+Why it matters: the loader's message starts with the `sourceName`.
+Answer:      Exactly `render_layout.fixture` (Q-073's rule), and the file
+             is required whatever `systems` lists.
+Status:      ANSWERED (spec/16-interfaces-host.md#165-presentation-assembly)
+
+### Q-122 — `app.host`: where the engine's arguments may sit
+Raised by:   coordinator / T-031
+Blocking:    T-031 (task file wording)
+Question:    The task file says engine arguments may sit "wherever ...
+             among the three tokens"; §16.8 takes the two values right
+             after the token.
+Why it matters: an argument between the token and its values would be
+             read as `<days>`.
+Answer:      §16.8 stands: before, after or both, never between. The
+             tests already assume this.
+Status:      ANSWERED (spec/16-interfaces-host.md#168-the-headless-checkpoint-run-and-the-dump-format)
+
+### Q-123 — `app.host`: may one `ISimComposer` compose twice?
+Raised by:   coordinator / T-031
+Blocking:    T-031
+Question:    "Composition happens once per session": does that forbid a
+             second `Compose` on one composer?
+Why it matters: an implementation could cache state or throw.
+Answer:      Any number of calls, each independent, with no state the
+             call changes. The same for `IHeadlessRun.Run` and
+             `IPresentationComposer.Compose`.
+Status:      ANSWERED (spec/16-interfaces-host.md#164-composition)
+
+### Q-124 — Unity: the player path, the asset refresh and `file:` paths
+Raised by:   coordinator, from `unity-builder`'s log (run 37526054729) and
+             Unity's documentation, 2026-10-06
+Blocking:    T-034
+Question:    §16.9 ran the player as `build/StandaloneLinux64/AirportSim`;
+             the build step did not refresh the asset database after its
+             copies; §16.2 marked `file:` paths LOW CONFIDENCE; §16.9 and
+             §16.11 disagreed on who handles a `missing` failure.
+Why it matters: the wrong player path fails the smoke; without a refresh
+             the player may not collect the copied files.
+Answer:      The player is `AirportSim.x86_64` beside `AirportSim_Data/`
+             (confirmed). The build step calls
+             `AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)`
+             after its copies. `file:` paths resolve from `Packages/`, so
+             the spec's are right. A `missing` or staged-load failure is
+             T-034's to fix within the spec, or a spec question if the fix
+             needs more.
+Status:      ANSWERED (spec/16-interfaces-host.md#169-the-cross-runtime-determinism-check--adopted-not-required-d1-q-115)

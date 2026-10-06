@@ -3824,3 +3824,79 @@ Impact:      - **§16.9 is executable.** `unity-build` (step 5) only sets
              - **Scope:** none added (D1 already proposed the check).
                **PENDING HUMAN:** whether it becomes required.
 Signed off:  human (owner, 2026-10-06, Q-115).
+
+## 2026-10-06 — spec/16 §16.2, §16.3, §16.4, §16.5, §16.6, §16.7, §16.8, §16.9, §16.11; 07 L4; 15 §15.13(c); INDEX; open-questions — T-031 gaps (Q-116 to Q-123) and Unity findings (Q-124)
+Reason:      T-031's Test Author (PR #127, `4ff428f`) found eight gaps in
+             the headless host's surface: floats in host tests, the return
+             type of `HostFactory.LoadContent`, the exception type of host
+             load failures, `FrameInput`'s C# names, how `IHeadlessRun.Run`
+             fails, the layout's `sourceName`, the task file's engine-
+             argument wording, and whether a composer may compose twice.
+             Separately, `unity-builder`'s log (run 37526054729) showed the
+             Linux player is `AirportSim.x86_64`, Unity's documentation
+             confirmed `file:` paths resolve from `Packages/` and that the
+             build step must refresh the asset database, and §16.9 and
+             §16.11 disagreed on who handles a staged-file failure.
+Raised by:   test-author / T-031 (PR #127); coordinator (Unity findings)
+Impact:      - **07 L4 (Q-116):** a third float exception, for
+               `tests/app/host/`, under the Q-102 rule.
+             - **§16.3 (Q-117):** `LoadContent -> IReadOnlyList<IContentDefinition>`,
+               exactly the content loader's result.
+             - **§16.4 (Q-118):** every host load failure is
+               `FormatException` starting with the bundle file at fault; a
+               loader's own passes through; the check order is pinned,
+               with the three bundle checks before
+               `ContentIndexFactory.Create`/`CreateBuilder`, then the
+               loads in table order, then the factories (review of #128);
+               `null` arguments throw `ArgumentNullException`. The
+               harness-factories rule moved back into the Rules list
+               (review of #128: the table had cut it off).
+             - **§16.4 (Q-123):** a composer may compose any number of
+               times, with no state a call changes.
+             - **§16.5 (Q-121):** the layout's `sourceName` is
+               `render_layout.fixture`, and the file is always required.
+             - **§16.6 (Q-119):** `FrameInput`'s members are PascalCase.
+               No test reads them by name.
+             - **§16.8 (Q-120):** `Run` returns 3 on any failure (an
+               existing `OutputPath` or missing parent, a load failure, any
+               run exception), and never overwrites; it throws only for
+               programmer error. It writes one plain-ASCII line,
+               `FAIL checkpoints <stage> <detail>` (stages
+               `output-exists`, `output-no-parent`, `load`, `run`,
+               `write`), with one `Console.Error.WriteLine`, and nothing on
+               success. New done-condition test
+               `test_headless_run_failure_returns_3_and_writes_no_file`,
+               which also checks the line.
+             - **§16.7 (Q-120, coordinator ruling within the owner's
+               delegation, 2026-10-06):** in batch mode the bootstrap sets
+               `Console.Error` to a writer forwarding each line to
+               `Debug.LogError`, calls `Run`, restores it, and calls
+               `Application.Quit(code)`, so the line reaches the player
+               log and the smoke's stdout (a Windows player has no
+               console).
+             - **§16.8 (Q-122):** engine arguments never sit between the
+               token and its values; `null` handling pinned; the stale
+               "recognises exactly" comment is replaced.
+             - **§16.2, §16.3, §16.9 (Q-124):** the player path is
+               `build/StandaloneLinux64/AirportSim.x86_64` (the owner's
+               `unity.yml` already uses it, `01a1c53`); the build step
+               calls `AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)`
+               after its copies; the `file:` and staged-path LOW CONFIDENCE
+               items are dropped as confirmed; a `missing` or staged-load
+               failure is T-034's to fix within the spec, or a spec
+               question if the fix needs more (§16.9 and §16.11 now agree).
+             - **§15.13(c):** no longer says construction is unpublished.
+             - **Tests (PR #127):** none must change. The Test Author adds
+               `test_headless_run_failure_returns_3_and_writes_no_file`.
+             - **Task files (Planner):** T-031's interface block takes the
+               PascalCase `FrameInput`, the `LoadContent` line in
+               Construction, the new test, and the Q-122 wording; T-034
+               takes the refresh call, the Q-124 failure rule and the
+               §16.7 `Console.Error` forwarding.
+             - **Merged work:** none affected. No host or Unity shell code
+               is merged.
+             - **LOW CONFIDENCE:** none added (where `Run`'s message goes
+               was ruled, above).
+             - **Scope:** none added.
+Signed off:  not required (interfaces and clarifications; no balance,
+             scope or `01`/`02` change).
