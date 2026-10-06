@@ -45,7 +45,7 @@
   "autoMode": {
     "allow": [
       "$defaults",
-      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin`.",
+      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin` WITHOUT reviewing.",
       "Integrator reports: after a merge, the Integrator may SendMessage its merge result to team-lead."
     ]
   },

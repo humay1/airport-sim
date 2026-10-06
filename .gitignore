@@ -6,3 +6,15 @@
 bin/
 obj/
 graphify-out/
+# Unity (spec 16 §16.2): editor state, build output, plugins copied in by CI
+unity/AirportSim/[Ll]ibrary/
+unity/AirportSim/[Tt]emp/
+unity/AirportSim/[Ll]ogs/
+unity/AirportSim/[Uu]ser[Ss]ettings/
+unity/AirportSim/[Bb]uild/
+unity/AirportSim/obj/
+unity/AirportSim/*.csproj
+unity/AirportSim/*.sln
+unity/AirportSim/Assets/Plugins/AirportSim/
+unity/AirportSim/Assets/Plugins/AirportSim.meta
+/build/

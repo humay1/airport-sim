@@ -1,0 +1,91 @@
+name: Unity
+
+# Build-only check of the Unity shell and backends (spec 15 §15.3, 16 §16.2, 17 §17.2).
+# NOT a required status check, and not a determinism gate: those run with no engine
+# and no licence (spec/01). Skips cleanly until unity/AirportSim/ exists (T-034).
+#
+# Secrets (Unity Personal): UNITY_EMAIL, UNITY_PASSWORD of a CI-only Unity account without 2FA.
+# Unity no longer issues .ulf files for Personal seats; unity-builder@v6 activates online.
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['unity/**', 'src/app/**', '.github/workflows/unity.yml']
+  push:
+    branches: [main]
+    paths: ['unity/**', 'src/app/**', '.github/workflows/unity.yml']
+  schedule:
+    - cron: '0 4 * * *'   # catches sim-side breakage; after nightly/slow-tests at 03:00
+  workflow_dispatch:
+
+# One Unity run at a time repo-wide: a Personal licence has few concurrent seats.
+# GitHub keeps only the newest pending run per group, so a queued run can be superseded.
+concurrency:
+  group: unity
+  cancel-in-progress: false
+
+env:
+  PROJECT: unity/AirportSim
+
+jobs:
+  unity-build:
+    name: unity-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a Unity project yet?
+        id: project
+        run: |
+          if [ -f "$PROJECT/ProjectSettings/ProjectVersion.txt" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No $PROJECT/ProjectSettings/ProjectVersion.txt yet (T-034); skipping."
+          fi
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.project.outputs.exists
+        with:
+          dotnet-version: '8.0.x'
+
+      # §16.2: plugins are the Release build of the solution's netstandard2.1
+      # assemblies, copied in at build time and never committed.
+      - name: Build plugins into Assets/Plugins/AirportSim
+        if: steps.project.outputs.exists
+        run: |
+          dotnet build AirportSim.sln -c Release
+          dest="$PROJECT/Assets/Plugins/AirportSim"
+          mkdir -p "$dest"
+          find src -path '*/bin/Release/netstandard2.1/*.dll' -exec cp {} "$dest/" \;
+          ls -l "$dest"
+
+      - uses: actions/cache@v4
+        if: steps.project.outputs.exists
+        with:
+          path: ${{ env.PROJECT }}/Library
+          key: unity-library-${{ hashFiles('unity/AirportSim/Packages/**', 'unity/AirportSim/ProjectSettings/**') }}
+          restore-keys: unity-library-
+
+      - uses: game-ci/unity-builder@v6
+        if: steps.project.outputs.exists
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: ${{ env.PROJECT }}
+          targetPlatform: StandaloneLinux64
+          buildName: AirportSim
+          # unityVersion defaults to 'auto': read from ProjectVersion.txt
+
+      # §16.7 batch mode: one sim-day of checkpoints, exit code 0, dump header present.
+      # Runs once T-034 ships the bootstrap and StreamingAssets/Scenario/; the skeleton has neither.
+      # ponytail: smoke only; byte-compare with the harness dump once §16.9 is adopted.
+      - name: Smoke - headless checkpoint day
+        if: steps.project.outputs.exists && hashFiles('unity/AirportSim/Assets/StreamingAssets/Scenario/**') != ''
+        run: |
+          player=build/StandaloneLinux64/AirportSim
+          sudo chmod -R a+rwX build
+          "$player" -batchmode -nographics -logFile - -airportsim-checkpoints 1 "$PWD/checkpoints.txt"
+          head -3 checkpoints.txt
+          head -1 checkpoints.txt | grep -qx 'airport-sim-checkpoints 1'

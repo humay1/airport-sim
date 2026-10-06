@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (not releasable until T-022 and T-024 merge (T-021 #91 and T-030 #90 are merged), the Q-095 fixture fix merges, and its tests are authored) |
+| Status | IN PROGRESS (tests PR #120, head 0c704ea, open; blocked on spec gap: bundle size categories size_a..size_f vs fixture medium/super/heavy; Architect spec PR pending; worker not started; §19.8 bundle-composition test still to write) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
 | Depends on | T-021 (merged #91), T-022, T-024, T-030 (merged #90), Q-095 fixture fix (test-author PR, no task id: `tests/fixtures/airside/phase1-single-runway.json` sinks 901-904 to 9, one line in `tests/sim/airside/AirsideTestKit.cs`) |
