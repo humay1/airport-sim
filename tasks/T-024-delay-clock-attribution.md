@@ -5,7 +5,7 @@
 | Status | MERGED (PR #119, ed6b8b9; tests #115) |
 | Module | `sim.delay` |
 | Assigned role | worker |
-| Depends on | T-022 (not merged; in progress #100/#103), T-023 (merged #71), T-026 (merged #29) |
+| Depends on | T-022 (merged #103), T-023 (merged #71), T-026 (merged #29) |
 | Spec source | `spec/00-overview.md` build order #6; `spec/06-delay-attribution.md`; `spec/10-events.md` §10.5–§10.7; `spec/14-interfaces-delay.md` (answers Q-007); `spec/03-module-map.md` "How a budget is measured" (Q-061, Q-064; PRs #73, #75) |
 | Blocked by | — |
 

@@ -19,7 +19,11 @@ not change its dependency list.
 
 ```
 src/app/ui/Unity/**
+unity/AirportSim/Packages/manifest.json
 ```
+
+The `manifest.json` write is one line only: this backend's own package entry
+(`16` §16.2, `17` §17.8).
 
 Built in `app.host`'s Unity project (`16` §16.2), the same as T-032.
 
@@ -77,6 +81,7 @@ Not budgeted here.
 - [ ] No writes outside writable paths
 - [ ] No sim member call, no branch on sim state
 - [ ] Reviewer approved
+- [ ] `unity-build` green on its PR, with its package referenced from `Packages/manifest.json` (`16` §16.11)
 - [ ] Settings icon and panel present, reading only `UiFrame`, and every
       other control inert while `SettingsOpen` (D10, Q-034)
 

@@ -45,7 +45,7 @@
   "autoMode": {
     "allow": [
       "$defaults",
-      "Pull request merge: In the humay1/airport-sim repo, the Integrator may run `gh pr merge <n> --merge --admin` WITHOUT reviewing.",
+      "Pull request merge: In the humay1/airport-sim repo, review happens BEFORE the merge: a separate Reviewer agent posts a 'REVIEWER VERDICT: APPROVE' PR comment naming the PR's head sha. All agents act as the owner's single GitHub account, which cannot approve its own PRs, so `--admin` is the owner-sanctioned way to merge an approved PR. The team-lead may spawn an Integrator agent to merge a PR once that verdict exists, and the Integrator may run `gh pr merge <n> --merge --admin` after checking the verdict covers the current head and the required checks are green. The Integrator does not review code itself; that is the Reviewer's job.",
       "Integrator reports: after a merge, the Integrator may SendMessage its merge result to team-lead."
     ]
   },
