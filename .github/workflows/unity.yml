@@ -32,6 +32,8 @@ jobs:
     name: unity-build
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      smoke_ran: ${{ steps.smoke.outputs.ran }}
     steps:
       - uses: actions/checkout@v4
 
@@ -80,8 +82,8 @@ jobs:
 
       # §16.7 batch mode: one sim-day of checkpoints, exit code 0, dump header present.
       # Runs once T-034 ships the bootstrap and StreamingAssets/Scenario/; the skeleton has neither.
-      # ponytail: smoke only; byte-compare with the harness dump once §16.9 is adopted.
       - name: Smoke - headless checkpoint day
+        id: smoke
         if: steps.project.outputs.exists && hashFiles('unity/AirportSim/Assets/StreamingAssets/Scenario/**') != ''
         run: |
           player=build/StandaloneLinux64/AirportSim
@@ -89,3 +91,73 @@ jobs:
           "$player" -batchmode -nographics -logFile - -airportsim-checkpoints 1 "$PWD/checkpoints.txt"
           head -3 checkpoints.txt
           head -1 checkpoints.txt | grep -qx 'airport-sim-checkpoints 1'
+          echo "ran=true" >> "$GITHUB_OUTPUT"
+
+      # §16.9 input for the cross-runtime job: the player's dump + the bundle the build packed.
+      - uses: actions/upload-artifact@v4
+        if: steps.smoke.outputs.ran == 'true'
+        with:
+          name: cross-runtime-input
+          include-hidden-files: true
+          if-no-files-found: warn
+          path: |
+            checkpoints.txt
+            build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario/
+            build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Content/
+
+  # §16.9 (Q-115, owner 2026-10-06): player dump == harness dump, byte for byte.
+  # Separate, non-required job: red here is a determinism bug for the owner and
+  # never turns unity-build red. No Unity licence needed.
+  cross-runtime:
+    name: cross-runtime
+    needs: unity-build
+    if: needs.unity-build.outputs.smoke_ran == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build AirportSim.sln -c Release
+      - uses: actions/download-artifact@v4
+        with:
+          name: cross-runtime-input
+          path: ${{ runner.temp }}/cross-runtime-input
+      - name: Player dump equals harness dump
+        run: |
+          IN="$RUNNER_TEMP/cross-runtime-input"
+          S="$IN/build/StandaloneLinux64/AirportSim_Data/StreamingAssets"
+          P="$IN/checkpoints.txt"
+          H="$RUNNER_TEMP/harness-checkpoints.txt"
+          for f in "$P" "$S/Scenario" "$S/Content"; do
+            [ -e "$f" ] || { echo "FAIL cross_runtime missing $f"; exit 1; }
+          done
+          rm -f "$H"
+          set +e
+          dotnet run --project tools/SimHarness -c Release --no-build -- checkpoints \
+            --bundle "$S/Scenario" --content "$S/Content" --days 1 --out "$H" \
+            > "$RUNNER_TEMP/harness.out" 2> "$RUNNER_TEMP/harness.err"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "FAIL cross_runtime harness exit=$code"; cat "$RUNNER_TEMP/harness.err"; exit 1
+          fi
+          if ! grep -q '^WROTE checkpoints ' <(head -1 "$RUNNER_TEMP/harness.out"); then
+            echo "FAIL cross_runtime harness no WROTE line"; cat "$RUNNER_TEMP/harness.out"; exit 1
+          fi
+          if cmp -s "$H" "$P"; then
+            echo "PASS cross_runtime days=1"; exit 0
+          fi
+          # first differing line, 1-based; if one file is a prefix of the other, the line after it
+          n=$(cmp "$H" "$P" 2>&1 | sed -n 's/.* differ: .* line \([0-9]*\).*/\1/p')
+          if [ -z "$n" ]; then
+            a=$(wc -l < "$H"); b=$(wc -l < "$P"); n=$(( (a < b ? a : b) + 1 ))
+          fi
+          h=$(sed -n "${n}p" "$H"); p=$(sed -n "${n}p" "$P")
+          [ "$(wc -l < "$H")" -ge "$n" ] || h='<missing>'
+          [ "$(wc -l < "$P")" -ge "$n" ] || p='<missing>'
+          echo "FAIL cross_runtime days=1 line=$n"
+          echo "harness: $h"
+          echo "player:  $p"
+          exit 1
