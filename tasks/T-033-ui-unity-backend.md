@@ -19,8 +19,11 @@ not change its dependency list.
 
 ```
 src/app/ui/Unity/**
-unity/AirportSim/Packages/manifest.json   (one line only: this backend's own package entry, `16` §16.2, `17` §17.8)
+unity/AirportSim/Packages/manifest.json
 ```
+
+The `manifest.json` write is one line only: this backend's own package entry
+(`16` §16.2, `17` §17.8).
 
 Built in `app.host`'s Unity project (`16` §16.2), the same as T-032.
 

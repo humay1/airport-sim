@@ -19,8 +19,11 @@ change this task's dependency list.
 
 ```
 src/app/render/Unity/**
-unity/AirportSim/Packages/manifest.json   (one line only: this backend's own package entry, `16` §16.2, `15` §15.10)
+unity/AirportSim/Packages/manifest.json
 ```
+
+The `manifest.json` write is one line only: this backend's own package entry
+(`16` §16.2, `15` §15.10).
 
 ## Readable specs
 
