@@ -57,14 +57,29 @@ namespace AirportSim.App.Host.Tests
             CheckpointDumpTests.AssertShape(dump, "systems sim.world sim.schedule sim.airside sim.flow sim.turnaround sim.delay", 6, 48);
         }
 
+        /// <summary>16 §16.8: every character outside U+0020 to U+007E is written as '?'.</summary>
+        private static string Ascii(string s)
+        {
+            var chars = s.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i] < ' ' || chars[i] > '~')
+                {
+                    chars[i] = '?';
+                }
+            }
+
+            return new string(chars);
+        }
+
         [Fact]
         public void test_headless_run_failure_returns_3_and_writes_no_file()
         {
             // 16 §16.8 "Run's stages and failures" (Q-120): every failure is the
             // return value 3, never an exception; stages 1 to 3 leave no file, an
             // existing OutputPath is never overwritten, and a 3 writes exactly
-            // one "FAIL checkpoints " line to Console.Error. Success returns 0
-            // and writes nothing.
+            // its one failure line to Console.Error (§16.11: output-exists,
+            // output-no-parent, load). Success returns 0 and writes nothing.
             using var tmp = new TempDir();
             IHeadlessRun run = HostFactory.CreateHeadlessRun(HostFactory.CreateSimComposer(B.Content(B.Phase1Content)));
             TextWriter oldOut = Console.Out;
@@ -84,30 +99,47 @@ namespace AirportSim.App.Host.Tests
                 byte[] existing = B.Utf8("not a dump\n");
                 File.WriteAllBytes(tmp.File("existing"), existing);
                 Directory.CreateDirectory(tmp.File("dir"));
-                var cases = new List<(string Label, MemoryBundle Bundle, string Path, string? NewFile)>
+                // §16.8 "The failure line": stage 1 lines are exact; a load line is
+                // "load <type>: <message>", the message starting with the bundle
+                // file at fault (§16.4 "Load failures"), so only that prefix is pinned.
+                string existingPath = tmp.File("existing");
+                string dirPath = tmp.File("dir");
+                string noParent = Path.Combine(tmp.File("missing"), "dump");
+                var cases = new List<(string Label, MemoryBundle Bundle, string Path, string? NewFile, string Line, bool Exact)>
                 {
-                    ("an existing OutputPath file", B.Phase1Bundle(), tmp.File("existing"), null),
-                    ("an existing OutputPath directory", B.Phase1Bundle(), tmp.File("dir"), null),
-                    ("a missing parent directory", B.Phase1Bundle(), Path.Combine(tmp.File("missing"), "dump"), Path.Combine(tmp.File("missing"), "dump")),
-                    ("a bundle with a load failure (no schedule.csv)", B.Phase1Bundle().Remove("schedule.csv"), tmp.File("load"), tmp.File("load")),
-                    ("a bundle with a load failure (bad bundle.json)", B.Phase1Bundle().Put("bundle.json", B.Utf8("{")), tmp.File("json"), tmp.File("json")),
+                    ("an existing OutputPath file", B.Phase1Bundle(), existingPath, null, "FAIL checkpoints output-exists " + Ascii(existingPath), true),
+                    ("an existing OutputPath directory", B.Phase1Bundle(), dirPath, null, "FAIL checkpoints output-exists " + Ascii(dirPath), true),
+                    ("a missing parent directory", B.Phase1Bundle(), noParent, noParent, "FAIL checkpoints output-no-parent " + Ascii(noParent), true),
+                    ("a bundle with a load failure (no schedule.csv)", B.Phase1Bundle().Remove("schedule.csv"), tmp.File("load"), tmp.File("load"), "FAIL checkpoints load FormatException: schedule.csv: ", false),
+                    ("a bundle with a load failure (bad bundle.json)", B.Phase1Bundle().Put("bundle.json", B.Utf8("{")), tmp.File("json"), tmp.File("json"), "FAIL checkpoints load FormatException: bundle.json: ", false),
                 };
 
-                foreach ((string label, MemoryBundle bundle, string path, string? newFile) in cases)
+                foreach ((string label, MemoryBundle bundle, string path, string? newFile, string expected, bool exact) in cases)
                 {
+                    outText = new StringWriter();
                     errText = new StringWriter();
+                    Console.SetOut(outText);
                     Console.SetError(errText);
                     int code = -1;
                     Exception? e = Record.Exception(() => code = run.Run(bundle, new CheckpointRunRequest(1, path)));
                     Assert.True(e == null, label + ": Run threw " + e);
                     Assert.True(code == 3, label + ": Run returned " + code);
-                    // Exactly one line, starting "FAIL checkpoints " (Q-120); its
-                    // stage words and detail are not asserted.
+
+                    // Exactly one Console.Error.WriteLine(line) and nothing else on the console.
                     string err = errText.ToString();
-                    string line = err.EndsWith("\r\n", StringComparison.Ordinal) ? err.Substring(0, err.Length - 2)
-                        : err.EndsWith("\n", StringComparison.Ordinal) ? err.Substring(0, err.Length - 1) : err;
-                    Assert.True(line.Length < err.Length && line.IndexOf('\n') < 0 && line.IndexOf('\r') < 0, label + ": Console.Error is not exactly one line: '" + err + "'");
-                    Assert.True(line.StartsWith("FAIL checkpoints ", StringComparison.Ordinal), label + ": the Console.Error line does not start with 'FAIL checkpoints ': '" + err + "'");
+                    Assert.True(outText.ToString().Length == 0, label + ": Run wrote to Console.Out: '" + outText + "'");
+                    Assert.True(err.EndsWith(errText.NewLine, StringComparison.Ordinal), label + ": Console.Error is not one WriteLine: '" + err + "'");
+                    string line = err.Substring(0, err.Length - errText.NewLine.Length);
+                    Assert.True(Ascii(line) == line, label + ": the line is not plain printable ASCII (one line, §16.8): '" + err + "'");
+                    if (exact)
+                    {
+                        Assert.Equal(expected, line);
+                    }
+                    else
+                    {
+                        Assert.True(line.StartsWith(expected, StringComparison.Ordinal), label + ": expected a line starting '" + expected + "', got '" + line + "'");
+                    }
+
                     if (newFile != null)
                     {
                         Assert.False(File.Exists(newFile) || Directory.Exists(newFile), label + ": created " + newFile);
