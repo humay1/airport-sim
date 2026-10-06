@@ -332,6 +332,11 @@ Rules:
 - Every checkpoint (`08` §8.9) goes to the given sink.
 - A listed system whose required downward interface is not listed (flow
   without world, airside or turnaround without schedule) is a load failure.
+- `tools.simharness`'s `checkpoints` subcommand (§16.8, `19` §19.2c) uses
+  the **same factories**. It may wire them in its own code, which is what
+  the equivalence test compares, but it must not construct any system
+  another way. It does not reference `app.host` (a test checks this, `19`
+  §19.8), and `app.host` does not reference it.
 
 **Load failures (Q-118).** Every load failure of `ISimComposer.Compose`
 and of `IPresentationComposer.Compose` (§16.5) throws `FormatException`
@@ -352,14 +357,13 @@ the bundle file name (step 2), or with the module name (`07`). The host
 never catches, wraps or replaces it. `Compose` checks in this order and
 throws at the first failure: `bundle.json`; the downward interfaces; the
 presence of every listed system's files, in the row order of §16.3's
-table; then step 2's loads. That is the order of the harness's stage 2
-(`19` §19.2c). A `null` argument to either composer throws
-`ArgumentNullException`.
-- `tools.simharness`'s `checkpoints` subcommand (§16.8, `19` §19.2c) uses
-  the **same factories**. It may wire them in its own code, which is what
-  the equivalence test compares, but it must not construct any system
-  another way. It does not reference `app.host` (a test checks this, `19`
-  §19.8), and `app.host` does not reference it.
+table. All three come inside step 1, after the parse and **before**
+`ContentIndexFactory.Create` and `CreateBuilder`. Then come step 1's
+`ContentIndexFactory.Create` and `CreateBuilder`, whose content failures
+start with the module name (`07`); then step 2's loads, in the row order
+of §16.3's table; then step 3's factories. That is the order of the
+harness's stage 2 (`19` §19.2c). A `null` argument to either composer
+throws `ArgumentNullException`, before any check.
 
 ---
 

@@ -3844,8 +3844,13 @@ Impact:      - **07 L4 (Q-116):** a third float exception, for
                exactly the content loader's result.
              - **§16.4 (Q-118):** every host load failure is
                `FormatException` starting with the bundle file at fault; a
-               loader's own passes through; the check order is pinned;
-               `null` arguments throw `ArgumentNullException`.
+               loader's own passes through; the check order is pinned,
+               with the three bundle checks before
+               `ContentIndexFactory.Create`/`CreateBuilder`, then the
+               loads in table order, then the factories (review of #128);
+               `null` arguments throw `ArgumentNullException`. The
+               harness-factories rule moved back into the Rules list
+               (review of #128: the table had cut it off).
              - **§16.4 (Q-123):** a composer may compose any number of
                times, with no state a call changes.
              - **§16.5 (Q-121):** the layout's `sourceName` is
