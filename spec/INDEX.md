@@ -69,7 +69,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Key: no floats in sim state; single seeded RNG with per-system streams; no
   hash-order iteration; five gates block merges. It is unchanged by D1–D9.
   The Mono-vs-CoreCLR check is in `16` §16.9: adopted by the owner as a
-  non-required step of `unity-build`, so it is not in `02`'s table (Q-115).
+  separate non-required job `cross-runtime` after `unity-build`, so it is
+  not in `02`'s table (Q-115).
 - LC: none.
 - Read if: any sim or harness task (all of it).
 
@@ -413,10 +414,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   batch-mode smoke; backends are `file:` local packages, `.meta` files
   are committed, the build step is an editor build callback, and
   `TryParse` ignores engine arguments (§16.2, §16.3, §16.7, §16.8,
-  Q-114)**; **`cross_runtime`: in `unity-build`, after the smoke, the
-  harness `checkpoints --days 1` over the player's staged
-  `AirportSim_Data/StreamingAssets/{Scenario,Content}` is `cmp`'d whole
-  with the smoke's dump; non-required, HD owner 2026-10-06 (§16.9,
+  Q-114)**; **`cross-runtime`: a separate non-required job after
+  `unity-build`, which hands it the artifact `cross-runtime-input` (the
+  smoke's dump and the player's staged
+  `AirportSim_Data/StreamingAssets/{Scenario,Content}`); the harness
+  `checkpoints --days 1` over them is `cmp`'d whole with the dump; it
+  never affects "`unity-build` green"; HD owner 2026-10-06 (§16.9,
   Q-115)**.
 - LC: Unity mechanics no agent can run (§16.2, Q-114); the staged
   streaming-assets path and its byte copies (§16.9, Q-115);

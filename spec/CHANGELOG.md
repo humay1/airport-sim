@@ -3781,29 +3781,39 @@ Impact:      - **Q-113 (fix for T-048):** the bundles get their own airside
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
 
-## 2026-10-06 — spec/16 §16.1, §16.2, §16.8 (D7 note), §16.9 (rewritten), §16.11, §16.12; INDEX; open-questions — Q-115 HUMAN DECISION: the cross-runtime check is adopted, non-required, inside `unity-build`
+## 2026-10-06 — spec/16 §16.1, §16.2, §16.8 (D7 note), §16.9 (rewritten), §16.11, §16.12; INDEX; open-questions — Q-115 HUMAN DECISION: the cross-runtime check is adopted, non-required, as a separate `cross-runtime` job
 Reason:      The owner decided Q-115: adopt §16.9's Mono-against-CoreCLR
-             byte comparison as a non-required step of `unity-build`, from
-             the first run with the smoke, and decide later, after clean
-             runs, whether to make it required.
-Raised by:   Q-115 (owner decision, relayed by the coordinator)
-Impact:      - **§16.9 is executable.** Step `cross_runtime`, after the
-               smoke: the harness runs `checkpoints --days 1` over the
-               player's staged
+             byte comparison as a non-required check wherever `unity-build`
+             runs, from the first run with the smoke, and decide later,
+             after clean runs, whether to make it required. Review of #125
+             (REJECT at `6500f54`) found that a failing step inside
+             `unity-build` would turn that job red and make T-034's and the
+             backends' "`unity-build` green" unmeetable on a dump
+             difference. The coordinator, within the owner's decision,
+             made it a separate job.
+Raised by:   Q-115 (owner decision, relayed by the coordinator); review of #125
+Impact:      - **§16.9 is executable.** `unity-build` (step 5) only sets
+               `smoke_ran` and uploads the artifact `cross-runtime-input`:
+               `checkpoints.txt` and the player's staged
                `build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario`
-               and `.../Content`, with fully qualified paths and `--no-build`
-               after the job's Release build. Its dump is compared with the
-               smoke's `checkpoints.txt` whole, byte for byte, with no
+               and `.../Content`. The job `cross-runtime`
+               (`needs: unity-build`, no Unity licence) builds the harness,
+               downloads the artifact, checks the inputs exist, runs
+               `checkpoints --days 1` over the downloaded directories, checks
+               the `WROTE` line, and `cmp`s the whole of both dumps with no
                normalisation. The seed comes from the staged `bundle.json`
-               on both sides. Failure lines are pinned. Ten days and the
-               old project-directory paths are dropped.
+               on both sides. The check order and every failure line are
+               pinned. Ten days and the old project-directory paths are
+               dropped. "`unity-build` green" means that job alone.
              - **Not in `02`, `01` unchanged.** `02`'s table lists required
                gates; this check is not one. Making it required is the
                owner's later decision (§16.12).
-             - **Workflow (owner):** one step in `unity.yml`, which the
-               coordinator prepares. No task writes it.
-             - **T-034:** its Done-when also includes the step having run
-               (not skipped), with the result quoted in the PR. A staging
+             - **Workflow (owner):** the hand-off in `unity-build` and the
+               new `cross-runtime` job in `unity.yml`, which the coordinator
+               prepares. No task writes them.
+             - **T-034:** its Done-when also includes the `cross-runtime`
+               job having run (not skipped), with its result line quoted in
+               the PR. Its colour is not part of "`unity-build` green". A staging
                or load failure is T-034's to fix. A dump difference is a
                determinism defect for the owner. No new code for T-034.
              - **Merged work:** none affected.

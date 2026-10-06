@@ -3173,8 +3173,12 @@ Why it matters: it is the only check of Mono against CoreCLR. Adopting it
              required, which `01-architecture.md`'s "no engine, no licence"
              gate rationale keeps out of the per-merge gates.
 Answer:      HUMAN DECISION, owner, 2026-10-06. Yes, as a **non-required**
-             step `cross_runtime` of `unity-build`, right after the smoke,
-             wherever the job runs (PRs on its paths, nightly, by hand). It
+             check that runs wherever `unity-build` runs (PRs on its paths,
+             nightly, by hand). Per the coordinator, within that decision
+             and after review of #125, it is a separate job
+             `cross-runtime` (`needs: unity-build`) fed by the artifact
+             `cross-runtime-input`, so that its failure never turns
+             `unity-build` red or blocks a task's Done-when. It
              starts once T-034's build step makes the smoke run. It is not
              a row of `02-determinism.md`, which lists required gates, and
              `01` is unchanged. The harness runs `checkpoints --days 1` over
