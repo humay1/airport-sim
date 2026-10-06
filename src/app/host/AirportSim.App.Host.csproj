@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>AirportSim.App.Host</AssemblyName>
+    <RootNamespace>AirportSim.App.Host</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../sim/core/AirportSim.Sim.Core.csproj" />
+    <ProjectReference Include="../../sim/world/AirportSim.Sim.World.csproj" />
+    <ProjectReference Include="../../sim/schedule/AirportSim.Sim.Schedule.csproj" />
+    <ProjectReference Include="../../sim/airside/AirportSim.Sim.Airside.csproj" />
+    <ProjectReference Include="../../sim/flow/AirportSim.Sim.Flow.csproj" />
+    <ProjectReference Include="../../sim/turnaround/AirportSim.Sim.Turnaround.csproj" />
+    <ProjectReference Include="../../sim/delay/AirportSim.Sim.Delay.csproj" />
+    <ProjectReference Include="../render/Scene/AirportSim.App.Render.csproj" />
+    <ProjectReference Include="../ui/Scene/AirportSim.App.Ui.csproj" />
+  </ItemGroup>
+
+</Project>
