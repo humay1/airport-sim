@@ -16,8 +16,8 @@ namespace AirportSim.Tools.SimHarness
     /// <summary>
     /// The <c>checkpoints</c> subcommand: composes a scenario bundle by 16-interfaces-host.md
     /// §16.4's rules in the harness's own code, steps it and writes the checkpoint dump of §16.8.
-    /// Spec: 19-interfaces-harness.md §19.2c, §19.3 (Q-066 to Q-076). This stage composes
-    /// <c>sim.world</c>, <c>sim.schedule</c> and <c>sim.flow</c> only.
+    /// Spec: 19-interfaces-harness.md §19.2c, §19.3 (Q-066 to Q-076). The Phase 1 stage
+    /// composes all six Phase 1 systems.
     /// </summary>
     internal static class CheckpointsCommand
     {
@@ -137,7 +137,7 @@ namespace AirportSim.Tools.SimHarness
                 delay = DelayFactory.CreateSystem(services);
             }
 
-            // Registry order (08 §8.5): world, schedule, flow.
+            // Registry order (08 §8.5): world, schedule, airside, flow, turnaround, delay.
             var registered = new List<ISimSystem>(3);
             if (world != null)
             {
@@ -335,7 +335,7 @@ namespace AirportSim.Tools.SimHarness
         }
 
         /// <summary>
-        /// A listed system whose downward interface is not listed is exit 3 (16 �16.4): flow needs
+        /// A listed system whose downward interface is not listed is exit 3 (16 §16.4): flow needs
         /// world; schedule's flow is optional; airside and turnaround need schedule.
         /// </summary>
         private static void CheckComposable(HashSet<string> listed)
