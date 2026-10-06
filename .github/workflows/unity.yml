@@ -86,7 +86,7 @@ jobs:
         id: smoke
         if: steps.project.outputs.exists && hashFiles('unity/AirportSim/Assets/StreamingAssets/Scenario/**') != ''
         run: |
-          player=build/StandaloneLinux64/AirportSim
+          player=build/StandaloneLinux64/AirportSim.x86_64   # unity-builder output name (run 37526054729 log)
           sudo chmod -R a+rwX build
           "$player" -batchmode -nographics -logFile - -airportsim-checkpoints 1 "$PWD/checkpoints.txt"
           head -3 checkpoints.txt
