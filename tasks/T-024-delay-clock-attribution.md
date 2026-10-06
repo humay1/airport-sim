@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | MERGED (PR #119, ed6b8b9; tests #115) |
 | Module | `sim.delay` |
 | Assigned role | worker |
 | Depends on | T-022 (not merged; in progress #100/#103), T-023 (merged #71), T-026 (merged #29) |
