@@ -101,7 +101,7 @@ and `MAX_DRAWN_LANES_PER_NODE` are `int`, `MAX_CATCHUP_TICKS_PER_FRAME` is
 | Engine references | **none**, asserted by test | Unity 6 |
 | Built by | `AirportSim.sln`, `dotnet test` | the Unity project owned by `app.host` (`16` §16.2) |
 | Reads the sim | the queries in §15.6 only | never; it calls no sim member at all |
-| Tested in CI | yes, all of §15.12 | no |
+| Tested in CI | yes, all of §15.12 | build-checked only, by `unity-build` (`16` §16.2), which is not a required check; no behaviour test |
 | In T-020 | yes | no — contract only |
 
 Rules binding on the scene layer:
@@ -391,8 +391,9 @@ interface ITickPacer {
   amendment to `GameSpeed`, never a worker's choice.
 - The pacer holds an integer accumulator of *speed-scaled* microseconds. That
   is presentation state, not sim state, and it is never saved.
-- `paused`: returns 0 and discards `elapsed`. Unpausing does not replay the
-  paused time.
+- `paused`: returns 0, discards `elapsed` and leaves the accumulator
+  unchanged. Unpausing does not replay the paused time, and the partial
+  tick held before the pause is kept.
 - Otherwise: `acc += elapsed × (int)speed`;
   `n = acc / REAL_MICROSECONDS_PER_TICK_1X`;
   `acc -= n × REAL_MICROSECONDS_PER_TICK_1X`. If
@@ -478,7 +479,7 @@ readonly struct RenderSources {
 
 interface ISceneBuilder        { RenderFrame Build(in CameraView camera, in GraphicsSettings graphics) }        // D10
 interface IPromotionController { void Update(in CameraView camera, in GraphicsSettings graphics) }        // D10
-// ITickPacer: §15.8.   IRenderLayoutLoader: §15.4.
+// ITickPacer: §15.8.   IRenderLayoutLoader: §15.4.   RenderConstants: §15.2 (Q-099).
 ```
 
 `ISceneBuilder` and `IPromotionController` are constructed from a
@@ -532,7 +533,12 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   frame after the first. **LOW CONFIDENCE**: this binds the implementation
   more tightly than the rest of the contract. It is the Architect's reading
   of what `Low` needs to hold budget on integrated graphics.
-- Because it cannot be tested in CI, it must stay small enough for the
+- **Packaging (Q-114).** It is the local package
+  `com.airportsim.render.unity` at `src/app/render/Unity/`, with committed
+  `.meta` files, referenced from the Unity project's
+  `Packages/manifest.json` (`16` §16.2). Its task adds that one line.
+- CI only compiles it (`unity-build`, `16` §16.2), and no CI test runs its
+  behaviour, so it must stay small enough for the
   Reviewer to check against this list line by line.
 
 ---

@@ -518,11 +518,40 @@ files as its manifest. The Phase 1 checkpoints bundle,
 stage's Test Author. Its `bundle.json` lists all six Phase 1 systems, with
 seed `"12345"`. It holds `world.fixture`, `schedule.csv`,
 `airside.fixture`, `airside_rules.json`, `turnaround.fixture` and
-`flow.fixture`, each a byte copy of the source that `16` §16.3's
-playtest-bundle table gives for that name. That is six files for the five
+`flow.fixture`. That is six files for the five
 listed systems that need one: `sim.airside` takes two, `airside.fixture`
 and `airside_rules.json`, and `sim.delay` takes none. It holds no `render_layout.fixture`, since
 `checkpoints` never reads it. Its content is `--content data`.
+
+- `world.fixture`, `schedule.csv`, `airside_rules.json`,
+  `turnaround.fixture` and `flow.fixture` are each a byte copy of the
+  source that `16` §16.3's playtest-bundle table gives for that name.
+- **`airside.fixture` is not a byte copy (Q-113).** It is itself the
+  source of §16.3's `airside.fixture` row. It is
+  `tests/fixtures/airside/phase1-single-runway.json` (`12` §12.13) with
+  exactly three substitutions, applied to every
+  `max_aircraft_size_category` value and to nothing else:
+  `"medium"` becomes `"size_c"`, `"heavy"` becomes `"size_e"` and
+  `"super"` becomes `"size_f"`. Every other byte is the same. The reason:
+  §12.13's fixture names the size categories that the airside, turnaround,
+  delay, render and UI test kits build in code (`small` 1, `medium` 2,
+  `heavy` 3, `super` 4), but `data/` defines only `size_a` to `size_f`,
+  so under `--content data` `CreateSystem` throws on it (`12` §12.4). The
+  substitution keeps every stand-compatibility outcome for the nine
+  aircraft types of `tests/fixtures/schedule/phase0-200.csv` the same as
+  under those kits. Under `data/`'s ordinals, the `size_c` stand takes
+  `atr72`, `crj900`, `a320`, `a321` and `b738`, the `size_e` stand takes
+  every type except `a388`, and the `size_f` stands take all nine.
+- **Every content id resolves in `data/` (Q-113).** Checked against
+  `data/` at `c48e163`: the schedule's nine `aircraft_type`s (`a320`,
+  `a321`, `a359`, `a388`, `atr72`, `b738`, `b744`, `b789`, `crj900`) and
+  the size categories they name (`size_b` to `size_f`); its two
+  `pax_profile`s (`business`, `leisure`); the flow fixture's one
+  `queue_profile` (`security_standard`); and `airside.fixture`'s
+  `size_c`, `size_e` and `size_f`. `airline` is not a content id (`11`
+  §11.4). The world and turnaround fixtures and `airside_rules.json` name
+  no content id. Whoever later changes one of these files, or `data/`,
+  keeps this true and checks it in the same change.
 
 ## 19.2d `Promotion`: what the second run promotes (Q-084)
 
@@ -1008,7 +1037,9 @@ The Phase 1 stage's Test Author adds one test,
 `--days 1`, the `systems` line is `systems sim.world sim.schedule
 sim.airside sim.flow sim.turnaround sim.delay`, and the file is
 byte-identical to a Phase 1 checkpoints kit's dump, built as above with
-all six factories.
+all six factories. The kit's content is `data/`, loaded through
+`ContentLoaderFactory` as above. It builds no content definition in code
+(Q-113).
 
 ## 19.9 Tests of `Promotion` (Q-084)
 

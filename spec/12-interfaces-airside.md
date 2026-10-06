@@ -1587,6 +1587,18 @@ format" (Q-046), binding on the Test Author:
   uniqueness. The earlier values 901 to 904 named no flow node, and a
   composed run threw at the first `DoorsClosed`'s `Absorb`.
 
+**Its size categories are test-kit content (Q-113).** The fixture's
+`max_aircraft_size_category` values are `medium`, `heavy` and `super`,
+which the suites that read it (airside, turnaround, delay, render and UI)
+define in code as `small` 1, `medium` 2, `heavy` 3, `super` 4. They are
+not in `data/`, whose size categories are `size_a` to `size_f`. The
+fixture is unchanged, and no merged suite changes. A composition over
+`data/` uses instead the copy with `data/`'s ids that `19` §19.2c pins
+(`tests/fixtures/harness/checkpoints-phase1/airside.fixture`), which is
+also the playtest bundle's `airside.fixture` (`16` §16.3). That copy is
+a separate file and is not required to follow later changes to this one,
+like the other bundle files of `19` §19.2c.
+
 Runs against `tests/fixtures/schedule/phase0-200.csv`
 (`11-interfaces-schedule.md` §11.10) with `sim.turnaround` **absent**, so
 §12.8's fallback path is what T-021 actually exercises; the event-handshake

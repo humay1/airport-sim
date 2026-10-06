@@ -3710,3 +3710,73 @@ Impact:      - **Q-102:** `07` L4 gets a second float exception, for
              - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
+
+## 2026-10-06 — spec/19 §19.2c, §19.8; 16 §16.2 (+ new "The skeleton and the Unity build check"), §16.3, §16.7, §16.8, §16.9, §16.11, §16.12; 12 §12.13; 15 §15.3, §15.8, §15.9, §15.10; 17 §17.2, §17.8; 14 §14.4, §14.13; INDEX; open-questions — Q-113: Phase 1 bundles' size categories; Q-114: Unity build check; Q-115 filed (HUMAN DECISION); Q-095/Q-108 follow-ups
+Reason:      (1) T-048's Test Author (PR #120) found that the Phase 1
+             checkpoints bundle cannot compose: its `airside.fixture`, a
+             byte copy of the T-021 fixture, names `medium`/`heavy`/`super`,
+             and `--content data` has only `size_a` to `size_f`. The same
+             break hit the playtest bundle and T-031's D7 Phase 1 run.
+             (2) The owner added `.github/workflows/unity.yml` and the Unity
+             skeleton (`c48e163`), so the "not tested in CI" rows were stale,
+             the backends had no pinned inclusion mechanism before T-034,
+             a build step outside the Unity build would never feed the
+             smoke, and `TryParse`'s "recognises exactly" would reject the
+             engine's own arguments. (3) Small follow-ups from reviews.
+Raised by:   Q-113 (T-048 Test Author), Q-114 (coordinator), review notes
+Impact:      - **Q-113 (fix for T-048):** the bundles get their own airside
+               layout. `tests/fixtures/harness/checkpoints-phase1/airside.fixture`
+               is the T-021 fixture with `medium`→`size_c`,
+               `heavy`→`size_e`, `super`→`size_f` (§19.2c), and it is the
+               playtest bundle's source for that row (§16.3). Every content
+               id of both bundles was checked against `data/` and is listed
+               in §19.2c. **T-048's Test Author** edits that one file in
+               PR #120 and adds
+               `test_checkpoints_phase1_bundle_composes_every_phase1_system`.
+               **No merged test or fixture changes:** the T-021 fixture and
+               the airside, turnaround, delay, render and UI suites, which
+               all build `small`/`medium`/`heavy`/`super` in code, are
+               untouched. T-031's D7 test and T-034's build step use the new
+               source; neither is written yet. Also: §16.3 names the flow and
+               render fixtures by path.
+             - **Q-114 (Unity):** §15.3, §16.2, §17.2 say "build-checked by
+               `unity-build`, not required". The editor is pinned at
+               `6000.3.25f1`; the skeleton and the `.gitignore` entries are
+               recorded. Backends are local packages
+               `com.airportsim.render.unity` and `com.airportsim.ui.unity`,
+               each added to `Packages/manifest.json` by its own task
+               (T-032, T-033: one line under `unity/`, a new writable path).
+               `.meta` files are hand-written and committed. The build step
+               is an editor build callback under `Assets/Editor/` (T-034).
+               `TryParse` finds its token among engine arguments, and batch
+               mode quits 2 when it returns false (T-031, not yet authored).
+               The plugin copy is `unity.yml`'s step, not project code.
+               **Task files (Planner):** T-032 and T-033 Done-when add
+               "`unity-build` green" and the manifest grant; T-034's scope is
+               to extend the skeleton, add the bootstrap and the build step,
+               and its Done-when adds "`unity-build` green with the smoke
+               run"; T-031's command-line test covers engine arguments.
+               T-025's dependencies are unchanged (it already depends on
+               T-032, T-033, T-034).
+             - **Q-115 filed, OPEN, HUMAN DECISION:** whether `unity-build`
+               grows §16.9's byte comparison. Touches `02` and the workflow.
+             - **Follow-ups:** Q-095's impact note corrected
+               (`AirsideTestKit` `FixtureLayout.Sink` did change); §15.8
+               says a paused call leaves the accumulator unchanged (as the
+               merged pacer does); §15.9 names `RenderConstants`; §14.4
+               says all four checkpoint milestones throw for an unknown
+               flight (as merged; the test covers `OnStand`, no change
+               needed); §14.13 states the count prefixes and the leading
+               `FlightId` that the merged hash feeds. None changes merged
+               code or tests. The Q-102..Q-105 / Q-106..Q-112 order in
+               open-questions is left as is.
+             - **LOW CONFIDENCE:** the Unity mechanics of Q-114 (local
+               `file:` packages, hand-written GUIDs, the build callback
+               running before streaming assets are collected). No agent can
+               run the editor; `unity-build` on T-032's PR is the first
+               real check.
+             - **Scope:** none added. **PENDING HUMAN:** Q-115; the
+               `.gitignore` entries for `Assets/StreamingAssets/`, its
+               `.meta` and `Packages/packages-lock.json` (§16.12).
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).

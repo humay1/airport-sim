@@ -212,9 +212,16 @@ Finishing early (`ActualTick < PlannedTick`) is lateness 0, never negative.
 milestone for a flight `sim.delay` has no record of (no
 `FlightPlanPublished` seen, or already pruned) is an emitter bug: throw,
 as §14.5 does for intervals. This is checked before any other rule of
-§14.6, so the record is not created and no state changes. A
+§14.6, so the record is not created and no state changes. With no
+record there is no `MovementKind`, so "checkpoint milestone" here means a
+checkpoint of **either** kind: `Landed`, `OnStand`, `Pushback` or
+`Airborne` all throw for an unknown flight. A
 non-checkpoint milestone is ignored whether or not the flight has a
-record; `sim.delay` does not look the flight up for it. A checkpoint for a
+record; `sim.delay` does not look the flight up for it. For a flight with
+a record, a checkpoint of the other kind only (for example `Pushback` for
+an arrival) is ignored, as the table above says. The merged test covers
+`OnStand`. The other three need no new test, and a Test Author may add
+them as cases of the same test. A checkpoint for a
 retained, finalised flight is the "after its terminal checkpoint" case of
 §14.6 and throws there.
 
@@ -597,6 +604,12 @@ also exactly the saved state (`06-delay-attribution.md` rule 4):
    `StartTick`, `EndTick`, `Explanation.A`, `Explanation.B`.
 4. Nodes, ascending `DelayEventId`: every field of `DelayNode` except
    `Minutes`.
+
+Each of lists 2, 3 and 4 is preceded by its element count, fed as a
+`uint64`, so that two states whose lists split differently never feed the
+same sequence. Each flight record starts with its `FlightId`. This is
+what the merged implementation (T-024, `6229cd2`) feeds. It is stated
+here so that the encoding is the spec's, not the implementation's.
 
 Not hashed, because derived: `Minutes`/`TotalMinutes`, `ChainDepth`, any
 per-flight leaf index or interval index, `RetainedFlights()`.

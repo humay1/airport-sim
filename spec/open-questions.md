@@ -2843,6 +2843,12 @@ Answer:      Architecture. The airside fixture changes: every stand's
              `tests/fixtures/airside/phase1-single-runway.json` (four
              numbers). Merged airside tests build stands in code or
              replace whole fixture lines, so none should change.
+Correction (2026-10-06): the last sentence was wrong. One merged test
+             file changed: `tests/sim/airside/AirsideTestKit.cs`, whose
+             `FixtureLayout` builds the fixture's layout in code and had to
+             carry the new `Sink` value (9) so that
+             `test_layout_parse_fixture_file_equals_built_layout` still
+             held. The Q-095 fixture PR made that one-line change.
 Status:      ANSWERED (spec/12-interfaces-airside.md#1213-the-phase-01-fixture-t-021)
 
 ### Q-096 — `app.render`: the per-frame budget's window
@@ -2960,6 +2966,11 @@ Answer:      Architecture. Throw, as §14.5 does for intervals, before any
              state changes. A non-checkpoint milestone is ignored without
              a lookup. A checkpoint for a retained finalised flight
              already throws as "after terminal" (§14.6). One new test.
+Follow-up (2026-10-06): which milestones throw. An unknown flight has no
+             `MovementKind`, so all four checkpoint milestones of either
+             kind (`Landed`, `OnStand`, `Pushback`, `Airborne`) throw, as
+             the merged implementation does. The merged test covers
+             `OnStand` only, and needs no change.
 Status:      ANSWERED (spec/14-interfaces-delay.md#144-the-delay-clock-checkpoints)
 
 ### Q-109 — `sim.delay`: `test_survives_save_load` has no save seam
@@ -3086,3 +3097,79 @@ Answer:      Yes, as its own rule. `Update`'s rule counts the controller's
              admission copies the payload (`08` §8.7). Allocations inside
              `TrySubmit` are the host's.
 Status:      ANSWERED (spec/17-interfaces-ui.md#179-budget)
+
+### Q-113 — Phase 1 bundles: the airside fixture's size categories are not in `data/`
+Raised by:   Test Author / T-048 (PR #120), via coordinator, 2026-10-06
+Blocking:    T-048 (`test_checkpoints_phase1_bundle_composes_every_phase1_system`),
+             T-031 (D7 on the Phase 1 bundle), T-034 / T-025 (playtest bundle)
+Question:    The Phase 1 checkpoints bundle and the playtest bundle use
+             `data/` as content, whose size categories are `size_a` to
+             `size_f`. Their `airside.fixture` was a byte copy of
+             `tests/fixtures/airside/phase1-single-runway.json`, whose stands
+             name `medium`, `super` and `heavy`. `AirsideFactory.CreateSystem`
+             throws `FormatException` (`sim.airside: stand 1 names size
+             category 'medium' ...`).
+Why it matters: neither bundle can compose, so D7's Phase 1 run, T-048's
+             test and the playtest are all impossible as specified.
+Answer:      Architecture. The bundles get their own airside layout, and
+             nothing else changes. `tests/fixtures/harness/checkpoints-phase1/airside.fixture`
+             is the T-021 fixture with three value substitutions
+             (`medium`→`size_c`, `heavy`→`size_e`, `super`→`size_f`),
+             written by T-048's Test Author (`19` §19.2c). It is also the
+             source of the playtest bundle's `airside.fixture` row (`16`
+             §16.3). The substitution keeps every stand-compatibility
+             outcome of the nine scheduled aircraft types the same as under
+             the test kits' in-code content. Every content id named by
+             every file of both bundles was checked against `data/`, and the
+             list is in §19.2c. Rejected: (a) changing the T-021 fixture to
+             `data/`'s ids, which breaks the five merged suites that read it
+             with in-code `small`/`medium`/`heavy`/`super` content (airside,
+             turnaround, delay, render, UI) and
+             `test_layout_parse_fixture_file_equals_built_layout`; (b) a
+             separate content directory for the bundle, which cannot serve
+             the playtest bundle, since the player's content is a copy of
+             `data/`; (c) adding size categories to `data/`, which is content
+             the owner decides. Also fixed: §16.3 now names the flow fixture
+             `tests/fixtures/flow/phase0-landside.flow.json` and the render
+             fixture `tests/fixtures/render/phase1-layout.json`.
+Status:      ANSWERED (spec/19-interfaces-harness.md#192c-checkpoints-a-bundles-checkpoint-dump-q-066-to-q-076)
+
+### Q-114 — Unity: what the build check needs from the backends, the build step and `TryParse`
+Raised by:   coordinator, after the owner's `unity.yml` (`c48e163`), 2026-10-06
+Blocking:    T-031 (`TryParse`), T-032, T-033, T-034
+Question:    `unity-build` compiles the project and runs a batch-mode smoke
+             once `Assets/StreamingAssets/Scenario/` exists. The spec said
+             the Unity side is "not tested in CI", left the backend-inclusion
+             mechanism and the build step to T-034 (which comes after the
+             backends), and had `TryParse` "recognise exactly" three tokens,
+             though the player gets `-batchmode -nographics -logFile -` too.
+Why it matters: without a pinned mechanism the backends' PRs cannot be
+             build-checked before T-034. A build step outside the Unity
+             build never runs in `unity-build`, so the smoke never runs. A
+             strict `TryParse` fails the smoke.
+Answer:      Architecture (`16` §16.2, §16.3, §16.7, §16.8; `15` §15.10;
+             `17` §17.8). Backends are local packages
+             (`com.airportsim.render.unity`, `com.airportsim.ui.unity`),
+             each referenced by a `file:` line in `Packages/manifest.json`
+             that the backend task adds. Every committed asset has a
+             hand-written committed `.meta`. The build step is an editor
+             build callback in the Unity project. `TryParse` finds the one
+             token and its two values and ignores every other argument. In
+             batch mode, a false return quits with exit code 2.
+             LOW CONFIDENCE: no agent can run the editor; `unity-build` is
+             the check.
+Status:      ANSWERED (spec/16-interfaces-host.md#162-layers-directories-and-targets)
+
+### Q-115 — Unity: should `unity-build` become the cross-runtime gate (§16.9)?
+Raised by:   Architect, 2026-10-06
+Blocking:    no
+Question:    `unity-build` already builds the real Linux player and runs
+             `-airportsim-checkpoints 1`. Comparing that dump byte for byte
+             with the harness `checkpoints` dump of the same assembled
+             bundle and content would be §16.9's gate. Should it?
+Why it matters: it is the only check of Mono against CoreCLR. Adopting it
+             adds a row to `02-determinism.md` (locked), changes
+             `unity.yml` (owner) and decides whether the job becomes
+             required, which `01-architecture.md`'s "no engine, no licence"
+             gate rationale keeps out of the per-merge gates.
+Status:      OPEN — HUMAN DECISION (owner)
