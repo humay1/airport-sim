@@ -19,6 +19,7 @@ change this task's dependency list.
 
 ```
 src/app/render/Unity/**
+unity/AirportSim/Packages/manifest.json   (one line only: this backend's own package entry, `16` §16.2, `15` §15.10)
 ```
 
 ## Readable specs
@@ -89,6 +90,7 @@ here. It has no test to carry a number."
 - [ ] No writes outside writable paths
 - [ ] No sim member call, no branch on sim state
 - [ ] Reviewer approved
+- [ ] `unity-build` green on its PR, with its package referenced from `Packages/manifest.json` (`16` §16.11)
 - [ ] Graphics knobs applied only on change, and every primitive still
       drawn at every setting (D10, Q-034)
 

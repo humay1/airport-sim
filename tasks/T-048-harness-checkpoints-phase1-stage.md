@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN PROGRESS (tests PR #120, head 0c704ea, open; blocked on spec gap: bundle size categories size_a..size_f vs fixture medium/super/heavy; Architect spec PR pending; worker not started; §19.8 bundle-composition test still to write) |
+| Status | IN PROGRESS (tests PR #120 open and being updated; the size-category spec gap is closed by #122 (Q-113); worker not started until the updated tests are approved; §19.8 bundle-composition test still to write) |
 | Module | `tools.simharness` |
 | Assigned role | worker |
 | Depends on | T-021 (merged #91), T-022, T-024, T-030 (merged #90), Q-095 fixture fix (test-author PR, no task id: `tests/fixtures/airside/phase1-single-runway.json` sinks 901-904 to 9, one line in `tests/sim/airside/AirsideTestKit.cs`) |
