@@ -61,6 +61,26 @@ namespace AirportSim.Tools.SimHarness.Tests
         // ------------------------------------------------------------ composition
 
         [Fact]
+        public void test_checkpoints_phase1_bundle_composes_every_phase1_system()
+        {
+            // §19.8: over the Phase 1 checkpoints bundle with --content data and
+            // --days 1, the systems line holds all six Phase 1 systems in registry
+            // order, and the file is byte-identical to the Phase 1 checkpoints kit's
+            // dump, built with all six factories over data/ (Q-113).
+            using var tmp = new CheckpointsKit.TempDir();
+            CliResult r = Cli(K.Args(K.BundleDirectory, tmp.File("a")));
+            Assert.True(r.Exit == 0, "exit " + r.Exit + ", stderr: " + r.Stderr);
+
+            CheckpointsKit.KitRun kit = K.RunOneStep(KillGateKit.RepoPath(K.BundleDirectory), K.RegistryOrder);
+            Assert.Equal(24, kit.Checkpoints);
+            Assert.Equal("WROTE checkpoints ticks=14400 checkpoints=24 final=" + Hex16(kit.Final) + "\n", r.Stdout);
+
+            byte[] dump = File.ReadAllBytes(tmp.File("a"));
+            AssertBytesEqual(kit.Dump, dump, "<tmp>/a");
+            AssertDumpShape(dump, "systems sim.world sim.schedule sim.airside sim.flow sim.turnaround sim.delay", 6);
+        }
+
+        [Fact]
         public void test_checkpoints_phase1_bundle_without_airside_composes_turnaround_and_delay()
         {
             // §19.2c: the Phase 1 stage composes sim.turnaround (turnaround.fixture)

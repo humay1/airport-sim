@@ -21,9 +21,9 @@
     { "id": 6, "from": 3, "to": 14, "traversal_ticks": 20, "bidirectional": true }
   ],
   "stands": [
-    { "id": 1, "node": 11, "max_aircraft_size_category": "medium", "departure_sink_node": 9 },
-    { "id": 2, "node": 12, "max_aircraft_size_category": "super", "departure_sink_node": 9 },
-    { "id": 3, "node": 13, "max_aircraft_size_category": "heavy", "departure_sink_node": 9 },
-    { "id": 4, "node": 14, "max_aircraft_size_category": "super", "departure_sink_node": 9 }
+    { "id": 1, "node": 11, "max_aircraft_size_category": "size_c", "departure_sink_node": 9 },
+    { "id": 2, "node": 12, "max_aircraft_size_category": "size_f", "departure_sink_node": 9 },
+    { "id": 3, "node": 13, "max_aircraft_size_category": "size_e", "departure_sink_node": 9 },
+    { "id": 4, "node": 14, "max_aircraft_size_category": "size_f", "departure_sink_node": 9 }
   ]
 }
