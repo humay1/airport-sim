@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "strings.schema.json",
+  "title": "English string table",
+  "description": "Player-visible text for Phase 1, one language. See spec/17-interfaces-ui.md section 17.4b. Not sim content: the content loader ignores data/strings/.",
+  "type": "object",
+  "required": ["schema_version", "id", "strings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "const": "en" },
+    "strings": {
+      "type": "object",
+      "required": [
+        "ui.settings.title",
+        "ui.settings.preset.low",
+        "ui.settings.preset.medium",
+        "ui.settings.preset.high",
+        "ui.settings.knob.draw_agents",
+        "ui.settings.knob.max_drawn_agents_per_node",
+        "ui.settings.knob.frame_rate_cap",
+        "ui.settings.knob.resolution_scale_percent",
+        "ui.settings.knob.anti_aliasing",
+        "ui.settings.value.on",
+        "ui.settings.value.off",
+        "ui.settings.value.uncapped"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ui.settings.title": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.preset.low": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.preset.medium": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.preset.high": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.knob.draw_agents": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.knob.max_drawn_agents_per_node": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.knob.frame_rate_cap": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.knob.resolution_scale_percent": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.knob.anti_aliasing": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.value.on": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.value.off": { "type": "string", "pattern": "^[ -~]+$" },
+        "ui.settings.value.uncapped": { "type": "string", "pattern": "^[ -~]+$" }
+      }
+    }
+  }
+}

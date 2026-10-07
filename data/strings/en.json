@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "en",
+  "strings": {
+    "ui.settings.title": "Graphics settings",
+    "ui.settings.preset.low": "Low",
+    "ui.settings.preset.medium": "Medium",
+    "ui.settings.preset.high": "High",
+    "ui.settings.knob.draw_agents": "Show passengers",
+    "ui.settings.knob.max_drawn_agents_per_node": "Max passengers drawn per area",
+    "ui.settings.knob.frame_rate_cap": "Frame rate cap (fps)",
+    "ui.settings.knob.resolution_scale_percent": "Resolution scale (%)",
+    "ui.settings.knob.anti_aliasing": "Anti-aliasing",
+    "ui.settings.value.on": "On",
+    "ui.settings.value.off": "Off",
+    "ui.settings.value.uncapped": "Uncapped"
+  }
+}
