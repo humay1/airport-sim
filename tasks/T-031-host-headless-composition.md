@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN PROGRESS (tests PR #127; all dependencies merged) |
 | Module | `app.host` (headless side only) |
 | Assigned role | worker |
-| Depends on | T-008 (merged #54), T-012 (merged #39), T-020 (not merged), T-021 (not merged), T-022 (not merged), T-023 (merged #71), T-024 (not merged), T-026 (merged #29), T-027 (merged #37), T-029 (not merged), T-030 (not merged), T-048 (not merged; the Phase 1 harness stage) |
+| Depends on | T-008 (merged #54), T-012 (merged #39), T-020 (not merged), T-021 (not merged), T-022 (not merged), T-023 (merged #71), T-024 (not merged), T-026 (merged #29), T-027 (merged #37), T-029 (not merged), T-030 (not merged), T-048 (merged #126; the Phase 1 harness stage) |
 | Spec source | `spec/00-overview.md`; `spec/16-interfaces-host.md` §16.1–§16.8, §16.10, §16.11 (new module, D7; graphics preference and frame-loop steps 2/4/5, D10/Q-034) |
 | Blocked by | — |
 
@@ -106,11 +106,11 @@ interface IPreferenceStore {                      // D10; implemented by the boo
 }
 
 readonly struct FrameInput {
-  CameraView             camera
-  float                  screenWidth
-  float                  screenHeight
-  IReadOnlyList<UiInput> ui
-  int64                  elapsedRealMicroseconds
+  CameraView             Camera                   // members PascalCase (§16.6, Q-119)
+  float                  ScreenWidth
+  float                  ScreenHeight
+  IReadOnlyList<UiInput> Ui
+  int64                  ElapsedRealMicroseconds
 }
 
 readonly struct FrameOutput { RenderFrame Render; UiFrame Ui }
@@ -137,7 +137,12 @@ HostFactory.CreateSimComposer(IReadOnlyList<IContentDefinition> content) -> ISim
 HostFactory.CreatePresentationComposer() -> IPresentationComposer
 HostFactory.CreateCommandLine() -> IHostCommandLine
 HostFactory.CreateHeadlessRun(ISimComposer composer) -> IHeadlessRun
+HostFactory.LoadContent(IContentSource source) -> IReadOnlyList<IContentDefinition>   // §16.3, Q-117
 ```
+
+`LoadContent` returns exactly `ContentLoaderFactory.Create().Load(source)`
+(`08` §8.11) and lets that loader's `FormatException` through unchanged,
+with no check, filtering or ordering of its own (§16.3).
 
 Binding, copied from `spec/16-interfaces-host.md`, not paraphrased:
 
@@ -199,7 +204,20 @@ Binding, copied from `spec/16-interfaces-host.md`, not paraphrased:
   identical to T-030's harness-side format (§16.8, reproduced there
   verbatim) — this task writes its **own** implementation of the same
   format, never reuses T-030's code directly, per §16.4's "must not
-  construct any system another way".
+  construct any system another way". **Failures (§16.8, Q-120):** `Run`
+  reports every failure as a return value: 3, never an exception (except
+  programmer error before stage 1), with exactly one pinned
+  `FAIL checkpoints …` line on `Console.Error` and nothing else on the
+  console; it never overwrites an existing `OutputPath`, and a failure in
+  stages 1 to 3 leaves no file. Success returns 0 and writes nothing to the
+  console.
+- **Load-failure check order (§16.4, Q-118):** `Compose` throws
+  `FormatException` at the first failure, checking `bundle.json`, then the
+  downward interfaces, then the presence of every listed system's files in
+  §16.3's row order, all before `ContentIndexFactory.Create` and
+  `CreateBuilder`; then content failures, then step 2's loads in row order,
+  then step 3's factories. A `null` argument throws
+  `ArgumentNullException` before any check.
 - **The Unity bootstrap contract** (§16.7) is specified for the Unity shell
   task (T-034) to implement against; this task builds the headless side it
   calls, not the bootstrap script itself.
@@ -225,8 +243,14 @@ Written by the Test Author. Expect at least:
 - `test_bundle_unlisted_system_is_not_registered`
 - `test_command_line_parses_checkpoint_run_and_rejects_others` -- must also
   cover `TryParse` ignoring the engine's own arguments (`-batchmode`,
-  `-nographics`, `-logFile -`), wherever they sit among the three tokens
-  (`16` §16.8, Q-114)
+  `-nographics`, `-logFile -`), before or after the three tokens (or both),
+  never between the token and its two values (`16` §16.8, Q-114, Q-122)
+- `test_headless_run_failure_returns_3_and_writes_no_file` (Q-120, `16`
+  §16.11): an existing `OutputPath`, left byte-unchanged; a missing parent
+  directory; and a bundle with a load failure. Each returns 3, throws
+  nothing, leaves no new file, and writes exactly its one §16.8 failure line
+  to a captured `Console.Error` (`output-exists`, `output-no-parent`,
+  `load`); a successful `Run` writes nothing there
 - `test_checkpoint_dump_format_is_byte_exact`
 - `test_headless_run_result_independent_of_step_batch_size` -- no seam:
   `IHeadlessRun` submits no command (Q-071) and calls
@@ -240,7 +264,7 @@ Written by the Test Author. Expect at least:
   `checkpoints` subcommand (`HarnessCli.Run`, `19` §19.1, in process,
   `net8.0`) and this task's `IHeadlessRun` on the same bundle and content for
   one sim-day, on two Phase 1 test bundles (`16` §16.8; the playtest bundle
-  does not exist yet and is compared by `16` §16.9 by hand):
+  does not exist yet):
   `tests/fixtures/harness/checkpoints-phase0/` with content
   `tests/fixtures/harness/phase0-content/` (`sim.world`, `sim.schedule`,
   `sim.flow`, no boarding stand-in), and

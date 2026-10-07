@@ -27,7 +27,10 @@ deletes and recreates `Assets/StreamingAssets/Scenario/` and
 `Assets/StreamingAssets/Content/`, copies each row of `16` §16.3's table into
 the first by its exact name and every file under `data/` into the second, finds
 sources relative to the repository root, and fails the build naming any missing
-source. It is the only code that copies them.
+source. After the last copy, before it returns, it calls
+`AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)` so the
+player build collects the files just copied (`16` §16.3, Q-124). It is the
+only code that copies them.
 
 ## Readable specs
 
@@ -64,8 +67,14 @@ paraphrased:
   `UiInput`s from the backends, read the screen size, convert the frame
   delta to integer microseconds, call `RunFrame`, pass `Render`/`Ui` to the
   backends to draw. Batch mode: pass process args to
-  `IHostCommandLine.TryParse`; if a checkpoint run, call `IHeadlessRun.Run`,
-  quit with its exit code, no frame loop, nothing drawn. The bootstrap
+  `IHostCommandLine.TryParse` (the engine's arguments with the first, the
+  executable, removed); if a checkpoint run, replace `System.Console.Error`
+  via `Console.SetError` with a `TextWriter` that forwards each completed
+  line, without its line break, to `Debug.LogError`, call
+  `IHeadlessRun.Run`, restore the original `Console.Error`, then call
+  `Application.Quit` with `Run`'s exit code (`16` §16.7, Q-120); the writer
+  holds no logic beyond splitting lines. If `TryParse` returns false, quit
+  with exit code 2 (Q-114). Either way no frame loop, nothing drawn. The bootstrap
   calls no sim member itself, never branches on sim state, never reads a
   bundle file directly.
 - **The Phase 1 playtest bundle** (§16.3): `unity/AirportSim/Scenario/`
@@ -91,6 +100,20 @@ paraphrased:
   `data/balance/**` are human-authored and are assumed present, not
   written by this task.
 
+- **The player and its staged files (`16` §16.9, Q-124).** The Linux player
+  is `build/StandaloneLinux64/AirportSim.x86_64` (`unity-builder`'s
+  `buildName` plus `.x86_64`), with its data in `AirportSim_Data/`, so the
+  staged streaming assets are under
+  `build/StandaloneLinux64/AirportSim_Data/StreamingAssets/`
+  (`Scenario/` and `Content/`). Those staged copies are what the
+  `cross-runtime` job reads. A `missing` failure or a harness load failure
+  on the staged files points at this task's build step, which this task
+  fixes within the spec; if the fix needs anything the spec does not say
+  (another staged path, a filter on `.meta` files, a workflow change), file
+  a spec question in `spec/open-questions.md` and stop (§16.9 "When it
+  fails", §16.11, Q-124). The workflow `.github/workflows/unity.yml` is
+  owner-owned; this task writes nothing in it.
+
 ## Tests to pass
 
 None in CI (`16` §16.2: "Tested in CI: no, except through §16.9 if that
@@ -113,6 +136,9 @@ sim's 6 ms; `RunFrame`'s cost is T-031's).
       `data/balance/**`
 - [ ] Editor build step under `Assets/Editor/` assembles both StreamingAssets directories (`16` §16.3)
 - [ ] `unity-build` green with the smoke step run, not skipped (`16` §16.11)
+- [ ] Build step calls `AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)` after its last copy (`16` §16.3, Q-124)
+- [ ] Batch mode forwards `Console.Error` to `Debug.LogError` around `Run`, restores it, then `Application.Quit(code)` (`16` §16.7, Q-120)
+- [ ] The non-required `cross-runtime` job (`16` §16.9, Q-115; already in `.github/workflows/unity.yml` on main) is **run, not skipped**, on the PR, with its result line quoted in the PR. It compares the player's checkpoint dump with the harness dump byte for byte, on PRs and nightly. It is NOT a required check and is not part of "`unity-build` green": T-034 must make a `missing` or staged-load failure pass within the spec, but a red result does not block merging, and a dump difference between two dumps that both loaded and ran is a determinism defect reported to the owner, not fixed here (`16` §16.11)
 - [ ] Reviewer approved
 
 ## Worker notes
