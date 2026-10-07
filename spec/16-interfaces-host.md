@@ -475,7 +475,9 @@ Each `RunFrame`, in this order:
 2. `Promotion.Update(input.Camera, Ui.Graphics)`.
 3. `n = Pacer.Advance(input.ElapsedRealMicroseconds, Ui.Pacing.Paused,
    Ui.Pacing.Speed)`; if `n > 0`, `Host.Step(n)`.
-4. `render = Scene.Build(input.Camera, Ui.Graphics)`.
+4. `render = Scene.Build(input.Camera, Ui.Graphics,
+   Pacer.SubTickMicroseconds)` (Q-132, `15` §15.19), so that motion
+   glides between ticks. The property is read after step 3's `Advance`.
 5. If `Ui.Graphics` differs from the value last written, write
    `UiFactory.EncodeGraphicsPreference(Ui.Graphics)` to the
    `IPreferenceStore` under the key `airportsim.graphics` (D10).

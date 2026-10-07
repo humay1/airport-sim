@@ -396,7 +396,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   numbers; the headless `Art2D` assembly holds the art as code, the one
   2048² atlas and a tested tessellator; the backend copies quads into one
   mesh, one draw call; 3D after T-025 replaces only `Art2D` and the
-  backend**.
+  backend**; **living airport (owner, 2026-10-07, Q-132, §15.19–§15.23),
+  presentation only, no sim change: `Build` takes the pacer's sub-tick
+  and draws at a fractional tick τ; taxiing glides; approaches, a square
+  hold, landing, takeoff and climb-out are drawn off-graph with a
+  semantic `Elevation`; layout v3 adds corridor walkways and each
+  bridge's stand; walkers on walkways follow their cohort's progress;
+  a stylised boarding stream on jet bridges follows the flight's
+  passengers at the gate; Art2D draws elevation as scale and a ground
+  shadow**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
@@ -405,9 +413,14 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   **LC, not yet reviewed (Q-130):** the straight-line facing of a held
   aircraft (§15.16); Unity's texture,
   shader and colour-space behaviour and the tessellator budget (§15.17);
-  the fixture's satellite pier (§15.18).
+  the fixture's satellite pier (§15.18). **LC, not yet reviewed
+  (Q-132):** every motion constant (§15.19); arrivals landing toward the
+  threshold node, runway prediction, the hold's release jump and
+  departures vanishing at `Airborne` (§15.20); the boarding stream for
+  the whole stay (§15.21).
 - Read if: T-020; the render backend task (§15.10); the Q-130 tasks
-  (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18).
+  (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18); the Q-132 tasks (§15.4,
+  §15.5, §15.6, §15.8, §15.9, §15.19–§15.23; `16` §16.6).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
 - Owns: the Unity project `unity/AirportSim/`, the headless composition root,

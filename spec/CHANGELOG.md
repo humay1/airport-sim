@@ -4204,3 +4204,72 @@ Impact:      - **§15.18:** `test_scene_assembly_has_no_engine_reference`
                **PENDING HUMAN:** none.
 Signed off:  not required (clarifications only; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-07 — spec/15 §15.1, §15.3–§15.6, §15.8, §15.9, §15.11, §15.12, §15.14, §15.16, §15.17 (one sentence), new §15.19–§15.23; 16 §16.6; 07 L4; INDEX; open-questions Q-132 — the living airport (owner decision)
+Reason:      HUMAN DECISION, owner, 2026-10-07 (Q-132, scope change
+             approved by the owner): smooth motion, landing and takeoff,
+             and passengers boarding, all before the T-025 playtest.
+             Ground vehicles and the turnaround stay deferred.
+Raised by:   human owner, via the team lead (Q-132)
+Impact:      - **No sim change.** No sim member, state, hash, event or
+               command is added, and `01` and `02` are untouched. The
+               scene reads three more existing read-only queries
+               (§15.6: `TryGetCohort`, `PopulationForFlight`,
+               `TryGetOutstanding`) between `Step`s, and uses
+               `TryGetFlight` for one more purpose (an arrival's
+               rotation).
+             - **Scene layer (new task M1):** `ITickPacer` gains
+               `SubTickMicroseconds`. `ISceneBuilder` gains a
+               three-argument `Build`; the two-argument one is sub-tick
+               0. The rebuild key gains the sub-tick, so a running game
+               rebuilds nearly every frame (the 2 ms budget already
+               assumed a rebuild). `DrawPrimitive` gains
+               `float Elevation` (kept ten-field constructor).
+               `SourceKind` gains `BridgePassenger`, appended.
+               `RenderLayout` gains `Walkways` and `LayoutBridge` gains
+               `Stand` (kept constructors). The layout file goes to
+               version 3, with two more ordered checks and a check 6.
+               Off-graph aircraft are now drawn (§15.20).
+             - **Art2D (new task M2):** `Elevation` is drawn as scale
+               and one ground-shadow quad (§15.22). Unchanged when
+               nothing is airborne.
+             - **Host (new task M3):** `16` §16.6 step 4 passes
+               `Pacer.SubTickMicroseconds`.
+             - **Merged work:** one merged test breaks,
+               `test_render_layout_version_2_loads_scenery_and_rejects_faults`,
+               which asserts the fixture text says version 2; M1's Test
+               Author moves it to 3. `test_scene_aircraft_off_graph_is_not_drawn`
+               still passes (its tracks have no `Runway`) and is
+               extended. Merged `FrameLoopTests` that
+               compare with a two-argument reference `Build` are
+               updated by M3's Test Author. Several tests are extended
+               (§15.23). No merged code is invalidated: every type
+               change is additive under `07` L10's kept-constructor
+               clause, and the `α = 0` taxi value is bit-identical.
+             - **In-flight tasks:** T-052 and T-054 are not changed. M1
+               waits for T-052 (shared test project, `DrawPrimitive`),
+               and M3 for T-054 (same paths). **T-053 needs nothing**:
+               it copies whatever `Fill` emits.
+             - **Tolerance:** a second test tolerance, 0.01 world units
+               for motion values (§15.3, §15.23, `07` L4).
+             - **Scope added (running total):** smooth motion;
+               approach, hold, landing and takeoff visuals; corridor
+               walkers; a boarding stream. Presentation only, and
+               owner-approved.
+             - **LOW CONFIDENCE:** every motion constant (§15.19);
+               arrivals land toward the threshold node, opposite to
+               departures, because the sim exits arrivals there
+               (§15.20); runway prediction for approaching arrivals
+               when there are several runways; the jump when a held
+               arrival is released; departures vanish at `Airborne`
+               4 km out, since the stateless scene cannot keep a
+               removed track; the boarding stream runs for the whole
+               stay rather than a boarding window (§15.21).
+             - **PENDING HUMAN:** (1) deboarding is not drawn, because
+               the sim has no arriving passengers at Phase 1; (2)
+               landing in the departure direction needs an arrival exit
+               node in the airside layout (sim data); (3) at 1x a
+               landing lasts about 1 real second, the game's 60x time
+               scale (§15.19).
+Signed off:  owner decision recorded (Q-132); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.

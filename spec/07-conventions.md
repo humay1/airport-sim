@@ -202,9 +202,9 @@ test fails, its message names the seed and the iteration index.
 `08` §8.3 bans floating point in tests too. There are three exceptions.
 `tests/app/render/` may use `float` for the values of `15`'s `float`-typed
 members only, and `double` only to compute the expected tessellator
-corners and sRGB table values that `15` §15.3 names; §15.3 is
-authoritative on both and on the one tolerance (`15` §15.3, Q-100,
-Q-130). `tests/app/ui/` may use `float` for the
+corners, sRGB table values and motion values that `15` §15.3 names;
+§15.3 is authoritative on both and on the tolerances (`15` §15.3, Q-100,
+Q-130, Q-132). `tests/app/ui/` may use `float` for the
 values of `15`'s and `17`'s `float`-typed members and parameters only
 (`17` §17.2, Q-102). `tests/app/host/` may use `float` for the values of
 `15`'s, `16`'s and `17`'s `float`-typed members and parameters only, such
