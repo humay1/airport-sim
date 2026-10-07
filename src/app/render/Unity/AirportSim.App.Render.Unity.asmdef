@@ -8,6 +8,7 @@
   "overrideReferences": true,
   "precompiledReferences": [
     "AirportSim.App.Render.dll",
+    "AirportSim.App.Render.Art2D.dll",
     "AirportSim.Sim.Core.dll",
     "AirportSim.Sim.Airside.dll",
     "AirportSim.Sim.Flow.dll",
