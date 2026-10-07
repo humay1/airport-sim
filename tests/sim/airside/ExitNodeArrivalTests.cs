@@ -50,6 +50,19 @@ namespace AirportSim.Sim.Airside.Tests
             return edges;
         }
 
+        /// <summary>
+        /// AirsideDeterminismTests.Snapshot without its whole-module hash line:
+        /// free stands, runway queues, stands and every track. Unlike the hash,
+        /// it does not depend on how many edges the layout has.
+        /// </summary>
+        private static List<string> StateBesidesHash(IAirsideSystem a)
+        {
+            List<string> s = AirsideDeterminismTests.Snapshot(a);
+            Assert.StartsWith("hash=", s[0], System.StringComparison.Ordinal);
+            s.RemoveAt(0);
+            return s;
+        }
+
         private static List<ushort> Of(Dictionary<ulong, List<ushort>> edges, ulong flight)
         {
             return edges.TryGetValue(flight, out List<ushort>? list) ? list : new List<ushort>();
@@ -210,7 +223,10 @@ namespace AirportSim.Sim.Airside.Tests
         public void test_exit_node_leaves_departures_unchanged()
         {
             // Rotation-less departures only: no arrival ever enters the graph, so
-            // the exit changes nothing (the layout is not hashed, 12 §12.12).
+            // the exit changes no departure. The whole-module hashes are not
+            // comparable across the two layouts: 12 §12.12 item 2 feeds every
+            // edge's state, and the exit layout has three more edges. So the
+            // comparison is of everything else IAirsideSystem exposes, each tick.
             byte[] csv = Csv.Of(
                 Csv.Row("D1", "D", "06:35"),
                 Csv.Row("D2", "D", "06:35", aircraft: "b789"),
@@ -225,7 +241,11 @@ namespace AirportSim.Sim.Airside.Tests
                 ulong t = plain.Host.CurrentTick;
                 plain.Host.Step(1);
                 exit.Host.Step(1);
-                Assert.True(plain.Airside.ComputeStateHash() == exit.Airside.ComputeStateHash(), "hash differs at t=" + t.ToString(CultureInfo.InvariantCulture));
+                List<string> expected = StateBesidesHash(plain.Airside);
+                List<string> actual = StateBesidesHash(exit.Airside);
+                Assert.True(
+                    string.Join("\n", expected) == string.Join("\n", actual),
+                    "state differs at t=" + t.ToString(CultureInfo.InvariantCulture) + ":\n" + string.Join("\n", expected) + "\nvs\n" + string.Join("\n", actual));
             }
 
             Assert.Equal(plain.Rec.Trace(), exit.Rec.Trace());
@@ -241,10 +261,13 @@ namespace AirportSim.Sim.Airside.Tests
         }
 
         [Fact]
-        public void test_exit_node_changes_airside_hash_from_first_off_runway()
+        public void test_exit_node_changes_arrival_state_from_first_off_runway()
         {
             // 12 §12.13 determinism note: no new hashed field; the exit changes
-            // fed values from an arrival's OffRunway on, and nothing before.
+            // the values of track fields from an arrival's OffRunway on, and
+            // nothing before. The whole-module hashes differ from tick 0 because
+            // the exit layout has three more edges (12 §12.12 item 2), so the
+            // comparison is of everything else IAirsideSystem exposes.
             var plain = new HostRig(ScheduleFixture.Bytes(), flow: new RuleFlow());
             var exit = new HostRig(ScheduleFixture.Bytes(), layout: ExitLayout.Layout(), flow: new RuleFlow());
             ulong firstDiff = ulong.MaxValue;
@@ -253,11 +276,13 @@ namespace AirportSim.Sim.Airside.Tests
                 ulong t = plain.Host.CurrentTick;
                 plain.Host.Step(1);
                 exit.Host.Step(1);
-                if (plain.Airside.ComputeStateHash() != exit.Airside.ComputeStateHash())
+                if (string.Join("\n", StateBesidesHash(plain.Airside)) != string.Join("\n", StateBesidesHash(exit.Airside)))
                 {
                     firstDiff = t;
                 }
             }
+
+            Assert.True(firstDiff != ulong.MaxValue, "the exit layout changed nothing in the fixture day");
 
             ulong firstOff = ulong.MaxValue;
             foreach ((Rec rec, FlightMilestoneReached m) in plain.Rec.Of<FlightMilestoneReached>())
@@ -268,8 +293,8 @@ namespace AirportSim.Sim.Airside.Tests
                 }
             }
 
-            Assert.True(firstOff != ulong.MaxValue, "no OffRunway in the fixture day");
-            Assert.True(firstDiff == firstOff, "hashes first differ at " + firstDiff.ToString(CultureInfo.InvariantCulture) + ", first OffRunway at " + firstOff.ToString(CultureInfo.InvariantCulture));
+            Assert.True(firstOff != ulong.MaxValue, "state first differs at " + firstDiff.ToString(CultureInfo.InvariantCulture) + ", before any OffRunway");
+            Assert.True(firstDiff == firstOff, "state first differs at " + firstDiff.ToString(CultureInfo.InvariantCulture) + ", first OffRunway at " + firstOff.ToString(CultureInfo.InvariantCulture));
         }
 
         [Fact]
