@@ -130,7 +130,22 @@ Rules binding on the scene layer:
   point"). But it reads no wall clock (elapsed time is passed in, §15.8), uses
   no `System.Random`, and holds no static mutable state. That is not a
   determinism rule, since presentation cannot move the sim; it is what makes
-  its tests exact and repeatable.
+  its tests exact and repeatable. **What counts (Q-131):**
+  - **In the 2D art (`Art2D`, binding):** a static field is allowed only
+    if it is `const`, or `static readonly` of a primitive type, `string`
+    or an enum. A static field of any array, collection or other reference
+    type is static mutable state, even when `readonly` and never written,
+    because its contents can be written. So lookup tables (the
+    tessellator's sRGB table, any rasteriser table) are instance fields of
+    the object that uses them, built in its constructor or inside the
+    `BuildAtlas` call. §15.17's noise needs no table: it hashes each
+    lattice point.
+  - **In the scene layer:** the same, except that a `private static
+    readonly` array of constant data, filled by its initialiser and never
+    written afterwards, is allowed. The merged loaders' key and bound
+    tables (`LooksLoader`, `RenderLayoutLoader`) are of this kind, and this
+    clause records them rather than invalidating them. New scene code
+    should prefer the 2D art's rule.
 - **Floats in its tests (Q-100).** `08` §8.3's ban covers sim assemblies
   and their tests. The no-floating-point sentence of `07` L4 binds every
   test project except `tests/app/render/`, where `float` may appear to
@@ -1802,8 +1817,10 @@ every UV is computed in `double` and converted to `float` once.
   `double`. Alpha is unchanged. All four corners get the same colour.
 - **Buffers** are reused and grow only when a frame needs more quads than
   ever before. They are valid until the next `Fill`. `roleColours` must
-  have one entry per `ColourRole`, else `ArgumentException`
-  (`roleColours`).
+  have exactly one entry per `ColourRole` (Q-131): a `null` list throws
+  `ArgumentNullException`, and a list with fewer **or more** entries
+  throws `ArgumentException`, each with `ParamName` `roleColours`, before
+  any buffer changes.
 - **Budget.** `Fill` over the §15.11 max-tier frame at `High`: mean ≤
   2.0 ms and p99 ≤ 4.0 ms (raised from 1.5 and 3.0 by Q-131 for the
   ground, tile and shadow quads), with §15.11's window and arithmetic,
@@ -2103,6 +2120,27 @@ quads or counts them adds the ground's `nx × ny` quads, which a small
 camera keeps to one or a few. The atlas is about 85 MiB, so the art
 tests build it once per test class and share it, except the determinism
 test, which builds it twice.
+
+**T-052 tests that Q-131 changes** (written against Q-130 in PR #144,
+not merged; its Test Author updates them, and no worker edits them):
+
+| Test | What changes |
+|---|---|
+| `test_art2d_assembly_references` | nothing |
+| `test_art2d_atlas_shape_and_packing_match_spec` | `Size` 4096, 6 mips, the new packing (aircraft 8 × 6 large cells, the large band, small cells at `y ≥ 3584`, 32 per row, slots 35–36), rects over 4096, borders 16 or 4 |
+| `test_art2d_atlas_is_deterministic` | nothing, apart from the atlas's size |
+| `test_art2d_every_cell_is_drawn_inside_its_border` | mips 3 to 5; alpha ≥ 64 for the shadow cells and `Rubber`; the longer edge-to-edge list; `BuildingRoof` is now `Parapet` |
+| `test_art2d_aircraft_follow_the_proportion_table` | the Q-131 table; `× 480`; only span grows strictly; `Status` is column 1 and `Shadow` column 0; `Shadow` checked for symmetry too |
+| `test_art2d_layers_match_the_visual_table` | the rewritten table, the new `ArtLayer` fields, aircraft layers 0 to 7, all six logo sub-squares, `GroundLayer()` |
+| `test_art2d_tessellator_corners_follow_kind_facing_and_slicing` | ground quads first; slicing read from the layer's fields; zero-length segment of an untiled visual; a shifted layer; quad indices move where a visual gained layers (shadows, tiles, rubber, equipment) |
+| `test_art2d_tessellator_colours_follow_role_region_and_fixed` | ground quads first; layer indices move as above; `roleColours` with too many entries and `null` also throw (`ParamName` `roleColours`) |
+| `test_art2d_tessellator_fill_within_budget_and_allocates_nothing` | 2.0 ms mean and 4.0 ms p99 |
+
+New: `test_art2d_tiled_textures_follow_the_style_guide`,
+`test_art2d_tessellator_ground_tiles_follow_the_camera` and
+`test_art2d_tessellator_tiles_boxes_and_segments` (above). Any static-field
+test follows §15.3's 2D art rule, which forbids static array fields, as
+the Test Author already assumes.
 
 Merged tests that Q-130 changes. Each is updated to this spec by the
 Test Author of the task named, as Q-125 did for the UI surface test. No

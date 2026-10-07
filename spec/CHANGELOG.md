@@ -4205,7 +4205,7 @@ Impact:      - **§15.18:** `test_scene_assembly_has_no_engine_reference`
 Signed off:  not required (clarifications only; no balance, scope or
              `01`/`02` change).
 
-## 2026-10-07 — spec/15 §15.1, §15.3, §15.10, §15.11, §15.14, §15.15, §15.16 (recolourable table only), §15.17, §15.18; INDEX; open-questions — realistic 2D art (Q-131, owner decision)
+## 2026-10-07 — spec/15 §15.1, §15.3, §15.10, §15.11, §15.14, §15.15, §15.16 (recolourable table only), §15.17, §15.18; 07 L1, L2, L3; INDEX; open-questions — realistic 2D art (Q-131, owner decision), with three T-052 spec gaps
 Reason:      HUMAN DECISION — owner, 2026-10-07: "make the art as realistic
              as possible. It is very important for the fun to have the
              player fully immersed." The owner chose "Realistic 2D": keep
@@ -4269,6 +4269,30 @@ Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
                `16` §16.10's 2 GB.
              - **§15.1, §15.3:** wording, and UVs are now multiples of
                1/4096; tiled UVs are exact for whole-number test vectors.
+             - **T-052 spec gaps raised by its Test Author (folded in):**
+               - **07 L1, L2, L3:** the 2D art project gets its row
+                 (`src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj`,
+                 `netstandard2.1`, C# 9) and its references (App.Render
+                 only). `app.render`'s test project becomes the fourth
+                 named exception to "one reference": Scene, then Art2D.
+                 The `AirportSim.App.Render` row now lists Schedule, which
+                 the merged scene project has referenced since Q-130. That
+                 last edit records merged code; nothing changes.
+               - **§15.17:** `roleColours` must have exactly one entry per
+                 role. A `null` list or a wrong count, more or fewer,
+                 throws with `ParamName` `roleColours` before any buffer
+                 changes.
+               - **§15.3, static mutable state:** in `Art2D` only `const`
+                 and `static readonly` primitive, `string` or enum fields
+                 are allowed. Any static array is forbidden even when
+                 `readonly`, so lookup tables are per instance. This
+                 matches the Test Author's tests. In the scene layer, the
+                 merged loaders' `private static readonly` constant
+                 arrays are recorded as allowed rather than invalidated.
+                 **LOW CONFIDENCE**: the two assemblies' rules differ
+                 slightly for that reason.
+               - **§15.18:** a table lists each T-052 test (PR #144) and
+                 what Q-131 changes in it.
              - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
                `app.host`.
              - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art
