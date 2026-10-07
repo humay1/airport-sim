@@ -3419,8 +3419,9 @@ Why it matters: the scene layer emits palette-coloured boxes, segments
 Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
              (a) The scene layer emits semantic data only (`15` §15.9,
              §15.16). `DrawPrimitive` gains `VisualId Visual` (34 ids),
-             `int32 Heading` (tenths of a degree, from integer layout
-             vectors) and `Paint` (five named region colours and a logo
+             `WorldPoint Facing` (an exact integer layout vector, with no
+             angle and no trigonometry; settled by the team lead
+             2026-10-07, since a vector carries over to 3D) and `Paint` (five named region colours and a logo
              mark).
              (b) New primitives: aprons and buildings in a new `Ground`
              layer; runway edge lines, thresholds, designators and
@@ -3451,7 +3452,7 @@ Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
              (`16` §16.4, §16.5, §16.7). Every older constructor and
              signature stays. One merged test breaks and four are
              extended. There are four tasks (§15.18).
-             LOW CONFIDENCE: held-aircraft heading; `Math.Atan2` in the
-             tested heading; Unity atlas mechanics; the tessellator
-             budget; the fixture's satellite pier; the style values.
+             LOW CONFIDENCE: held-aircraft facing; Unity atlas
+             mechanics; the tessellator budget; the fixture's satellite
+             pier; the style values.
 Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130)

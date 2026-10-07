@@ -4006,9 +4006,10 @@ Reason:      HUMAN DECISIONS — owner, 2026-10-07, four of them, all
 Raised by:   human directive (Q-130)
 Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                gains `VisualId Visual` (34 semantic ids, with no atlas
-               meaning), `int32 Heading` (tenths of a degree, `H(v)` of
-               an integer layout vector, rounded from `Math.Atan2`) and
-               `Paint` (five `Rgb` regions and a `Mark`). There are now
+               meaning), `WorldPoint Facing` (an exact integer layout
+               vector under five ordered aircraft rules, with no angle
+               and no trigonometry in tested code; the team lead
+               settled vector over angle on 2026-10-07) and `Paint` (five `Rgb` regions and a `Mark`). There are now
                ten fields. Added: `Rgb`, `Paint`, `AircraftRegion`,
                `PassengerRegion`, `LogoMark`, `Livery`, `AirlineLivery`
                and `RenderLooks`; `RenderFactory.LoadLooks`,
@@ -4020,7 +4021,9 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                `SourceKind` gains eight kinds, all appended.
              - **New primitives (§15.5, §15.16):** aprons and buildings
                (`Ground`); runway edge lines, thresholds, two-digit
-               designators and centreline dashes (exact `int64` frames);
+               designators (numbered from the integer
+               `RunwayDef.ActiveDirectionDeg`, never from a computed
+               angle) and centreline dashes (exact `int64` frames);
                taxiway junction fills and centrelines; stand lead-ins,
                painted stand numbers and jet bridges. Aircraft get their
                visual by size category and their livery by airline,
@@ -4059,7 +4062,7 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
              - **3D (§15.1, §15.15):** a note that 3D is planned after
                T-025. A 3D backend replaces only `Art2D` and the Unity
                backend, mapping `VisualId` to meshes, `Paint` regions to
-               material slots and `Heading` to yaw.
+               material slots, and deriving its yaw from `Facing`.
              - **§15.1, §15.6:** `app.render` may call `TryGetFlight`
                (per rebuild) and `IContentIndex.AllOf`/`TryGet` (at
                construction only).
@@ -4088,15 +4091,18 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                the merged backend's 13-colour palette is indexed by the
                four new roles. The checkpoint smoke is unaffected. No
                playtest runs in between.
-             - **LOW CONFIDENCE:** (1) a held aircraft heads straight at
+             - **LOW CONFIDENCE:** (1) a held aircraft faces straight at
                its destination, not along its route (§15.16).
-               (2) `Math.Atan2` in a tested integer result (§15.16).
-               (3) Unity mechanics: `Sprites/Default` tinting,
+               (2) Unity mechanics: `Sprites/Default` tinting,
                per-level `SetPixelData`, and vertex colours in a Linear
-               project (§15.17). (4) The tessellator budget (§15.17).
-               (5) The fixture's satellite pier, which is kept because
-               merged coordinates are not moved (§15.18). (6) The style
+               project (§15.17). (3) The tessellator budget (§15.17).
+               (4) The fixture's satellite pier, which is kept because
+               merged coordinates are not moved (§15.18). (5) The style
                values themselves, for the owner to revise at T-025.
+               Facing is an exact vector, so it has no rounding
+               concern. The tessellator normalises it in `double`, and
+               its tests use the `1e-3` tolerance with vectors chosen
+               far from it (§15.17).
              - **Scope (running total for this decision):** art,
                parameterised looks data, scenery (aprons, buildings, jet
                bridges, tower), ground markings and painted digits, a

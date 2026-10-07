@@ -61,7 +61,7 @@ At Phase 1, `app.render` owns:
 Since 2026-10-07 the draw list is drawn as **art**: flat top-down vector
 art, made by agents, with no third-party assets, which must look like a
 real airport (owner decisions, Q-130, §15.15). The scene layer emits only
-semantic visual ids, headings and paint (§15.16). The 2D art and its
+semantic visual ids, facings and paint (§15.16). The 2D art and its
 atlas belong to the 2D backend (§15.17). "Flat-colour" elsewhere in this
 file now means this flat style. **3D is planned after the T-025 gate**
 (owner decision, 2026-10-07). It is not designed here: §15.15 only keeps
@@ -302,16 +302,16 @@ fields (Q-097): `Kind` ordinal, then `Id`, then `Sub`, each ascending.
 | junction fill (Q-130): each taxi node with two or more incident edges in `Layout().Edges` | `Dot` | centred on the node's position, diameter `TaxiwayWidth` | `Taxiway` | `Taxiway` | `TaxiwayJunction` | `(TaxiNode, id, 0)` |
 | taxiway centreline (Q-130): each taxi edge | `Segment` | the taxi edge's geometry, width `TaxiwayWidth` | `TaxiwayMarking` | `Taxiway` | `TaxiwayCentreline` | `(TaxiCentreline, id, 0)` |
 | each stand | `Box` | centred on the stand's `Node` position, side `StandSize` | `StandOccupied` if `StandState.Occupant` is set, else `StandFree` | `Stand` | `StandPad` | `(Stand, id, 0)` |
-| stand lead-in (Q-130): each stand | `Dot` | centred on the stand's `Node` position, diameter `StandSize`, `Heading` the stand's nose-in heading (§15.16) | `TaxiwayMarking` | `Stand` | `StandLeadIn` | `(StandMarking, id, 0)` |
+| stand lead-in (Q-130): each stand | `Dot` | centred on the stand's `Node` position, diameter `StandSize`, `Facing` the stand's nose-in vector (§15.16) | `TaxiwayMarking` | `Stand` | `StandLeadIn` | `(StandMarking, id, 0)` |
 | stand number (Q-130): each digit of each stand's `StandId` | `Dot` | §15.16 | `TaxiwayMarking` | `Stand` | `MarkingDigit0` to `MarkingDigit9` | `(StandNumber, id, digit index)` |
 | each layout bridge (Q-130) | `Segment` | `(X0,Y0)`–`(X1,Y1)`, width `Width` | `Building` | `Stand` | `JetBridge` | `(JetBridge, id, 0)` |
 | each `FlowNodeBox` | `Box` | the box | `LandsideNode` | `LandsideNode` | `TerminalZone` | `(FlowNode, id, 0)` |
 | queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` | `QueueFill` | `(QueueFill, id, 0)` |
 | lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` | `LanePip` | `(Lane, id, index)` |
 | agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize`; `Paint` by passenger (§15.16) | `Agent` | `Agent` | `Passenger` | `(Agent, id, rank)` |
-| each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize`; `Heading` and `Paint` by livery (§15.16) | by phase, below | `Aircraft` | by size category (§15.16) | `(Aircraft, flight, 0)` |
+| each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize`; `Facing` and `Paint` by livery (§15.16) | by phase, below | `Aircraft` | by size category (§15.16) | `(Aircraft, flight, 0)` |
 
-**Visuals, heading, paint and scenery (Q-130)** are §15.16: what every
+**Visuals, facing, paint and scenery (Q-130)** are §15.16: what every
 new field holds, the marking and scenery rules, and the draw order of the
 new rows. Layout areas and bridges (§15.4) are scenery and are drawn
 whenever the layout has them, whichever sim modules are present. The
@@ -565,8 +565,9 @@ readonly struct DrawPrimitive {
   WorldPoint    A              // Box: min corner.  Segment: start.  Dot: centre.
   WorldPoint    B              // Box: max corner.  Segment: end.    Dot: unused.
   float         Size           // Box: unused.      Segment: width.  Dot: diameter.
-  int32         Heading        // Q-130. Dot: compass heading of the visual's forward in tenths of a degree,
-                               // 0..3599, 0 = +Y, 900 = +X. Box and Segment: 0 (a Segment's forward is A to B).
+  WorldPoint    Facing         // Q-130. Dot: the direction the visual's forward points, an exact
+                               // integer-valued vector (§15.16); (0,0) = +Y. Box and Segment: (0,0)
+                               // (a Segment's forward is A to B).
   Paint         Paint          // Q-130; all zero unless the visual has regions (§15.16)
   SourceRef     Source
 }
@@ -919,7 +920,7 @@ owner, 2026-09-27 (D10 addendum).
 1. **Same information at every setting.** For any sim state, camera and
    `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
    layer is **identical** in kind, layer, colour, visual, geometry,
-   heading, paint and source (Q-130), and so is their order. That covers
+   facing, paint and source (Q-130), and so is their order. That covers
    the scenery, runways and their markings, taxiways, junction fills and
    centrelines, stands with their markings and bridges, landside nodes,
    queue fill, lane pips and aircraft. Only `Agent`-layer primitives
@@ -1066,7 +1067,7 @@ Both are on `RenderFactory`, which stays the module's one factory (`08`
 
 - **The scene layer** (§15.16) decides everything about *what* is
   drawn, and all of it is tested. That covers each primitive's semantic
-  `VisualId`, its engine-free `Heading` (an integer angle), and its
+  `VisualId`, its engine-free `Facing` (an exact integer vector), and its
   `Paint` (named region colours from data). It also generates the
   scenery and markings. It knows nothing about atlases, cells, UVs or
   sprites.
@@ -1078,7 +1079,7 @@ Both are on `RenderFactory`, which stays the module's one factory (`08`
 
 **What carries over to 3D.** A later 3D backend consumes the same
 `RenderFrame`. It maps each `VisualId` to a mesh, each `Paint` region to
-a material slot of the same name, `Heading` to a yaw, and `ColourRole` to
+a material slot of the same name, `Facing` to a yaw it derives, and `ColourRole` to
 its state colour. It replaces only §15.17 and the Unity backend. The
 scene layer, the layout's scenery (§15.4), the looks data
 (`data/looks/looks.json`, §15.16) and every scene test stay as they are.
@@ -1094,7 +1095,7 @@ square (§15.17).
 
 ---
 
-## 15.16 Visuals, heading, paint and scenery (scene layer, Q-130)
+## 15.16 Visuals, facing, paint and scenery (scene layer, Q-130)
 
 **Draw order of the new rows.** `Ground` is the first layer, so aprons
 and buildings lie under everything else. The appended `SourceKind`s sort
@@ -1105,30 +1106,17 @@ every centreline. In `Stand` it is every pad, then every lead-in, then
 every number digit, then every bridge. A marking is never hidden by a
 surface of its own layer.
 
-### Heading
+### Facing
 
-`Heading` is an integer compass angle in tenths of a degree: `0..3599`,
-with `0` = `+Y`, `900` = `+X`, clockwise. It is engine-free, and a 3D
-backend reuses it as a yaw. It is computed from an **integer** direction
-vector `v = (x, y)`, which is always a difference of the layout's `int32`
-positions widened to `int64`:
+`Facing` is an exact **integer direction vector**, never an angle. Its
+components are differences of the layout's `int32` positions, computed
+in `int64` and converted to `float`, so the value is exact. Layout
+coordinates stay well inside `float`'s 2^24 exact range. It needs no
+trigonometry and no quantisation, and only its direction matters.
+`(0, 0)` means unrotated (`+Y`). It is engine-free: the 2D tessellator
+normalises it (§15.17), and a 3D backend derives a yaw from it.
 
-`H(v)`: `0` if `v = (0, 0)`. Else `deg = Math.Atan2(x, y) × 180 / π` in
-`double`, plus 360 if negative, then `h = floor(deg × 10 + 0.5)`, and
-`3600` becomes `0`.
-
-Only the rounded integer leaves the scene layer, and only the backend
-turns it into a rotation. Tests assert, for example, `H(0,1) = 0`,
-`H(1,1) = 450`, `H(3,4) = 369`, `H(0,−1) = 1800` and `H(−1,0) = 2700`.
-
-> **LOW CONFIDENCE — `Math.Atan2` in tested code.** The result is an
-> integer, but `Atan2`'s last bit may differ between runtimes. That can
-> change `h` only when a bearing lies within about 1e-12 of a half step,
-> which no layout's integer vector does in practice. It is presentation
-> only and never reaches the sim. An integer CORDIC is the fallback if a
-> difference is ever seen.
-
-**Aircraft heading** is `H` of the first rule that applies:
+**Aircraft facing** is the vector of the first rule that applies:
 
 1. `OnEdge` set: the edge's other endpoint's position minus `AtNode`'s,
    which is the direction of travel. A pushback is therefore drawn nose
@@ -1145,7 +1133,7 @@ turns it into a rotation. Tests assert, for example, `H(0,1) = 0`,
    `ThresholdNode` of its `Runway`, an `Arrival`'s is the `Node` of its
    `Stand`. The vector is the destination's position minus `AtNode`'s.
 5. In every other case, and whenever the rule's id is unset or a position
-   or geometry is missing: `(0, 0)`, so the heading is 0.
+   or geometry is missing: `(0, 0)`.
 
 A node's **nose-in vector** is its position minus the position of the
 other endpoint of the lowest-`TaxiEdgeId` edge incident to it, or `(0, 1)`
@@ -1158,8 +1146,8 @@ if it has no incident edge or the difference is `(0, 0)`.
 > only. A route query on `sim.airside` would fix it, and is not worth
 > widening `12` for now.
 
-Every other primitive has `Heading = 0`, except runway thresholds and
-designators, stand lead-ins and stand numbers (below).
+Every other primitive has `Facing = (0, 0)`, except runway thresholds
+and designators, stand lead-ins and stand numbers (below).
 
 ### Runway markings
 
@@ -1176,17 +1164,24 @@ has origin `P1` and forward `f = (−dx, −dy)`. `Point(k, d, e)` is the point
 All markings have layer `Runway`, colour `RunwayMarking` and source
 `(RunwayMarking, runway id, Sub)`:
 
-| `Sub` | What | Primitive | Geometry | `Visual` | `Heading` |
+| `Sub` | What | Primitive | Geometry | `Visual` | `Facing` |
 |---|---|---|---|---|---|
-| 0 | edge lines | `Segment` | the runway's own `A`, `B` and `Size` | `RunwayEdgeLines` | 0 |
-| 1, 2 | threshold at end 0, end 1 | `Dot` | centre `Point(k, W / 2, 0)`, diameter `W` | `RunwayThreshold` | `H(f)` of that end |
-| 3, 4 | designator at end 0: tens, units | `Dot` | centre `Point(0, 2W, e_i)`, diameter `G` | `MarkingDigitN` | `H(f)` of end 0 |
-| 5, 6 | designator at end 1: tens, units | `Dot` | centre `Point(1, 2W, e_i)`, diameter `G` | `MarkingDigitN` | `H(f)` of end 1 |
-| `7 + k` | centreline dash `k`, `0 ≤ k < n` | `Segment` | `Point(0, s_k, 0)` to `Point(0, s_k + W, 0)`, width `W` | `RunwayCentreDash` | 0 |
+| 0 | edge lines | `Segment` | the runway's own `A`, `B` and `Size` | `RunwayEdgeLines` | `(0, 0)` |
+| 1, 2 | threshold at end 0, end 1 | `Dot` | centre `Point(k, W / 2, 0)`, diameter `W` | `RunwayThreshold` | `f` of that end |
+| 3, 4 | designator at end 0: tens, units | `Dot` | centre `Point(0, 2W, e_i)`, diameter `G` | `MarkingDigitN` | `f` of end 0 |
+| 5, 6 | designator at end 1: tens, units | `Dot` | centre `Point(1, 2W, e_i)`, diameter `G` | `MarkingDigitN` | `f` of end 1 |
+| `7 + k` | centreline dash `k`, `0 ≤ k < n` | `Segment` | `Point(0, s_k, 0)` to `Point(0, s_k + W, 0)`, width `W` | `RunwayCentreDash` | `(0, 0)` |
 
-- **Designators.** For an end with heading `h`, the number is
-  `((h + 50) / 100) mod 36`, with `0` written as `36`. It always has two
-  digits, so 9 is `09`. The digit size is `G = (2 × W) / 5`. Digit `i`
+- **Designators** come from the airside layout's integer
+  `RunwayDef.ActiveDirectionDeg`, not from an angle computed here. With
+  `T` the position of the runway's `ThresholdNode`, the **active end** is
+  end 0 if `|P0 − T|² ≤ |P1 − T|²` (in `int64`), else end 1. This matches
+  aircraft rule 3. The active end's degrees are
+  `D = ActiveDirectionDeg mod 360`, made non-negative, and the other
+  end's are `(D + 180) mod 360`. An end's number is
+  `((deg + 5) / 10) mod 36`, with `0` written as `36`. It always has two
+  digits, so 9 is `09`. If the `RunwayDef` or `T`'s position is missing,
+  there are no designator primitives. The digit size is `G = (2 × W) / 5`. Digit `i`
   (0 for tens) is at `e_i = ((c − 1 − 2i) × 3 × G) / 10` with `c = 2`, so
   the tens are on the left of a pilot landing there. It reads upright
   facing the forward. Letters (L/C/R) are not drawn at Phase 1.
@@ -1195,8 +1190,9 @@ All markings have layer `Runway`, colour `RunwayMarking` and source
   So `n` dashes of length `W` with gaps of `W` are centred between the
   two threshold-and-designator zones.
 - **For the §15.12 fixture's runway** (`(−2000,0)` to `(0,0)`, `W = 45`),
-  this gives: `L = 2000`; thresholds at `(−1978, 0)` with heading 900 and
-  `(−22, 0)` with heading 2700; designator `09` (digits `0` at
+  with threshold node 1 at `(0, 0)` and `active_direction_deg` 270, this
+  gives: `L = 2000`; end 1 active; thresholds at `(−1978, 0)` facing
+  `(2000, 0)` and `(−22, 0)` facing `(−2000, 0)`; designator `09` (digits `0` at
   `(−1910, 5)` and `9` at `(−1910, −5)`) and `27` (`2` at `(−90, −5)`,
   `7` at `(−90, 5)`), each with `G = 18`; and `n = 19` dashes from
   `s_0 = 167`.
@@ -1206,11 +1202,11 @@ All markings have layer `Runway`, colour `RunwayMarking` and source
 For each stand, at its node `N` with nose-in vector `v` (above) and
 `Ls = isqrt(v.x² + v.y²)`:
 
-- **Lead-in:** the `StandLeadIn` row of §15.5, with `Heading = H(v)`.
+- **Lead-in:** the `StandLeadIn` row of §15.5, with `Facing = v`.
 - **Number:** the decimal digits of `StandId.Value`, most significant
   first, with no leading zero, `c` of them. `G = StandSize / 6`; if
   `G = 0` there are no digits. Digit `i` is a `Dot` of diameter `G`,
-  `Heading = H(v)`, visual `MarkingDigitN`, source
+  `Facing = v`, visual `MarkingDigitN`, source
   `(StandNumber, stand id, i)`, centred at
   `(N.x + (v.x × d − v.y × e_i) / Ls, N.y + (v.y × d + v.x × e_i) / Ls)`,
   with `d = (StandSize × 13) / 32` and
@@ -1528,9 +1524,9 @@ is the backend's triangle order.
 - **Segment:** with `f = (B − A) / |B − A|` (or `(0, 1)` when `A = B`),
   `r = (f.Y, −f.X)` and `h = Size / 2`, the corners are `A − r h`,
   `A + r h`, `B + r h` and `B − r h`.
-- **Dot:** with `θ = Heading × π / 1800` in `double`,
-  `f = (sin θ, cos θ)`, `r = (cos θ, −sin θ)` and `h = Size / 2`, the
-  corners are `centre − r h − f h`, `centre + r h − f h`,
+- **Dot:** `f` is `Facing` normalised in `double` (`n = sqrt(x² + y²)`,
+  `f = (x / n, y / n)`), or `(0, 1)` when `Facing` is `(0, 0)`. Then
+  `r = (f.Y, −f.X)` and `h = Size / 2`, and the corners are `centre − r h − f h`, `centre + r h − f h`,
   `centre + r h + f h` and `centre − r h + f h`. A layer's sub-square
   `(MinX..MaxX, MinY..MaxY)` maps design `(x, y)` to
   `centre + r × (x / 1024 − 0.5) × Size + f × (y / 1024 − 0.5) × Size`.
@@ -1550,9 +1546,13 @@ is the backend's triangle order.
   the passenger layers dominate (16 × 256 agents × 6 quads).
 
 Tessellator tests may compare corner positions within `1e-3` world
-units, because `Math.Sin` and `Math.Cos` are not exact. That is the one
-tolerance allowed in `tests/app/render/`, and it applies only to the
-tessellator's corner positions.
+units, because a normalised vector is not exact in floating point. That
+is the one tolerance allowed in `tests/app/render/`, and it applies only
+to the tessellator's corner positions. The test vectors are chosen far
+from that edge: axis-aligned facings (exact), `(3, 4)` (with `n = 5`
+exact), and `(1, 1)`, all with `Size ≤ 1000` and centres within ±10 000,
+where the float error is below `1e-4`. No angle is computed anywhere in
+tested code.
 
 ### Style guide
 
@@ -1654,26 +1654,28 @@ case.
 New, phrased per `07-conventions.md`. Scene layer (task 1):
 
 - `test_scene_visuals_follow_the_draw_table`: every row of §15.5 has its
-  visual, colour, layer and source. `Heading` is 0 and `Paint` is zero
-  wherever §15.16 does not set them.
+  visual, colour, layer and source. `Facing` is `(0, 0)` and `Paint` is
+  zero wherever §15.16 does not set them.
 - `test_scene_scenery_follows_the_layout`: areas and bridges are drawn
   with no airside and no flow module present. Within `Ground`, aprons
   come before buildings.
-- `test_scene_headings_follow_the_rules`: the `H` examples of §15.16,
-  each of the five aircraft rules (including the lowest-id incident edge
-  on a stand node with two edges, the runway direction from either end,
-  and both destinations), and the fallback to 0.
+- `test_scene_aircraft_facing_follows_the_five_rules`: each rule's exact
+  vector, including the lowest-id incident edge on a stand node with two
+  edges, the runway direction from either end, and both destinations,
+  plus every `(0, 0)` fallback.
 - `test_scene_runway_markings_follow_the_integer_rule`: every value of the
   §15.16 fixture example, exactly. A diagonal runway exercises the
   truncating division and the left offsets. A short runway with `R < W`
   keeps its edges, thresholds and designators and has no dashes. A
   zero-length runway has no markings. Markings keep `RunwayMarking`
-  while the runway is `RunwayQueued`. Designators wrap correctly at
-  `0 → 36`.
+  while the runway is `RunwayQueued`. Designators follow
+  `ActiveDirectionDeg` from either active end, wrap correctly at
+  `0 → 36` (for example 355° and 2°), and are absent without a
+  `RunwayDef`.
 - `test_scene_taxiway_junction_fill_and_centrelines`: a fill only at nodes
   with two or more incident edges, one centreline per edge on the edge's
   geometry, and the in-layer order.
-- `test_scene_stand_lead_in_and_numbers`: the heading from the nose-in
+- `test_scene_stand_lead_in_and_numbers`: the facing as the nose-in
   vector, the digit count and visuals for 1-, 2- and 5-digit stand ids,
   the exact centres, and no digits when `StandSize < 6`.
 - `test_scene_aircraft_visual_follows_size_category`: ordinals 0 to 5,
@@ -1721,9 +1723,10 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
   to `F`. Each aircraft cell is mirror-symmetric within ± 1 per byte.
 - `test_art2d_layers_match_the_visual_table`: `LayersOf` for every
   `VisualId` matches §15.17's table, including the logo sub-square.
-- `test_art2d_tessellator_corners_follow_kind_heading_and_slicing`: box,
-  segment, zero-length segment, and a dot at headings 0, 450, 900 and
-  2700; the logo sub-square; the nine quads of a sliced box, with `t`
+- `test_art2d_tessellator_corners_follow_kind_facing_and_slicing`: box,
+  segment, zero-length segment, and a dot facing `(0, 0)`, `(0, 1)`,
+  `(1, 0)`, `(−1, 0)`, `(0, −1)`, `(3, 4)` and `(1, 1)` (§15.17's tolerance
+  note); the logo sub-square; the nine quads of a sliced box, with `t`
   clamped for a thin box.
 - `test_art2d_tessellator_colours_follow_role_region_and_fixed`: each
   colour source, the logo emitted only with a mark, the role alpha kept,
@@ -1753,7 +1756,7 @@ worker edits a test.
     the fixture's areas and bridges.
   - `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
     and `test_scene_primitive_order_is_stable` are **covered by the
-    kit**. `Prims.Show` gains `Visual`, `Heading` and `Paint`, so both
+    kit**. `Prims.Show` gains `Visual`, `Facing` and `Paint`, so both
     compare the new fields with their own code unchanged.
 - No `app.ui` or `app.host` test changes. The old `RenderSources`,
   `RenderLayout`, `ComposedSim`, `CreateSceneBuilder` and `Compose`
@@ -1794,7 +1797,7 @@ aircraft door:
 
 Four tasks. Each starts only when its dependencies are merged.
 
-1. **Render scene: visuals, heading, paint, markings, scenery and
+1. **Render scene: visuals, facing, paint, markings, scenery and
    looks.** Test Author first, then a worker. Writable paths:
    `src/app/render/Scene/**` (including the project reference to
    `sim.schedule`), `tests/app/render/**`, `tests/fixtures/render/**`,

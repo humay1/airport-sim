@@ -385,8 +385,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   is the local package `com.airportsim.render.unity`, build-checked by
   `unity-build` (§15.3, §15.10, Q-114)**; **real art (owner, 2026-10-07,
   Q-130, §15.15–§15.18): parameterised, 3D-transferable, "looks like a
-  real airport"; the scene emits semantic `VisualId`, integer `Heading`
-  and region `Paint` (liveries by airline, clothes by a fixed hash, from
+  real airport"; the scene emits semantic `VisualId`, an exact integer
+  `Facing` vector and region `Paint` (liveries by airline, clothes by a fixed hash, from
   `data/looks/looks.json`, not sim content); layout v2 adds aprons,
   buildings and jet bridges; markings, designators, stand lead-ins and
   numbers; the headless `Art2D` assembly holds the art as code, the one
@@ -398,8 +398,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
   revise (Q-034):** the `Low` and `Medium` values and the 1920 × 1080
   measurement condition (§15.14); the backend's draw-call bound (§15.10).
-  **LC, not yet reviewed (Q-130):** the straight-line heading of a held
-  aircraft and `Math.Atan2` in the heading (§15.16); Unity's texture,
+  **LC, not yet reviewed (Q-130):** the straight-line facing of a held
+  aircraft (§15.16); Unity's texture,
   shader and colour-space behaviour and the tessellator budget (§15.17);
   the fixture's satellite pier (§15.18).
 - Read if: T-020; the render backend task (§15.10); the Q-130 tasks
