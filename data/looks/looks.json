@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "looks",
+  "default_livery": { "fuselage": "#F4F5F7", "tail": "#2F5D9E", "cheatline": "#2F5D9E", "engines": "#9AA1A9", "logo": "#F4F5F7", "mark": "none" },
+  "liveries": {
+    "BRW": { "fuselage": "#F2EFE6", "tail": "#7A3B1E", "cheatline": "#C9822B", "engines": "#8E8A82", "logo": "#F2EFE6", "mark": "disc" },
+    "CTX": { "fuselage": "#E8EEF2", "tail": "#1F7A6D", "cheatline": "#3FB8A5", "engines": "#98A4AB", "logo": "#E8EEF2", "mark": "chevron" },
+    "DLN": { "fuselage": "#F5F1F1", "tail": "#A32B3A", "cheatline": "#D9546A", "engines": "#9C9496", "logo": "#F5F1F1", "mark": "star" },
+    "NVA": { "fuselage": "#EEF1F6", "tail": "#2A3F7A", "cheatline": "#E0B02E", "engines": "#8F97A6", "logo": "#EEF1F6", "mark": "bars" }
+  },
+  "passengers": {
+    "tops": [ "#3B6EA5", "#B8423A", "#4C8C5A", "#D9A441", "#6B4C9A", "#2B8C8C", "#C96A9B", "#E8E4DA", "#4A4F57", "#D8743A" ],
+    "bottoms": [ "#2E3440", "#4B5D7A", "#6B5B45", "#8A8F98", "#1F2A44" ],
+    "skins": [ "#F1C9A5", "#E0AC84", "#C68E6B", "#8D5524", "#5C3A21", "#3B2417" ],
+    "hairs": [ "#3A2A1F", "#1A1411", "#7A5230", "#B58B4C", "#8E8E8E", "#C9552B" ],
+    "bags": [ "#5A4A3A", "#2F3A4C", "#8A2E2E", "#3F6B4A", "#B8A06A" ]
+  }
+}
