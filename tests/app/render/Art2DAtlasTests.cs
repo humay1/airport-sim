@@ -121,9 +121,12 @@ namespace AirportSim.App.Render.Tests
         public void test_art2d_every_cell_is_drawn_inside_its_border()
         {
             var lowAlpha = new HashSet<string> { "SoftBox", "SoftBar", "Rubber" };
+            var thinAtMip2 = new Dictionary<string, int> { { "RunwayEdgeLines", 64 } };
             for (int s = 0; s < 6; s++)
             {
                 lowAlpha.Add(ArtCells.Aircraft(s, 0).Name);
+                thinAtMip2.Add(ArtCells.Aircraft(s, 5).Name, 1);
+                thinAtMip2.Add(ArtCells.Aircraft(s, 7).Name, 1);
             }
 
             var failures = new List<string>();
@@ -134,8 +137,14 @@ namespace AirportSim.App.Render.Tests
                     int maxAlpha = MaxAlpha(cell, m);
 
                     // Alpha ≥ 128 (≥ 64 for the shadow cells and Rubber) somewhere at
-                    // mips 0 to 2, and > 0 at mips 3 to 5.
+                    // mips 0 to 2, and > 0 at mips 3 to 5. At mip 2 only (Q-133), the
+                    // parts narrower than a pixel: RunwayEdgeLines ≥ 64, and the
+                    // Cheatline and Glazing cells > 0.
                     int need = m <= 2 ? (lowAlpha.Contains(cell.Name) ? 64 : 128) : 1;
+                    if (m == 2 && thinAtMip2.TryGetValue(cell.Name, out int thin))
+                    {
+                        need = thin;
+                    }
                     if (maxAlpha < need)
                     {
                         failures.Add(cell.Name + " mip " + m + ": max alpha " + maxAlpha + ", needs " + need);

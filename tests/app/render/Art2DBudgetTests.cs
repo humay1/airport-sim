@@ -21,6 +21,7 @@ namespace AirportSim.App.Render.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
+        [Trait("Category", "Slow")] // 07 L11a's prompt: about 19–22 s in a Release run of the T-052 implementation; CI decides afterwards
         public void test_art2d_tessellator_fill_within_budget_and_allocates_nothing()
         {
             var m = new MaxTierScene();
