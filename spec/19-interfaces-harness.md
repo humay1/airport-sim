@@ -436,6 +436,12 @@ rule):
 3. The listed systems are constructed in §16.4's dependency order, each
    with `builder.Services`, its data, and its downward interfaces or
    `null`. `turnaroundRegistered` is whether `sim.turnaround` is listed.
+   Steps 2 and 3 may interleave: the harness may load each file just
+   before its own system's factory, and `flow.fixture` is always loaded
+   after the world system is built, since its loader needs `IWorldSystem`
+   (`09` §9.11). The order changes only which failure a bundle with more
+   than one fault reports first, which nothing compares (`16` §16.4,
+   Q-126).
 4. They are registered in registry order (`08` §8.5), and then `Build` is
    called.
 

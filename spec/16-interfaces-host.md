@@ -30,8 +30,9 @@ playable build), not for T-020.
   presentation scene-layer objects (§16.5);
 - **the frame loop**, the only caller of `ISimHost.Step` in a playable build
   (§16.6). This moved here from `15-interfaces-render.md` §15.8;
-- **the Unity bootstrap**, one thin engine script that calls the headless host
-  and nothing else (§16.7);
+- **the Unity bootstrap**, one thin engine script that calls the headless host,
+  plus the one `app.ui` call that loads the player-visible text, and nothing
+  else (§16.7, Q-125);
 - **the headless checkpoint run** and the checkpoint dump format (§16.8), used
   to prove the host composes the same sim as `tools.simharness` and by the
   non-required cross-runtime check (§16.9).
@@ -300,13 +301,17 @@ interface ISimComposer {
 1. Parse `bundle.json`, then
    `SimHostFactory.CreateBuilder({ seed, ContentIndexFactory.Create(content), checkpoints, log })`.
    The log sink is the host's (`08` §8.10).
-2. Load each listed module's file with that module's loader (§16.3). The
-   `sourceName` passed to a loader is exactly the bundle file name, for
-   example `schedule.csv` (Q-073).
+2. Load each listed module's file with that module's loader (§16.3), in
+   the row order of §16.3's table, **except `flow.fixture`**, which step 3
+   loads. The `sourceName` passed to a loader is exactly the bundle file
+   name, for example `schedule.csv` (Q-073).
 3. Construct the listed systems **in dependency order**, each with
    `builder.Services`, its data, and its downward interfaces or `null`:
    world; flow(world); schedule(flow); airside(schedule, flow,
-   `turnaroundRegistered`); turnaround(schedule); delay.
+   `turnaroundRegistered`); turnaround(schedule); delay. `flow.fixture` is
+   loaded after the world system is built and before the flow system,
+   because `IFlowGraphLoader.Load` validates the graph against
+   `IWorldSystem` (`09` §9.11, Q-126).
 4. `Register` them **in registry order** (`08` §8.5), then `Build`.
 
 Rules:
@@ -361,8 +366,13 @@ table. All three come inside step 1, after the parse and **before**
 `ContentIndexFactory.Create` and `CreateBuilder`. Then come step 1's
 `ContentIndexFactory.Create` and `CreateBuilder`, whose content failures
 start with the module name (`07`); then step 2's loads, in the row order
-of §16.3's table; then step 3's factories. That is the order of the
-harness's stage 2 (`19` §19.2c). A `null` argument to either composer
+of §16.3's table without `flow.fixture`; then step 3, in its order, with
+the `flow.fixture` load between the world factory and the flow factory
+(Q-126). The harness's `checkpoints` composition loads each file just
+before its own system's factory instead (`19` §19.2c). So for a bundle
+with more than one fault, the two may report different first failures.
+Both fail, and no test compares their failures: the D7 test compares
+successful dumps only (§16.8). A `null` argument to either composer
 throws `ArgumentNullException`, before any check.
 
 ---
@@ -394,6 +404,14 @@ interface IPresentationComposer {
 - Constructs the scene builder, the promotion controller and the pacer with
   `RenderFactory` (`15` §15.9), and the UI controller and its lane sink with
   `UiFactory` (`17` §17.7).
+- **A presentation needs `sim.flow` (Q-127).** The lane sink is built
+  with `sim.Flow`. If `sim.flow` is not registered, that is `null`, and
+  `UiFactory.CreateLaneCommandSink` throws its `ArgumentNullException`
+  (`flow`, `17` §17.7), which passes through unchanged. It comes after the
+  layout load, so a layout failure is reported first. It is not a load
+  failure of §16.4's table, and there is no ignore-all sink. The playtest
+  bundle lists `sim.flow` (§16.3), and `IHeadlessRun` builds no
+  presentation (§16.8).
 - It builds the frame loop (§16.6) over those parts and `sim.Host`, and
   returns it as `Presentation.Frame`.
 - `HostFactory.CreatePresentationComposer()`, `HostFactory.CreateCommandLine()`
@@ -480,6 +498,13 @@ enough for the Reviewer to check line by line against this list:
   what they draw. It passes an `IPreferenceStore` over the engine's player
   preferences (D10, §16.6). That adapter holds no logic beyond reading and
   writing one string.
+- **The text (Q-125).** Also at scene start, never in a checkpoint run:
+  call `UiFactory.LoadStringTable` (`17` §17.4b) with the same
+  `IContentSource` over `StreamingAssets/Content/` that it gives
+  `HostFactory.LoadContent` (§16.3), and hand the table to the UI backend
+  before the backend's first draw. Apart from handing the backends what
+  they draw, this is its only call into a module other than `app.host`.
+  The bootstrap does not catch its exception.
 - **Each engine frame:** get this frame's `CameraView` from the render backend
   and this frame's `UiInput`s from the UI backend, read the screen size,
   convert the engine's frame delta to integer microseconds (the float
@@ -495,7 +520,10 @@ enough for the Reviewer to check line by line against this list:
   (Q-120). So `Run`'s failure line (§16.8) lands in the player log, and on
   standard output under `-logFile -`, which is the smoke's log
   (§16.2). A Windows player has no console, so without the forwarding the
-  line would be lost. The writer holds no logic beyond splitting lines. If
+  line would be lost. The writer holds no logic beyond splitting lines.
+  A line break is LF, or CR followed by LF, which counts as **one** line
+  break, so a `WriteLine` gives one line whatever `Environment.NewLine`
+  is (Q-129). A CR not followed by LF is part of the line. If
   `TryParse` returns false, quit with exit code 2 (Q-114). Either way, no
   frame loop runs and nothing is drawn.
 - It calls no sim member, never branches on sim state, and never reads a
@@ -587,7 +615,8 @@ exception's `GetType().Name` and `<message>` its `Message`, so a load
 failure names its bundle file (§16.4 "Load failures"). There is no stack
 trace and no inner exception. The line is plain ASCII: every character
 of it outside U+0020 to U+007E, a line break included, is written as
-`?`. The harness's `checkpoints` subcommand names no stage words of its
+`?`. A character here is one UTF-16 code unit (Q-128), so a character
+outside the BMP, which is a surrogate pair, is written as `??`. The harness's `checkpoints` subcommand names no stage words of its
 own (`19` §19.3), so these are `Run`'s. In the player, the bootstrap
 routes this line to the engine log (§16.7).
 
@@ -831,8 +860,10 @@ Two pieces of work. Writable paths are proposed; the Planner confirms them.
 - **Unity project shell:** `unity/AirportSim/**`, including the bootstrap,
   the build step (§16.3) and the playtest `bundle.json`. It extends the
   committed skeleton (§16.2). It waits for the headless host, for the
-  `app.render` and `app.ui` backends, and for the Phase 1 content files in
-  `data/` (`04-data-schemas.md`). The pax-profile and queue-profile values
+  `app.render` and `app.ui` backends, for the Phase 1 content files in
+  `data/` (`04-data-schemas.md`), and for `app.ui`'s string table, whose
+  `UiFactory.LoadStringTable` its bootstrap calls (§16.7, `17` §17.10,
+  Q-125). The pax-profile and queue-profile values
   among them are the owner's. CI checks it only through `unity-build`
   (§16.2). Its build step is what makes the smoke run, so its Done-when
   includes `unity-build` green **with the smoke step run**, not skipped.

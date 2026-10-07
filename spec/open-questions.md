@@ -3311,3 +3311,79 @@ Answer:      The player is `AirportSim.x86_64` beside `AirportSim_Data/`
              T-034's to fix within the spec, or a spec question if the fix
              needs more.
 Status:      ANSWERED (spec/16-interfaces-host.md#169-the-cross-runtime-determinism-check--adopted-not-required-d1-q-115)
+
+### Q-125 — `app.ui`: what is a `LocalisedKey`, and where is the text?
+Raised by:   coordinator, from T-033 (PR #131 at `88c0764`)
+Blocking:    T-033, T-034
+Question:    `04` says only that player-visible text is a localisation
+             key. No spec defines the key type, a naming scheme, the
+             settings panel's keys, where the English text lives, how it
+             is validated, or who resolves a key. T-033 drew raw key
+             strings, so a playtester would see `ui.settings.title`.
+Why it matters: the settings panel is the first player-visible text;
+             without a table every backend invents its own.
+Answer:      `LocalisedKey { string Value }`, dot-separated lowercase
+             segments, first segment the drawing module (`ui`). Exactly
+             twelve Phase 1 keys with their English text. The text is
+             `data/strings/en.json`, validated by
+             `data/schemas/strings.schema.json` through the existing
+             content validator, ignored by the sim content loader, and
+             shipped by the existing `data/` copy.
+             `UiFactory.LoadStringTable(IContentSource)` loads it;
+             `IStringTable.Resolve` looks keys up. The bootstrap loads it
+             at scene start and hands it to the UI backend, which
+             resolves every text it draws. A new scene-layer task builds
+             the table and the two content files.
+Status:      ANSWERED (spec/17-interfaces-ui.md#174b-player-visible-text-q-125)
+
+### Q-126 — `app.host`: the flow graph cannot load in step 2
+Raised by:   reviewer / T-031 (PR #130)
+Blocking:    none (merged code already does the answer)
+Question:    §16.4 loads every file in step 2 and builds systems in
+             step 3, but `IFlowGraphLoader.Load` needs the `IWorldSystem`
+             that step 3 builds. It also claimed its failure order is the
+             harness's.
+Why it matters: the spec cannot be met as written.
+Answer:      `flow.fixture` is loaded in step 3, after the world system
+             and before the flow system; every other file loads in step
+             2 in row order. The harness interleaves each load with its
+             factory, so a bundle with several faults may report a
+             different first failure there; nothing compares failures.
+             `19` §19.2c says the same.
+Status:      ANSWERED (spec/16-interfaces-host.md#164-composition)
+
+### Q-127 — `app.host`: a presentation without `sim.flow`
+Raised by:   reviewer / T-031 (PR #130)
+Blocking:    none
+Question:    `17` §17.7 said the host passes an ignore-all sink when
+             `sim.flow` is not registered; the merged host passes `null`
+             and `CreateLaneCommandSink` throws.
+Why it matters: the two specs disagreed, and the code follows neither
+             silently.
+Answer:      A presentation needs `sim.flow`. Without it,
+             `CreateLaneCommandSink`'s `ArgumentNullException` (`flow`)
+             passes through, after the layout load. There is no
+             ignore-all sink.
+Status:      ANSWERED (spec/16-interfaces-host.md#165-presentation-assembly)
+
+### Q-128 — `app.host`: what is a "character" in the `?` rule?
+Raised by:   reviewer / T-031 (PR #130)
+Blocking:    none
+Question:    §16.8 writes each character outside U+0020 to U+007E as
+             `?`, without saying whether a character is a code point or
+             a UTF-16 code unit.
+Why it matters: a surrogate pair gives `?` or `??`.
+Answer:      One UTF-16 code unit, as the merged code does: a surrogate
+             pair is `??`.
+Status:      ANSWERED (spec/16-interfaces-host.md#168-the-headless-checkpoint-run-and-the-dump-format)
+
+### Q-129 — `app.host`: CR LF in the `Console.Error` forwarder
+Raised by:   reviewer / T-031 (PR #130)
+Blocking:    none (T-034 writes the forwarder)
+Question:    §16.7's forwarder splits "completed lines" without saying
+             what a line break is. On Windows `WriteLine` ends in CR LF.
+Why it matters: splitting on CR and LF separately would forward an empty
+             line or a trailing CR.
+Answer:      LF, or CR followed by LF, is one line break. A lone CR is
+             part of the line.
+Status:      ANSWERED (spec/16-interfaces-host.md#167-the-unity-bootstrap-contract)
