@@ -25,8 +25,14 @@ namespace AirportSim.Shell
         private UiBackend ui;
         private IFrameLoop loop;
 
+        private void Awake()
+        {
+            Debug.Log("DIAG bootstrap Awake");
+        }
+
         private void Start()
         {
+            Debug.Log("DIAG bootstrap Start");
             render = GetComponent<RenderBackend>();
             ui = GetComponent<UiBackend>();
 
