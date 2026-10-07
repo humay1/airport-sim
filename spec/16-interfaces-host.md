@@ -513,7 +513,10 @@ enough for the Reviewer to check line by line against this list:
   `IPresentationComposer.Compose`, and keep the `IFrameLoop`. Hand the backends
   what they draw. It passes an `IPreferenceStore` over the engine's player
   preferences (D10, §16.6). That adapter holds no logic beyond reading and
-  writing one string.
+  writing one string. The `ICheckpointSink` it passes to
+  `ISimComposer.Compose` is its own private no-op that drops every
+  checkpoint: a play session keeps none, and no public sink exists for
+  play mode. That adapter holds no logic at all.
 - **The text (Q-125).** Also at scene start, never in a checkpoint run:
   call `UiFactory.LoadStringTable` (`17` §17.4b) with the same
   `IContentSource` over `StreamingAssets/Content/` that it gives
@@ -547,6 +550,18 @@ enough for the Reviewer to check line by line against this list:
   is (Q-129). A CR not followed by LF is part of the line. If
   `TryParse` returns false, quit with exit code 2 (Q-114). Either way, no
   frame loop runs and nothing is drawn.
+
+  > **Known gap, no code change required.** The bootstrap calls
+  > `HostFactory.LoadContent` (§16.3) to build the composer it hands
+  > `IHeadlessRun`, so that call runs outside `Run`. A content load
+  > failure there (`FormatException`) is not one of `Run`'s returned
+  > failures, and the bootstrap does not catch it. In a batch-mode
+  > player an escaping exception does not end the process (§16.8), so
+  > `Application.Quit` is never called and the player hangs until the
+  > job's timeout. The build step copies `data/` unchanged (§16.3), and
+  > `data/` is validated in CI, so a bad copy is not expected. If it ever
+  > matters, the fix is an amendment that moves the content load inside
+  > `Run`'s stages or adds a catch that quits with exit code 3.
 - It calls no sim member, never branches on sim state, and never reads a
   bundle file itself.
 
@@ -771,7 +786,9 @@ failure:
 
 1. **Inputs present.** `$IN/checkpoints.txt` is a file, and `$S/Scenario`
    and `$S/Content` are directories. The first one that is not is
-   `FAIL cross_runtime missing <path>`, with the path as written here.
+   `FAIL cross_runtime missing <path>`, where `<path>` is the path as
+   written here with `$IN` and `$S` expanded by the shell, so the line
+   shows the runner's absolute path.
    The harness is not run.
 2. **CoreCLR (the reference dump):**
    `dotnet run --project tools/SimHarness -c Release --no-build --

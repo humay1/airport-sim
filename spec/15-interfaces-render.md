@@ -342,8 +342,9 @@ promoted returns empty (`09` §9.7), and the box simply draws no agents.
 
 **Agents.** `AgentsAt(node)` is sorted by `(Cohort, Index)` and truncated to
 `GraphicsSettings.MaxDrawnAgentsPerNode` (§15.14), which never exceeds
-`MAX_DRAWN_AGENTS_PER_NODE`. The *k*-th agent's position is a pure function
-of *k* and the box. The exact arrangement is the worker's choice, and tests
+`MAX_DRAWN_AGENTS_PER_NODE`. An agent's rank *k*, the `Sub` of its
+`SourceRef`, is its 0-based index in that sorted, truncated list. The
+*k*-th agent's position is a pure function of *k* and the box. The exact arrangement is the worker's choice, and tests
 assert only count and containment. `ProgressAlongEdge` is not used at
 Phase 1, because corridors are not drawn.
 
@@ -1317,7 +1318,11 @@ only, never an atlas.
   An exception that `ReadAll` itself throws passes through unchanged and
   is not wrapped. For example, the player's `IContentSource` over
   `StreamingAssets/Content/` throws `FileNotFoundException` for a missing
-  file. Only a `null` result is the loader's `FormatException`.
+  file. Of `ReadAll`'s possible outcomes, then, only a `null` result
+  becomes the loader's `FormatException`; the faults listed above for the
+  bytes it returns are `FormatException`s as stated.
+- A `null` `source` throws `ArgumentNullException` with `ParamName`
+  `source`, before `ReadAll` is called (`07` "Error handling").
 - An airline code maps to `AirlineId` exactly as the schedule does
   (`11` §11.4): FNV-1a-32 over its UTF-8 bytes. `Airlines` is sorted by
   `AirlineId`, and the lists keep file order.
@@ -1808,6 +1813,11 @@ worker edits a test.
   - `test_scene_calls_only_listed_sim_members` is **extended**. The
     max-tier fakes gain a guarded schedule and content index, and the
     test asserts that content is read only at construction.
+  - `test_scene_assembly_has_no_engine_reference` **changes** its
+    banned-reference list. `AirportSim.Sim.Schedule` leaves it, because
+    the scene layer now references `sim.schedule` (§15.1, §15.6).
+    `AirportSim.App.Render.Art2D` joins it, because the scene layer never
+    references the 2D art (§15.3). Every other ban stays.
   - `test_scene_build_within_frame_budget_at_max_tier` and
     `test_scene_build_and_update_allocate_nothing_after_first_call` are
     **extended**. The max-tier scene gains the schedule, content and looks
@@ -1891,8 +1901,8 @@ Four tasks. Each starts only when its dependencies are merged.
    index **on every frame** of a playable build that draws one of the
    four new roles, which the airside scene always does. The checkpoint
    smoke is unaffected: in batch mode the bootstrap's `Awake` deactivates
-   the object, so the backend's `Start` and `Update` never run (`16`
-   §16.7).
+   its object, so the bootstrap's own `Start` and `Update` never run, and
+   `Update` is what calls the backend's `Draw` (`16` §16.7).
 4. **Host: sources and looks into the scene.** Test Author first, then a
    worker. Writable paths: `src/app/host/**`, `tests/app/host/**` and
    `unity/AirportSim/Assets/Scripts/AirportSimBootstrap.cs` (`16` §16.4,

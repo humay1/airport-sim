@@ -194,7 +194,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   FNV-1a-64 (§8.9); **construction (§8.11a, Q-009): `ISimHostBuilder`,
   `SystemServices`, and one stateless `<Module>Factory` per module; construct
   in dependency order, register in registry order**; **content definition
-  types and a strict, package-free JSON `IContentLoader` (§8.11, Q-011)**;
+  types and a strict, package-free JSON `IContentLoader` (§8.11, Q-011),
+  with the subset's whitespace and integer grammar stated (2026-10-07)**;
   **tick numbering (first `Step` runs tick 0, 24 checkpoints/day),
   `SystemId` legality, `SimEventHandler<T>` with the envelope beside the
   payload, `SimInvariantException` wrapping, log shapes (Q-014)**; **`Fx`
