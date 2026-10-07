@@ -4204,3 +4204,85 @@ Impact:      - **§15.18:** `test_scene_assembly_has_no_engine_reference`
                **PENDING HUMAN:** none.
 Signed off:  not required (clarifications only; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-07 — spec/15 §15.1, §15.3, §15.10, §15.11, §15.14, §15.15, §15.16 (recolourable table only), §15.17, §15.18; INDEX; open-questions — realistic 2D art (Q-131, owner decision)
+Reason:      HUMAN DECISION — owner, 2026-10-07: "make the art as realistic
+             as possible. It is very important for the fun to have the
+             player fully immersed." The owner chose "Realistic 2D": keep
+             Q-130's art-as-code pipeline but lift its "flat" rule.
+Raised by:   human directive (Q-131)
+Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
+               the layout: unchanged.** No primitive, enum, field or test of
+               T-051 (merged at `456f0a8`) changes. The one §15.16 edit is
+               the prose "What is recolourable" table, which now lists
+               shadows, rubber, the stand edge line and parked equipment
+               as fixed layers. No code reads it.
+             - **§15.14:** prose only. No knob is added. `Low` keeps the
+               full art, with the reasoning stated and a LOW CONFIDENCE
+               fallback (an art-detail knob is an owner decision and a
+               scene, `app.ui` and `app.host` amendment).
+             - **§15.17 (T-052, not started, nothing merged):**
+               - rasteriser: per-shape softness; fills with flat, linear or
+                 radial gradients and an optional pinned periodic value
+                 noise (FNV-1a-32 lattice, literal salts, octaves finer
+                 than 2 pixels left out per mip); arithmetic restricted to
+                 exactly-rounded `double` operations; mirrored shapes
+                 reflect their gradients and carry no noise; rules for
+                 tiled (periodic) and sliced (uniform centre) cells; one
+                 light direction for unrotated cells;
+               - constants: `ATLAS_SIZE` 2048 → 4096, `LARGE_CELL`
+                 256 → 512, `ATLAS_MIP_COUNT` 5 → 6, new `GROUND_TILE` 64
+                 and `GROUND_TILES_PER_AXIS` 32;
+               - `ArtLayer` gains `SliceInset`, `SliceWorld`, `Tile`,
+                 `ShiftX`, `ShiftY`; `Art2DFactory.GroundLayer()` is new;
+               - packing: aircraft 8 × 6 large cells, a large band (asphalt,
+                 concrete, grass, roof, tower, two equipment cells) and
+                 small cells at `y ≥ 3584`, 32 per row; `BuildingRoof`
+                 becomes `Parapet`, and `SoftBox`, `SoftBar`, `Rubber` are
+                 new;
+               - visual table rewritten: tiled surfaces and roofs, shadows
+                 for aircraft, buildings, tower and bridges, rubber marks,
+                 a red stand edge line, parked equipment on the stand
+                 lead-in; aircraft layers renumbered 0 `Shadow` to
+                 7 `Glazing`;
+               - tessellator: ground tiles first in every `Fill`, tiled
+                 boxes (world-anchored) and segments, a segment sub-square,
+                 and the shift; budget 1.5/3.0 → 2.0/4.0 ms;
+               - style guide: "Flat" replaced; value steps widened;
+                 measurable texture ranges; every cell's art rewritten;
+                 new real-proportion aircraft table and parts (span still
+                 grows A to F; `F` is now shorter than `E`); logo
+                 sub-squares recomputed by the unchanged integer rule
+                 (`AircraftC` unchanged, `AircraftF` now
+                 `(422, 152)–(602, 332)`).
+             - **§15.18:** T-052's tests updated (sizes, layers, the
+               aircraft bounding box now `× 480`, shadow-cell alpha floor,
+               two new tessellator tests and one texture test, the ground
+               quads ahead of every primitive, one shared atlas per test
+               class). T-052's Test Author must revise any test already
+               written against the Q-130 constants, packing, aircraft
+               table or quad counts. No merged test changes.
+             - **§15.10, §15.11 (T-053, not started):** no extra pass, texture
+               or material; no reference kept to the atlas after upload;
+               the texture size and mip count still come from the
+               constants. Memory note 21 MB → about 85 MiB, about 4 % of
+               `16` §16.10's 2 GB.
+             - **§15.1, §15.3:** wording, and UVs are now multiples of
+               1/4096; tiled UVs are exact for whole-number test vectors.
+             - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
+               `app.host`.
+             - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art
+               (§15.14), pending the minimum-spec measurement. (2) The
+               85 MiB atlas and its start-up time on Mono (§15.11).
+               (3) The style values, texture ranges and noise salts
+               (§15.17): chosen without seeing the output, and revised at
+               T-025 by amendment. (4) The tessellator's 2.0 ms budget.
+               (5) Placing parked equipment in the `StandLeadIn` visual,
+               so it turns with the stand, rather than in a new visual.
+             - **Scope (running total for Q-130 and Q-131):** Q-130's art,
+               looks data, scenery, markings and assembly, plus Q-131's
+               realism, all owner-directed. Still no vehicle, label or
+               moving equipment, no sim change, no new knob, no package,
+               and nothing in `01` or `02`.
+Signed off:  owner decision recorded (Q-131); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.
