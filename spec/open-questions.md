@@ -3595,3 +3595,31 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              layer, with the elevation added to its shift (§15.22).
              So there are four tasks: A1, M1, M2, M3 (§15.23).
 Status:      ANSWERED (spec/15-interfaces-render.md#1519-the-living-airport--owner-decision-2026-10-07-q-132)
+
+### Q-133 — `app.render`: `RunwayEdgeLines` cannot reach alpha 128 at mip 2
+Raised by:   worker / T-052
+Blocking:    T-052
+Question:    §15.18's `test_art2d_every_cell_is_drawn_inside_its_border`
+             requires a texel with alpha ≥ 128 in every cell at mips 0
+             to 2. `RunwayEdgeLines`' bars (`x` 16 to 48 and 976 to
+             1008, worn) are 32 units wide, and a small cell's mip 2
+             pixel is 34.13. The only samples inside a bar are 1.07
+             units in, all noise octaves are dropped, and the best
+             texel has alpha 125. Which is wrong: the test, the bars or
+             the wear?
+Why it matters: the pinned art and the test cannot both hold.
+Answer:      The test. The arithmetic is confirmed (with `cov = 136`,
+             not 137; the output is 125 either way). The bars and the
+             wear stay, so the look is unchanged. At mip 2 only,
+             `RunwayEdgeLines` needs alpha ≥ 64. A check of every other
+             thin cell found the same risk in two worker-sized parts,
+             the small rows' cheatlines and windscreens (a large cell's
+             mip 2 pixel is 8.53 units), so the six `Cheatline` and six
+             `Glazing` cells need alpha > 0 at mip 2. To keep mips 0 and
+             1 safe, the cheatline and the windscreen are at least 5
+             units wide, and each foot, hand and bag of a passenger and
+             each logo mark contains a circle of radius 32. Every pinned
+             cell else passes: `CentreStripe` 221, `RunwayThreshold`
+             235, `StandLeadIn` 199, `StandPad` 137, digits (stroke
+             96) and the opaque cells 255.
+Status:      ANSWERED (spec/15-interfaces-render.md#1517-the-2d-art-atlas-and-tessellator-q-130)

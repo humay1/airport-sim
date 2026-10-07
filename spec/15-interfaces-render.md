@@ -2122,8 +2122,23 @@ The worn salts are `RunwayEdgeLines` 700, `CentreStripe` 710,
 | `Digit0`–`Digit9` | block digits with a stroke of 96, inside `x` 256 to 768 and `y` 128 to 896, value 255, worn; each digit is one polygon, with an inner ring for each counter (0, 4, 6, 8, 9), never overlapping strokes; not mirrored |
 | `TerminalZone` | border band 16 to 1008 at value 205, floor 120 to 904 at value 245 (Q-131: was 128 to 896, on the slice line) |
 | `LanePip` | rim square 96 to 928 at value 140 (Q-131: was 120, below the shading floor), booth square 128 to 896 at value 230 over it, and an officer circle of radius 128 at value 150 |
-| passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are opaque, and all are mirrored except `Bag`; the head and any shape on the axis follow the mirror-seam rule |
-| logo marks | each a simple filled mark, one shape, inside `16 .. 1008` on both axes (the inside rule), value 255 |
+| passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are opaque, and all are mirrored except `Bag`; the head and any shape on the axis follow the mirror-seam rule. Each foot, the bag and each hand contains a circle of radius 32 (Q-133) |
+| logo marks | each a simple filled mark, one shape, inside `16 .. 1008` on both axes (the inside rule), value 255, containing a circle of radius 32 (Q-133) |
+
+**Thin parts at small mips (Q-133).** A mip 1 pixel is 17.07 design units
+in a small cell and 4.27 in a large one; a mip 2 pixel is 34.13 and 8.53.
+A shape holds a pixel's sample point, and so a texel at its full alpha,
+only if it is wider than one pixel. A circle of radius 32 always holds a
+mip 2 sample at least 7.8 units inside it (a sample lies within
+`34.13 / √2 = 24.14` of every point), which is why the passenger parts
+and logo marks above contain one, and a 5-unit band always holds a
+mip 1 sample of a large cell, which is why the cheatline and windscreen
+are at least 5 wide. Three parts are narrower than a mip 2 pixel by
+design, and §15.18's cell test allows for them: `RunwayEdgeLines`' 32-unit
+bars (their best mip 2 texel has alpha exactly 125: a sample 1.07 units
+inside, `cov = 136`, no noise octave), and the cheatlines and windscreens
+of the small rows (cheatlines of 5 to about 8 units on `A` to `C`, and
+windscreens whose depth is the worker's, from 5 units).
 
 **Aircraft proportions (Q-131: real proportions per archetype).** Span
 and length are fractions of `ART_UNITS`, with the status outline
@@ -2175,13 +2190,15 @@ these rules). Every aircraft cell is mirrored and has no noise.
   sit beside the rear fuselage, from 0.68 to 0.82 of L. `A`'s are
   nacelles along the wing chord.
 - **Cheatline** (layer 5): a band along each side of the fuselage, 0.12
-  of its width, from 0.12 to 0.85 of L.
+  of its width but at least 5 design units (Q-133), from 0.12 to 0.85 of
+  L.
 - **Tail** (layer 6): the tailplane, of the row's span, with the wing's
   sweep and a root chord of 0.10 of L, ending 0.02 of L before the tail;
   and the fin top, a strip a quarter of the fuselage width along the
   centre line over the last 0.20 of L. `B`'s tailplane sits at the fin's
   top, at the very end (a T-tail).
-- **Glazing** (layer 7, fixed dark): the windscreen across the nose; a
+- **Glazing** (layer 7, fixed dark): the windscreen across the nose, at
+  least 5 design units deep along `Y` (Q-133); a
   row of cabin windows along each side of the fuselage at alpha 160,
   about 0.014 of L apart, from 0.14 to 0.80 of L; and, for `A`, the two
   propeller discs, radius 0.07 of S, at alpha 60.
@@ -2293,7 +2310,11 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
 - `test_art2d_every_cell_is_drawn_inside_its_border`: every cell has a
   texel with alpha ≥ 128 at mips 0 to 2, or ≥ 64 for the shadow cells
   (`SoftBox`, `SoftBar`, the six aircraft `Shadow` cells) and `Rubber`,
-  and alpha > 0 at mips 3 to 5. Every cell that is not edge-to-edge
+  and alpha > 0 at mips 3 to 5. **At mip 2 only (Q-133)**, two
+  exceptions for parts narrower than a pixel (§15.17 "Thin parts at
+  small mips"): `RunwayEdgeLines` needs alpha ≥ 64 (its best texel is
+  125), and the six aircraft `Cheatline` cells and the six `Glazing`
+  cells need alpha > 0. At mips 0 and 1 they keep ≥ 128. Every cell that is not edge-to-edge
   (§15.17's list) has an all-transparent border ring at mip 0. `Solid`
   is `(255, 255, 255, 255)` on every texel of its cell at every mip.
 - `test_art2d_tiled_textures_follow_the_style_guide` (Q-131): for
@@ -2384,7 +2405,7 @@ not merged; its Test Author updates them, and no worker edits them):
 | `test_art2d_assembly_references` | nothing |
 | `test_art2d_atlas_shape_and_packing_match_spec` | `Size` 4096, 6 mips, the new packing (aircraft 8 × 6 large cells, the large band, small cells at `y ≥ 3584`, 32 per row, slots 35–36), rects over 4096, borders 16 or 4 |
 | `test_art2d_atlas_is_deterministic` | nothing, apart from the atlas's size |
-| `test_art2d_every_cell_is_drawn_inside_its_border` | mips 3 to 5; alpha ≥ 64 for the shadow cells and `Rubber`; the longer edge-to-edge list; `BuildingRoof` is now `Parapet` |
+| `test_art2d_every_cell_is_drawn_inside_its_border` | mips 3 to 5; alpha ≥ 64 for the shadow cells and `Rubber`; the longer edge-to-edge list; `BuildingRoof` is now `Parapet`; Q-133's mip 2 exceptions (`RunwayEdgeLines` ≥ 64; the `Cheatline` and `Glazing` cells > 0) |
 | `test_art2d_aircraft_follow_the_proportion_table` | the Q-131 table; `× 480`; only span grows strictly; `Status` is column 1 and `Shadow` column 0; `Shadow` checked for symmetry too |
 | `test_art2d_layers_match_the_visual_table` | the rewritten table, the new `ArtLayer` fields, aircraft layers 0 to 7, all six logo sub-squares, `GroundLayer()` |
 | `test_art2d_tessellator_corners_follow_kind_facing_and_slicing` | ground quads first; slicing read from the layer's fields; zero-length segment of an untiled visual; a shifted layer; quad indices move where a visual gained layers (shadows, tiles, rubber, equipment) |
