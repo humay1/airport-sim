@@ -5,8 +5,8 @@
 | Status | QUEUED (extends committed skeleton `unity/AirportSim/` from c48e163, does not create it; rescoped 2026-10-06 per Q-114, `16` §16.2/§16.3) |
 | Module | `app.host` (Unity project shell) |
 | Assigned role | worker |
-| Depends on | T-027, T-028, T-031, T-032, T-033 |
-| Spec source | `spec/16-interfaces-host.md` §16.1, §16.2, §16.3 (playtest-bundle table, incl. `world.fixture`), §16.7 |
+| Depends on | T-027, T-028, T-031, T-032, T-033, T-050 |
+| Spec source | `spec/16-interfaces-host.md` §16.1, §16.2, §16.3 (playtest-bundle table, incl. `world.fixture`), §16.7; `spec/17-interfaces-ui.md` §17.4b (Q-125) |
 | Blocked by | — |
 
 ## Writable paths
@@ -77,6 +77,25 @@ paraphrased:
   with exit code 2 (Q-114). Either way no frame loop, nothing drawn. The bootstrap
   calls no sim member itself, never branches on sim state, never reads a
   bundle file directly.
+- **The text (§16.7, `17` §17.4b, Q-125).** At scene start, never in a
+  checkpoint run, call `UiFactory.LoadStringTable` with the same
+  `IContentSource` over `StreamingAssets/Content/` it gives
+  `HostFactory.LoadContent`, and hand the table to the UI backend (T-033)
+  before the backend's first draw. Apart from handing the backends what they
+  draw, this is its only call into a module other than `app.host`. It does
+  not catch the exception.
+- **Console.Error line breaks (§16.7, Q-129).** The forwarding writer treats
+  LF, or CR followed by LF as **one** line break, so a `WriteLine` gives one
+  line whatever `Environment.NewLine` is. A CR not followed by LF is part of
+  the line.
+- **Facts from the merged render backend (T-032, PR #132) this task honours.**
+  The render backend component (`RenderBackend`) sits on the scene's main
+  camera object. The project uses the built-in render pipeline, because the
+  backend uses `OnRenderImage`. Active Input Handling is "Input Manager" or
+  "Both". Each frame the bootstrap calls the render backend's
+  `CameraView ReadCameraView()` and `Draw(in RenderFrame)`. From the T-033
+  PR: each frame the bootstrap calls the UI backend's `Show(in UiFrame)`,
+  reads `Inputs`, then calls `ClearInputs()`.
 - **The Phase 1 playtest bundle** (§16.3): `unity/AirportSim/Scenario/`
   holds only the committed `bundle.json` and is not a complete bundle. The
   build step assembles `Assets/StreamingAssets/Scenario/` with one file for
@@ -139,6 +158,7 @@ sim's 6 ms; `RunFrame`'s cost is T-031's).
 - [ ] Build step calls `AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)` after its last copy (`16` §16.3, Q-124)
 - [ ] Batch mode forwards `Console.Error` to `Debug.LogError` around `Run`, restores it, then `Application.Quit(code)` (`16` §16.7, Q-120)
 - [ ] The non-required `cross-runtime` job (`16` §16.9, Q-115; already in `.github/workflows/unity.yml` on main) is **run, not skipped**, on the PR, with its result line quoted in the PR. It compares the player's checkpoint dump with the harness dump byte for byte, on PRs and nightly. It is NOT a required check and is not part of "`unity-build` green": T-034 must make a `missing` or staged-load failure pass within the spec, but a red result does not block merging, and a dump difference between two dumps that both loaded and ran is a determinism defect reported to the owner, not fixed here (`16` §16.11)
+- [ ] Bootstrap loads the string table with `UiFactory.LoadStringTable` and hands it to the UI backend before its first draw, and the `Console.Error` writer follows the Q-129 line-break rule (`16` §16.7)
 - [ ] Reviewer approved
 
 ## Worker notes

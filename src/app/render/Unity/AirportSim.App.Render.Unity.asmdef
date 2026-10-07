@@ -1,0 +1,21 @@
+{
+  "name": "AirportSim.App.Render.Unity",
+  "rootNamespace": "AirportSim.App.Render.Unity",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "AirportSim.App.Render.dll",
+    "AirportSim.Sim.Core.dll",
+    "AirportSim.Sim.Airside.dll",
+    "AirportSim.Sim.Flow.dll",
+    "AirportSim.Sim.Schedule.dll",
+    "AirportSim.Sim.World.dll"
+  ],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

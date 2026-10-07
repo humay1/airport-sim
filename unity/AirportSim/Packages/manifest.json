@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.airportsim.render.unity": "file:../../../src/app/render/Unity",
     "com.airportsim.ui.unity": "file:../../../src/app/ui/Unity"
   }
 }

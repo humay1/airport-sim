@@ -21,6 +21,7 @@ falls back to a default.
 | `size_categories.schema.json` | `data/size_categories/*.json` | 6 |
 | `queue_profiles.schema.json` | `data/queue_profiles/*.json` | — |
 | `balance.schema.json` | `data/balance/*.json` (human-authored, below) | 1 at Phase 1 |
+| `strings.schema.json` | `data/strings/en.json` (player-visible text, `17` §17.4b) | 1 at Phase 1 |
 
 A schema's file name must equal its directory's name, because
 `ci/validate-content.py` pairs them by name. That is why the pax profile
@@ -68,7 +69,11 @@ build to CSV for anything.
   `Fx.Parse` floors to multiples of 2^-32 (`08` §8.3), so a positive value
   below about 0.00000000023 parses as 0 and fails any "> 0" rule. For
   example, `walk_speed_mps: "0.0000000001"` is invalid (Q-031).
-- All player-visible text is a localisation key, never a literal.
+- All player-visible text is a localisation key, never a literal. The key
+  type, the naming scheme, the Phase 1 keys and the English string table
+  `data/strings/en.json` are `17-interfaces-ui.md` §17.4b (Q-125). The
+  string table is not sim content: `08` §8.11's loader ignores
+  `strings/`.
 - Every file declares `"schema_version"`. Migrations are mandatory, not optional.
 - Modders use this exact pipeline. If it is awkward for a designer, it is wrong.
 

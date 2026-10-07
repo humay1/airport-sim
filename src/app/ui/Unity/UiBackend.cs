@@ -22,6 +22,13 @@ namespace AirportSim.App.Ui.UnityBackend
 
         private readonly List<UiInput> inputs = new List<UiInput>();
         private UiFrame frame;
+        private IStringTable strings;
+
+        /// <summary>Sets the table every piece of panel text is resolved through. Called by the bootstrap before the first draw.</summary>
+        public void SetStringTable(IStringTable table)
+        {
+            strings = table;
+        }
 
         /// <summary>This frame's inputs, in arrival order. The bootstrap puts them in FrameInput.Ui.</summary>
         public IReadOnlyList<UiInput> Inputs => inputs;
@@ -148,7 +155,7 @@ namespace AirportSim.App.Ui.UnityBackend
         {
             GraphicsSettings g = frame.Graphics;
             Rect row = new Rect(panel.x + Gap, panel.y + Gap, panel.width - 2 * Gap, Row - Gap);
-            GUI.Label(row, UiTextKeys.SettingsTitle);
+            GUI.Label(row, strings.Resolve(UiTextKeys.SettingsTitle));
 
             // One control per preset.
             row.y += Row;
@@ -179,7 +186,8 @@ namespace AirportSim.App.Ui.UnityBackend
                 Set(new GraphicsSettings(GraphicsPreset.Custom, g.DrawAgents, g.MaxDrawnAgentsPerNode, NextFrameRateCap(g.FrameRateCap), g.ResolutionScalePercent, g.AntiAliasing));
             }
 
-            GUI.Label(row, UiTextKeys.FrameRateCap + "  " + g.FrameRateCap.ToString(CultureInfo.InvariantCulture));
+            GUI.Label(row, strings.Resolve(UiTextKeys.FrameRateCap) + "  "
+                + (g.FrameRateCap == 0 ? strings.Resolve(UiTextKeys.ValueUncapped) : g.FrameRateCap.ToString(CultureInfo.InvariantCulture)));
 
             row.y += Row;
             step = Stepper(row, UiTextKeys.ResolutionScalePercent, g.ResolutionScalePercent);
@@ -195,27 +203,27 @@ namespace AirportSim.App.Ui.UnityBackend
             }
         }
 
-        private void PresetButton(Rect r, GraphicsPreset preset, string key)
+        private void PresetButton(Rect r, GraphicsPreset preset, LocalisedKey key)
         {
             if (Press(r, frame.Graphics.Preset == preset))
             {
                 Add(UiInputKind.SetGraphicsPreset, preset: preset);
             }
 
-            GUI.Label(r, key);
+            GUI.Label(r, strings.Resolve(key));
         }
 
-        private static bool Toggle(Rect r, string key, bool on)
+        private bool Toggle(Rect r, LocalisedKey key, bool on)
         {
             bool hit = Press(r, on);
-            GUI.Label(r, key);
+            GUI.Label(r, strings.Resolve(key) + "  " + strings.Resolve(on ? UiTextKeys.ValueOn : UiTextKeys.ValueOff));
             return hit;
         }
 
-        // Draws "key  value  [-] [+]" and returns -1, +1 or 0 for the button pressed.
-        private static int Stepper(Rect r, string key, int value)
+        // Draws "label  value  [-] [+]" and returns -1, +1 or 0 for the button pressed.
+        private int Stepper(Rect r, LocalisedKey key, int value)
         {
-            GUI.Label(r, key + "  " + value.ToString(CultureInfo.InvariantCulture));
+            GUI.Label(r, strings.Resolve(key) + "  " + value.ToString(CultureInfo.InvariantCulture));
             Rect minus = new Rect(r.xMax - 2 * r.height - Gap, r.y, r.height, r.height);
             Rect plus = new Rect(r.xMax - r.height, r.y, r.height, r.height);
             int result = 0;

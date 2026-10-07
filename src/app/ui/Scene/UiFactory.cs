@@ -21,6 +21,17 @@ namespace AirportSim.App.Ui
             return new LaneCommandSink(host, flow);
         }
 
+        /// <summary>Loads the English string table from <c>strings/en.json</c> (§17.4b).</summary>
+        public static IStringTable LoadStringTable(IContentSource source)
+        {
+            if (source is null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            return new StringTable(StringsFile.Read(source.ReadAll(StringsFile.Path)));
+        }
+
         /// <summary>Encodes the graphics preference text (§17.4a).</summary>
         public static string EncodeGraphicsPreference(in GraphicsSettings settings)
         {

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 48851d19e99de8317231a9faacfa38b2, type: 3}
+  m_Name: DefaultPalette
+  m_EditorClassIdentifier:
+  Background: {r: 0.05, g: 0.06, b: 0.08, a: 1}
+  Roles:
+  - {r: 0.45, g: 0.45, b: 0.5, a: 1}
+  - {r: 0.85, g: 0.55, b: 0.2, a: 1}
+  - {r: 0.3, g: 0.3, b: 0.35, a: 1}
+  - {r: 0.25, g: 0.55, b: 0.3, a: 1}
+  - {r: 0.75, g: 0.3, b: 0.25, a: 1}
+  - {r: 0.35, g: 0.45, b: 0.6, a: 1}
+  - {r: 0.9, g: 0.8, b: 0.3, a: 0.6}
+  - {r: 0.85, g: 0.85, b: 0.9, a: 1}
+  - {r: 0.3, g: 0.7, b: 0.9, a: 1}
+  - {r: 0.9, g: 0.6, b: 0.2, a: 1}
+  - {r: 0.6, g: 0.4, b: 0.8, a: 1}
+  - {r: 0.3, g: 0.8, b: 0.4, a: 1}
+  - {r: 0.8, g: 0.25, b: 0.25, a: 1}

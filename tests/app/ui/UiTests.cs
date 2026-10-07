@@ -170,7 +170,7 @@ namespace AirportSim.App.Ui.Tests
             Assembly ui = typeof(UiFactory).Assembly;
             string[] expected =
             {
-                "ILaneCommandSink", "IUiController", "PacingState", "ScreenPoint", "UiFactory", "UiFrame", "UiInput", "UiInputKind",
+                "ILaneCommandSink", "IStringTable", "IUiController", "LocalisedKey", "PacingState", "ScreenPoint", "UiFactory", "UiFrame", "UiInput", "UiInputKind",
             };
             var exported = ui.GetExportedTypes().Select(t => t.FullName ?? t.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
             Assert.Equal(expected.Select(n => "AirportSim.App.Ui." + n).OrderBy(n => n, StringComparer.Ordinal).ToList(), exported);
@@ -187,18 +187,27 @@ namespace AirportSim.App.Ui.Tests
                 Assert.Equal(i, (int)kinds[i]);
             }
 
-            // 07 L10: UiFactory is a static class whose public members are exactly 17 §17.4a/§17.7's four.
+            // 07 L10: UiFactory is a static class whose public members are exactly 17 §17.4a/§17.7's five (Q-125).
             Type factory = typeof(UiFactory);
             Assert.True(factory.IsAbstract && factory.IsSealed, "UiFactory is not a static class");
             var methods = factory.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
-            Assert.Equal(new List<string> { "CreateController", "CreateLaneCommandSink", "EncodeGraphicsPreference", "TryDecodeGraphicsPreference" }, methods);
+            Assert.Equal(new List<string> { "CreateController", "CreateLaneCommandSink", "EncodeGraphicsPreference", "LoadStringTable", "TryDecodeGraphicsPreference" }, methods);
 
-            // 17 §17.7: the two interfaces carry exactly their spec members.
+            // 17 §17.4b: LoadStringTable(IContentSource source) -> IStringTable.
+            MethodInfo load = factory.GetMethod("LoadStringTable")!;
+            Assert.Equal(typeof(IStringTable), load.ReturnType);
+            Assert.Equal(new[] { typeof(IContentSource) }, load.GetParameters().Select(p => p.ParameterType).ToArray());
+
+            // 17 §17.7: the three interfaces carry exactly their spec members.
             Assert.Equal(
                 new List<string> { "Frame", "Update", "get_Graphics", "get_Pacing" },
                 typeof(IUiController).GetMethods().Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToList());
             Assert.Equal(new List<string> { "Request" }, typeof(ILaneCommandSink).GetMethods().Select(m => m.Name).ToList());
+            Assert.Equal(new List<string> { "Resolve" }, typeof(IStringTable).GetMembers().Select(m => m.Name).ToList());
+            MethodInfo resolve = typeof(IStringTable).GetMethod("Resolve")!;
+            Assert.Equal(typeof(string), resolve.ReturnType);
+            Assert.Equal(new[] { typeof(LocalisedKey) }, resolve.GetParameters().Select(p => p.ParameterType).ToArray());
         }
 
         // ------------------------------------------------------------ pacing (§17.4)
