@@ -394,9 +394,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `data/looks/looks.json`, not sim content); layout v2 adds aprons,
   buildings and jet bridges; markings, designators, stand lead-ins and
   numbers; the headless `Art2D` assembly holds the art as code, the one
-  2048² atlas and a tested tessellator; the backend copies quads into one
+  4096² atlas and a tested tessellator; the backend copies quads into one
   mesh, one draw call; 3D after T-025 replaces only `Art2D` and the
-  backend**.
+  backend**; **realistic 2D (owner, 2026-10-07, Q-131, §15.15, §15.17):
+  soft shadows, gradients, deterministic periodic noise, weathering and
+  real-proportion aircraft, all baked into the atlas; grass, surface tiles
+  and shadows are ordinary quads; no backend pass, no scene change, and
+  `Low` keeps the full art**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
@@ -405,7 +409,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   **LC, not yet reviewed (Q-130):** the straight-line facing of a held
   aircraft (§15.16); Unity's texture,
   shader and colour-space behaviour and the tessellator budget (§15.17);
-  the fixture's satellite pier (§15.18).
+  the fixture's satellite pier (§15.18). **LC, not yet reviewed (Q-131):**
+  `Low` dropping nothing of the art (§15.14); the 85 MiB atlas and its
+  start-up time (§15.11); the style values and texture ranges (§15.17);
+  the tessellator's raised 2.0 ms budget (§15.17).
 - Read if: T-020; the render backend task (§15.10); the Q-130 tasks
   (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18).
 

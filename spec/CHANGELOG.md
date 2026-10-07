@@ -4204,3 +4204,207 @@ Impact:      - **§15.18:** `test_scene_assembly_has_no_engine_reference`
                **PENDING HUMAN:** none.
 Signed off:  not required (clarifications only; no balance, scope or
              `01`/`02` change).
+
+## 2026-10-07 — spec/15 §15.1, §15.3, §15.10, §15.11, §15.14, §15.15, §15.16 (recolourable table only), §15.17, §15.18; 07 L1, L2, L3; INDEX; open-questions — realistic 2D art (Q-131, owner decision), with three T-052 spec gaps
+Reason:      HUMAN DECISION — owner, 2026-10-07: "make the art as realistic
+             as possible. It is very important for the fun to have the
+             player fully immersed." The owner chose "Realistic 2D": keep
+             Q-130's art-as-code pipeline but lift its "flat" rule.
+Raised by:   human directive (Q-131)
+Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
+               the layout: unchanged.** No primitive, enum, field or test of
+               T-051 (merged at `456f0a8`) changes. The one §15.16 edit is
+               the prose "What is recolourable" table, which now lists
+               shadows, rubber, the stand edge line and parked equipment
+               as fixed layers. No code reads it.
+             - **§15.14:** prose only. No knob is added. `Low` keeps the
+               full art, with the reasoning stated and a LOW CONFIDENCE
+               fallback (an art-detail knob is an owner decision and a
+               scene, `app.ui` and `app.host` amendment).
+             - **§15.17 (T-052, not started, nothing merged):**
+               - rasteriser: per-shape softness; fills with flat, linear or
+                 radial gradients and an optional pinned periodic value
+                 noise (FNV-1a-32 lattice, literal salts, octaves finer
+                 than 2 pixels left out per mip); arithmetic restricted to
+                 exactly-rounded `double` operations; mirrored shapes
+                 reflect their gradients and carry no noise; rules for
+                 tiled (periodic) and sliced (uniform centre) cells; one
+                 light direction for unrotated cells;
+               - constants: `ATLAS_SIZE` 2048 → 4096, `LARGE_CELL`
+                 256 → 512, `ATLAS_MIP_COUNT` 5 → 6, new `GROUND_TILE` 64
+                 and `GROUND_TILES_PER_AXIS` 32;
+               - `ArtLayer` gains `SliceInset`, `SliceWorld`, `Tile`,
+                 `ShiftX`, `ShiftY`; `Art2DFactory.GroundLayer()` is new;
+               - packing: aircraft 8 × 6 large cells, a large band (asphalt,
+                 concrete, grass, roof, tower, two equipment cells) and
+                 small cells at `y ≥ 3584`, 32 per row; `BuildingRoof`
+                 becomes `Parapet`, and `SoftBox`, `SoftBar`, `Rubber` are
+                 new;
+               - visual table rewritten: tiled surfaces and roofs, shadows
+                 for aircraft, buildings, tower and bridges, rubber marks,
+                 a red stand edge line, parked equipment on the stand
+                 lead-in; aircraft layers renumbered 0 `Shadow` to
+                 7 `Glazing`;
+               - tessellator: ground tiles first in every `Fill`, tiled
+                 boxes (world-anchored) and segments, a segment sub-square,
+                 and the shift; budget 1.5/3.0 → 2.0/4.0 ms;
+               - style guide: "Flat" replaced; value steps widened;
+                 measurable texture ranges; every cell's art rewritten;
+                 new real-proportion aircraft table and parts (span still
+                 grows A to F; `F` is now shorter than `E`); logo
+                 sub-squares recomputed by the unchanged integer rule
+                 (`AircraftC` unchanged, `AircraftF` now
+                 `(422, 152)–(602, 332)`).
+             - **§15.18:** T-052's tests updated (sizes, layers, the
+               aircraft bounding box now `× 480`, shadow-cell alpha floor,
+               two new tessellator tests and one texture test, the ground
+               quads ahead of every primitive, one shared atlas per test
+               class). T-052's Test Author must revise any test already
+               written against the Q-130 constants, packing, aircraft
+               table or quad counts. No merged test changes.
+             - **§15.10, §15.11 (T-053, not started):** no extra pass, texture
+               or material; no reference kept to the atlas after upload;
+               the texture size and mip count still come from the
+               constants. Memory note 21 MB → about 85 MiB, about 4 % of
+               `16` §16.10's 2 GB.
+             - **§15.1, §15.3:** wording, and UVs are now multiples of
+               1/4096; tiled UVs are exact for whole-number test vectors.
+             - **T-052 spec gaps raised by its Test Author (folded in):**
+               - **07 L1, L2, L3:** the 2D art project gets its row
+                 (`src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj`,
+                 `netstandard2.1`, C# 9) and its references (App.Render
+                 only). `app.render`'s test project becomes the fourth
+                 named exception to "one reference": Scene, then Art2D.
+                 The `AirportSim.App.Render` row now lists Schedule, which
+                 the merged scene project has referenced since Q-130. That
+                 last edit records merged code; nothing changes.
+               - **§15.17:** `roleColours` must have exactly one entry per
+                 role. A `null` list or a wrong count, more or fewer,
+                 throws with `ParamName` `roleColours` before any buffer
+                 changes.
+               - **§15.3, static mutable state:** in `Art2D` only `const`
+                 and `static readonly` primitive, `string` or enum fields
+                 are allowed. Any static array is forbidden even when
+                 `readonly`, so lookup tables are per instance. This
+                 matches the Test Author's tests. In the scene layer, the
+                 merged loaders' `private static readonly` constant
+                 arrays are recorded as allowed rather than invalidated.
+                 **LOW CONFIDENCE**: the two assemblies' rules differ
+                 slightly for that reason.
+               - **§15.18:** a table lists each T-052 test (PR #144) and
+                 what Q-131 changes in it.
+             - **Review of #147 (changes requested at `cab51c6`), folded in:**
+               - **The rasteriser is integer-only.** It uses no `float`,
+                 no `double` and no `Math` function. Every step is pinned
+                 in `int64`, with `fdiv` (floor division), `mod` and an
+                 exact `isqrt`, in Q8 design units and Q16 alpha:
+                 - the sample point and units per pixel, both rounded
+                   half up;
+                 - the wrap for tiled cells, which makes periodicity
+                   exact and replaces shifted copies;
+                 - the instance order: the shape, then its reflection,
+                   evaluated at the reflected point;
+                 - the circle and polygon distance, with the edge cases
+                   and the even-odd crossing test;
+                 - coverage, linear and radial gradients;
+                 - the noise lattice, its smoothstep and bilinear blend,
+                   and the octave sum;
+                 - value and alpha;
+                 - premultiplied "over" compositing and its output.
+
+                 So the atlas cannot differ between implementations,
+                 runtimes or platforms. A cell `opacity` is new, applied
+                 once at output, so overlapping opaque shapes give one
+                 even shadow alpha. A rule keeps translucent shapes from
+                 overlapping, including their reflections.
+               - **sRGB table:** `L` is now a literal 256-entry table in
+                 the spec, computed in 60-digit decimal with no near-ties.
+                 No `Math.Pow` is involved.
+               - **Value steps:** the steps bind role and region cells
+                 only, and fixed cells take any value. `LanePip`'s rim
+                 goes from 120 to 140. `TerminalZone`'s floor moves from
+                 128..896 to 120..904, and `Parapet`'s shade ends at 120,
+                 so no sliced cell's anti-aliasing crosses a slice line.
+                 `JetBridge`'s ribs are opaque. `Rubber` is one
+                 radial-gradient field.
+               - **Salts:** all multiples of 10, with every octave salt
+                 distinct across the atlas. Worn salts are 700 to 830.
+               - **`GroundLayer()`:** every field is stated, including
+                 the sub-square `0,0,1024,1024`.
+               - **Tests:** a new
+                 `test_art2d_cells_follow_the_value_and_alpha_rules`
+                 covers the value-step floor, the worn floor in two cells,
+                 the shadow alpha of 112 and the sliced-cell uniformity.
+                 The lit and gradient ranges, the light rule and the
+                 remaining art are declared untested and reviewed by eye.
+                 Tiled periodicity is now byte-exact.
+             - **Re-review of #147 (changes requested at `d70ef5d`), folded in:**
+               - **Translucent shapes, restated.**
+                 - Translucent shapes over an opaque base in the same cell
+                   may overlap. This covers the texture layers, `Disc` and
+                   `Roof`'s plant shade.
+                 - Elsewhere, translucent shapes keep clear of each other,
+                   softness included. The only exceptions are the corners
+                   of `Parapet`'s shade and of `StandPad`'s line.
+                 - One mark is one shape. Polygons may now have several
+                   rings, with the even-odd rule over all of them. So
+                   `StandLeadIn` is one T-shaped polygon with its
+                   vertices listed, and each digit and logo mark is one
+                   shape with inner rings for its counters.
+                 - In mirrored cells, translucent shapes stay within
+                   `x ≤ 504`.
+                 - `GseDetail`'s shades have an explicit footprint, grow
+                   and spacing, which puts items at least 64 units apart.
+                 - I checked every cell against the rule. Shapes that
+                   were already conforming are now stated as opaque:
+                   passengers, aircraft, the bridge and equipment.
+               - **Mirror-axis seams.** An opaque shape on the axis is
+                 either symmetric and drawn whole, or a half extended
+                 across the axis by `min(8, w)`. This applies to the
+                 `JetBridge` tunnel, ribs and cab (now ending at 520), and
+                 to the aircraft fuselage, wing, tailplane, `Status` and
+                 `Shadow` halves. The seam is solid at mips 0 to 3, with
+                 alpha ≥ 0.85 at mips 4 and 5.
+             - **Third review of #147 (changes requested at `7e340f9`), folded in:**
+               - **`GseBody` bounds:** footprints now sit inside
+                 `x 44..296 / 728..980`, `y 600..980`. That is 28 inside
+                 the `16..1008` rule, so `GseDetail`'s shade (footprint
+                 grown by 16, plus 12 of softness) stays inside. The `y`
+                 range also has room for the right-hand line of three
+                 items with 64-unit gaps.
+                 - I re-checked every other cell's shapes, grown and
+                   softened: `SoftBox`, `Disc`, `Rubber`, `TerminalZone`,
+                   `Parapet`, `ControlTower`, `LanePip`, digits,
+                   `StandLeadIn`, and the aircraft `Status` and `Shadow`.
+                   All stay inside.
+                 - Logo marks said "within the whole visible square",
+                   which contradicted the inside rule. They now say
+                   inside `16..1008`.
+               - **Extension outline pinned:** the extended half is the
+                 union of the half and its own reflection clipped to
+                 `512 ≤ x ≤ 520`, as one integer polygon. Tapering edges
+                 follow the reflected taper up to `x = 520`, and crossing
+                 vertices round inward.
+               - **Seam test:** the cell test now checks the two axis
+                 columns at mips 0 to 3 in the aircraft `Shadow`,
+                 `Status`, `Wings` and `Fuselage` cells and in
+                 `JetBridge`. Wherever both neighbouring columns are
+                 opaque, the axis texels must be too. The mirrored cells
+                 with deliberate gaps on the axis are left to review.
+             - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
+               `app.host`.
+             - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art
+               (§15.14), pending the minimum-spec measurement. (2) The
+               85 MiB atlas and its start-up time on Mono (§15.11).
+               (3) The style values, texture ranges and noise salts
+               (§15.17): chosen without seeing the output, and revised at
+               T-025 by amendment. (4) The tessellator's 2.0 ms budget.
+               (5) Placing parked equipment in the `StandLeadIn` visual,
+               so it turns with the stand, rather than in a new visual.
+             - **Scope (running total for Q-130 and Q-131):** Q-130's art,
+               looks data, scenery, markings and assembly, plus Q-131's
+               realism, all owner-directed. Still no vehicle, label or
+               moving equipment, no sim change, no new knob, no package,
+               and nothing in `01` or `02`.
+Signed off:  owner decision recorded (Q-131); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.
