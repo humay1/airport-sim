@@ -1,0 +1,7 @@
+{
+  "name": "com.airportsim.render.unity",
+  "version": "0.1.0",
+  "displayName": "AirportSim render backend (Unity)",
+  "description": "Draws the app.render RenderFrame and turns pan and zoom input into a CameraView. Spec 15 section 15.10.",
+  "unity": "6000.3"
+}
