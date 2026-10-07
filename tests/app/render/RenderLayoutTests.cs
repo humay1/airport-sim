@@ -168,35 +168,17 @@ namespace AirportSim.App.Render.Tests
             return sb.ToString();
         }
 
-        /// <summary>The 1-based line holding the first occurrence of text.</summary>
-        private static int LineOf(string file, string text)
-        {
-            int at = file.IndexOf(text, StringComparison.Ordinal);
-            Assert.True(at >= 0, "test bug: the file lacks " + text);
-            int line = 1;
-            for (int i = 0; i < at; i++)
-            {
-                if (file[i] == '\n')
-                {
-                    line++;
-                }
-            }
-
-            return line;
-        }
-
         private static FormatException RejectsText(string file)
         {
             IRenderLayoutLoader loader = RenderFactory.CreateLayoutLoader();
             return Assert.Throws<FormatException>(() => loader.Load(new UTF8Encoding(false).GetBytes(file), SourceName, null));
         }
 
-        private static void AssertParseFailure(string file, string lineText, string what)
+        /// <summary>15 §15.4: the exception type and the sourceName prefix, nothing else in the message.</summary>
+        private static void AssertParseFailure(string file, string what)
         {
             FormatException ex = RejectsText(file);
             Assert.True(ex.Message.StartsWith(SourceName + ": ", StringComparison.Ordinal), what + ": " + ex.Message);
-            int line = LineOf(file, lineText);
-            Assert.True(Regex.IsMatch(ex.Message, "line " + line + "(?![0-9])"), what + ": message does not name line " + line + ": " + ex.Message);
         }
 
         [Fact]
@@ -254,19 +236,19 @@ namespace AirportSim.App.Render.Tests
             // not belong to the version.
             var one = new List<(uint, string, int, int, int, int)> { (1U, "apron", 0, 0, 10, 10) };
             var none = new List<(uint, int, int, int, int, int)>();
-            AssertParseFailure(V2(one, none, version: 3), "\"schema_version\": 3", "version 3");
-            AssertParseFailure(V2(one, none, version: 0), "\"schema_version\": 0", "version 0");
+            AssertParseFailure(V2(one, none, version: 3), "version 3");
+            AssertParseFailure(V2(one, none, version: 0), "version 0");
             string hangar = V2(new List<(uint, string, int, int, int, int)> { (1U, "apron", 0, 0, 10, 10), (2U, "hangar", 0, 0, 10, 10) }, none);
-            AssertParseFailure(hangar, "\"hangar\"", "an unknown kind");
+            AssertParseFailure(hangar, "an unknown kind");
             string upper = V2(new List<(uint, string, int, int, int, int)> { (1U, "Apron", 0, 0, 10, 10) }, none);
-            AssertParseFailure(upper, "\"Apron\"", "a kind in the wrong case");
+            AssertParseFailure(upper, "a kind in the wrong case");
             string v1WithAreas = V2(one, none, version: 1);
             Assert.StartsWith(SourceName + ": ", RejectsText(v1WithAreas).Message, StringComparison.Ordinal);
             string v2WithoutBridges = V2(one, none).Replace(",\n  \"bridges\": [\n  ]", string.Empty, StringComparison.Ordinal);
             Assert.DoesNotContain("bridges", v2WithoutBridges, StringComparison.Ordinal);
             Assert.StartsWith(SourceName + ": ", RejectsText(v2WithoutBridges).Message, StringComparison.Ordinal);
             string kindAsInteger = V2(one, none).Replace("\"kind\": \"apron\"", "\"kind\": 0", StringComparison.Ordinal);
-            AssertParseFailure(kindAsInteger, "\"kind\": 0", "a kind that is not a string");
+            AssertParseFailure(kindAsInteger, "a kind that is not a string");
 
             // Check 5, each naming the failing id; within one check, the lowest.
             (List<(uint, string, int, int, int, int)> Areas, List<(uint, int, int, int, int, int)> Bridges, string Id, string What)[] faults =
