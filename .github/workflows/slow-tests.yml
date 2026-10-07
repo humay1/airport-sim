@@ -19,4 +19,8 @@ jobs:
       - name: Build
         run: dotnet build AirportSim.sln -c Release --nologo -warnaserror
       - name: Slow tests
-        run: dotnet test AirportSim.sln -c Release --nologo --no-build --filter "Category=Slow" --logger "console;verbosity=normal"
+        run: dotnet test AirportSim.sln -c Release --nologo --no-build --filter "Category=Slow&Category!=Budget" --logger "console;verbosity=normal"
+      # Timing tests alone and one at a time, same as ci/run-checks.sh (5cd7210).
+      - name: Slow budget tests (serial)
+        if: always()
+        run: dotnet test AirportSim.sln -c Release --nologo --no-build -m:1 --filter "Category=Slow&Category=Budget" --logger "console;verbosity=normal" -- xUnit.ParallelizeTestCollections=false

@@ -105,6 +105,71 @@ jobs:
             build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Scenario/
             build/StandaloneLinux64/AirportSim_Data/StreamingAssets/Content/
 
+      # Playtest download (T-025). Not on PRs: only main and manual runs ship a player.
+      - uses: actions/upload-artifact@v4
+        if: steps.smoke.outputs.ran == 'true' && github.event_name != 'pull_request'
+        with:
+          name: airportsim-linux
+          retention-days: 14
+          path: build/StandaloneLinux64/
+
+  # Windows player for the playtest (T-025). Mono backend, so it cross-builds on Linux.
+  # Runs after unity-build (one licence seat at a time), never on PRs. Build-only:
+  # the headless smoke and cross-runtime checks stay on the Linux player.
+  unity-build-windows:
+    name: unity-build-windows
+    needs: unity-build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a Unity project yet?
+        id: project
+        run: |
+          if [ -f "$PROJECT/ProjectSettings/ProjectVersion.txt" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.project.outputs.exists
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build plugins into Assets/Plugins/AirportSim
+        if: steps.project.outputs.exists
+        run: |
+          dotnet build AirportSim.sln -c Release
+          dest="$PROJECT/Assets/Plugins/AirportSim"
+          mkdir -p "$dest"
+          find src -path '*/bin/Release/netstandard2.1/*.dll' -exec cp {} "$dest/" \;
+
+      - uses: actions/cache@v4
+        if: steps.project.outputs.exists
+        with:
+          path: ${{ env.PROJECT }}/Library
+          key: unity-library-win-${{ hashFiles('unity/AirportSim/Packages/**', 'unity/AirportSim/ProjectSettings/**') }}
+          restore-keys: unity-library-win-
+
+      - uses: game-ci/unity-builder@v6
+        if: steps.project.outputs.exists
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: ${{ env.PROJECT }}
+          targetPlatform: StandaloneWindows64
+          buildName: AirportSim
+
+      - uses: actions/upload-artifact@v4
+        if: steps.project.outputs.exists
+        with:
+          name: airportsim-windows
+          retention-days: 14
+          if-no-files-found: error
+          path: build/StandaloneWindows64/
+
   # §16.9 (Q-115, owner 2026-10-06): player dump == harness dump, byte for byte.
   # Separate, non-required job: red here is a determinism bug for the owner and
   # never turns unity-build red. No Unity licence needed.
