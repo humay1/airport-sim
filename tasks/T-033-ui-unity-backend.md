@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED |
+| Status | IN PROGRESS (PR #131 approved except the Q-125 text change; waiting on T-050) |
 | Module | `app.ui` (backend only) |
 | Assigned role | worker |
-| Depends on | T-029, T-031 |
+| Depends on | T-029, T-031, T-050 |
 | Spec source | `spec/17-interfaces-ui.md` §17.8 "The backend contract" (settings panel and control added by D10/Q-034) |
 | Blocked by | — |
 
@@ -29,8 +29,8 @@ Built in `app.host`'s Unity project (`16` §16.2), the same as T-032.
 
 ## Readable specs
 
-`CLAUDE.md`, `spec/00-overview.md`, `spec/17-interfaces-ui.md` §17.4a, §17.7,
-§17.8, `spec/15-interfaces-render.md` §15.14, `spec/04-data-schemas.md`
+`CLAUDE.md`, `spec/00-overview.md`, `spec/17-interfaces-ui.md` §17.4a,
+§17.4b, §17.7, §17.8, `spec/15-interfaces-render.md` §15.14, `spec/04-data-schemas.md`
 (`LocalisedKey`), `spec/16-interfaces-host.md` §16.2, §16.6, §16.7
 
 ## Interface to implement
@@ -56,6 +56,16 @@ Binding, copied from `spec/17-interfaces-ui.md` §17.8, not paraphrased:
   `LocalisedKey`s (`04-data-schemas.md`) — the first player-visible text at
   Phase 1. A click on the panel is never also reported as a world click.
   The layout and look of the panel are this task's own choice.
+- **Text (Q-125, §17.4b).** The panel shows the title, the three preset
+  controls, each knob's label and each knob's value, with exactly the keys
+  of §17.4b's table and its "Knob values" rule. The backend accepts the
+  `IStringTable` from the bootstrap through its own API, before its first
+  draw. Every piece of text it draws is `IStringTable.Resolve` of its key; it
+  never draws a key's `Value` and never holds an English literal (it may keep
+  its own internal key constants whose values are exactly §17.4b's). Boolean
+  knobs show the text of `ui.settings.value.on` or `ui.settings.value.off`;
+  integer knobs show invariant decimal digits, except that a `FrameRateCap`
+  of 0 shows the text of `ui.settings.value.uncapped`.
 - Collects this frame's inputs, in arrival order, for the bootstrap to put
   in `FrameInput` (`16` §16.6).
 - Calls **no** sim member, never branches on sim state. Like T-032, must
@@ -82,6 +92,7 @@ Not budgeted here.
 - [ ] No sim member call, no branch on sim state
 - [ ] Reviewer approved
 - [ ] `unity-build` green on its PR, with its package referenced from `Packages/manifest.json` (`16` §16.11)
+- [ ] Every label and value is `IStringTable.Resolve` of a §17.4b key, with on/off text for boolean knobs and "Uncapped" for a frame-rate cap of 0 (Q-125)
 - [ ] Settings icon and panel present, reading only `UiFrame`, and every
       other control inert while `SettingsOpen` (D10, Q-034)
 
