@@ -4365,6 +4365,32 @@ Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
                  to the aircraft fuselage, wing, tailplane, `Status` and
                  `Shadow` halves. The seam is solid at mips 0 to 3, with
                  alpha ≥ 0.85 at mips 4 and 5.
+             - **Third review of #147 (changes requested at `7e340f9`), folded in:**
+               - **`GseBody` bounds:** footprints now sit inside
+                 `x 44..296 / 728..980`, `y 600..980`. That is 28 inside
+                 the `16..1008` rule, so `GseDetail`'s shade (footprint
+                 grown by 16, plus 12 of softness) stays inside. The `y`
+                 range also has room for the right-hand line of three
+                 items with 64-unit gaps.
+                 - I re-checked every other cell's shapes, grown and
+                   softened: `SoftBox`, `Disc`, `Rubber`, `TerminalZone`,
+                   `Parapet`, `ControlTower`, `LanePip`, digits,
+                   `StandLeadIn`, and the aircraft `Status` and `Shadow`.
+                   All stay inside.
+                 - Logo marks said "within the whole visible square",
+                   which contradicted the inside rule. They now say
+                   inside `16..1008`.
+               - **Extension outline pinned:** the extended half is the
+                 union of the half and its own reflection clipped to
+                 `512 ≤ x ≤ 520`, as one integer polygon. Tapering edges
+                 follow the reflected taper up to `x = 520`, and crossing
+                 vertices round inward.
+               - **Seam test:** the cell test now checks the two axis
+                 columns at mips 0 to 3 in the aircraft `Shadow`,
+                 `Status`, `Wings` and `Fuselage` cells and in
+                 `JetBridge`. Wherever both neighbouring columns are
+                 opaque, the axis texels must be too. The mirrored cells
+                 with deliberate gaps on the axis are left to review.
              - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
                `app.host`.
              - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art

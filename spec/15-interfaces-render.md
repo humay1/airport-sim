@@ -1569,7 +1569,16 @@ only for the ground (§15.17 Tessellation), whose tile side it scales.
     coincide, which is harmless when opaque.
   - a half that extends **across** the axis to `x = 512 + e`, with
     `e = min(8, w)`, where `w` is the half's own width from the axis to
-    its outer edge at that height. Its reflection then covers the
+    its outer edge at that height. **The outline is pinned:** the
+    extended half is the union of the half and its own reflection
+    clipped to `512 ≤ x ≤ 520`, written as one polygon with integer
+    vertices. Where the half tapers (a nose, a tail cone, a wing root's
+    leading or trailing edge), the extension's edge follows the reflected
+    taper until it reaches `x = 520`, then runs along `x = 520`. A vertex
+    where the reflected edge crosses `x = 520` is rounded to the nearest
+    integer `y` that keeps it inside the reflection, toward the half's
+    interior. So `e = min(8, w)` holds at every height, and the extension
+    never sticks out past the reflection. Its reflection then covers the
     extension, so the seam is solid at mips 0 to 3 instead of a hairline
     of alpha 0.75 to 0.97. A gradient half (the fuselage, the bridge
     tunnel) clamps to its axis value across the extension, so both
@@ -2057,14 +2066,14 @@ The worn salts are `RunwayEdgeLines` 700, `CentreStripe` 710,
 | `JetBridge` (mirrored) | half-tunnel `x` 128 to 520 (across the axis by 8), full length, a linear gradient from `(128, 0)` at 195 to `(512, 0)` at 245; ribs 8 tall every 128 along `y`, `x` 128 to 520, value 190, opaque; edge line `x` 128 to 176, value 165; cab at the aircraft end, `x` 96 to 520, `y` 896 to 1088, value 225; all opaque |
 | `StandPad` (sliced 128) | a line along each edge, 48 to 80 from it, value 255, alpha 230; the rest transparent (the concrete below shows the stand's role colour) |
 | `StandLeadIn` | one T-shaped polygon: the line `x` 488 to 536 from `y` 16 to 800 and the stop bar `x` 352 to 672, `y` 800 to 848 (vertices `(488,16)`, `(536,16)`, `(536,800)`, `(672,800)`, `(672,848)`, `(352,848)`, `(352,800)`, `(488,800)`), value 255, worn; not mirrored |
-| `GseBody` | parked ground equipment beside the nose position, outside the lead-in, design units at 25.6 per metre of a 40 m stand: left, a pushback tug about 2.6 × 6 m with its cab, and a ground power unit about 1.5 × 3 m; right, a baggage tractor and two baggage carts about 1.5 × 3 m each, in a line along `Y`; all inside `x` 40 to 300 and 724 to 984, `y` 640 to 1000, at least 64 units apart edge to edge (see `GseDetail`); bodies opaque, at 215 to 255 with curvature gradients |
+| `GseBody` | parked ground equipment beside the nose position, outside the lead-in, design units at 25.6 per metre of a 40 m stand: left, a pushback tug about 2.6 × 6 m with its cab, and a ground power unit about 1.5 × 3 m; right, a baggage tractor and two baggage carts about 1.5 × 3 m each, in a line along `Y`; every footprint inside `x` 44 to 296 and 728 to 980, `y` 600 to 980 (Q-131: 28 inside the `16 .. 1008` rule, which `GseDetail`'s shade needs: the footprint grown by 16 plus half its softness, 12; and tall enough for the right-hand line, three items of about 77 units with two 64-unit gaps, 359 units), at least 64 units apart edge to edge (see `GseDetail`); bodies opaque, at 215 to 255 with curvature gradients |
 | `GseDetail` | first, a soft, unshifted ground shade under each item: the item's footprint grown by 16, value 255, alpha 60, softness 24, each shade grown by half its softness (12) keeping at least 8 units from every other shade, so the items stand at least 64 units (2.5 m) apart edge to edge; then the same equipment's tyres, cab glazing and cart beds, opaque, value 200 to 255 |
 | `Rubber` | one streak field, `x` 64 to 960, `y` 16 to 1008, value 255, alpha a radial gradient about `(512, 512)`, radius 496, from 150 to 0, with `NA = 110` and `noise(32, 3, 600)`. Stretched along the runway, the noise becomes tyre streaks, densest mid-zone |
 | `Digit0`–`Digit9` | block digits with a stroke of 96, inside `x` 256 to 768 and `y` 128 to 896, value 255, worn; each digit is one polygon, with an inner ring for each counter (0, 4, 6, 8, 9), never overlapping strokes; not mirrored |
 | `TerminalZone` | border band 16 to 1008 at value 205, floor 120 to 904 at value 245 (Q-131: was 128 to 896, on the slice line) |
 | `LanePip` | rim square 96 to 928 at value 140 (Q-131: was 120, below the shading floor), booth square 128 to 896 at value 230 over it, and an officer circle of radius 128 at value 150 |
 | passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are opaque, and all are mirrored except `Bag`; the head and any shape on the axis follow the mirror-seam rule |
-| logo marks | each a simple filled mark within the whole visible square, value 255 |
+| logo marks | each a simple filled mark, one shape, inside `16 .. 1008` on both axes (the inside rule), value 255 |
 
 **Aircraft proportions (Q-131: real proportions per archetype).** Span
 and length are fractions of `ART_UNITS`, with the status outline
@@ -2259,6 +2268,15 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
     `s + 16 .. 1024 − s − 16` along it), texels at the same distance from
     that edge are equal. The 16-unit margin clears one pixel's
     anti-aliasing at mip 0.
+  - **mirror seams:** in the mirrored cells whose art is continuous
+    across the axis (the aircraft `Shadow`, `Status`, `Wings` and
+    `Fuselage` cells of all six rows, and `JetBridge`), at mips 0 to 3,
+    with `h = (c >> m) / 2`, in every row where the texels at columns
+    `h − 2` and `h + 1` both have alpha 255, the two axis texels at
+    columns `h − 1` and `h` have alpha 255 too. The other mirrored cells
+    leave the axis empty on purpose in places (`B`'s rear engines, the
+    cheatlines, windows, a passenger's feet), so a neighbour test would
+    misfire there, and their seams are checked by review.
 
   **Declared untested** (checked by the Reviewer against §15.17 and by
   eye at T-025): the lit range 215 to 255 and the gradient range 170 to
