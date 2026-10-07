@@ -1029,6 +1029,17 @@ ContentLoaderFactory.Create() -> IContentLoader
   exponent is a load failure: fixed-point values are **decimal strings**,
   read with `Fx.Parse` (`04-data-schemas.md`). Duplicate keys, unknown keys,
   missing keys and `schema_version != 1` are load failures.
+- **Whitespace and integers.** Binding on every loader that uses this
+  subset, as the string rules below are. Whitespace is JSON's four
+  characters only, space, tab, CR and LF, in any mix, and may appear
+  between tokens and around the one top-level value. Anything else
+  outside a string is a load failure. An integer is JSON's grammar,
+  `-?(0|[1-9][0-9]*)`: no `+` sign, no leading zero, no fraction and no
+  exponent, so `01`, `+1`, `1.0` and `1e0` are load failures. A value
+  outside the field's range is a load failure, including one too large
+  for any integer type, never an `OverflowException`. Whether `-0` is
+  read as 0 or rejected is left to each loader's own code: no valid
+  file needs it, and no test pins it.
 - **Strings (Q-033).** Binding on every loader that uses this subset
   (`08`, `09` §9.11, `18` §18.2). A string is `"`, then characters, then
   `"`. The only escapes are JSON's eight, `\"`, `\\`, `\/`, `\b`, `\f`,

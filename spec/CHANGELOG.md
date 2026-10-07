@@ -3629,6 +3629,41 @@ Impact:      - **Q-094:** §15.4 pins a JSON layout format and ordered
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
 
+## 2026-10-04 — spec/17-interfaces-ui.md §17.2, §17.4a, §17.5, §17.7, §17.9, §17.10; spec/07-conventions.md L4; INDEX; open-questions — T-029 gaps: floats in UI tests, preference grammar, argument checks, lane sink allocation (Q-102 to Q-105)
+Reason:      The T-029 Test Author (PR #113) found four gaps: `07` L4 bans
+             floats in `tests/app/ui` although `17`'s types are `float`; the
+             preference text's edge cases were open; no exception type was
+             named for misused calls, which `07` "Error handling" requires;
+             and §17.9 did not say whether the lane sink's `Request` is
+             covered by the allocation rule.
+Raised by:   Q-102 to Q-105
+Impact:      - **Q-102:** `07` L4 gets a second float exception, for
+               `tests/app/ui/` only, with values dyadic and exact. The
+               render exception (Q-100) is unchanged, so merged T-020 tests
+               are unaffected.
+             - **Q-103:** §17.4a pins the decoder's grammar: ASCII digits
+               only, no sign, no leading zero, `int32` range, single spaces
+               only, `null` decodes false, `out` is `default` after false.
+               The encoder names its parameter `settings` and throws
+               `ArgumentOutOfRangeException` for a value with no encoding.
+             - **Q-104:** §17.7 names every argument check, its order and its
+               BCL type. Checks run before any input is applied, so a
+               throwing `Update` changes nothing. One new test.
+             - **Q-105:** §17.9 splits the allocation rule: `Update` counts
+               the controller's own work, and the production sink has its
+               own rule, steady-state per node. Two allocation tests the
+               draft already has are now listed in §17.10.
+             - **Merged work:** none. `app.ui` has no merged code; The parts of PR
+               #113's draft tests the Architect read do not contradict
+               Q-102, Q-103 or Q-105. Q-104's test is new.
+             - **LOW CONFIDENCE:** Q-103's acceptance of a preset name whose
+               values do not match that preset (it keeps the name, as
+               `Validate` does). The narrower alternative, rejecting it,
+               would reset a hand-edited preference to `Medium`.
+             - **Scope:** none added. **PENDING HUMAN:** none.
+Signed off:  not required (architecture and clarifications; no balance,
+             scope or `01`/`02` change).
+
 ## 2026-10-04 — spec/14-interfaces-delay.md §14.1, §14.3, §14.4, §14.5, §14.13, §14.14; spec/07-conventions.md L3; INDEX; open-questions — T-024 gaps: test-project reach and integrated-day setup, Stand key, checkpoint for an unknown flight, save/load replay form, budget load, "1000 flight days", three confirmations (Q-106 to Q-112)
 Reason:      The T-024 Test Author (PR #115) could not write the integrated
              day, which needs four other modules that `07` L3 puts out of
@@ -3673,41 +3708,6 @@ Impact:      - **Q-106:** `07` L3 gains a third exception. The delay test
                `test_sum_of_leaves_equals_total`'s 1000 sim-days in every
                pre-merge Slow run (Q-111). The count is unchanged.
              - **Scope:** none added. **PENDING HUMAN:** none blocking.
-Signed off:  not required (architecture and clarifications; no balance,
-             scope or `01`/`02` change).
-
-## 2026-10-04 — spec/17-interfaces-ui.md §17.2, §17.4a, §17.5, §17.7, §17.9, §17.10; spec/07-conventions.md L4; INDEX; open-questions — T-029 gaps: floats in UI tests, preference grammar, argument checks, lane sink allocation (Q-102 to Q-105)
-Reason:      The T-029 Test Author (PR #113) found four gaps: `07` L4 bans
-             floats in `tests/app/ui` although `17`'s types are `float`; the
-             preference text's edge cases were open; no exception type was
-             named for misused calls, which `07` "Error handling" requires;
-             and §17.9 did not say whether the lane sink's `Request` is
-             covered by the allocation rule.
-Raised by:   Q-102 to Q-105
-Impact:      - **Q-102:** `07` L4 gets a second float exception, for
-               `tests/app/ui/` only, with values dyadic and exact. The
-               render exception (Q-100) is unchanged, so merged T-020 tests
-               are unaffected.
-             - **Q-103:** §17.4a pins the decoder's grammar: ASCII digits
-               only, no sign, no leading zero, `int32` range, single spaces
-               only, `null` decodes false, `out` is `default` after false.
-               The encoder names its parameter `settings` and throws
-               `ArgumentOutOfRangeException` for a value with no encoding.
-             - **Q-104:** §17.7 names every argument check, its order and its
-               BCL type. Checks run before any input is applied, so a
-               throwing `Update` changes nothing. One new test.
-             - **Q-105:** §17.9 splits the allocation rule: `Update` counts
-               the controller's own work, and the production sink has its
-               own rule, steady-state per node. Two allocation tests the
-               draft already has are now listed in §17.10.
-             - **Merged work:** none. `app.ui` has no merged code; The parts of PR
-               #113's draft tests the Architect read do not contradict
-               Q-102, Q-103 or Q-105. Q-104's test is new.
-             - **LOW CONFIDENCE:** Q-103's acceptance of a preset name whose
-               values do not match that preset (it keeps the name, as
-               `Validate` does). The narrower alternative, rejecting it,
-               would reset a hand-edited preference to `Medium`.
-             - **Scope:** none added. **PENDING HUMAN:** none.
 Signed off:  not required (architecture and clarifications; no balance,
              scope or `01`/`02` change).
 
@@ -4147,3 +4147,60 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                nothing in `01` or `02`.
 Signed off:  owner decisions recorded (Q-130); mechanism not required;
              LOW CONFIDENCE items for the owner's review.
+
+## 2026-10-07 — spec/15 §15.5, §15.16, §15.18; 07 L4; 08 §8.11; 16 §16.7, §16.9; 17 §17.4b; INDEX; open-questions and CHANGELOG (order only) — batched review wording follow-ups
+Reason:      Non-blocking review notes accumulated on PRs #125, #135,
+             #137, #138 and #140. Each is a wording gap or an
+             inconsistency between two spec texts, and each is resolved in
+             the direction the merged code already takes.
+Raised by:   Reviewers of #125, #135, #137, #138, #140, via coordinator
+Impact:      - **§15.18:** `test_scene_assembly_has_no_engine_reference`
+               is listed among the merged tests task 1 changes: the
+               `AirportSim.Sim.Schedule` ban is lifted and the
+               `AirportSim.App.Render.Art2D` ban added, as T-051 (#140)
+               already did. Task 3's note now says it is the bootstrap's
+               `Start` and `Update` that never run in batch mode
+               (`RenderBackend` has neither).
+             - **§15.5:** an agent's rank *k*, its `SourceRef.Sub`, is its
+               0-based index in the sorted, truncated `AgentsAt` list, as
+               merged.
+             - **§15.16:** `LoadLooks(null)` throws `ArgumentNullException`
+               (`source`) before `ReadAll`, as merged in
+               `LooksLoader.cs`. The "only a `null` result" sentence now
+               says it is about `ReadAll`'s outcomes and does not exclude
+               the other listed faults.
+             - **`07` L4:** the render test exception also names `double`
+               for §15.17's expected corners and sRGB values, and defers
+               to `15` §15.3, so the two texts agree.
+             - **`08` §8.11:** the strict subset's whitespace (space, tab,
+               CR, LF) and integer grammar (`-?(0|[1-9][0-9]*)`, out of
+               range is a load failure, never `OverflowException`) are
+               stated. Every merged reader already follows them. `-0` is
+               deliberately left to each reader: the merged looks and
+               render-layout readers reject it, others (for example
+               `sim.core`'s) accept it, and no valid file needs it, so pinning it would
+               invalidate merged code for no gain.
+             - **`17` §17.4b:** the `LocalisedKey` constructor accepts any
+               value and never throws; only `Resolve` checks.
+             - **`16` §16.7:** the play-mode `ICheckpointSink` is the
+               bootstrap's private no-op, as merged. A **known gap** is
+               recorded, with no code change required: in batch mode
+               `HostFactory.LoadContent` runs outside `Run`, so a content
+               failure there escapes uncaught and the player never quits.
+             - **`16` §16.9:** `missing <path>` prints the path with `$IN`
+               and `$S` expanded, as the merged workflow does.
+             - **Order only:** in open-questions, Q-102 to Q-105 now come
+               before Q-106 to Q-112, and in this file the Q-102 to
+               Q-105 entry now comes before the Q-106 to Q-112 entry,
+               which amended Q-102 and Q-103 and so was written after
+               it. No text changed in either move.
+             - **Already done, not repeated:** the Q-095 impact note,
+               §15.8's paused accumulator, §15.9's `RenderConstants`,
+               Q-108's unknown-flight milestones and §14.13's count
+               prefixes were fixed in the 2026-10-06 Q-113 entry.
+             - **Merged work:** none invalidated. No interface, type,
+               signature, data format or test changes.
+             - **LOW CONFIDENCE:** none new. **Scope:** none added.
+               **PENDING HUMAN:** none.
+Signed off:  not required (clarifications only; no balance, scope or
+             `01`/`02` change).
