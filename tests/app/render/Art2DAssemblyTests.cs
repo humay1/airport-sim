@@ -71,7 +71,12 @@ namespace AirportSim.App.Render.Tests
                 ("MinX", typeof(int)),
                 ("MinY", typeof(int)),
                 ("MaxX", typeof(int)),
-                ("MaxY", typeof(int)));
+                ("MaxY", typeof(int)),
+                ("SliceInset", typeof(int)),
+                ("SliceWorld", typeof(int)),
+                ("Tile", typeof(int)),
+                ("ShiftX", typeof(int)),
+                ("ShiftY", typeof(int)));
 
             Assert.True(typeof(LayerColour).IsEnum);
             Assert.Equal(new[] { "Role", "Region", "Fixed" }, Enum.GetNames(typeof(LayerColour)));
@@ -97,18 +102,29 @@ namespace AirportSim.App.Render.Tests
             AssertGetOnly(tess, "Colours", typeof(byte[]));
             Assert.Equal(new[] { "Fill", "get_Colours", "get_Corners", "get_QuadCount", "get_Uvs" }, tess.GetMethods().Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
 
-            // Art2DConstants: public const int. Their values belong to the style
-            // amendment (realistic 2D, owner 2026-10-07) and are not pinned here.
+            // Art2DConstants: public const int (Q-131 values).
             Type consts = typeof(Art2DConstants);
             Assert.True(consts.IsAbstract && consts.IsSealed, "Art2DConstants is a static class");
-            string[] constNames = { "ART_UNITS", "ATLAS_MIP_COUNT", "ATLAS_SIZE", "LARGE_CELL", "SMALL_CELL" };
+            var expectedConsts = new Dictionary<string, int>
+            {
+                { "ATLAS_SIZE", 4096 }, { "LARGE_CELL", 512 }, { "SMALL_CELL", 128 }, { "ATLAS_MIP_COUNT", 6 }, { "ART_UNITS", 1024 },
+                { "GROUND_TILE", 64 }, { "GROUND_TILES_PER_AXIS", 32 },
+            };
             FieldInfo[] fields = consts.GetFields(BindingFlags.Public | BindingFlags.Static);
-            Assert.Equal(constNames, fields.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
+            Assert.Equal(expectedConsts.Keys.OrderBy(n => n, StringComparer.Ordinal).ToArray(), fields.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
             foreach (FieldInfo f in fields)
             {
                 Assert.True(f.IsLiteral && f.FieldType == typeof(int), "Art2DConstants." + f.Name + " is a public const int");
-                Assert.True((int)f.GetRawConstantValue()! > 0, "Art2DConstants." + f.Name + " is positive");
+                Assert.Equal(expectedConsts[f.Name], (int)f.GetRawConstantValue()!);
             }
+
+            Assert.Equal(4096, Art2DConstants.ATLAS_SIZE);
+            Assert.Equal(512, Art2DConstants.LARGE_CELL);
+            Assert.Equal(128, Art2DConstants.SMALL_CELL);
+            Assert.Equal(6, Art2DConstants.ATLAS_MIP_COUNT);
+            Assert.Equal(1024, Art2DConstants.ART_UNITS);
+            Assert.Equal(64, Art2DConstants.GROUND_TILE);
+            Assert.Equal(32, Art2DConstants.GROUND_TILES_PER_AXIS);
 
             // Art2DFactory: 08 §8.11a's factory rule, stateless static methods only.
             Type factory = typeof(Art2DFactory);
@@ -116,21 +132,21 @@ namespace AirportSim.App.Render.Tests
             AssertStatic(factory, "BuildAtlas", typeof(SpriteAtlas));
             AssertStatic(factory, "LayersOf", typeof(IReadOnlyList<ArtLayer>), typeof(VisualId));
             AssertStatic(factory, "LogoRect", typeof(AtlasRect), typeof(LogoMark));
+            AssertStatic(factory, "GroundLayer", typeof(ArtLayer));
             AssertStatic(factory, "CreateTessellator", typeof(ISpriteTessellator));
             var declared = factory.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly).Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-            Assert.Equal(new[] { "BuildAtlas", "CreateTessellator", "LayersOf", "LogoRect" }, declared);
+            Assert.Equal(new[] { "BuildAtlas", "CreateTessellator", "GroundLayer", "LayersOf", "LogoRect" }, declared);
             Assert.DoesNotContain(factory.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly), f => !f.IsLiteral);
         }
 
         [Fact]
         public void test_art2d_holds_no_static_mutable_state()
         {
-            // 15 §15.3 (no static mutable state) and §15.17 (definitions are
-            // built inside each BuildAtlas call, with no static mutable state).
-            // A static field is allowed only as a const, or readonly of an
-            // immutable type (primitive, enum, string or readonly struct).
-            // Compiler-generated holders (lambda caches, array initialisers)
-            // are not the art's own fields.
+            // 15 §15.3 "What counts" (Q-131): a static field in the 2D art is
+            // allowed only if it is const, or static readonly of a primitive
+            // type, string or an enum; any array, collection or other reference
+            // type is static mutable state. Compiler-generated holders (lambda
+            // caches, array-initialiser data) are not the art's own fields.
             var offenders = new List<string>();
             foreach (Type t in Art.GetTypes())
             {
@@ -173,12 +189,7 @@ namespace AirportSim.App.Render.Tests
 
         private static bool IsImmutable(Type t)
         {
-            if (t.IsPrimitive || t.IsEnum || t == typeof(string))
-            {
-                return true;
-            }
-
-            return t.IsValueType && t.CustomAttributes.Any(a => a.AttributeType.FullName == "System.Runtime.CompilerServices.IsReadOnlyAttribute");
+            return t.IsPrimitive || t.IsEnum || t == typeof(string);
         }
 
         private static void AssertStruct(Type t, params (string Name, Type Type)[] members)

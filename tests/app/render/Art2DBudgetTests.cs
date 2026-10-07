@@ -7,13 +7,13 @@ namespace AirportSim.App.Render.Tests
 {
     /// <summary>
     /// 15 §15.17 "Budget": Fill over the §15.11 max-tier frame at High, mean ≤
-    /// 1.5 ms and p99 ≤ 3.0 ms, with §15.11's window and arithmetic, and no
-    /// allocation after the first call.
+    /// 2.0 ms and p99 ≤ 4.0 ms (Q-131), with §15.11's window and arithmetic, and
+    /// no allocation after the first call.
     /// </summary>
     public sealed class Art2DBudgetTests
     {
-        private const long BudgetMicros = 1500;
-        private const long P99Micros = 3000;
+        private const long BudgetMicros = 2000;
+        private const long P99Micros = 4000;
 
         // 15 §15.11 (Q-096): n = 14 400 consecutive frames after warm-up.
         private const int Frames = (int)RenderConst.TicksPerDay;
@@ -32,24 +32,18 @@ namespace AirportSim.App.Render.Tests
             RenderFrame frame = b.Build(cam, high);
 
             // The max-tier frame: 16 promoted boxes of MAX_DRAWN_AGENTS_PER_NODE
-            // passengers, every aircraft, the scenery and markings. A Box emits at
-            // least one quad per layer (nine when sliced); every other primitive
-            // exactly one per emitted layer.
+            // passengers, every aircraft, the scenery and markings, over the ground.
             List<DrawPrimitive> all = Prims.Copy(frame);
             Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(all, DrawLayer.Agent).Count);
             Assert.Equal(MaxTierScene.Aircraft, Prims.InLayer(all, DrawLayer.Aircraft).Count);
-            int atLeast = 0;
-            foreach (DrawPrimitive p in all)
-            {
-                atLeast += p.Kind == PrimitiveKind.Box ? Art2DFactory.LayersOf(p.Visual).Count : ArtFrames.Emitted(p).Count;
-            }
 
             Rgba[] roles = ArtFrames.Roles();
+            int expected = ArtRef.Fill(frame, roles, false).Count;
+            Assert.True(expected >= 16 * RenderConst.MaxDrawnAgentsPerNode * 6, "the max-tier frame is smaller than its passengers");
             ISpriteTessellator t = Art2DFactory.CreateTessellator();
             int quads = t.Fill(frame, roles, false);
+            Assert.Equal(expected, quads);
             Assert.Equal(quads, t.QuadCount);
-            Assert.True(quads >= atLeast, "Fill emitted " + quads + " quads for a frame of at least " + atLeast);
-            Assert.True(quads >= all.Count, "Fill emitted " + quads + " quads for " + all.Count + " primitives; every visual draws at least one");
 
             // No allocation after the first call, in either colour space.
             long start = Allocation.Start();
