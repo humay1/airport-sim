@@ -14,7 +14,8 @@ namespace AirportSim.App.Render.Tests
             ushort? onEdge = null,
             Fx progress = default,
             ushort? stand = null,
-            MovementKind kind = MovementKind.Departure)
+            MovementKind kind = MovementKind.Departure,
+            ushort? runway = null)
         {
             return new AircraftTrack(
                 new FlightId(flight),
@@ -24,7 +25,7 @@ namespace AirportSim.App.Render.Tests
                 onEdge.HasValue ? new TaxiEdgeId(onEdge.Value) : (TaxiEdgeId?)null,
                 progress,
                 stand.HasValue ? new StandId(stand.Value) : (StandId?)null,
-                null,
+                runway.HasValue ? new RunwayId(runway.Value) : (RunwayId?)null,
                 0UL,
                 ulong.MaxValue,
                 ulong.MaxValue,
@@ -162,6 +163,11 @@ namespace AirportSim.App.Render.Tests
     /// intervals) and misses column and row 4, which start at 80.
     /// Every fourth node is a Queue with 8 lanes, 3 open. Airside sits at
     /// x ≥ 5000, out of the camera's view; nothing culls it (15 §15.5).
+    ///
+    /// Q-130 (15 §15.11, §15.18): a version 2 layout with scenery (an apron,
+    /// a terminal and a control tower, a pier per pier node and a bridge per
+    /// stand), a schedule naming every tracked flight, a content index whose
+    /// types cover all six size categories, and looks with four airlines.
     /// </summary>
     internal sealed class MaxTierScene
     {
@@ -174,11 +180,15 @@ namespace AirportSim.App.Render.Tests
         public const int Columns = 20;
         public const int PromotedPopulation = 300;
         public const ushort Hub = 100;
+        public const int Airlines = 4;
 
         public readonly CallGuard Guard = new CallGuard();
         public readonly FakeHost Host;
         public readonly FakeAirside Airside;
         public readonly FakeFlow Flow;
+        public readonly FakeSchedule Schedule;
+        public readonly FakeContent Content;
+        public readonly RenderLooks Looks;
         public readonly RenderLayout Layout;
 
         public MaxTierScene()
@@ -186,6 +196,9 @@ namespace AirportSim.App.Render.Tests
             Host = new FakeHost(Guard, 1UL);
             Airside = new FakeAirside(Guard, MakeAirside(out List<TaxiNodePosition> taxi, out List<RunwayGeometry> runways));
             Flow = new FakeFlow(Guard) { RecordPromotions = false };
+            Schedule = new FakeSchedule(Guard) { RecordCalls = false };
+            Content = ArtContent.AllSizes(Guard);
+            Looks = ArtLooks.WithAirlines(Airlines);
             var boxes = new List<FlowNodeBox>();
             for (uint k = 1; k <= Boxes; k++)
             {
@@ -197,11 +210,19 @@ namespace AirportSim.App.Render.Tests
                 Flow.Node(k, population, k % 4U == 0U ? new LaneState(8, 3) : (LaneState?)null);
             }
 
-            Layout = new RenderLayout(taxi, runways, boxes, 30, 20, 1, 12);
+            Layout = new RenderLayout(taxi, runways, boxes, 30, 20, 1, 12, MakeAreas(), MakeBridges());
 
             for (ushort s = 1; s <= Stands; s++)
             {
                 Airside.Occupy(s, s);
+            }
+
+            // Every tracked flight is in the schedule. Airline k % 5 + 1 has a
+            // livery for 1..4 and none for 5; type "t" + k % 8 resolves for
+            // t0..t6 and is unknown for t7 (15 §15.16).
+            for (ulong k = 1; k <= Aircraft; k++)
+            {
+                Schedule.Add(k, (uint)(k % 5UL) + 1U, "t" + (k % 8UL).ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
 
             var tracks = new List<AircraftTrack>();
@@ -230,7 +251,13 @@ namespace AirportSim.App.Render.Tests
 
         public static CameraView Camera => Cam.At(35f, 35f, 70f, 1f);
 
-        public RenderSources Sources => new RenderSources(Host, Airside, Flow);
+        public RenderSources Sources => new RenderSources(Host, Airside, Flow, Schedule, Content);
+
+        /// <summary>The three-argument builder, with this scene's looks (15 §15.9, Q-130).</summary>
+        public ISceneBuilder Builder()
+        {
+            return RenderFactory.CreateSceneBuilder(Sources, Layout, Looks);
+        }
 
         public static bool Promoted(uint node)
         {
@@ -282,6 +309,37 @@ namespace AirportSim.App.Render.Tests
             }
 
             return new AirsideLayout(runways, nodes, edges, stands);
+        }
+
+        private static List<LayoutArea> MakeAreas()
+        {
+            var areas = new List<LayoutArea>
+            {
+                new LayoutArea(1U, AreaKind.Apron, 5200, 1450, 7200, 1650),
+                new LayoutArea(2U, AreaKind.Terminal, 5200, 1700, 7200, 1800),
+                new LayoutArea(3U, AreaKind.ControlTower, 7300, 1700, 7340, 1740),
+            };
+            for (int p = 1; p <= Piers; p++)
+            {
+                int x = 5000 + (300 * p);
+                areas.Add(new LayoutArea((uint)(10 + p), AreaKind.Pier, x - 10, 1520, x + 260, 1540));
+            }
+
+            return areas;
+        }
+
+        private static List<LayoutBridge> MakeBridges()
+        {
+            var bridges = new List<LayoutBridge>();
+            for (int s = 1; s <= Stands; s++)
+            {
+                int p = ((s - 1) / StandsPerPier) + 1;
+                int j = ((s - 1) % StandsPerPier) + 1;
+                int x = 5000 + (300 * p) + (25 * j);
+                bridges.Add(new LayoutBridge((uint)s, x, 1540, x, 1590, 3));
+            }
+
+            return bridges;
         }
     }
 }

@@ -24,6 +24,15 @@ namespace AirportSim.App.Render
         private static readonly long[] BoxMin = { uint.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue };
         private static readonly long[] BoxMax = { uint.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
 
+        private static readonly string[] AreaKeys = { "id", "kind", "min_x", "min_y", "max_x", "max_y" };
+        private static readonly long[] AreaMin = { uint.MinValue, 0, int.MinValue, int.MinValue, int.MinValue, int.MinValue };
+        private static readonly long[] AreaMax = { uint.MaxValue, 0, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
+        private static readonly string[] AreaKinds = { "apron", "terminal", "pier", "control_tower" };
+
+        private static readonly string[] BridgeKeys = { "id", "x0", "y0", "x1", "y1", "width" };
+        private static readonly long[] BridgeMin = { uint.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue };
+        private static readonly long[] BridgeMax = { uint.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
+
         public RenderLayout Load(ReadOnlySpan<byte> file, string sourceName, in AirsideLayout? airside)
         {
             if (sourceName == null)
@@ -118,7 +127,68 @@ namespace AirportSim.App.Render
                 CheckAgainstAirside(source, airside.Value, taxi, runways);
             }
 
-            return new RenderLayout(taxi, runways, boxes, (int)p.StandSize, (int)p.AircraftSize, (int)p.AgentSize, (int)p.TaxiwayWidth);
+            // 5. scenery, always: area ids, area boxes, control towers, then bridge ids, widths and ends.
+            var areas = p.Areas.ToArray();
+            var bridges = p.Bridges.ToArray();
+            Array.Sort(areas, (a, b) => a.Id.CompareTo(b.Id));
+            Array.Sort(bridges, (a, b) => a.Id.CompareTo(b.Id));
+            CheckScenery(source, areas, bridges);
+
+            return new RenderLayout(taxi, runways, boxes, (int)p.StandSize, (int)p.AircraftSize, (int)p.AgentSize, (int)p.TaxiwayWidth, areas, bridges);
+        }
+
+        private static void CheckScenery(string source, LayoutArea[] areas, LayoutBridge[] bridges)
+        {
+            for (int i = 1; i < areas.Length; i++)
+            {
+                if (areas[i].Id == areas[i - 1].Id)
+                {
+                    throw Invalid(source, "area " + Dec(areas[i].Id) + " is listed more than once");
+                }
+            }
+
+            for (int i = 0; i < areas.Length; i++)
+            {
+                LayoutArea a = areas[i];
+                if (a.MinX >= a.MaxX || a.MinY >= a.MaxY)
+                {
+                    throw Invalid(source, "area " + Dec(a.Id) + " must have min_x < max_x and min_y < max_y");
+                }
+            }
+
+            for (int i = 0; i < areas.Length; i++)
+            {
+                LayoutArea a = areas[i];
+                if (a.Kind == AreaKind.ControlTower && (long)a.MaxX - a.MinX != (long)a.MaxY - a.MinY)
+                {
+                    throw Invalid(source, "control tower area " + Dec(a.Id) + " must be square");
+                }
+            }
+
+            for (int i = 1; i < bridges.Length; i++)
+            {
+                if (bridges[i].Id == bridges[i - 1].Id)
+                {
+                    throw Invalid(source, "bridge " + Dec(bridges[i].Id) + " is listed more than once");
+                }
+            }
+
+            for (int i = 0; i < bridges.Length; i++)
+            {
+                if (bridges[i].Width <= 0)
+                {
+                    throw Invalid(source, "bridge " + Dec(bridges[i].Id) + " width must be greater than 0");
+                }
+            }
+
+            for (int i = 0; i < bridges.Length; i++)
+            {
+                LayoutBridge b = bridges[i];
+                if (b.X0 == b.X1 && b.Y0 == b.Y1)
+                {
+                    throw Invalid(source, "bridge " + Dec(b.Id) + " must not start and end at the same point");
+                }
+            }
         }
 
         private static void CheckAgainstAirside(string source, AirsideLayout airside, TaxiNodePosition[] taxi, RunwayGeometry[] runways)
@@ -204,6 +274,9 @@ namespace AirportSim.App.Render
             public readonly List<TaxiNodePosition> Taxi = new List<TaxiNodePosition>();
             public readonly List<RunwayGeometry> Runways = new List<RunwayGeometry>();
             public readonly List<FlowNodeBox> Boxes = new List<FlowNodeBox>();
+            public readonly List<LayoutArea> Areas = new List<LayoutArea>();
+            public readonly List<LayoutBridge> Bridges = new List<LayoutBridge>();
+            public long Version;
             public long StandSize;
             public long AircraftSize;
             public long AgentSize;
@@ -236,7 +309,9 @@ namespace AirportSim.App.Render
                 {
                     "schema_version", "taxi_nodes", "runways", "flow_nodes",
                     "stand_size", "aircraft_size", "agent_size", "taxiway_width",
+                    "areas", "bridges",
                 };
+                const int versionOneKeys = 8;
                 var seen = new bool[keys.Length];
 
                 SkipSpace();
@@ -269,9 +344,10 @@ namespace AirportSim.App.Render
                     switch (index)
                     {
                         case 0:
-                            if (ReadInteger(1, 1, key) != 1)
+                            result.Version = ReadInteger(int.MinValue, int.MaxValue, key);
+                            if (result.Version != 1 && result.Version != 2)
                             {
-                                throw Fail("schema_version must be 1");
+                                throw Fail("schema_version must be 1 or 2");
                             }
 
                             break;
@@ -293,8 +369,14 @@ namespace AirportSim.App.Render
                         case 6:
                             result.AgentSize = ReadInteger(int.MinValue, int.MaxValue, key);
                             break;
-                        default:
+                        case 7:
                             result.TaxiwayWidth = ReadInteger(int.MinValue, int.MaxValue, key);
+                            break;
+                        case 8:
+                            ReadArray(AreaKeys, AreaMin, AreaMax, v => result.Areas.Add(new LayoutArea((uint)v[0], (AreaKind)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5])), 1, AreaKinds);
+                            break;
+                        default:
+                            ReadArray(BridgeKeys, BridgeMin, BridgeMax, v => result.Bridges.Add(new LayoutBridge((uint)v[0], (int)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5])));
                             break;
                     }
 
@@ -313,7 +395,14 @@ namespace AirportSim.App.Render
 
                 for (int i = 0; i < keys.Length; i++)
                 {
-                    if (!seen[i])
+                    if (i >= versionOneKeys && result.Version == 1)
+                    {
+                        if (seen[i])
+                        {
+                            throw Fail("unknown key \"" + keys[i] + "\" in a version 1 file");
+                        }
+                    }
+                    else if (!seen[i])
                     {
                         throw Fail("missing key \"" + keys[i] + "\"");
                     }
@@ -328,7 +417,7 @@ namespace AirportSim.App.Render
                 return result;
             }
 
-            private void ReadArray(string[] keys, long[] min, long[] max, Action<long[]> add)
+            private void ReadArray(string[] keys, long[] min, long[] max, Action<long[]> add, int stringKey = -1, string[]? stringValues = null)
             {
                 Expect('[');
                 SkipSpace();
@@ -341,7 +430,7 @@ namespace AirportSim.App.Render
                 while (true)
                 {
                     SkipSpace();
-                    add(ReadRow(keys, min, max));
+                    add(ReadRow(keys, min, max, stringKey, stringValues));
                     SkipSpace();
                     int c = Next();
                     if (c == ']')
@@ -356,7 +445,8 @@ namespace AirportSim.App.Render
                 }
             }
 
-            private long[] ReadRow(string[] keys, long[] min, long[] max)
+            // A row of integers. The value of key number stringKey, when given, is instead one of stringValues, read as its index.
+            private long[] ReadRow(string[] keys, long[] min, long[] max, int stringKey, string[]? stringValues)
             {
                 var values = new long[keys.Length];
                 var seen = new bool[keys.Length];
@@ -386,7 +476,22 @@ namespace AirportSim.App.Render
                     SkipSpace();
                     Expect(':');
                     SkipSpace();
-                    values[index] = ReadInteger(min[index], max[index], key);
+                    if (index == stringKey)
+                    {
+                        string word = ReadString();
+                        int which = Array.IndexOf(stringValues!, word);
+                        if (which < 0)
+                        {
+                            throw Fail("\"" + key + "\" has the unknown value \"" + word + "\"");
+                        }
+
+                        values[index] = which;
+                    }
+                    else
+                    {
+                        values[index] = ReadInteger(min[index], max[index], key);
+                    }
+
                     SkipSpace();
                     int c = Next();
                     if (c == '}')

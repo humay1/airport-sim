@@ -92,6 +92,88 @@ namespace AirportSim.App.Render
         }
     }
 
+    /// <summary>What a layout area is. Spec: 15 §15.4 (Q-130).</summary>
+    public enum AreaKind
+    {
+        /// <summary>Paved apron.</summary>
+        Apron,
+
+        /// <summary>Terminal building.</summary>
+        Terminal,
+
+        /// <summary>Pier.</summary>
+        Pier,
+
+        /// <summary>Control tower; its box is square.</summary>
+        ControlTower,
+    }
+
+    /// <summary>Scenery: a paved apron or a building footprint. Spec: 15 §15.4 (Q-130).</summary>
+    public readonly struct LayoutArea
+    {
+        /// <summary>The area id.</summary>
+        public uint Id { get; }
+
+        /// <summary>What the area is.</summary>
+        public AreaKind Kind { get; }
+
+        /// <summary>Minimum X.</summary>
+        public int MinX { get; }
+
+        /// <summary>Minimum Y.</summary>
+        public int MinY { get; }
+
+        /// <summary>Maximum X.</summary>
+        public int MaxX { get; }
+
+        /// <summary>Maximum Y.</summary>
+        public int MaxY { get; }
+
+        /// <summary>Constructs the area.</summary>
+        public LayoutArea(uint id, AreaKind kind, int minX, int minY, int maxX, int maxY)
+        {
+            Id = id;
+            Kind = kind;
+            MinX = minX;
+            MinY = minY;
+            MaxX = maxX;
+            MaxY = maxY;
+        }
+    }
+
+    /// <summary>Scenery: a jet bridge. Spec: 15 §15.4 (Q-130).</summary>
+    public readonly struct LayoutBridge
+    {
+        /// <summary>The bridge id.</summary>
+        public uint Id { get; }
+
+        /// <summary>Start X.</summary>
+        public int X0 { get; }
+
+        /// <summary>Start Y.</summary>
+        public int Y0 { get; }
+
+        /// <summary>End X.</summary>
+        public int X1 { get; }
+
+        /// <summary>End Y.</summary>
+        public int Y1 { get; }
+
+        /// <summary>Drawn width.</summary>
+        public int Width { get; }
+
+        /// <summary>Constructs the bridge.</summary>
+        public LayoutBridge(uint id, int x0, int y0, int x1, int y1, int width)
+        {
+            Id = id;
+            X0 = x0;
+            Y0 = y0;
+            X1 = x1;
+            Y1 = y1;
+            Width = width;
+        }
+    }
+
     /// <summary>The presentation layout: where things are drawn. Not sim state. Spec: 15 §15.4.</summary>
     public readonly struct RenderLayout
     {
@@ -116,7 +198,13 @@ namespace AirportSim.App.Render
         /// <summary>Width of a taxiway segment.</summary>
         public int TaxiwayWidth { get; }
 
-        /// <summary>Constructs the layout.</summary>
+        /// <summary>Scenery: aprons and building footprints, ascending id when produced by the loader (Q-130).</summary>
+        public IReadOnlyList<LayoutArea> Areas { get; }
+
+        /// <summary>Scenery: jet bridges, ascending id when produced by the loader (Q-130).</summary>
+        public IReadOnlyList<LayoutBridge> Bridges { get; }
+
+        /// <summary>Constructs the layout with no scenery (07 L10 kept constructor).</summary>
         public RenderLayout(
             IReadOnlyList<TaxiNodePosition> taxiNodes,
             IReadOnlyList<RunwayGeometry> runways,
@@ -125,6 +213,21 @@ namespace AirportSim.App.Render
             int aircraftSize,
             int agentSize,
             int taxiwayWidth)
+            : this(taxiNodes, runways, flowNodes, standSize, aircraftSize, agentSize, taxiwayWidth, Array.Empty<LayoutArea>(), Array.Empty<LayoutBridge>())
+        {
+        }
+
+        /// <summary>Constructs the layout.</summary>
+        public RenderLayout(
+            IReadOnlyList<TaxiNodePosition> taxiNodes,
+            IReadOnlyList<RunwayGeometry> runways,
+            IReadOnlyList<FlowNodeBox> flowNodes,
+            int standSize,
+            int aircraftSize,
+            int agentSize,
+            int taxiwayWidth,
+            IReadOnlyList<LayoutArea> areas,
+            IReadOnlyList<LayoutBridge> bridges)
         {
             TaxiNodes = taxiNodes;
             Runways = runways;
@@ -133,6 +236,8 @@ namespace AirportSim.App.Render
             AircraftSize = aircraftSize;
             AgentSize = agentSize;
             TaxiwayWidth = taxiwayWidth;
+            Areas = areas;
+            Bridges = bridges;
         }
     }
 

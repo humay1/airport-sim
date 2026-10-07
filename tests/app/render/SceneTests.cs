@@ -26,7 +26,17 @@ namespace AirportSim.App.Render.Tests
             ISceneBuilder b = s.Builder();
 
             List<DrawPrimitive> all = Build(b, SmallScene.Overview, Gfx.High());
-            Assert.Equal(2, Prims.InLayer(all, DrawLayer.Stand).Count);
+
+            // Q-130: the Stand layer also holds each stand's lead-in and number
+            // digits, so the pads are counted by source (15 §15.18).
+            List<DrawPrimitive> pads = Art.OfKind(all, SourceKind.Stand);
+            Assert.Equal(2, pads.Count);
+            foreach (DrawPrimitive pad in pads)
+            {
+                Assert.Equal(VisualId.StandPad, pad.Visual);
+                Assert.Equal(DrawLayer.Stand, pad.Layer);
+            }
+
             DrawPrimitive s1 = Prims.Single(all, SourceKind.Stand, SmallScene.S1);
             DrawPrimitive s2 = Prims.Single(all, SourceKind.Stand, SmallScene.S2);
             Assert.Equal(PrimitiveKind.Box, s1.Kind);
@@ -63,8 +73,15 @@ namespace AirportSim.App.Render.Tests
             Prims.AssertPoint(0f, 0f, rwy.B, "runway end (X1,Y1)");
             Assert.Equal(40f, rwy.Size);
 
-            List<DrawPrimitive> taxi = Prims.InLayer(all, DrawLayer.Taxiway);
+            // Q-130: the Taxiway layer also holds the junction fill and the
+            // centrelines, so the edge surfaces are counted by source (15 §15.18).
+            List<DrawPrimitive> taxi = Art.OfKind(all, SourceKind.TaxiEdge);
             Assert.Equal(3, taxi.Count);
+            foreach (DrawPrimitive surface in taxi)
+            {
+                Assert.Equal(VisualId.TaxiwaySurface, surface.Visual);
+            }
+
             (ushort Edge, float X0, float Y0, float X1, float Y1)[] expected =
             {
                 (SmallScene.E1, 0f, 0f, 100f, 40f),
@@ -602,11 +619,16 @@ namespace AirportSim.App.Render.Tests
             Assert.Equal(0L, m.Airside.QueryCalls);
             Assert.Equal(0L, m.Flow.QueryCalls);
             Assert.Equal(0L, m.Host.CurrentTickReads);
+            Assert.Equal(0L, m.Schedule.FlightCalls);
+            Assert.Equal(0L, m.Content.Calls);
 
-            // The builder reads IAirsideSystem.Layout once, at construction.
-            ISceneBuilder b = RenderFactory.CreateSceneBuilder(m.Sources, m.Layout);
+            // The builder reads IAirsideSystem.Layout once, and the content
+            // index, at construction only (Q-130).
+            ISceneBuilder b = m.Builder();
             Assert.Equal(1L, m.Airside.LayoutCalls);
             Assert.Equal(0L, m.Flow.SetPromotedCount);
+            Assert.True(m.Content.AllOfCalls > 0, "the builder did not read Content.AllOf at construction");
+            long content = m.Content.Calls;
 
             CameraView[] cameras = { MaxTierScene.Camera, Cam.Away(), Cam.At(35f, 35f, 500f), MaxTierScene.Camera };
             GraphicsSettings[] settings = { Gfx.High(), Gfx.Custom(false, 32, 60, 75, false), Gfx.Custom(true, 1, 15, 50, false) };
@@ -618,10 +640,12 @@ namespace AirportSim.App.Render.Tests
                 long air = m.Airside.QueryCalls;
                 long flow = m.Flow.QueryCalls;
                 long reads = m.Host.CurrentTickReads;
+                long flights = m.Schedule.FlightCalls;
                 c.Update(cam, g);
                 Assert.Equal(air, m.Airside.QueryCalls);
                 Assert.Equal(flow, m.Flow.QueryCalls);
                 Assert.Equal(reads, m.Host.CurrentTickReads);
+                Assert.Equal(flights, m.Schedule.FlightCalls);
 
                 if (frame % 2 == 0)
                 {
@@ -631,8 +655,11 @@ namespace AirportSim.App.Render.Tests
                 long promotions = m.Flow.SetPromotedCount;
                 b.Build(cam, g);
                 Assert.Equal(promotions, m.Flow.SetPromotedCount);
+                Assert.Equal(content, m.Content.Calls);
             }
 
+            Assert.True(m.Schedule.FlightCalls > 0, "the builder never called TryGetFlight");
+            Assert.Equal(content, m.Content.Calls);
             Assert.Equal(1L, m.Airside.LayoutCalls);
             Assert.True(m.Flow.SetPromotedCount > 0, "the controller never promoted anything");
             Assert.True(m.Guard.Violations.Count == 0, "members outside 15 §15.6 were called: " + string.Join(", ", m.Guard.Violations));

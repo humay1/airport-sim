@@ -14,7 +14,25 @@ namespace AirportSim.App.Render
         /// <summary>Creates the scene builder over the sources and a validated layout (§15.9). Reads IAirsideSystem.Layout once.</summary>
         public static ISceneBuilder CreateSceneBuilder(in RenderSources sources, in RenderLayout layout)
         {
-            return new SceneBuilder(sources, layout);
+            return new SceneBuilder(sources, layout, LooksLoader.Defaults());
+        }
+
+        /// <summary>Creates the scene builder with the given looks; the two-argument overload uses <see cref="DefaultLooks"/> (§15.9, Q-130).</summary>
+        public static ISceneBuilder CreateSceneBuilder(in RenderSources sources, in RenderLayout layout, in RenderLooks looks)
+        {
+            return new SceneBuilder(sources, layout, looks);
+        }
+
+        /// <summary>Reads <c>looks/looks.json</c> from the source (§15.16, Q-130). Every fault is a <see cref="FormatException"/> starting with the file's path.</summary>
+        public static RenderLooks LoadLooks(AirportSim.Sim.Core.IContentSource source)
+        {
+            return LooksLoader.Load(source);
+        }
+
+        /// <summary>The looks used when none are given: a fresh value per call (§15.16, Q-130).</summary>
+        public static RenderLooks DefaultLooks()
+        {
+            return LooksLoader.Defaults();
         }
 
         /// <summary>Creates the promotion controller (§15.7).</summary>
