@@ -2271,9 +2271,11 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
   - **mirror seams:** in the mirrored cells whose art is continuous
     across the axis (the aircraft `Shadow`, `Status`, `Wings` and
     `Fuselage` cells of all six rows, and `JetBridge`), at mips 0 to 3,
-    with `h = (c >> m) / 2`, in every row where the texels at columns
-    `h − 2` and `h + 1` both have alpha 255, the two axis texels at
-    columns `h − 1` and `h` have alpha 255 too. The other mirrored cells
+    with `h = (c >> m) / 2` and the cell's full-cover alpha `F` (112 for
+    `Shadow`, by its opacity; 255 for `Status`, `Wings`, `Fuselage` and
+    `JetBridge`), in every row where the texels at columns `h − 2` and
+    `h + 1` both have alpha `== F`, the two axis texels at columns
+    `h − 1` and `h` have alpha `== F` too. The other mirrored cells
     leave the axis empty on purpose in places (`B`'s rear engines, the
     cheatlines, windows, a passenger's feet), so a neighbour test would
     misfire there, and their seams are checked by review.
