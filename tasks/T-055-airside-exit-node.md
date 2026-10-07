@@ -79,3 +79,7 @@ The Phase 1 checkpoints fixture does **not** change here: it changes only in
 T-058, together with the playtest render layout (`12` §12.13 determinism
 note). T-056 (M1) depends on this task, because the arrival rollout reads
 `RunwayDef.ExitNode`.
+
+## Blocker (worker, 2026-10-07)
+
+Q-133 filed: two tests compare airside hashes across layouts with different edge counts; the hashed edge list makes that impossible. Implementation otherwise done; 125/127 airside tests pass.
