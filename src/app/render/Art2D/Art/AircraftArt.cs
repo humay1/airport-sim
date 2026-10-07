@@ -196,7 +196,7 @@ namespace AirportSim.App.Render.Art2D
         {
             var cell = new CellDef(place, false, 0, 245, true, 255);
             int bandWidth = ((12 * 2 * _fuseHalf) + 99) / 100;
-            bandWidth = bandWidth < 3 ? 3 : bandWidth;
+            bandWidth = bandWidth < 5 ? 5 : bandWidth;
             int centre = SnapToPixel(Axis - ((55 * _fuseHalf) / 100));
             int x0 = centre - (bandWidth / 2);
             int x1 = x0 + bandWidth;
