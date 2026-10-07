@@ -4338,6 +4338,33 @@ Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
                  The lit and gradient ranges, the light rule and the
                  remaining art are declared untested and reviewed by eye.
                  Tiled periodicity is now byte-exact.
+             - **Re-review of #147 (changes requested at `d70ef5d`), folded in:**
+               - **Translucent shapes, restated.**
+                 - Translucent shapes over an opaque base in the same cell
+                   may overlap. This covers the texture layers, `Disc` and
+                   `Roof`'s plant shade.
+                 - Elsewhere, translucent shapes keep clear of each other,
+                   softness included. The only exceptions are the corners
+                   of `Parapet`'s shade and of `StandPad`'s line.
+                 - One mark is one shape. Polygons may now have several
+                   rings, with the even-odd rule over all of them. So
+                   `StandLeadIn` is one T-shaped polygon with its
+                   vertices listed, and each digit and logo mark is one
+                   shape with inner rings for its counters.
+                 - In mirrored cells, translucent shapes stay within
+                   `x ≤ 504`.
+                 - `GseDetail`'s shades have an explicit footprint, grow
+                   and spacing, which puts items at least 64 units apart.
+                 - I checked every cell against the rule. Shapes that
+                   were already conforming are now stated as opaque:
+                   passengers, aircraft, the bridge and equipment.
+               - **Mirror-axis seams.** An opaque shape on the axis is
+                 either symmetric and drawn whole, or a half extended
+                 across the axis by `min(8, w)`. This applies to the
+                 `JetBridge` tunnel, ribs and cab (now ending at 520), and
+                 to the aircraft fuselage, wing, tailplane, `Status` and
+                 `Shadow` halves. The seam is solid at mips 0 to 3, with
+                 alpha ≥ 0.85 at mips 4 and 5.
              - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
                `app.host`.
              - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art

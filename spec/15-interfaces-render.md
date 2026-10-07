@@ -1534,16 +1534,55 @@ only for the ground (§15.17 Tessellation), whose tile side it scales.
   composited alpha once, at output, so a cell made of overlapping opaque
   shapes (the aircraft `Shadow` silhouettes) comes out at one even
   alpha, never darker where its shapes overlap.
-- **Translucent shapes (Q-131).** Overlapping instances compose, so two
-  shapes with alpha below 255 are darker where they overlap. A cell
-  therefore keeps its translucent shapes apart, except where the darker
-  overlap is meant (the corners of `Parapet`'s roof shade and of
-  `StandPad`'s line), and in a mirrored cell a
-  shape whose alpha is below 255 anywhere stays within `x ≤ 512` so its
-  reflection does not overlap it. A translucent whole is made with
-  opaque shapes and the cell's opacity instead.
-- **A shape** is a polygon (3 or more integer vertices, simple, with
-  either winding) or a circle (integer centre and radius). Each shape
+- **Translucent shapes (Q-131).** A shape is **translucent** where its
+  alpha is below 255. Instances compose in order, so where two
+  translucent instances overlap with nothing opaque beneath them in the
+  cell, the overlap is more opaque than either, which shows as a seam or
+  a dark patch. The rule:
+  1. **Over an opaque base, anything goes.** A translucent shape lying
+     wholly over an opaque instance drawn earlier in the same cell may
+     overlap other translucent shapes there. Examples are the tiled
+     textures' aggregate, mottling, blades and stains over their base
+     square, `Disc`'s second fill over its first, and `Roof`'s plant
+     shade. The base is already opaque, so only the value mixes, as
+     intended.
+  2. **Elsewhere, translucent shapes do not overlap**, softness
+     included: each, grown by half its softness, keeps clear of every
+     other translucent shape. The only exceptions are the corners of
+     `Parapet`'s roof shade and of `StandPad`'s edge line, where the
+     darker corner is meant.
+  3. **One mark, one shape.** A worn marking whose strokes would meet is
+     a single shape, never overlapping strokes. Where it has holes it is
+     a polygon with several rings (below). So `StandLeadIn`'s line and
+     stop bar are one T-shaped polygon, and each digit and each logo
+     mark, `Ring` included, is one shape.
+  4. **In a mirrored cell**, a translucent shape, grown by half its
+     softness, stays within `x ≤ 504`, so it and its reflection never
+     meet.
+
+  A translucent whole made of several parts (the aircraft `Shadow`
+  silhouettes) is drawn with opaque shapes and the cell's opacity
+  instead.
+- **Seams on the mirror axis (Q-131).** In a mirrored cell, an opaque
+  shape that reaches the axis `x = 512` is one of two kinds:
+  - symmetric about the axis and drawn whole. Its doubled instances
+    coincide, which is harmless when opaque.
+  - a half that extends **across** the axis to `x = 512 + e`, with
+    `e = min(8, w)`, where `w` is the half's own width from the axis to
+    its outer edge at that height. Its reflection then covers the
+    extension, so the seam is solid at mips 0 to 3 instead of a hairline
+    of alpha 0.75 to 0.97. A gradient half (the fuselage, the bridge
+    tunnel) clamps to its axis value across the extension, so both
+    instances agree there.
+
+  At mips 4 and 5 a seam may keep alpha 0.85 or more, where an aircraft
+  is only a few pixels across.
+- **A shape** is a polygon or a circle (integer centre and radius). A
+  polygon is one or more **rings**, each of 3 or more integer vertices,
+  with either winding (Q-131: several rings, so that a digit or a ring
+  mark with a hole is one shape). No ring crosses itself or another ring.
+  The even-odd rule and the nearest edge run over the edges of every
+  ring. Each shape
   also has a **softness** `k` (design units, 0 or more; Q-131) and a
   **fill** (below), which gives its value (grey) and alpha at each design
   point.
@@ -1684,8 +1723,8 @@ two implementations of these formulas cannot differ.
   - circle with centre `(cx, cy)` and radius `r`: with
     `dx = px − 256 cx` and `dy = py − 256 cy`,
     `d = isqrt(dx × dx + dy × dy) − 256 r`;
-  - polygon with vertices `V_0 .. V_{n−1}`: for each edge `A = V_k`,
-    `B = V_{(k+1) mod n}`, with `ex = Bx − Ax`, `ey = By − Ay`,
+  - polygon: for each edge of each ring, the ring having vertices
+    `V_0 .. V_{n−1}`, `A = V_k` and `B = V_{(k+1) mod n}`, with `ex = Bx − Ax`, `ey = By − Ay`,
     `L2 = ex × ex + ey × ey`, `qx = px − 256 Ax`, `qy = py − 256 Ay`,
     `dot = qx × ex + qy × ey` and `cr = qx × ey − qy × ex`:
     - its squared distance `e2` is `qx × qx + qy × qy` if `dot ≤ 0`;
@@ -1694,8 +1733,9 @@ two implementations of these formulas cannot differ.
     - it is **crossed** iff `(256 Ay > py) ≠ (256 By > py)`, and
       `cr < 0` when `ey > 0`, or `cr > 0` when `ey < 0`.
 
-    Then `dist = isqrt(min over edges of e2)`, and `d = −dist` if an odd
-    number of edges are crossed (even-odd rule), else `d = dist`.
+    Then `dist = isqrt(min over all edges of all rings of e2)`, and
+    `d = −dist` if an odd number of edges, over all rings, are crossed
+    (even-odd rule), else `d = dist`.
 
   Then `d = d − 256 × grow`, with the cell's grow.
 - **Coverage**, in 0 .. 256: with `k` the shape's softness,
@@ -2014,16 +2054,16 @@ The worn salts are `RunwayEdgeLines` 700, `CentreStripe` 710,
 | `SoftBox` (sliced 128) | square 64 to 960, softness 96, value 255, alpha 112 |
 | `SoftBar` | bar `x` 128 to 896, full length, softness 96, value 255, alpha 112 |
 | `ControlTower` | base square 96 to 928, a linear gradient from `(96, 928)` at 215 to `(928, 96)` at 170; cab glazing circle at `(512, 512)`, radius 384, value 70; cab roof circle radius 320, a radial gradient about `(448, 576)`, radius 400, from 250 to 200; antenna mast circle radius 32, value 140 |
-| `JetBridge` (mirrored) | half-tunnel `x` 128 to 512, full length, a linear gradient from `(128, 0)` at 195 to `(512, 0)` at 245; ribs 8 tall every 128 along `y`, `x` 128 to 512, value 190 (opaque, since they meet their reflection at 512); edge line `x` 128 to 176, value 165; cab at the aircraft end, `x` 96 to 512, `y` 896 to 1088, value 225 |
+| `JetBridge` (mirrored) | half-tunnel `x` 128 to 520 (across the axis by 8), full length, a linear gradient from `(128, 0)` at 195 to `(512, 0)` at 245; ribs 8 tall every 128 along `y`, `x` 128 to 520, value 190, opaque; edge line `x` 128 to 176, value 165; cab at the aircraft end, `x` 96 to 520, `y` 896 to 1088, value 225; all opaque |
 | `StandPad` (sliced 128) | a line along each edge, 48 to 80 from it, value 255, alpha 230; the rest transparent (the concrete below shows the stand's role colour) |
-| `StandLeadIn` | line `x` 488 to 536 from `y` 16 to 848, and stop bar `x` 352 to 672, `y` 800 to 848, value 255, worn |
-| `GseBody` | parked ground equipment beside the nose position, outside the lead-in, design units at 25.6 per metre of a 40 m stand: left, a pushback tug about 2.6 × 6 m with its cab, and a ground power unit about 1.5 × 3 m; right, a baggage tractor and two baggage carts about 1.5 × 3 m each, in a line along `Y`; all inside `x` 40 to 300 and 724 to 984, `y` 640 to 1000; bodies at 215 to 255 with curvature gradients |
-| `GseDetail` | the same equipment's tyres, cab glazing and cart beds, value 200 to 255, and a soft, unshifted ground shade under each item (alpha 60, softness 24) |
+| `StandLeadIn` | one T-shaped polygon: the line `x` 488 to 536 from `y` 16 to 800 and the stop bar `x` 352 to 672, `y` 800 to 848 (vertices `(488,16)`, `(536,16)`, `(536,800)`, `(672,800)`, `(672,848)`, `(352,848)`, `(352,800)`, `(488,800)`), value 255, worn; not mirrored |
+| `GseBody` | parked ground equipment beside the nose position, outside the lead-in, design units at 25.6 per metre of a 40 m stand: left, a pushback tug about 2.6 × 6 m with its cab, and a ground power unit about 1.5 × 3 m; right, a baggage tractor and two baggage carts about 1.5 × 3 m each, in a line along `Y`; all inside `x` 40 to 300 and 724 to 984, `y` 640 to 1000, at least 64 units apart edge to edge (see `GseDetail`); bodies opaque, at 215 to 255 with curvature gradients |
+| `GseDetail` | first, a soft, unshifted ground shade under each item: the item's footprint grown by 16, value 255, alpha 60, softness 24, each shade grown by half its softness (12) keeping at least 8 units from every other shade, so the items stand at least 64 units (2.5 m) apart edge to edge; then the same equipment's tyres, cab glazing and cart beds, opaque, value 200 to 255 |
 | `Rubber` | one streak field, `x` 64 to 960, `y` 16 to 1008, value 255, alpha a radial gradient about `(512, 512)`, radius 496, from 150 to 0, with `NA = 110` and `noise(32, 3, 600)`. Stretched along the runway, the noise becomes tyre streaks, densest mid-zone |
-| `Digit0`–`Digit9` | block digits with a stroke of 96, inside `x` 256 to 768 and `y` 128 to 896, value 255, worn |
+| `Digit0`–`Digit9` | block digits with a stroke of 96, inside `x` 256 to 768 and `y` 128 to 896, value 255, worn; each digit is one polygon, with an inner ring for each counter (0, 4, 6, 8, 9), never overlapping strokes; not mirrored |
 | `TerminalZone` | border band 16 to 1008 at value 205, floor 120 to 904 at value 245 (Q-131: was 128 to 896, on the slice line) |
 | `LanePip` | rim square 96 to 928 at value 140 (Q-131: was 120, below the shading floor), booth square 128 to 896 at value 230 over it, and an officer circle of radius 128 at value 150 |
-| passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are mirrored except `Bag` |
+| passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are opaque, and all are mirrored except `Bag`; the head and any shape on the axis follow the mirror-seam rule |
 | logo marks | each a simple filled mark within the whole visible square, value 255 |
 
 **Aircraft proportions (Q-131: real proportions per archetype).** Span
@@ -2056,7 +2096,13 @@ these rules). Every aircraft cell is mirrored and has no noise.
 - **Fuselage** (layer 4): a tube of the row's width, a rounded nose over
   the first 0.08 of L, and a tail cone tapering to 0.3 of the width over
   the last 0.15 of L. Fill: a linear gradient from 250 at the centre line
-  to 205 at the side, which reads as a cylinder.
+  to 205 at the side, which reads as a cylinder. It is drawn as a half
+  that extends across the axis by `min(8, w)` (the mirror-seam rule), as
+  is every other half that reaches the axis: the wings' and the
+  tailplane's roots, `Status` and `Shadow`. The fin-top strip and the
+  windscreen are symmetric and drawn whole. Every aircraft shape is
+  opaque except the cabin windows and the propeller discs, which stay
+  within `x ≤ 504`.
 - **Wings** (layer 2): from the centre line, with the row's root chord
   and root position, a tip chord of 0.3 of the root chord, and the row's
   sweep on the leading edge. A linear gradient from 245 at the root to 225
