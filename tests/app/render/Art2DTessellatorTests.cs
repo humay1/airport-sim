@@ -424,8 +424,7 @@ namespace AirportSim.App.Render.Tests
             foreach (int n in new[] { roles.Length - 1, 0, roles.Length + 1 })
             {
                 var wrong = new Rgba[n];
-                ArgumentException e = Assert.ThrowsAny<ArgumentException>(() => t.Fill(other, wrong, false));
-                Assert.IsNotType<ArgumentNullException>(e);
+                ArgumentException e = Assert.Throws<ArgumentException>(() => t.Fill(other, wrong, false));
                 Assert.True(e.ParamName == "roleColours", "roleColours of " + n + " entries: ParamName " + (e.ParamName ?? "null"));
                 AssertUnchanged(t, count, corners, uvs, colours, n + " entries");
             }
@@ -440,12 +439,29 @@ namespace AirportSim.App.Render.Tests
         {
             // 15 §15.17 "Buffers": reused, growing only when a frame needs more
             // quads than ever before, and valid until the next Fill.
+            // Dots only of visuals with no tiled or sliced layer, which the spec
+            // defines for a Dot.
             Rgba[] roles = ArtFrames.Roles();
+            var dotVisuals = new List<VisualId>();
+            foreach (VisualId v in ArtTable.AllVisuals())
+            {
+                bool boxOnly = false;
+                foreach (ArtLayer l in ArtTable.Layers(v))
+                {
+                    boxOnly |= l.Tile > 0 || l.SliceInset > 0;
+                }
+
+                if (!boxOnly)
+                {
+                    dotVisuals.Add(v);
+                }
+            }
+
             var prims = new List<DrawPrimitive>();
             for (int k = 0; k < 50; k++)
             {
                 var rgb = new Rgb((byte)k, (byte)(2 * k), (byte)(3 * k));
-                VisualId v = ArtTable.AllVisuals()[k % ArtTable.AllVisuals().Length];
+                VisualId v = dotVisuals[k % dotVisuals.Count];
                 prims.Add(ArtFrames.Dot(v, (ColourRole)(k % 17), k, -k, 2f, k % 3, (k % 5) - 2, new Paint(rgb, rgb, rgb, rgb, rgb, (byte)(k % 8))));
             }
 
