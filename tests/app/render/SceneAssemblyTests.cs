@@ -8,8 +8,11 @@ namespace AirportSim.App.Render.Tests
 {
     /// <summary>
     /// Static rules on the compiled scene layer: 15 §15.1/§15.3 (no engine
-    /// reference, netstandard2.1, never app.ui, nothing from sim.schedule,
-    /// sim.turnaround or sim.delay at Phase 1) and 07 L1/L2.
+    /// reference, netstandard2.1, never app.ui, nothing from sim.turnaround
+    /// or sim.delay at Phase 1, never the 2D art) and 07 L1/L2. Since Q-130
+    /// the scene layer reads sim.schedule's TryGetFlight (15 §15.1, §15.6,
+    /// and §15.18 task 1's project reference), so sim.schedule is no longer
+    /// banned.
     /// </summary>
     public sealed class SceneAssemblyTests
     {
@@ -27,11 +30,12 @@ namespace AirportSim.App.Render.Tests
             {
                 "UnityEngine", "UnityEditor", "Unity.", "Godot", "Microsoft.Xna", "MonoGame", "SharpDX", "OpenTK", "Silk.NET", "SkiaSharp", "System.Drawing", "System.Windows",
                 "AirportSim.App.Ui", "AirportSim.App.Host",
-                "AirportSim.Sim.Schedule", "AirportSim.Sim.Turnaround", "AirportSim.Sim.Delay",
+                "AirportSim.App.Render.Art2D",
+                "AirportSim.Sim.Turnaround", "AirportSim.Sim.Delay",
             };
             var names = Scene.GetReferencedAssemblies().Select(a => a.Name ?? string.Empty).ToList();
             var offenders = names.Where(n => banned.Any(b => n.StartsWith(b, StringComparison.Ordinal))).ToList();
-            Assert.True(offenders.Count == 0, "the scene layer references (15 §15.3: no engine, never app.ui; §15.1: no schedule, turnaround or delay): " + string.Join(", ", offenders));
+            Assert.True(offenders.Count == 0, "the scene layer references (15 §15.3: no engine, never app.ui, never the 2D art; §15.1: no turnaround or delay): " + string.Join(", ", offenders));
             Assert.Contains("AirportSim.Sim.Core", names);
         }
     }
