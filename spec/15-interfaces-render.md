@@ -372,7 +372,10 @@ gets no pips.
 | `AwaitingApproach`, `Departed` | not drawn |
 
 **Absent modules.** If `RenderSources.Airside` is null, no runway, taxiway,
-stand or aircraft primitive is produced, and the airside half of the layout is
+stand or aircraft primitive is produced. That includes the runway, taxiway
+and stand markings, but not the layout's scenery: areas and jet bridges
+are drawn whichever modules are present (Q-130), and a bridge is not a
+stand primitive although it shares the `Stand` layer. The airside half of the layout is
 not checked against an airside layout (§15.4 check 4 is skipped; check 2
 still runs). If `Flow` is null, no landside primitive is produced. A build
 that has only some sim modules still renders what it has.
@@ -1123,8 +1126,11 @@ surface of its own layer.
 
 `Facing` is an exact **integer direction vector**, never an angle. Its
 components are differences of the layout's `int32` positions, computed
-in `int64` and converted to `float`, so the value is exact. Layout
-coordinates stay well inside `float`'s 2^24 exact range. It needs no
+in `int64` and converted to `float`. The value is exact whenever each
+component's magnitude is at most 2^24 (16 777 216 world units). §15.4
+does not check this; every Phase 1 layout is a few kilometres across, far
+inside it, and beyond it only the direction's last bits round, which
+changes nothing visible. It needs no
 trigonometry and no quantisation, and only its direction matters.
 `(0, 0)` means unrotated (`+Y`). It is engine-free: the 2D tessellator
 normalises it (§15.17), and a 3D backend derives a yaw from it.
@@ -1308,6 +1314,10 @@ only, never an atlas.
   than `"looks"`; a malformed colour or mark; an airline code that is not
   1 to 8 characters of `A–Z` and `0–9`; two codes with the same
   `AirlineId`; and a passenger list that is empty or longer than 64.
+  An exception that `ReadAll` itself throws passes through unchanged and
+  is not wrapped. For example, the player's `IContentSource` over
+  `StreamingAssets/Content/` throws `FileNotFoundException` for a missing
+  file. Only a `null` result is the loader's `FormatException`.
 - An airline code maps to `AirlineId` exactly as the schedule does
   (`11` §11.4): FNV-1a-32 over its UTF-8 bytes. `Airlines` is sorted by
   `AirlineId`, and the lists keep file order.
@@ -1327,7 +1337,8 @@ only, never an atlas.
     hair `#3A2A1F`, bag `#5A4A3A`.
 
   A missing or malformed file in the player is a load failure, never a
-  silent default (`04-data-schemas.md`).
+  silent default (`04-data-schemas.md`). A missing file surfaces as the
+  source's own exception (above), and a malformed one as `FormatException`.
 
 ### What is recolourable (binding on future art)
 
@@ -1586,9 +1597,12 @@ units, because a normalised vector is not exact in floating point. That
 is the one tolerance allowed in `tests/app/render/`, and it applies only
 to the tessellator's corner positions. The test vectors are chosen far
 from that edge: axis-aligned facings (exact), `(3, 4)` (with `n = 5`
-exact), and `(1, 1)`, all with `Size ≤ 1000` and centres within ±10 000,
-where the float error is below `1e-4`. No angle is computed anywhere in
-tested code.
+exact), and `(1, 1)`, all with `Size ≤ 1000` and centres within ±10 000.
+Each corner is computed in `double` and converted to `float` once, which
+is binding. Every corner then lies below 16 384 in magnitude, so its
+error is at most half a float ULP there (about `4.9e-4`) plus a
+negligible `double` error. That is below `5e-4`, half the tolerance. No
+angle is computed anywhere in tested code.
 
 ### Style guide
 
@@ -1871,9 +1885,13 @@ Four tasks. Each starts only when its dependencies are merged.
    `AirportSim.App.Render.Art2D.dll`. Done-when: `unity-build` green
    (`16` §16.2), and the Reviewer checks it against §15.10 line by line.
    It depends on task 2. **Merge it as soon as it is green.** From task 1
-   merging until then, the merged backend's 13-colour palette is indexed
-   by the four new roles, so a playable build throws. The checkpoint
-   smoke is unaffected, because its backends are deactivated (`16`
+   merging until then, the merged backend
+   (`RoleCount = (int)ColourRole.LaneClosed + 1` at `RenderBackend.cs:14`,
+   with the palette indexed by role in `FillMesh`) throws an out-of-range
+   index **on every frame** of a playable build that draws one of the
+   four new roles, which the airside scene always does. The checkpoint
+   smoke is unaffected: in batch mode the bootstrap's `Awake` deactivates
+   the object, so the backend's `Start` and `Update` never run (`16`
    §16.7).
 4. **Host: sources and looks into the scene.** Test Author first, then a
    worker. Writable paths: `src/app/host/**`, `tests/app/host/**` and
