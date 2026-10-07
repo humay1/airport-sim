@@ -1,51 +1,86 @@
+using System;
 using System.Collections.Generic;
 using AirportSim.App.Render.Art2D;
 using Xunit;
 
 namespace AirportSim.App.Render.Tests
 {
-    /// <summary>15 §15.17 "Visual layers" (Q-130).</summary>
+    /// <summary>
+    /// 15 §15.17's ArtLayer and LogoRect contracts, as the public surface states
+    /// them. §15.18's test_art2d_layers_match_the_visual_table (the per-visual
+    /// table) waits for the realistic-2D amendment of the style.
+    /// </summary>
     public sealed class Art2DLayerTests
     {
         [Fact]
-        public void test_art2d_layers_match_the_visual_table()
+        public void test_art2d_layers_are_well_formed_for_every_visual()
         {
-            // The table covers every VisualId of 15 §15.9.
-            Assert.Equal(34, ArtTable.AllVisuals().Length);
-
-            foreach (VisualId v in ArtTable.AllVisuals())
+            foreach (VisualId v in ArtShow.AllVisuals())
             {
-                List<ArtLayer> want = ArtTable.Layers(v);
-                IReadOnlyList<ArtLayer> got = Art2DFactory.LayersOf(v);
-                Assert.True(got != null, "LayersOf(" + v + ") is null");
-                string w = ArtCells.Show(want);
-                string g = ArtCells.Show(got!);
-                Assert.True(w == g, "LayersOf(" + v + ") in painter order:\n" + g + "\nexpected:\n" + w);
+                IReadOnlyList<ArtLayer> layers = Art2DFactory.LayersOf(v);
+                Assert.True(layers != null, "LayersOf(" + v + ") is null");
+                Assert.True(layers!.Count > 0, "LayersOf(" + v + ") is empty: a visual fills its primitive");
+                for (int i = 0; i < layers.Count; i++)
+                {
+                    ArtLayer l = layers[i];
+                    string what = v + " layer " + i;
+
+                    // Region: the Paint region index when Colour = Region, else 0.
+                    if (l.Colour == LayerColour.Region)
+                    {
+                        Assert.True(l.Region >= 0 && l.Region <= 4, what + ": region " + l.Region + " is not a Paint region (0 to 4)");
+                    }
+                    else
+                    {
+                        Assert.True(l.Region == 0, what + ": region " + l.Region + " on a " + l.Colour + " layer, expected 0");
+                    }
+
+                    // Fixed: the constant when Colour = Fixed, else (0, 0, 0).
+                    if (l.Colour != LayerColour.Fixed)
+                    {
+                        Assert.True(l.Fixed.R == 0 && l.Fixed.G == 0 && l.Fixed.B == 0, what + ": fixed " + Prims.Show(l.Fixed) + " on a " + l.Colour + " layer, expected #000000");
+                    }
+
+                    // The sub-square lies in the design square 0..1024 and is not empty.
+                    Assert.True(
+                        l.MinX >= 0 && l.MinY >= 0 && l.MaxX <= 1024 && l.MaxY <= 1024 && l.MinX < l.MaxX && l.MinY < l.MaxY,
+                        what + ": sub-square (" + l.MinX + "," + l.MinY + ")-(" + l.MaxX + "," + l.MaxY + ") is not a non-empty part of 0..1024");
+
+                    // A non-logo layer's rect is a non-empty part of the texture (0..1).
+                    if (!l.IsLogo)
+                    {
+                        AssertRect(l.Rect, what);
+                    }
+                }
             }
 
-            // The logo sub-square's integer rule, spelled out for two sizes.
-            AssertLogo(VisualId.AircraftC, 447, 250, 578, 381);
-            AssertLogo(VisualId.AircraftF, 416, 127, 609, 320);
-
-            // A fresh list per call.
-            foreach (VisualId v in new[] { VisualId.Apron, VisualId.Passenger, VisualId.AircraftD })
+            // LogoRect: a rect for every mark, ArgumentOutOfRangeException for None.
+            for (int k = 1; k <= 7; k++)
             {
-                Assert.NotSame(Art2DFactory.LayersOf(v), Art2DFactory.LayersOf(v));
+                AssertRect(Art2DFactory.LogoRect((LogoMark)k), "LogoRect(" + (LogoMark)k + ")");
+            }
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => Art2DFactory.LogoRect(LogoMark.None));
+
+            // A fresh list per call, with equal contents.
+            foreach (VisualId v in ArtShow.AllVisuals())
+            {
+                IReadOnlyList<ArtLayer> a = Art2DFactory.LayersOf(v);
+                IReadOnlyList<ArtLayer> b = Art2DFactory.LayersOf(v);
+                Assert.NotSame(a, b);
+                Assert.Equal(a.Count, b.Count);
+                for (int i = 0; i < a.Count; i++)
+                {
+                    Assert.True(a[i].Equals(b[i]), v + " layer " + i + " differs between two calls");
+                }
             }
         }
 
-        private static void AssertLogo(VisualId v, int minX, int minY, int maxX, int maxY)
+        private static void AssertRect(in AtlasRect r, string what)
         {
-            ArtTable.LogoSquare(v - VisualId.AircraftA, out int kx0, out int ky0, out int kx1, out int ky1);
-            Assert.Equal(new[] { minX, minY, maxX, maxY }, new[] { kx0, ky0, kx1, ky1 });
-
-            IReadOnlyList<ArtLayer> layers = Art2DFactory.LayersOf(v);
-            Assert.Equal(8, layers.Count);
-            ArtLayer logo = layers[6];
-            Assert.True(logo.IsLogo, v + " layer 6 is the logo");
-            Assert.Equal(LayerColour.Region, logo.Colour);
-            Assert.Equal(4, logo.Region);
-            Assert.Equal(new[] { minX, minY, maxX, maxY }, new[] { logo.MinX, logo.MinY, logo.MaxX, logo.MaxY });
+            Assert.True(
+                r.U0 >= 0f && r.V0 >= 0f && r.U1 <= 1f && r.V1 <= 1f && r.U0 < r.U1 && r.V0 < r.V1,
+                what + ": rect " + ArtShow.Rect(r) + " is not a non-empty part of 0..1");
         }
     }
 }

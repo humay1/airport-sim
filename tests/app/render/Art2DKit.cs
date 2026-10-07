@@ -7,329 +7,25 @@ using Xunit;
 namespace AirportSim.App.Render.Tests
 {
     // Shared helpers for the T-052 2D-art suite (Q-130), written from
-    // 15 §15.3, §15.9, §15.11 and §15.17 only.
+    // 15 §15.3, §15.9, §15.11 and §15.17 only. They read the art's layers
+    // through LayersOf and never restate the style tables, which are being
+    // amended (realistic 2D, owner 2026-10-07).
 
-    /// <summary>One atlas cell: its lower-left pixel and side at mip 0 (15 §15.17 "Packing").</summary>
-    internal readonly struct ArtCell
+    internal static class ArtShow
     {
-        public ArtCell(string name, int px, int py, int side, bool edgeToEdge)
-        {
-            Name = name;
-            Px = px;
-            Py = py;
-            Side = side;
-            EdgeToEdge = edgeToEdge;
-        }
-
-        public string Name { get; }
-
-        public int Px { get; }
-
-        public int Py { get; }
-
-        public int Side { get; }
-
-        /// <summary>Solid, RunwayEdgeLines, CentreStripe and JetBridge fill their bleed border.</summary>
-        public bool EdgeToEdge { get; }
-
-        /// <summary>The bleed border at mip 0: c/32 pixels (8 or 4).</summary>
-        public int Border => Side / 32;
-    }
-
-    /// <summary>15 §15.17's packing table, written out from the spec's literals.</summary>
-    internal static class ArtCells
-    {
-        public const int AtlasSize = 2048;
-        public const int LargeCell = 256;
-        public const int SmallCell = 128;
-        public const int MipCount = 5;
-        public const int ArtUnits = 1024;
-
-        /// <summary>Small-cell slots 0 to 34, in slot order.</summary>
-        public static readonly string[] SmallNames =
-        {
-            "Solid", "Disc", "RunwayEdgeLines", "CentreStripe", "RunwayThreshold",
-            "BuildingRoof", "ControlTower", "JetBridge", "StandPad", "StandLeadIn",
-            "Digit0", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9",
-            "TerminalZone", "LanePip",
-            "PaxOutline", "PaxBottom", "PaxBag", "PaxTop", "PaxSkin", "PaxHair",
-            "LogoDisc", "LogoRing", "LogoChevron", "LogoStar", "LogoBars", "LogoDiamond", "LogoCrescent",
-        };
-
-        /// <summary>Aircraft layers 0 to 6, which are the large-cell columns.</summary>
-        public static readonly string[] AircraftLayerNames = { "Status", "Wings", "Engines", "Fuselage", "Cheatline", "Tail", "Glazing" };
-
-        public static readonly string[] SizeNames = { "A", "B", "C", "D", "E", "F" };
-
-        public static ArtCell Small(int slot)
-        {
-            Assert.InRange(slot, 0, SmallNames.Length - 1);
-            bool edge = slot == 0 || slot == 2 || slot == 3 || slot == 7;
-            return new ArtCell(SmallNames[slot], SmallCell * (slot % 16), 1536 + (SmallCell * (slot / 16)), SmallCell, edge);
-        }
-
-        public static ArtCell Small(string name)
-        {
-            return Small(Array.IndexOf(SmallNames, name));
-        }
-
-        public static ArtCell Aircraft(int size, int layer)
-        {
-            return new ArtCell("Aircraft" + SizeNames[size] + "." + AircraftLayerNames[layer], LargeCell * layer, LargeCell * size, LargeCell, false);
-        }
-
-        public static ArtCell Logo(LogoMark mark)
-        {
-            return Small(27 + (int)mark);
-        }
-
-        public static List<ArtCell> All()
-        {
-            var all = new List<ArtCell>();
-            for (int s = 0; s < 6; s++)
-            {
-                for (int l = 0; l < 7; l++)
-                {
-                    all.Add(Aircraft(s, l));
-                }
-            }
-
-            for (int k = 0; k < SmallNames.Length; k++)
-            {
-                all.Add(Small(k));
-            }
-
-            return all;
-        }
-
-        /// <summary>U0 = (px + c/32) / 2048, U1 = (px + c − c/32) / 2048, and V alike; exact in float.</summary>
-        public static AtlasRect RectOf(in ArtCell c)
-        {
-            int b = c.Border;
-            return new AtlasRect(
-                (float)((c.Px + b) / 2048.0),
-                (float)((c.Py + b) / 2048.0),
-                (float)((c.Px + c.Side - b) / 2048.0),
-                (float)((c.Py + c.Side - b) / 2048.0));
-        }
-
-        /// <summary>
-        /// Whether pixel (x, y) of mip m lies in a cell. The 42 large cells tile
-        /// [0, 1792) × [0, 1536) exactly; small slot k is in the band y ≥ 1536.
-        /// </summary>
-        public static bool InAnyCell(int m, int x, int y)
-        {
-            int band = 1536 >> m;
-            if (y < band)
-            {
-                return x < (1792 >> m);
-            }
-
-            int small = SmallCell >> m;
-            int slot = (x / small) + (16 * ((y - band) / small));
-            return slot < SmallNames.Length;
-        }
-
-        public static int Offset(int side, int x, int y)
-        {
-            // Rows bottom to top, RGBA32 (15 §15.17 SpriteAtlas.Mips).
-            return ((y * side) + x) * 4;
-        }
-
-        public static string Show(in AtlasRect r)
+        public static string Rect(in AtlasRect r)
         {
             return string.Format(CultureInfo.InvariantCulture, "[{0:R},{1:R},{2:R},{3:R}]", r.U0, r.V0, r.U1, r.V1);
         }
-
-        public static string Show(in ArtLayer l)
-        {
-            // A logo layer's Rect is unused (it draws from the Mark's cell), so it is not shown.
-            string rect = l.IsLogo ? "logo" : Show(l.Rect);
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "{0} region={1} fixed={2} {3} box=({4},{5})-({6},{7})",
-                l.Colour,
-                l.Region,
-                Prims.Show(l.Fixed),
-                rect,
-                l.MinX,
-                l.MinY,
-                l.MaxX,
-                l.MaxY);
-        }
-
-        public static string Show(IReadOnlyList<ArtLayer> layers)
-        {
-            var parts = new List<string>();
-            for (int i = 0; i < layers.Count; i++)
-            {
-                parts.Add(Show(layers[i]));
-            }
-
-            return string.Join("\n", parts);
-        }
-    }
-
-    /// <summary>15 §15.17's "Visual layers" table, written out from the spec.</summary>
-    internal static class ArtTable
-    {
-        public static readonly Rgb WingGrey = new Rgb(0xD5, 0xD8, 0xDC);
-        public static readonly Rgb GlazingDark = new Rgb(0x2A, 0x31, 0x38);
-
-        /// <summary>The row length in hundredths, A to F (the proportion table).</summary>
-        public static readonly int[] LengthHundredths = { 40, 50, 64, 76, 88, 94 };
-
-        /// <summary>The row span in hundredths, A to F (the proportion table).</summary>
-        public static readonly int[] SpanHundredths = { 40, 50, 62, 76, 88, 96 };
 
         public static VisualId[] AllVisuals()
         {
             return (VisualId[])Enum.GetValues(typeof(VisualId));
         }
 
-        public static ArtLayer Role(in ArtCell cell)
+        public static bool IsAircraft(VisualId v)
         {
-            return new ArtLayer(LayerColour.Role, 0, default(Rgb), ArtCells.RectOf(cell), false, 0, 0, 1024, 1024);
-        }
-
-        public static ArtLayer Region(in ArtCell cell, int region)
-        {
-            return new ArtLayer(LayerColour.Region, region, default(Rgb), ArtCells.RectOf(cell), false, 0, 0, 1024, 1024);
-        }
-
-        public static ArtLayer Fixed(in ArtCell cell, Rgb colour)
-        {
-            return new ArtLayer(LayerColour.Fixed, 0, colour, ArtCells.RectOf(cell), false, 0, 0, 1024, 1024);
-        }
-
-        /// <summary>The logo sub-square's integer rule; every quantity is non-negative, so / floors.</summary>
-        public static void LogoSquare(int size, out int minX, out int minY, out int maxX, out int maxY)
-        {
-            int lh = LengthHundredths[size];
-            int side = ((lh * 2048) + 500) / 1000;
-            int off = ((lh * 3072) + 500) / 1000;
-            int half = side / 2;
-            minX = 512 - half;
-            maxX = minX + side;
-            minY = 512 - off - half;
-            maxY = minY + side;
-        }
-
-        public static ArtLayer Logo(int size)
-        {
-            LogoSquare(size, out int minX, out int minY, out int maxX, out int maxY);
-            return new ArtLayer(LayerColour.Region, 4, default(Rgb), default(AtlasRect), true, minX, minY, maxX, maxY);
-        }
-
-        public static List<ArtLayer> Layers(VisualId v)
-        {
-            switch (v)
-            {
-                case VisualId.RunwaySurface:
-                case VisualId.TaxiwaySurface:
-                case VisualId.Apron:
-                case VisualId.QueueFill:
-                    return One(Role(ArtCells.Small("Solid")));
-                case VisualId.RunwayEdgeLines:
-                    return One(Role(ArtCells.Small("RunwayEdgeLines")));
-                case VisualId.RunwayThreshold:
-                    return One(Role(ArtCells.Small("RunwayThreshold")));
-                case VisualId.RunwayCentreDash:
-                case VisualId.TaxiwayCentreline:
-                    return One(Role(ArtCells.Small("CentreStripe")));
-                case VisualId.TaxiwayJunction:
-                    return One(Role(ArtCells.Small("Disc")));
-                case VisualId.TerminalBuilding:
-                case VisualId.Pier:
-                    return One(Role(ArtCells.Small("BuildingRoof")));
-                case VisualId.ControlTower:
-                    return One(Role(ArtCells.Small("ControlTower")));
-                case VisualId.JetBridge:
-                    return One(Role(ArtCells.Small("JetBridge")));
-                case VisualId.StandPad:
-                    return One(Role(ArtCells.Small("StandPad")));
-                case VisualId.StandLeadIn:
-                    return One(Role(ArtCells.Small("StandLeadIn")));
-                case VisualId.TerminalZone:
-                    return One(Role(ArtCells.Small("TerminalZone")));
-                case VisualId.LanePip:
-                    return One(Role(ArtCells.Small("LanePip")));
-                case VisualId.Passenger:
-                    return new List<ArtLayer>
-                    {
-                        Role(ArtCells.Small("PaxOutline")),
-                        Region(ArtCells.Small("PaxBottom"), 1),
-                        Region(ArtCells.Small("PaxBag"), 4),
-                        Region(ArtCells.Small("PaxTop"), 0),
-                        Region(ArtCells.Small("PaxSkin"), 2),
-                        Region(ArtCells.Small("PaxHair"), 3),
-                    };
-            }
-
-            if (v >= VisualId.MarkingDigit0 && v <= VisualId.MarkingDigit9)
-            {
-                return One(Role(ArtCells.Small("Digit" + (v - VisualId.MarkingDigit0).ToString(CultureInfo.InvariantCulture))));
-            }
-
-            if (v >= VisualId.AircraftA && v <= VisualId.AircraftF)
-            {
-                int s = v - VisualId.AircraftA;
-                return new List<ArtLayer>
-                {
-                    Role(ArtCells.Aircraft(s, 0)),
-                    Fixed(ArtCells.Aircraft(s, 1), WingGrey),
-                    Region(ArtCells.Aircraft(s, 2), 3),
-                    Region(ArtCells.Aircraft(s, 3), 0),
-                    Region(ArtCells.Aircraft(s, 4), 2),
-                    Region(ArtCells.Aircraft(s, 5), 1),
-                    Logo(s),
-                    Fixed(ArtCells.Aircraft(s, 6), GlazingDark),
-                };
-            }
-
-            throw new ArgumentOutOfRangeException(nameof(v), v, "VisualId not in 15 §15.17's table");
-        }
-
-        /// <summary>The Box slicing column: world inset in metres (world units), 0 when not sliced.</summary>
-        public static double SliceWorld(VisualId v)
-        {
-            switch (v)
-            {
-                case VisualId.TerminalBuilding:
-                case VisualId.Pier:
-                    return 3.0;
-                case VisualId.StandPad:
-                    return 2.0;
-                case VisualId.TerminalZone:
-                    return 1.0;
-                default:
-                    return 0.0;
-            }
-        }
-
-        /// <summary>The design inset of every sliced visual: 128 units.</summary>
-        public const int SliceDesign = 128;
-
-        /// <summary>Quads one primitive emits: one per layer, nine for a sliced Box, none for a logo without a mark.</summary>
-        public static int QuadsOf(in DrawPrimitive p)
-        {
-            int n = 0;
-            foreach (ArtLayer l in Layers(p.Visual))
-            {
-                if (l.IsLogo && p.Paint.Mark == 0)
-                {
-                    continue;
-                }
-
-                n += p.Kind == PrimitiveKind.Box && SliceWorld(p.Visual) > 0.0 ? 9 : 1;
-            }
-
-            return n;
-        }
-
-        private static List<ArtLayer> One(ArtLayer l)
-        {
-            return new List<ArtLayer> { l };
+            return v >= VisualId.AircraftA && v <= VisualId.AircraftF;
         }
     }
 
@@ -400,9 +96,44 @@ namespace AirportSim.App.Render.Tests
             return roles;
         }
 
+        /// <summary>Five distinct region colours and the given mark.</summary>
         public static Paint Paint(byte mark)
         {
             return new Paint(new Rgb(1, 2, 3), new Rgb(4, 5, 6), new Rgb(7, 8, 9), new Rgb(10, 11, 12), new Rgb(13, 14, 15), mark);
+        }
+
+        public static Rgb Region(in Paint p, int region)
+        {
+            switch (region)
+            {
+                case 0: return p.Region0;
+                case 1: return p.Region1;
+                case 2: return p.Region2;
+                case 3: return p.Region3;
+                case 4: return p.Region4;
+                default: throw new ArgumentOutOfRangeException(nameof(region), region, "Paint has regions 0 to 4");
+            }
+        }
+
+        /// <summary>
+        /// The layers a Dot or Segment emits, one quad each, in order: LayersOf,
+        /// without a logo layer when Paint.Mark is None (15 §15.17 "Tessellation").
+        /// </summary>
+        public static List<ArtLayer> Emitted(in DrawPrimitive p)
+        {
+            Assert.True(p.Kind != PrimitiveKind.Box, "a Box may be sliced; its quad count is not derived here");
+            var list = new List<ArtLayer>();
+            foreach (ArtLayer l in Art2DFactory.LayersOf(p.Visual))
+            {
+                if (l.IsLogo && p.Paint.Mark == 0)
+                {
+                    continue;
+                }
+
+                list.Add(l);
+            }
+
+            return list;
         }
     }
 
@@ -413,11 +144,6 @@ namespace AirportSim.App.Render.Tests
     internal static class ArtGeometry
     {
         public const double CornerTolerance = 1e-3;
-
-        public static double[] Box(double x0, double y0, double x1, double y1)
-        {
-            return new[] { x0, y0, x1, y0, x1, y1, x0, y1 };
-        }
 
         public static double[] Segment(double ax, double ay, double bx, double by, double size)
         {
@@ -438,6 +164,10 @@ namespace AirportSim.App.Render.Tests
             };
         }
 
+        /// <summary>
+        /// The Dot's corners for a layer's sub-square: design (x, y) goes to
+        /// centre + r × (x/1024 − 0.5) × Size + f × (y/1024 − 0.5) × Size.
+        /// </summary>
         public static double[] Dot(double cx, double cy, double size, double facingX, double facingY, int minX = 0, int minY = 0, int maxX = 1024, int maxY = 1024)
         {
             double fx = 0.0;
@@ -471,9 +201,10 @@ namespace AirportSim.App.Render.Tests
             return new[] { r.U0, r.V0, r.U1, r.V0, r.U1, r.V1, r.U0, r.V1 };
         }
 
-        public static float[] Uvs(float u0, float v0, float u1, float v1)
+        /// <summary>The rect a layer's quad samples: its own, or the Mark's cell for a logo.</summary>
+        public static AtlasRect RectFor(in ArtLayer l, byte mark)
         {
-            return new[] { u0, v0, u1, v0, u1, v1, u0, v1 };
+            return l.IsLogo ? Art2DFactory.LogoRect((LogoMark)mark) : l.Rect;
         }
 
         public static void AssertCorners(ISpriteTessellator t, int q, double[] expected, string what)

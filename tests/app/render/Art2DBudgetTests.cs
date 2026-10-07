@@ -32,22 +32,24 @@ namespace AirportSim.App.Render.Tests
             RenderFrame frame = b.Build(cam, high);
 
             // The max-tier frame: 16 promoted boxes of MAX_DRAWN_AGENTS_PER_NODE
-            // passengers (6 quads each), every aircraft, the scenery and markings.
+            // passengers, every aircraft, the scenery and markings. A Box emits at
+            // least one quad per layer (nine when sliced); every other primitive
+            // exactly one per emitted layer.
             List<DrawPrimitive> all = Prims.Copy(frame);
             Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(all, DrawLayer.Agent).Count);
             Assert.Equal(MaxTierScene.Aircraft, Prims.InLayer(all, DrawLayer.Aircraft).Count);
-            int expected = 0;
+            int atLeast = 0;
             foreach (DrawPrimitive p in all)
             {
-                expected += ArtTable.QuadsOf(p);
+                atLeast += p.Kind == PrimitiveKind.Box ? Art2DFactory.LayersOf(p.Visual).Count : ArtFrames.Emitted(p).Count;
             }
-
-            Assert.True(expected >= 16 * RenderConst.MaxDrawnAgentsPerNode * 6, "the max-tier frame is smaller than its passengers");
 
             Rgba[] roles = ArtFrames.Roles();
             ISpriteTessellator t = Art2DFactory.CreateTessellator();
-            Assert.Equal(expected, t.Fill(frame, roles, false));
-            Assert.Equal(expected, t.QuadCount);
+            int quads = t.Fill(frame, roles, false);
+            Assert.Equal(quads, t.QuadCount);
+            Assert.True(quads >= atLeast, "Fill emitted " + quads + " quads for a frame of at least " + atLeast);
+            Assert.True(quads >= all.Count, "Fill emitted " + quads + " quads for " + all.Count + " primitives; every visual draws at least one");
 
             // No allocation after the first call, in either colour space.
             long start = Allocation.Start();
@@ -58,7 +60,7 @@ namespace AirportSim.App.Render.Tests
 
             long allocated = Allocation.Since(start);
             Assert.True(allocated == 0, "Fill allocated " + allocated + " bytes over 120 calls after the first (15 §15.17)");
-            Assert.Equal(expected, t.QuadCount);
+            Assert.Equal(quads, t.QuadCount);
 
             for (int i = 0; i < WarmUpFrames; i++)
             {
@@ -76,7 +78,7 @@ namespace AirportSim.App.Render.Tests
 
             string? why = window.Verdict(P99Micros, "ISpriteTessellator.Fill at max tier, High");
             Assert.True(why == null, why);
-            Assert.Equal(expected, t.QuadCount);
+            Assert.Equal(quads, t.QuadCount);
             Assert.Empty(m.Guard.Violations);
         }
     }

@@ -6,137 +6,205 @@ using Xunit;
 namespace AirportSim.App.Render.Tests
 {
     /// <summary>
-    /// 15 §15.17 "Tessellation" (Q-130). Corners are compared within §15.3's one
-    /// tolerance (1e-3 world units) using §15.17's chosen vectors; Uvs and
-    /// colours exactly.
+    /// 15 §15.17 "Tessellation" (Q-130): RenderFrame to quads. Corners are
+    /// compared within §15.3's one tolerance (1e-3 world units) using §15.17's
+    /// chosen vectors; Uvs and colours exactly. Layers, rects and sub-squares are
+    /// read through LayersOf and LogoRect, so these tests do not restate the
+    /// style tables, which the realistic-2D amendment may change.
     /// </summary>
     public sealed class Art2DTessellatorTests
     {
+        private const double Tol = ArtGeometry.CornerTolerance;
+
+        // §15.17's tolerance note: axis-aligned facings, (3, 4) and (1, 1); a
+        // long integer vector is the same direction as its unit (15 §15.16).
+        private static readonly (float X, float Y, double[]? Whole)[] Facings =
+        {
+            (0f, 0f, new double[] { 990, -2010, 1010, -2010, 1010, -1990, 990, -1990 }),
+            (0f, 1f, new double[] { 990, -2010, 1010, -2010, 1010, -1990, 990, -1990 }),
+            (1f, 0f, new double[] { 990, -1990, 990, -2010, 1010, -2010, 1010, -1990 }),
+            (-1f, 0f, new double[] { 1010, -2010, 1010, -1990, 990, -1990, 990, -2010 }),
+            (0f, -1f, new double[] { 1010, -1990, 990, -1990, 990, -2010, 1010, -2010 }),
+            (3f, 4f, new double[] { 986, -2002, 1002, -2014, 1014, -1998, 998, -1986 }),
+            (1f, 1f, null),
+            (2000f, 0f, new double[] { 990, -1990, 990, -2010, 1010, -2010, 1010, -1990 }),
+            (0f, -7f, new double[] { 1010, -1990, 990, -1990, 990, -2010, 1010, -2010 }),
+            (-300f, -400f, null),
+        };
+
         [Fact]
-        public void test_art2d_tessellator_corners_follow_kind_facing_and_slicing()
+        public void test_art2d_tessellator_corners_follow_kind_and_facing()
         {
             ISpriteTessellator t = Art2DFactory.CreateTessellator();
             Rgba[] roles = ArtFrames.Roles();
-            float[] solid = ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Small("Solid")));
 
-            // Box: (MinX,MinY), (MaxX,MinY), (MaxX,MaxY), (MinX,MaxY), never rotated; Apron is not sliced.
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Box(VisualId.Apron, ColourRole.Apron, 10f, 20f, 110f, 70f)), roles, false));
-            Assert.Equal(1, t.QuadCount);
-            ArtGeometry.AssertQuad(t, 0, new double[] { 10, 20, 110, 20, 110, 70, 10, 70 }, solid, "apron box");
-
-            // ControlTower is not sliced either.
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Box(VisualId.ControlTower, ColourRole.Building, 920f, 200f, 940f, 220f)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, ArtGeometry.Box(920, 200, 940, 220), ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Small("ControlTower"))), "control tower box");
-
-            // Segment: f = (B − A)/|B − A|, r = (f.Y, −f.X), h = Size/2:
-            // A − r h, A + r h, B + r h, B − r h.
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Segment(VisualId.RunwaySurface, ColourRole.Runway, 100f, 200f, 400f, 600f, 45f)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, new double[] { 82, 213.5, 118, 186.5, 418, 586.5, 382, 613.5 }, solid, "diagonal segment");
-            ArtGeometry.AssertCorners(t, 0, ArtGeometry.Segment(100, 200, 400, 600, 45), "diagonal segment, reference");
-
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Segment(VisualId.RunwayEdgeLines, ColourRole.RunwayMarking, -2000f, 0f, 0f, 0f, 45f)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, new double[] { -2000, 22.5, -2000, -22.5, 0, -22.5, 0, 22.5 }, ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Small("RunwayEdgeLines"))), "axis segment");
-
-            // A zero-length segment uses f = (0, 1).
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Segment(VisualId.TaxiwayCentreline, ColourRole.TaxiwayMarking, 5f, 5f, 5f, 5f, 10f)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, new double[] { 0, 5, 10, 5, 10, 5, 0, 5 }, ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Small("CentreStripe"))), "zero-length segment");
-
-            // Dot: f is Facing normalised, or (0, 1) for (0, 0); r = (f.Y, −f.X):
-            // centre − r h − f h, centre + r h − f h, centre + r h + f h, centre − r h + f h.
-            float[] disc = ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Small("Disc")));
-            AssertDot(t, roles, 0f, 0f, new double[] { 990, -2010, 1010, -2010, 1010, -1990, 990, -1990 }, disc);
-            AssertDot(t, roles, 0f, 1f, new double[] { 990, -2010, 1010, -2010, 1010, -1990, 990, -1990 }, disc);
-            AssertDot(t, roles, 1f, 0f, new double[] { 990, -1990, 990, -2010, 1010, -2010, 1010, -1990 }, disc);
-            AssertDot(t, roles, -1f, 0f, new double[] { 1010, -2010, 1010, -1990, 990, -1990, 990, -2010 }, disc);
-            AssertDot(t, roles, 0f, -1f, new double[] { 1010, -1990, 990, -1990, 990, -2010, 1010, -2010 }, disc);
-            AssertDot(t, roles, 3f, 4f, new double[] { 986, -2002, 1002, -2014, 1014, -1998, 998, -1986 }, disc);
-            AssertDot(t, roles, 1f, 1f, ArtGeometry.Dot(1000, -2000, 20, 1, 1), disc);
-
-            // Only the direction matters (15 §15.16): a long integer vector is the same as its unit.
-            AssertDot(t, roles, 2000f, 0f, new double[] { 990, -1990, 990, -2010, 1010, -2010, 1010, -1990 }, disc);
-            AssertDot(t, roles, 0f, -7f, new double[] { 1010, -1990, 990, -1990, 990, -2010, 1010, -2010 }, disc);
-            AssertDot(t, roles, -300f, -400f, ArtGeometry.Dot(1000, -2000, 20, -3, -4), disc);
-
-            // Large size and far centre, within §15.17's tolerance note (Size ≤ 1000, centres within ± 10 000).
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.TaxiwayJunction, ColourRole.Taxiway, 9000f, -9000f, 1000f, 1f, 1f)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, ArtGeometry.Dot(9000, -9000, 1000, 1, 1), disc, "dot size 1000 facing (1,1)");
-
-            // The logo sub-square: design (x, y) maps to
-            // centre + r × (x/1024 − 0.5) × Size + f × (y/1024 − 0.5) × Size.
-            // AircraftC (447,250)–(578,381) at Size 512 is (−32.5,−131)–(33,−65.5) unrotated.
-            var paint = ArtFrames.Paint((byte)LogoMark.Disc);
-            Assert.Equal(8, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftC, ColourRole.AircraftMoving, 0f, 0f, 512f, 0f, 0f, paint)), roles, false));
-            for (int l = 0; l < 6; l++)
+            // Dot, for every visual and every facing: f is Facing normalised, or
+            // (0, 1) for (0, 0); r = (f.Y, −f.X); each layer's sub-square maps design
+            // (x, y) to centre + r × (x/1024 − 0.5) × Size + f × (y/1024 − 0.5) × Size.
+            // A whole layer (0,0)–(1024,1024) gives centre ∓ r h ∓ f h, spelled out
+            // for centre (1000, −2000) and Size 20.
+            Paint marked = ArtFrames.Paint((byte)LogoMark.Ring);
+            foreach (VisualId v in ArtShow.AllVisuals())
             {
-                ArtGeometry.AssertQuad(t, l, new double[] { -256, -256, 256, -256, 256, 256, -256, 256 }, ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Aircraft(2, l))), "AircraftC layer " + l);
+                foreach ((float fx, float fy, double[]? whole) in Facings)
+                {
+                    DrawPrimitive p = ArtFrames.Dot(v, ColourRole.Agent, 1000f, -2000f, 20f, fx, fy, marked);
+                    List<ArtLayer> layers = ArtFrames.Emitted(p);
+                    string what = v + " dot facing (" + fx + "," + fy + ")";
+                    Assert.True(layers.Count == t.Fill(ArtFrames.Of(p), roles, false), what + ": quad count is not one per layer");
+                    Assert.Equal(layers.Count, t.QuadCount);
+                    for (int q = 0; q < layers.Count; q++)
+                    {
+                        ArtLayer l = layers[q];
+                        ArtGeometry.AssertQuad(
+                            t,
+                            q,
+                            ArtGeometry.Dot(1000, -2000, 20, fx, fy, l.MinX, l.MinY, l.MaxX, l.MaxY),
+                            ArtGeometry.Uvs(ArtGeometry.RectFor(l, marked.Mark)),
+                            what + " layer " + q);
+                        if (whole != null && IsWhole(l))
+                        {
+                            ArtGeometry.AssertCorners(t, q, whole, what + " layer " + q + " (spelled out)");
+                        }
+                    }
+                }
             }
 
-            ArtGeometry.AssertQuad(t, 6, new double[] { -32.5, -131, 33, -131, 33, -65.5, -32.5, -65.5 }, ArtGeometry.Uvs(Art2DFactory.LogoRect(LogoMark.Disc)), "AircraftC logo");
-            ArtGeometry.AssertQuad(t, 7, new double[] { -256, -256, 256, -256, 256, 256, -256, 256 }, ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Aircraft(2, 6))), "AircraftC glazing");
-
-            // Rotated: facing (1, 0) takes design (447, 250) to (−131, 32.5).
-            Assert.Equal(8, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftC, ColourRole.AircraftMoving, 0f, 0f, 512f, 1f, 0f, paint)), roles, false));
-            ArtGeometry.AssertCorners(t, 6, new double[] { -131, 32.5, -131, -33, -65.5, -33, -65.5, 32.5 }, "AircraftC logo facing (1,0)");
-            ArtGeometry.AssertCorners(t, 6, ArtGeometry.Dot(0, 0, 512, 1, 0, 447, 250, 578, 381), "AircraftC logo facing (1,0), reference");
-
-            // Facing (3, 4) and a far centre, every layer of AircraftF.
-            var paintF = ArtFrames.Paint((byte)LogoMark.Crescent);
-            Assert.Equal(8, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftF, ColourRole.AircraftOnStand, -4000f, 7000f, 60f, 3f, 4f, paintF)), roles, false));
-            for (int q = 0; q < 8; q++)
+            // Large size and far centre, within the tolerance note (Size ≤ 1000, centres within ± 10 000).
+            foreach (VisualId v in ArtShow.AllVisuals())
             {
-                double[] corners = q == 6 ? ArtGeometry.Dot(-4000, 7000, 60, 3, 4, 416, 127, 609, 320) : ArtGeometry.Dot(-4000, 7000, 60, 3, 4);
-                ArtGeometry.AssertCorners(t, q, corners, "AircraftF facing (3,4) quad " + q);
+                DrawPrimitive p = ArtFrames.Dot(v, ColourRole.Agent, 9000f, -9000f, 1000f, 1f, 1f, marked);
+                List<ArtLayer> layers = ArtFrames.Emitted(p);
+                Assert.Equal(layers.Count, t.Fill(ArtFrames.Of(p), roles, false));
+                for (int q = 0; q < layers.Count; q++)
+                {
+                    ArtLayer l = layers[q];
+                    ArtGeometry.AssertCorners(t, q, ArtGeometry.Dot(9000, -9000, 1000, 1, 1, l.MinX, l.MinY, l.MaxX, l.MaxY), v + " dot size 1000 facing (1,1) layer " + q);
+                }
             }
 
-            ArtGeometry.AssertUvs(t, 6, ArtGeometry.Uvs(Art2DFactory.LogoRect(LogoMark.Crescent)), "AircraftF logo");
+            // Segment: f = (B − A)/|B − A| (or (0, 1) when A = B), r = (f.Y, −f.X),
+            // h = Size/2; corners A − r h, A + r h, B + r h, B − r h.
+            int wholeSegmentLayers = 0;
+            var segments = new (float Ax, float Ay, float Bx, float By, float Size, double[] Spelled)[]
+            {
+                (100f, 200f, 400f, 600f, 45f, new double[] { 82, 213.5, 118, 186.5, 418, 586.5, 382, 613.5 }),
+                (-2000f, 0f, 0f, 0f, 45f, new double[] { -2000, 22.5, -2000, -22.5, 0, -22.5, 0, 22.5 }),
+                (5f, 5f, 5f, 5f, 10f, new double[] { 0, 5, 10, 5, 10, 5, 0, 5 }),
+            };
+            foreach (VisualId v in ArtShow.AllVisuals())
+            {
+                foreach (var s in segments)
+                {
+                    DrawPrimitive p = ArtFrames.Segment(v, ColourRole.Runway, s.Ax, s.Ay, s.Bx, s.By, s.Size);
+                    List<ArtLayer> layers = ArtFrames.Emitted(p);
+                    string what = v + " segment (" + s.Ax + "," + s.Ay + ")-(" + s.Bx + "," + s.By + ")";
+                    Assert.True(layers.Count == t.Fill(ArtFrames.Of(p), roles, false), what + ": quad count is not one per layer");
+                    for (int q = 0; q < layers.Count; q++)
+                    {
+                        ArtGeometry.AssertUvs(t, q, ArtGeometry.Uvs(ArtGeometry.RectFor(layers[q], 0)), what + " layer " + q);
+                        if (IsWhole(layers[q]))
+                        {
+                            ArtGeometry.AssertCorners(t, q, ArtGeometry.Segment(s.Ax, s.Ay, s.Bx, s.By, s.Size), what + " layer " + q);
+                            ArtGeometry.AssertCorners(t, q, s.Spelled, what + " layer " + q + " (spelled out)");
+                            wholeSegmentLayers++;
+                        }
+                    }
+                }
+            }
 
-            // Sliced boxes: nine quads, bottom row first, left to right. The world
-            // grid is at t = min(sliceWorld, width/2, height/2) from each side, the
-            // rect grid at 128/1024 of the rect.
-            var sliced = ArtFrames.Of(
-                ArtFrames.Box(VisualId.TerminalBuilding, ColourRole.Building, 0f, 0f, 30f, 20f),
-                ArtFrames.Box(VisualId.Pier, ColourRole.Building, 0f, 0f, 100f, 4f),
-                ArtFrames.Box(VisualId.StandPad, ColourRole.StandFree, -20f, -20f, 20f, 20f),
-                ArtFrames.Box(VisualId.TerminalZone, ColourRole.LandsideNode, 0f, 0f, 10f, 1f));
-            Assert.Equal(36, t.Fill(sliced, roles, false));
-            Assert.Equal(36, t.QuadCount);
+            Assert.True(wholeSegmentLayers > 0, "no visual has a whole-square layer to check the segment rule on");
 
-            // The terminal (3 m slice) spelled out: corner, centre and opposite corner.
-            ArtGeometry.AssertQuad(t, 0, ArtGeometry.Box(0, 0, 3, 3), ArtGeometry.Uvs(644f / 2048f, 1540f / 2048f, 659f / 2048f, 1555f / 2048f), "terminal slice 0");
-            ArtGeometry.AssertQuad(t, 4, ArtGeometry.Box(3, 3, 27, 17), ArtGeometry.Uvs(659f / 2048f, 1555f / 2048f, 749f / 2048f, 1645f / 2048f), "terminal slice 4");
-            ArtGeometry.AssertQuad(t, 8, ArtGeometry.Box(27, 17, 30, 20), ArtGeometry.Uvs(749f / 2048f, 1645f / 2048f, 764f / 2048f, 1660f / 2048f), "terminal slice 8");
-
-            AssertSliced(t, 0, 0, 0, 30, 20, 3.0, "BuildingRoof", "terminal");
-            AssertSliced(t, 9, 0, 0, 100, 4, 2.0, "BuildingRoof", "thin pier, t clamped to 2");
-            AssertSliced(t, 18, -20, -20, 20, 20, 2.0, "StandPad", "stand pad");
-            AssertSliced(t, 27, 0, 0, 10, 1, 0.5, "TerminalZone", "thin zone, t clamped to 0.5");
-
-            // List order, then layer order; every visual's UVs follow the table.
+            // Every quad goes in list order, then layer order.
             var all = new List<DrawPrimitive>();
-            foreach (VisualId v in ArtTable.AllVisuals())
+            foreach (VisualId v in ArtShow.AllVisuals())
             {
-                all.Add(ArtFrames.Dot(v, ColourRole.Agent, 0f, 0f, 10f, 0f, 0f, ArtFrames.Paint((byte)LogoMark.Ring)));
+                all.Add(ArtFrames.Dot(v, ColourRole.Agent, 0f, 0f, 10f, 0f, 0f, marked));
+                all.Add(ArtFrames.Segment(v, ColourRole.Agent, 0f, 0f, 0f, 10f, 2f));
             }
 
             int expected = 0;
             foreach (DrawPrimitive p in all)
             {
-                expected += ArtTable.QuadsOf(p);
+                expected += ArtFrames.Emitted(p).Count;
             }
 
             Assert.Equal(expected, t.Fill(ArtFrames.Of(all.ToArray()), roles, false));
-            int q2 = 0;
+            int at = 0;
             foreach (DrawPrimitive p in all)
             {
-                foreach (ArtLayer l in ArtTable.Layers(p.Visual))
+                foreach (ArtLayer l in ArtFrames.Emitted(p))
                 {
-                    AtlasRect r = l.IsLogo ? Art2DFactory.LogoRect(LogoMark.Ring) : l.Rect;
-                    ArtGeometry.AssertQuad(t, q2, ArtGeometry.Dot(0, 0, 10, 0, 0, l.MinX, l.MinY, l.MaxX, l.MaxY), ArtGeometry.Uvs(r), p.Visual + " quad " + q2);
-                    q2++;
+                    ArtGeometry.AssertUvs(t, at, ArtGeometry.Uvs(ArtGeometry.RectFor(l, p.Paint.Mark)), p.Kind + " " + p.Visual + " at quad " + at);
+                    if (p.Kind == PrimitiveKind.Dot)
+                    {
+                        ArtGeometry.AssertCorners(t, at, ArtGeometry.Dot(0, 0, 10, 0, 0, l.MinX, l.MinY, l.MaxX, l.MaxY), p.Visual + " dot at quad " + at);
+                    }
+
+                    at++;
                 }
             }
+        }
 
-            Assert.Equal(expected, q2);
+        [Fact]
+        public void test_art2d_tessellator_boxes_are_unrotated_and_slice_into_nine()
+        {
+            // Box: corners (MinX,MinY), (MaxX,MinY), (MaxX,MaxY), (MinX,MaxY), never
+            // rotated. A sliced Box emits nine quads per layer, bottom row first,
+            // left to right, on a 3 × 3 world grid at t from each side, with
+            // 0 < t ≤ min(width/2, height/2), and the rect cut into a 3 × 3 grid.
+            // Which visuals slice, and by how much, is the style table's; this
+            // checks only the rule, for whichever the art slices.
+            ISpriteTessellator t = Art2DFactory.CreateTessellator();
+            Rgba[] roles = ArtFrames.Roles();
+            var boxes = new (float X0, float Y0, float X1, float Y1)[]
+            {
+                (10f, 20f, 110f, 70f),
+                (0f, 0f, 100f, 0.5f),
+                (-20f, -20f, 20f, 20f),
+            };
+
+            foreach (VisualId v in ArtShow.AllVisuals())
+            {
+                IReadOnlyList<ArtLayer> layers = Art2DFactory.LayersOf(v);
+                int plain = 0;
+                foreach (ArtLayer l in layers)
+                {
+                    if (!l.IsLogo)
+                    {
+                        plain++;
+                    }
+                }
+
+                Assert.True(plain > 0, v + " has no layer a Box draws");
+
+                foreach (var b in boxes)
+                {
+                    string what = v + " box (" + b.X0 + "," + b.Y0 + ")-(" + b.X1 + "," + b.Y1 + ")";
+                    int n = t.Fill(ArtFrames.Of(ArtFrames.Box(v, ColourRole.Apron, b.X0, b.Y0, b.X1, b.Y1)), roles, false);
+                    Assert.Equal(n, t.QuadCount);
+                    Assert.True(n == plain || n == 9 * plain, what + ": " + n + " quads, expected " + plain + " (one per layer) or " + (9 * plain) + " (sliced)");
+                    int at = 0;
+                    foreach (ArtLayer l in layers)
+                    {
+                        if (l.IsLogo)
+                        {
+                            continue;
+                        }
+
+                        if (n == plain)
+                        {
+                            ArtGeometry.AssertQuad(t, at, new double[] { b.X0, b.Y0, b.X1, b.Y0, b.X1, b.Y1, b.X0, b.Y1 }, ArtGeometry.Uvs(l.Rect), what);
+                            at++;
+                        }
+                        else
+                        {
+                            AssertSlicedGrid(t, at, b.X0, b.Y0, b.X1, b.Y1, l.Rect, what);
+                            at += 9;
+                        }
+                    }
+                }
+            }
         }
 
         [Fact]
@@ -146,99 +214,92 @@ namespace AirportSim.App.Render.Tests
             Rgba[] roles = ArtFrames.Roles();
             Assert.Equal(17, roles.Length);
 
-            // Role: roleColours[(int)Colour], with its alpha.
-            var boxes = new List<DrawPrimitive>();
-            for (int r = 0; r < roles.Length; r++)
+            // For every visual and role: Role gives roleColours[(int)Colour] with its
+            // alpha; Region gives Paint.Region_R with alpha 255; Fixed gives the
+            // constant with alpha 255. The logo is emitted only with a mark.
+            bool sawRole = false;
+            bool sawLogo = false;
+            foreach (VisualId v in ArtShow.AllVisuals())
             {
-                boxes.Add(ArtFrames.Box(VisualId.Apron, (ColourRole)r, 0f, 0f, 1f, 1f));
+                for (int r = 0; r < roles.Length; r++)
+                {
+                    foreach (byte mark in new byte[] { 0, (byte)LogoMark.Star })
+                    {
+                        Paint paint = ArtFrames.Paint(mark);
+                        DrawPrimitive p = ArtFrames.Dot(v, (ColourRole)r, 0f, 0f, 30f, 0f, 1f, paint);
+                        List<ArtLayer> layers = ArtFrames.Emitted(p);
+                        int withLogo = Art2DFactory.LayersOf(v).Count;
+                        Assert.Equal(layers.Count, t.Fill(ArtFrames.Of(p), roles, false));
+                        if (mark == 0)
+                        {
+                            Assert.True(t.QuadCount <= withLogo, v + ": more quads than layers");
+                        }
+                        else
+                        {
+                            Assert.Equal(withLogo, t.QuadCount);
+                        }
+
+                        for (int q = 0; q < layers.Count; q++)
+                        {
+                            ArtLayer l = layers[q];
+                            sawRole |= l.Colour == LayerColour.Role;
+                            sawLogo |= l.IsLogo;
+                            Expected(l, roles[r], paint, false, out int er, out int eg, out int eb, out int ea);
+                            ArtGeometry.AssertColour(t, q, er, eg, eb, ea, v + " role " + (ColourRole)r + " mark " + mark + " layer " + q + " (" + l.Colour + ")");
+                        }
+
+                        Assert.Equal(layers.Count, t.Fill(ArtFrames.Of(p), roles, true));
+                        for (int q = 0; q < layers.Count; q++)
+                        {
+                            Expected(layers[q], roles[r], paint, true, out int er, out int eg, out int eb, out int ea);
+                            ArtGeometry.AssertColour(t, q, er, eg, eb, ea, v + " role " + (ColourRole)r + " mark " + mark + " layer " + q + ", linear");
+                        }
+                    }
+                }
             }
 
-            Assert.Equal(roles.Length, t.Fill(ArtFrames.Of(boxes.ToArray()), roles, false));
-            for (int r = 0; r < roles.Length; r++)
-            {
-                Rgba c = roles[r];
-                ArtGeometry.AssertColour(t, r, c.R, c.G, c.B, c.A, "role " + (ColourRole)r);
-            }
+            Assert.True(sawRole, "no layer of any visual is coloured by role");
+            Assert.True(sawLogo, "no visual has a logo layer");
 
-            // Region: Paint.Region_R with alpha 255. Passenger: Outline role;
-            // Bottom 1; Bag 4; Top 0; Skin 2; Hair 3.
-            Paint paint = ArtFrames.Paint(0);
-            Assert.Equal(6, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.Passenger, ColourRole.Agent, 0f, 0f, 1f, 0f, 0f, paint)), roles, false));
-            Rgba agent = roles[(int)ColourRole.Agent];
-            ArtGeometry.AssertColour(t, 0, agent.R, agent.G, agent.B, agent.A, "passenger outline");
-            ArtGeometry.AssertColour(t, 1, 4, 5, 6, 255, "passenger bottom (region 1)");
-            ArtGeometry.AssertColour(t, 2, 13, 14, 15, 255, "passenger bag (region 4)");
-            ArtGeometry.AssertColour(t, 3, 1, 2, 3, 255, "passenger top (region 0)");
-            ArtGeometry.AssertColour(t, 4, 7, 8, 9, 255, "passenger skin (region 2)");
-            ArtGeometry.AssertColour(t, 5, 10, 11, 12, 255, "passenger hair (region 3)");
-
-            // Aircraft with a mark: status role, wings fixed #D5D8DC, engines 3,
-            // fuselage 0, cheatline 2, tail 1, the logo region 4, glazing fixed #2A3138.
-            Paint marked = ArtFrames.Paint((byte)LogoMark.Star);
-            Assert.Equal(8, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftB, ColourRole.AircraftHolding, 0f, 0f, 30f, 0f, 1f, marked)), roles, false));
-            Rgba holding = roles[(int)ColourRole.AircraftHolding];
-            ArtGeometry.AssertColour(t, 0, holding.R, holding.G, holding.B, holding.A, "aircraft status");
-            ArtGeometry.AssertColour(t, 1, 0xD5, 0xD8, 0xDC, 255, "aircraft wings (fixed)");
-            ArtGeometry.AssertColour(t, 2, 10, 11, 12, 255, "aircraft engines (region 3)");
-            ArtGeometry.AssertColour(t, 3, 1, 2, 3, 255, "aircraft fuselage (region 0)");
-            ArtGeometry.AssertColour(t, 4, 7, 8, 9, 255, "aircraft cheatline (region 2)");
-            ArtGeometry.AssertColour(t, 5, 4, 5, 6, 255, "aircraft tail (region 1)");
-            ArtGeometry.AssertColour(t, 6, 13, 14, 15, 255, "aircraft logo (region 4)");
-            ArtGeometry.AssertUvs(t, 6, ArtGeometry.Uvs(Art2DFactory.LogoRect(LogoMark.Star)), "aircraft logo cell");
-            ArtGeometry.AssertColour(t, 7, 0x2A, 0x31, 0x38, 255, "aircraft glazing (fixed)");
-
-            // The logo is emitted only with a mark.
-            Assert.Equal(7, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftB, ColourRole.AircraftHolding, 0f, 0f, 30f, 0f, 1f, ArtFrames.Paint(0))), roles, false));
-            Assert.Equal(7, t.QuadCount);
-            ArtGeometry.AssertColour(t, 6, 0x2A, 0x31, 0x38, 255, "glazing follows the tail when there is no mark");
-            ArtGeometry.AssertUvs(t, 6, ArtGeometry.Uvs(ArtCells.RectOf(ArtCells.Aircraft(1, 6))), "glazing cell when there is no mark");
-
-            // The role alpha is kept: QueueFill at alpha 140 (the palette's).
+            // The role alpha is kept, also when linear: QueueFill at alpha 140.
+            (VisualId roleVisual, int roleLayer) = FirstRoleLayer();
             Rgba[] palette = ArtFrames.Roles();
             palette[(int)ColourRole.QueueFill] = new Rgba(0xE8, 0xA3, 0x3A, 140);
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Box(VisualId.QueueFill, ColourRole.QueueFill, 0f, 0f, 5f, 1f)), palette, false));
-            ArtGeometry.AssertColour(t, 0, 0xE8, 0xA3, 0x3A, 140, "queue fill, sRGB");
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Box(VisualId.QueueFill, ColourRole.QueueFill, 0f, 0f, 5f, 1f)), palette, true));
-            ArtGeometry.AssertColour(t, 0, ArtGeometry.Linear(0xE8), ArtGeometry.Linear(0xA3), ArtGeometry.Linear(0x3A), 140, "queue fill, linear: alpha unchanged");
+            DrawPrimitive fill = ArtFrames.Dot(roleVisual, ColourRole.QueueFill, 0f, 0f, 5f, 0f, 0f);
+            t.Fill(ArtFrames.Of(fill), palette, false);
+            ArtGeometry.AssertColour(t, roleLayer, 0xE8, 0xA3, 0x3A, 140, "queue fill, sRGB");
+            t.Fill(ArtFrames.Of(fill), palette, true);
+            ArtGeometry.AssertColour(t, roleLayer, ArtGeometry.Linear(0xE8), ArtGeometry.Linear(0xA3), ArtGeometry.Linear(0x3A), 140, "queue fill, linear: alpha unchanged");
 
             // linear: L(0) = 0, L(128) = 55, L(255) = 255, and every value by the table.
             Assert.Equal(0, ArtGeometry.Linear(0));
             Assert.Equal(55, ArtGeometry.Linear(128));
             Assert.Equal(255, ArtGeometry.Linear(255));
-            var pax = new List<DrawPrimitive>();
             for (int c = 0; c < 256; c++)
             {
-                var rgb = new Rgb((byte)c, (byte)(255 - c), (byte)((7 * c) % 256));
-                pax.Add(ArtFrames.Dot(VisualId.Passenger, ColourRole.Agent, 0f, 0f, 1f, 0f, 0f, new Paint(rgb, rgb, rgb, rgb, rgb, 0)));
+                var sweep = new Rgba[roles.Length];
+                for (int r = 0; r < sweep.Length; r++)
+                {
+                    sweep[r] = new Rgba((byte)c, (byte)(255 - c), (byte)((7 * c) % 256), (byte)(255 - (c / 2)));
+                }
+
+                t.Fill(ArtFrames.Of(ArtFrames.Dot(roleVisual, ColourRole.Agent, 0f, 0f, 5f, 0f, 0f)), sweep, true);
+                ArtGeometry.AssertColour(t, roleLayer, ArtGeometry.Linear(c), ArtGeometry.Linear(255 - c), ArtGeometry.Linear((7 * c) % 256), 255 - (c / 2), "linear, c = " + c);
+                t.Fill(ArtFrames.Of(ArtFrames.Dot(roleVisual, ColourRole.Agent, 0f, 0f, 5f, 0f, 0f)), sweep, false);
+                ArtGeometry.AssertColour(t, roleLayer, c, 255 - c, (7 * c) % 256, 255 - (c / 2), "sRGB, c = " + c);
             }
 
-            Assert.Equal(6 * 256, t.Fill(ArtFrames.Of(pax.ToArray()), roles, true));
-            for (int c = 0; c < 256; c++)
+            var only128 = new Rgba[roles.Length];
+            for (int r = 0; r < only128.Length; r++)
             {
-                ArtGeometry.AssertColour(t, (6 * c) + 3, ArtGeometry.Linear(c), ArtGeometry.Linear(255 - c), ArtGeometry.Linear((7 * c) % 256), 255, "linear top, c = " + c);
+                only128[r] = new Rgba(128, 0, 255, 255);
             }
 
-            ArtGeometry.AssertColour(t, (6 * 128) + 3, 55, ArtGeometry.Linear(127), 55, 255, "L(128) = 55");
-            Assert.Equal(6 * 256, t.Fill(ArtFrames.Of(pax.ToArray()), roles, false));
-            for (int c = 0; c < 256; c++)
-            {
-                ArtGeometry.AssertColour(t, (6 * c) + 3, c, 255 - c, (7 * c) % 256, 255, "sRGB top, c = " + c);
-            }
-
-            // linear applies to role and fixed colours too.
-            Assert.Equal(roles.Length, t.Fill(ArtFrames.Of(boxes.ToArray()), roles, true));
-            for (int r = 0; r < roles.Length; r++)
-            {
-                Rgba c = roles[r];
-                ArtGeometry.AssertColour(t, r, ArtGeometry.Linear(c.R), ArtGeometry.Linear(c.G), ArtGeometry.Linear(c.B), c.A, "linear role " + (ColourRole)r);
-            }
-
-            Assert.Equal(8, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.AircraftB, ColourRole.AircraftHolding, 0f, 0f, 30f, 0f, 1f, marked)), roles, true));
-            ArtGeometry.AssertColour(t, 1, ArtGeometry.Linear(0xD5), ArtGeometry.Linear(0xD8), ArtGeometry.Linear(0xDC), 255, "linear wings");
-            ArtGeometry.AssertColour(t, 7, ArtGeometry.Linear(0x2A), ArtGeometry.Linear(0x31), ArtGeometry.Linear(0x38), 255, "linear glazing");
+            t.Fill(ArtFrames.Of(ArtFrames.Dot(roleVisual, ColourRole.Agent, 0f, 0f, 5f, 0f, 0f)), only128, true);
+            ArtGeometry.AssertColour(t, roleLayer, 55, 0, 255, 255, "L(128) = 55, L(0) = 0, L(255) = 255");
 
             // roleColours must have one entry per ColourRole, else ArgumentException (roleColours).
-            RenderFrame one = ArtFrames.Of(ArtFrames.Box(VisualId.Apron, ColourRole.Apron, 0f, 0f, 1f, 1f));
+            RenderFrame one = ArtFrames.Of(ArtFrames.Dot(roleVisual, ColourRole.Apron, 0f, 0f, 1f, 0f, 0f));
             foreach (int n in new[] { roles.Length - 1, 0, roles.Length + 1 })
             {
                 var wrong = new Rgba[n];
@@ -253,31 +314,39 @@ namespace AirportSim.App.Render.Tests
             // 15 §15.17 "Buffers": reused, growing only when a frame needs more
             // quads than ever before, and valid until the next Fill.
             Rgba[] roles = ArtFrames.Roles();
-            var pax = new List<DrawPrimitive>();
+            var prims = new List<DrawPrimitive>();
             for (int k = 0; k < 50; k++)
             {
-                byte b = (byte)k;
-                var rgb = new Rgb(b, (byte)(2 * k), (byte)(3 * k));
-                pax.Add(ArtFrames.Dot(VisualId.Passenger, ColourRole.Agent, k, -k, 2f, k % 3, (k % 5) - 2, new Paint(rgb, rgb, rgb, rgb, rgb, 0)));
+                var rgb = new Rgb((byte)k, (byte)(2 * k), (byte)(3 * k));
+                VisualId v = ArtShow.AllVisuals()[k % ArtShow.AllVisuals().Length];
+                prims.Add(ArtFrames.Dot(v, (ColourRole)(k % 17), k, -k, 2f, k % 3, (k % 5) - 2, new Paint(rgb, rgb, rgb, rgb, rgb, (byte)(k % 8))));
             }
 
-            RenderFrame big = ArtFrames.Of(pax.ToArray());
-            RenderFrame small = ArtFrames.Of(ArtFrames.Box(VisualId.Apron, ColourRole.Apron, 0f, 0f, 1f, 1f));
+            int n = 0;
+            foreach (DrawPrimitive p in prims)
+            {
+                n += ArtFrames.Emitted(p).Count;
+            }
+
+            Assert.True(n >= prims.Count, "the frame's " + prims.Count + " dots have only " + n + " layers");
+            RenderFrame big = ArtFrames.Of(prims.ToArray());
+            RenderFrame small = ArtFrames.Of(prims[0]);
+            int smallCount = ArtFrames.Emitted(prims[0]).Count;
             RenderFrame empty = ArtFrames.Of();
 
             ISpriteTessellator t = Art2DFactory.CreateTessellator();
-            Assert.Equal(300, t.Fill(big, roles, false));
-            Assert.Equal(300, t.QuadCount);
+            Assert.Equal(n, t.Fill(big, roles, false));
+            Assert.Equal(n, t.QuadCount);
             float[] corners = t.Corners;
             float[] uvs = t.Uvs;
             byte[] colours = t.Colours;
-            Assert.True(corners.Length >= 8 * 300 && uvs.Length >= 8 * 300 && colours.Length >= 16 * 300, "buffers hold the frame's quads");
-            float[] firstCorners = Prefix(corners, 8 * 300);
-            float[] firstUvs = Prefix(uvs, 8 * 300);
-            byte[] firstColours = Prefix(colours, 16 * 300);
+            Assert.True(corners.Length >= 8 * n && uvs.Length >= 8 * n && colours.Length >= 16 * n, "buffers hold the frame's quads");
+            float[] firstCorners = Prefix(corners, 8 * n);
+            float[] firstUvs = Prefix(uvs, 8 * n);
+            byte[] firstColours = Prefix(colours, 16 * n);
 
-            Assert.Equal(1, t.Fill(small, roles, false));
-            Assert.Equal(1, t.QuadCount);
+            Assert.Equal(smallCount, t.Fill(small, roles, false));
+            Assert.Equal(smallCount, t.QuadCount);
             Assert.Same(corners, t.Corners);
             Assert.Same(uvs, t.Uvs);
             Assert.Same(colours, t.Colours);
@@ -285,50 +354,128 @@ namespace AirportSim.App.Render.Tests
             Assert.Equal(0, t.Fill(empty, roles, false));
             Assert.Equal(0, t.QuadCount);
 
-            Assert.Equal(300, t.Fill(big, roles, false));
+            Assert.Equal(n, t.Fill(big, roles, false));
             Assert.Same(corners, t.Corners);
             Assert.Same(uvs, t.Uvs);
             Assert.Same(colours, t.Colours);
-            Assert.Equal(firstCorners, Prefix(t.Corners, 8 * 300));
-            Assert.Equal(firstUvs, Prefix(t.Uvs, 8 * 300));
-            Assert.Equal(firstColours, Prefix(t.Colours, 16 * 300));
+            Assert.Equal(firstCorners, Prefix(t.Corners, 8 * n));
+            Assert.Equal(firstUvs, Prefix(t.Uvs, 8 * n));
+            Assert.Equal(firstColours, Prefix(t.Colours, 16 * n));
 
             // A fresh tessellator gives the same quads for the same frame.
             ISpriteTessellator u = Art2DFactory.CreateTessellator();
-            Assert.Equal(300, u.Fill(big, roles, false));
-            Assert.Equal(firstCorners, Prefix(u.Corners, 8 * 300));
-            Assert.Equal(firstUvs, Prefix(u.Uvs, 8 * 300));
-            Assert.Equal(firstColours, Prefix(u.Colours, 16 * 300));
+            Assert.Equal(n, u.Fill(big, roles, false));
+            Assert.Equal(firstCorners, Prefix(u.Corners, 8 * n));
+            Assert.Equal(firstUvs, Prefix(u.Uvs, 8 * n));
+            Assert.Equal(firstColours, Prefix(u.Colours, 16 * n));
             Assert.NotSame(t.Corners, u.Corners);
         }
 
-        private static void AssertDot(ISpriteTessellator t, Rgba[] roles, float fx, float fy, double[] corners, float[] uvs)
+        private static bool IsWhole(in ArtLayer l)
         {
-            string what = "dot facing (" + fx + "," + fy + ")";
-            Assert.Equal(1, t.Fill(ArtFrames.Of(ArtFrames.Dot(VisualId.TaxiwayJunction, ColourRole.Taxiway, 1000f, -2000f, 20f, fx, fy)), roles, false));
-            ArtGeometry.AssertQuad(t, 0, corners, uvs, what);
-            ArtGeometry.AssertCorners(t, 0, ArtGeometry.Dot(1000, -2000, 20, fx, fy), what + ", reference");
+            return l.MinX == 0 && l.MinY == 0 && l.MaxX == 1024 && l.MaxY == 1024;
         }
 
-        private static void AssertSliced(ISpriteTessellator t, int first, double x0, double y0, double x1, double y1, double tWorld, string cell, string what)
+        private static (VisualId Visual, int Layer) FirstRoleLayer()
         {
-            AtlasRect r = ArtCells.RectOf(ArtCells.Small(cell));
-            double[] xs = { x0, x0 + tWorld, x1 - tWorld, x1 };
-            double[] ys = { y0, y0 + tWorld, y1 - tWorld, y1 };
-            double du = (r.U1 - (double)r.U0) * ArtTable.SliceDesign / 1024.0;
-            double dv = (r.V1 - (double)r.V0) * ArtTable.SliceDesign / 1024.0;
-            float[] us = { r.U0, (float)(r.U0 + du), (float)(r.U1 - du), r.U1 };
-            float[] vs = { r.V0, (float)(r.V0 + dv), (float)(r.V1 - dv), r.V1 };
+            foreach (VisualId v in ArtShow.AllVisuals())
+            {
+                IReadOnlyList<ArtLayer> layers = Art2DFactory.LayersOf(v);
+                int q = 0;
+                foreach (ArtLayer l in layers)
+                {
+                    if (l.IsLogo)
+                    {
+                        continue;
+                    }
+
+                    if (l.Colour == LayerColour.Role)
+                    {
+                        return (v, q);
+                    }
+
+                    q++;
+                }
+            }
+
+            Assert.Fail("no visual has a role-coloured layer");
+            return (VisualId.RunwaySurface, 0);
+        }
+
+        private static void Expected(in ArtLayer l, Rgba role, in Paint paint, bool linear, out int r, out int g, out int b, out int a)
+        {
+            switch (l.Colour)
+            {
+                case LayerColour.Role:
+                    r = role.R;
+                    g = role.G;
+                    b = role.B;
+                    a = role.A;
+                    break;
+                case LayerColour.Region:
+                    Rgb c = ArtFrames.Region(paint, l.Region);
+                    r = c.R;
+                    g = c.G;
+                    b = c.B;
+                    a = 255;
+                    break;
+                default:
+                    r = l.Fixed.R;
+                    g = l.Fixed.G;
+                    b = l.Fixed.B;
+                    a = 255;
+                    break;
+            }
+
+            if (linear)
+            {
+                r = ArtGeometry.Linear(r);
+                g = ArtGeometry.Linear(g);
+                b = ArtGeometry.Linear(b);
+            }
+        }
+
+        private static void AssertSlicedGrid(ISpriteTessellator t, int first, double x0, double y0, double x1, double y1, in AtlasRect rect, string what)
+        {
+            // Read the grid off the bottom row and the left column, then check every quad against it.
+            var xs = new double[4];
+            var ys = new double[4];
+            var us = new float[4];
+            var vs = new float[4];
+            for (int k = 0; k < 3; k++)
+            {
+                xs[k] = t.Corners[8 * (first + k)];
+                us[k] = t.Uvs[8 * (first + k)];
+                ys[k] = t.Corners[(8 * (first + (3 * k))) + 1];
+                vs[k] = t.Uvs[(8 * (first + (3 * k))) + 1];
+            }
+
+            xs[3] = t.Corners[(8 * (first + 2)) + 2];
+            us[3] = t.Uvs[(8 * (first + 2)) + 2];
+            ys[3] = t.Corners[(8 * (first + 6)) + 5];
+            vs[3] = t.Uvs[(8 * (first + 6)) + 5];
+
+            // The world grid: the box's own edges outside, t from each side inside.
+            double inset = xs[1] - xs[0];
+            double half = Math.Min((x1 - x0) / 2.0, (y1 - y0) / 2.0);
+            Assert.True(inset > 0.0 && inset <= half + Tol, what + ": slice inset " + inset + " is not in (0, " + half + "]");
+            ArtGeometry.AssertCorners(t, first, new[] { x0, y0, x0 + inset, y0, x0 + inset, y0 + inset, x0, y0 + inset }, what + " slice grid (bottom-left)");
+            Assert.True(Math.Abs((xs[3] - xs[2]) - inset) <= Tol && Math.Abs((ys[1] - ys[0]) - inset) <= Tol && Math.Abs((ys[3] - ys[2]) - inset) <= Tol, what + ": the world grid is not at one inset t from each side");
+            Assert.True(Math.Abs(xs[3] - x1) <= Tol && Math.Abs(ys[3] - y1) <= Tol, what + ": the slices do not reach the box's max corner");
+
+            // The rect grid: the rect's own edges outside, ordered inside.
+            Assert.True(us[0] == rect.U0 && us[3] == rect.U1 && vs[0] == rect.V0 && vs[3] == rect.V1, what + ": the rect grid's outer edges are not the layer's rect");
+            Assert.True(us[0] <= us[1] && us[1] <= us[2] && us[2] <= us[3] && vs[0] <= vs[1] && vs[1] <= vs[2] && vs[2] <= vs[3], what + ": the rect grid is not ordered");
+
             for (int row = 0; row < 3; row++)
             {
                 for (int col = 0; col < 3; col++)
                 {
-                    int q = first + (row * 3) + col;
                     ArtGeometry.AssertQuad(
                         t,
-                        q,
-                        ArtGeometry.Box(xs[col], ys[row], xs[col + 1], ys[row + 1]),
-                        ArtGeometry.Uvs(us[col], vs[row], us[col + 1], vs[row + 1]),
+                        first + (row * 3) + col,
+                        new[] { xs[col], ys[row], xs[col + 1], ys[row], xs[col + 1], ys[row + 1], xs[col], ys[row + 1] },
+                        new[] { us[col], vs[row], us[col + 1], vs[row], us[col + 1], vs[row + 1], us[col], vs[row + 1] },
                         what + " slice (row " + row + ", col " + col + ")");
                 }
             }
