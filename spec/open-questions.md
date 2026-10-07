@@ -3333,7 +3333,10 @@ Answer:      `LocalisedKey { string Value }`, dot-separated lowercase
              `IStringTable.Resolve` looks keys up. The bootstrap loads it
              at scene start and hands it to the UI backend, which
              resolves every text it draws. A new scene-layer task builds
-             the table and the two content files.
+             the table and the two content files. Its Test Author also
+             updates the merged `test_ui_public_surface_matches_spec`,
+             whose pinned lists gain `LocalisedKey`, `IStringTable` and
+             `LoadStringTable` (`17` §17.10).
 Status:      ANSWERED (spec/17-interfaces-ui.md#174b-player-visible-text-q-125)
 
 ### Q-126 — `app.host`: the flow graph cannot load in step 2

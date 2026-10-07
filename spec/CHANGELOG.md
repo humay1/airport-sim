@@ -3951,8 +3951,18 @@ Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
              - **§16.8 (Q-128):** the `?` rule is per UTF-16 code unit.
              - **§16.7 (Q-129):** LF or CR LF is one line break for the
                forwarder; a lone CR is part of the line.
-             - **Tests:** no merged test changes. The string-table task's
-               Test Author writes the five §17.10 tests.
+             - **Tests:** one merged test changes:
+               `test_ui_public_surface_matches_spec`
+               (`tests/app/ui/UiTests.cs`) pins `app.ui`'s exact public
+               types and `UiFactory`'s methods, so its lists gain
+               `LocalisedKey`, `IStringTable` and `LoadStringTable`
+               (review of #133). The string-table task's Test Author
+               makes that spec-driven change and writes the five new
+               §17.10 tests. No other merged test pins the `app.ui`
+               surface or the `data/` file set: the tests that read
+               `data/` go through `08` §8.11's loader, which ignores
+               `strings/`, and `HostFactory`'s pinned methods are
+               unchanged.
              - **Task files (Planner):** a new `app.ui` scene-layer task
                for the string table and the two `data/` files; T-033
                depends on it, receives the table through its own API,
@@ -3960,10 +3970,12 @@ Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
                label-call swap: on/off and `uncapped` value text are
                added); T-034 depends on it and adds the §16.7 call and
                the Q-129 line-break rule. T-031 (merged) needs no change.
-             - **Merged work:** none invalidated. Q-126 to Q-128 describe
-               what the merged host and harness already do. Q-127 removes
-               a `17` sentence no merged code implemented. PR #131 (open)
-               must change as above.
+             - **Merged work:** no merged code is invalidated. Q-126 to
+               Q-128 describe what the merged host and harness already do,
+               and Q-127 removes a `17` sentence no merged code
+               implemented. The one merged test above is updated by the
+               string-table task's Test Author, in the same task that adds
+               the surface. PR #131 (open) must change as above.
              - **LOW CONFIDENCE:** the bootstrap calls `UiFactory`
                directly instead of a `HostFactory` pass-through. That
                keeps `app.host` unchanged (its merged surface test pins

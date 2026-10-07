@@ -563,6 +563,17 @@ Done-condition tests for the string table (Q-125, §17.4b):
   `ArgumentException` (`key`)
 - `test_ui_string_table_resolve_allocates_nothing` (§17.9)
 
+**A merged test changes (Q-125).** `test_ui_public_surface_matches_spec`
+(`tests/app/ui/UiTests.cs`) pins the assembly's exact public types and
+`UiFactory`'s exact public methods. Its pinned lists gain `LocalisedKey`
+and `IStringTable` among the types and `LoadStringTable` among the
+methods, and it asserts that `IStringTable`'s only member is `Resolve`.
+The string-table task's Test Author makes that change as part of the
+task's tests. It is a spec-driven test change, not a worker edit. No
+other merged test pins the `app.ui` surface or the set of files in
+`data/`: the tests that read `data/` load it through `08` §8.11's loader,
+which ignores `strings/`.
+
 ---
 
 ## 17.11 Open
