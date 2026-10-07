@@ -1,0 +1,17 @@
+{
+  "name": "AirportSim.App.Ui.UnityBackend",
+  "rootNamespace": "AirportSim.App.Ui.UnityBackend",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "AirportSim.App.Ui.dll",
+    "AirportSim.App.Render.dll"
+  ],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
