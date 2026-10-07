@@ -2913,6 +2913,76 @@ Answer:      Architecture. `Build` applies §15.7's "desired promoted"
              shared state. One new test.
 Status:      ANSWERED (spec/15-interfaces-render.md#155-what-is-drawn)
 
+### Q-102 — `app.ui`: floats in tests
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    `07` L4 bans floating point in tests except
+             `tests/app/render/` (Q-100), but `17`'s `ScreenPoint`, screen
+             size and `CameraView` are `float`.
+Answer:      `07` L4 gains a second exception: `tests/app/ui/` may use
+             `float` for the values of `15`'s and `17`'s `float`-typed
+             members and parameters only. Every such value is dyadic and
+             chosen so that every intermediate result is exact, and results
+             are compared exactly. The render exception is unchanged.
+             Amended 2026-10-04 (T-024 batch): the NaN and ±infinity
+             inputs that Q-104's argument checks require (a non-finite
+             screen size, a non-finite click) are exempt from "dyadic".
+             They are the only non-dyadic values a test may write.
+Status:      ANSWERED (spec/17-interfaces-ui.md#172-the-two-layers)
+
+### Q-103 — `app.ui`: graphics preference text edge cases
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    May a number carry a sign or leading zeros? Is a preset name
+             whose values differ from that preset accepted? What is the
+             `out` value after a false decode? Are out-of-range values and
+             trailing whitespace handled as the draft tests assume?
+Answer:      The decoder accepts only what the encoder can produce. Integers
+             are ASCII digits only, with no `-`, no `+`, no leading zero
+             except `0` itself, and they fit `int32`. A preset name with
+             mismatched values decodes true and keeps that name. Well-formed
+             text with out-of-range values decodes true and is clamped by
+             `Validate`. Any trailing or extra whitespace is malformed. A
+             `null` text decodes false. After a false decode, `out` is
+             `default(GraphicsSettings)`. The encoder writes values as
+             given and throws `ArgumentOutOfRangeException` (`settings`)
+             for a value it cannot encode.
+             Amended 2026-10-04 (T-024 batch): §17.4a said "exactly nine
+             fields", but its format line and encoder give eight
+             (`graphics`, `1`, the preset, five knobs). It now says eight.
+Status:      ANSWERED (spec/17-interfaces-ui.md#174a-graphics-settings-d10)
+
+### Q-104 — `app.ui`: invalid input and exception types
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029 (`07` requires exact types in tests)
+Question:    What happens for a screen size ≤ 0, `SetSpeed` outside
+             `GameSpeed`, a delta other than ±1, and `null` inputs, sink,
+             host or flow?
+Answer:      Each throws, in a fixed order, before anything else, and a
+             throwing call changes no state and calls nothing.
+             `ArgumentNullException` for `null` `inputs`, `sink`, `host`,
+             `flow`. `ArgumentOutOfRangeException` for a non-finite or
+             non-positive `screenWidth`/`screenHeight`, for an out-of-enum
+             `Kind`, `Speed` or `Preset` in any input (`inputs`, all inputs
+             checked before any is applied, even while the panel is open),
+             for an out-of-enum `initialGraphics.Preset`, and for a `delta`
+             other than ±1. `ArgumentException` (`layout`) for a `null`
+             `layout.FlowNodes`. A click is never an error. One new test.
+Status:      ANSWERED (spec/17-interfaces-ui.md#177-types-and-interfaces-scene-layer)
+
+### Q-105 — `app.ui`: does the allocation rule cover the lane sink?
+Raised by:   Test Author / T-029, via coordinator, 2026-10-04
+Blocking:    T-029
+Question:    Does §17.9's "no allocation in `Update`" cover the production
+             sink's `Request`?
+Answer:      Yes, as its own rule. `Update`'s rule counts the controller's
+             own work. The production sink's `Request` allocates nothing for
+             a node it has handled before. It may allocate on a node's first
+             request, and it may reuse one 8-byte payload buffer, because
+             admission copies the payload (`08` §8.7). Allocations inside
+             `TrySubmit` are the host's.
+Status:      ANSWERED (spec/17-interfaces-ui.md#179-budget)
+
 <!-- Q-106 to Q-112: the T-024 batch (Test Author, PR #115), via coordinator. -->
 
 ### Q-106 — `sim.delay`: the integrated day cannot reach the other modules
@@ -3027,76 +3097,6 @@ Answer:      All three confirmed and written down. (1) "Throw" is
              requires every `Publish<T>` call in the assembly to have `T`
              = `DelayEvent` (§14.14).
 Status:      ANSWERED (spec/14-interfaces-delay.md#done-condition-tests)
-
-### Q-102 — `app.ui`: floats in tests
-Raised by:   Test Author / T-029, via coordinator, 2026-10-04
-Blocking:    T-029
-Question:    `07` L4 bans floating point in tests except
-             `tests/app/render/` (Q-100), but `17`'s `ScreenPoint`, screen
-             size and `CameraView` are `float`.
-Answer:      `07` L4 gains a second exception: `tests/app/ui/` may use
-             `float` for the values of `15`'s and `17`'s `float`-typed
-             members and parameters only. Every such value is dyadic and
-             chosen so that every intermediate result is exact, and results
-             are compared exactly. The render exception is unchanged.
-             Amended 2026-10-04 (T-024 batch): the NaN and ±infinity
-             inputs that Q-104's argument checks require (a non-finite
-             screen size, a non-finite click) are exempt from "dyadic".
-             They are the only non-dyadic values a test may write.
-Status:      ANSWERED (spec/17-interfaces-ui.md#172-the-two-layers)
-
-### Q-103 — `app.ui`: graphics preference text edge cases
-Raised by:   Test Author / T-029, via coordinator, 2026-10-04
-Blocking:    T-029
-Question:    May a number carry a sign or leading zeros? Is a preset name
-             whose values differ from that preset accepted? What is the
-             `out` value after a false decode? Are out-of-range values and
-             trailing whitespace handled as the draft tests assume?
-Answer:      The decoder accepts only what the encoder can produce. Integers
-             are ASCII digits only, with no `-`, no `+`, no leading zero
-             except `0` itself, and they fit `int32`. A preset name with
-             mismatched values decodes true and keeps that name. Well-formed
-             text with out-of-range values decodes true and is clamped by
-             `Validate`. Any trailing or extra whitespace is malformed. A
-             `null` text decodes false. After a false decode, `out` is
-             `default(GraphicsSettings)`. The encoder writes values as
-             given and throws `ArgumentOutOfRangeException` (`settings`)
-             for a value it cannot encode.
-             Amended 2026-10-04 (T-024 batch): §17.4a said "exactly nine
-             fields", but its format line and encoder give eight
-             (`graphics`, `1`, the preset, five knobs). It now says eight.
-Status:      ANSWERED (spec/17-interfaces-ui.md#174a-graphics-settings-d10)
-
-### Q-104 — `app.ui`: invalid input and exception types
-Raised by:   Test Author / T-029, via coordinator, 2026-10-04
-Blocking:    T-029 (`07` requires exact types in tests)
-Question:    What happens for a screen size ≤ 0, `SetSpeed` outside
-             `GameSpeed`, a delta other than ±1, and `null` inputs, sink,
-             host or flow?
-Answer:      Each throws, in a fixed order, before anything else, and a
-             throwing call changes no state and calls nothing.
-             `ArgumentNullException` for `null` `inputs`, `sink`, `host`,
-             `flow`. `ArgumentOutOfRangeException` for a non-finite or
-             non-positive `screenWidth`/`screenHeight`, for an out-of-enum
-             `Kind`, `Speed` or `Preset` in any input (`inputs`, all inputs
-             checked before any is applied, even while the panel is open),
-             for an out-of-enum `initialGraphics.Preset`, and for a `delta`
-             other than ±1. `ArgumentException` (`layout`) for a `null`
-             `layout.FlowNodes`. A click is never an error. One new test.
-Status:      ANSWERED (spec/17-interfaces-ui.md#177-types-and-interfaces-scene-layer)
-
-### Q-105 — `app.ui`: does the allocation rule cover the lane sink?
-Raised by:   Test Author / T-029, via coordinator, 2026-10-04
-Blocking:    T-029
-Question:    Does §17.9's "no allocation in `Update`" cover the production
-             sink's `Request`?
-Answer:      Yes, as its own rule. `Update`'s rule counts the controller's
-             own work. The production sink's `Request` allocates nothing for
-             a node it has handled before. It may allocate on a node's first
-             request, and it may reuse one 8-byte payload buffer, because
-             admission copies the payload (`08` §8.7). Allocations inside
-             `TrySubmit` are the host's.
-Status:      ANSWERED (spec/17-interfaces-ui.md#179-budget)
 
 ### Q-113 — Phase 1 bundles: the airside fixture's size categories are not in `data/`
 Raised by:   Test Author / T-048 (PR #120), via coordinator, 2026-10-06
@@ -3463,3 +3463,62 @@ Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
              mechanics; the tessellator budget; the fixture's satellite
              pier; the style values.
 Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130)
+
+### Q-131 — `app.render`: realistic 2D art (owner decision)
+Raised by:   human owner, 2026-10-07
+Blocking:    T-052 (its Test Author waits on the style), T-053, T-025
+Question:    HUMAN DECISION — owner, 2026-10-07: "make the art as
+             realistic as possible. It is very important for the fun to
+             have the player fully immersed." The owner chose "Realistic
+             2D": keep Q-130's art-as-code pipeline (option (a): C#
+             integer tables rasterised headless at start-up, tested in
+             CI, no asset files, no third-party assets), but lift the
+             "flat" rule: soft drop shadows, subtle gradients,
+             deterministic texture noise for asphalt, concrete and grass,
+             weathering (rubber marks, apron stains, faded paint),
+             real-proportion aircraft per size category, detailed
+             terminals and piers, jet bridges, a control tower, and
+             ground equipment where the scene already places scenery.
+             Everything stays parameterised and must carry over to 3D.
+             Q-034's low-end settings must still hold. What does the
+             rasteriser gain, what does `Low` drop, how big is the atlas,
+             and what changes for the scene, the backend and the tests?
+Why it matters: T-052's Test Author is writing only style-independent
+             tests until the style is fixed, and no T-052 or T-053 worker
+             has started. A flat-art spec would be implemented faithfully
+             and then thrown away.
+Answer:      OWNER DECISION recorded in `15` §15.15; mechanism by the
+             Architect in §15.17.
+             (a) Realism is baked into the one atlas. The rasteriser
+             gains a per-shape softness, fills with linear or radial
+             gradients, and a pinned periodic value noise (FNV-1a-32
+             lattice hash with literal salts, never any RNG), all in
+             `double` with only exactly-rounded operations, so the atlas
+             stays byte-identical on every run and platform.
+             (b) Shadows are soft black layers drawn just before their
+             caster, shifted by a fixed world offset along one light
+             direction (`(3, −4)`), never rotated. Grass is a world-
+             anchored tiled ground emitted first in every `Fill` (at
+             most 1024 quads). Runway and taxiway asphalt, apron and stand
+             concrete, and roofs are tiled periodic textures. Rubber marks
+             are two sub-square layers of the runway surface. Parked
+             ground equipment is two fixed layers of the stand lead-in.
+             (c) `ArtLayer` gains `SliceInset`, `SliceWorld`, `Tile`,
+             `ShiftX` and `ShiftY`; `Art2DFactory` gains `GroundLayer()`.
+             `ATLAS_SIZE` 4096, `LARGE_CELL` 512, `ATLAS_MIP_COUNT` 6, and
+             `GROUND_TILE` and `GROUND_TILES_PER_AXIS` are new. The atlas
+             is about 85 MiB, about 4 % of `16` §16.10's 2 GB.
+             (d) A new proportion table gives six real archetypes
+             (turboprop, regional jet, A320-, 767-, 777- and A380-like),
+             with an eighth aircraft layer, `Shadow`.
+             (e) `Low` drops nothing of the art (§15.14): its only
+             per-frame cost is a few thousand extra quads, and `Low`
+             already drops 24 576 passenger quads. No knob is added, so
+             the scene layer, `app.ui` and `app.host` are untouched.
+             (f) The backend gains no pass, texture or material (§15.10).
+             The scene layer, its merged tests and `data/looks/` do not
+             change.
+             LOW CONFIDENCE: `Low` keeping the full art; the atlas size
+             and its start-up time on Mono; the style values and texture
+             ranges; the tessellator's raised 2.0 ms budget.
+Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130, §15.17)

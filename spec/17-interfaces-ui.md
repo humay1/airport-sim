@@ -207,7 +207,8 @@ fallback language, no plural rule and no text template.
   lowercase ASCII letters, digits or `_`, that is
   `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`. The first segment names the
   module that draws the text: `ui` for `app.ui`. Every Phase 1 key starts
-  `ui.settings.`.
+  `ui.settings.`. The constructor accepts any value, `null` and malformed
+  ones included, and never throws. Only `Resolve` checks a key (below).
 - **The Phase 1 keys.** Exactly these twelve. A key is added, renamed or
   removed only by amendment, together with its text.
 

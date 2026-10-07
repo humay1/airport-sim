@@ -59,7 +59,8 @@ namespace AirportSim.App.Host
             CheckDownwardInterfaces(listed);
             CheckFiles(bundle, listed);
 
-            var config = new SimHostConfig(seed, ContentIndexFactory.Create(_content), checkpoints, new DiscardLog());
+            IContentIndex contentIndex = ContentIndexFactory.Create(_content);
+            var config = new SimHostConfig(seed, contentIndex, checkpoints, new DiscardLog());
             ISimHostBuilder builder = SimHostFactory.CreateBuilder(in config);
             SystemServices services = builder.Services;
 
@@ -161,7 +162,7 @@ namespace AirportSim.App.Host
                 builder.Register(delay);
             }
 
-            return new ComposedSim(builder.Build(), world, schedule, airside, flow, turnaround, delay);
+            return new ComposedSim(builder.Build(), world, schedule, airside, flow, turnaround, delay, contentIndex);
         }
 
         /// <summary>16 §16.3 "Strict form" (Q-069). Returns the seed and the set of listed systems.</summary>
