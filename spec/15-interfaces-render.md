@@ -166,7 +166,8 @@ Rules binding on the scene layer:
   to "no tolerance". They are compared within `1e-3` world units, under
   §15.17's tolerance note and with its chosen test vectors, because a
   normalised `Facing` is not exact. `double` may appear only to compute
-  those expected corners and §15.17's sRGB table values. No other float
+  those expected corners. §15.17's sRGB table is a literal table, and the
+  tests compare against those literals (Q-131). No other float
   comparison in `tests/app/render/` has a tolerance.
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
@@ -1504,8 +1505,10 @@ Art2DFactory.CreateTessellator() -> ISpriteTessellator
 ```
 
 `GroundLayer()` is `Colour = Fixed` with `Fixed = #6F8F5E` (the
-palette's background), `Grass`'s rect, `Tile = GROUND_TILE`, the whole
-sub-square, and every other field 0 or false. The tessellator uses it
+palette's background), `Region = 0`, `Grass`'s rect, `IsLogo = false`,
+`MinX = 0`, `MinY = 0`, `MaxX = 1024`, `MaxY = 1024`,
+`Tile = GROUND_TILE`, and `SliceInset`, `SliceWorld`, `ShiftX` and
+`ShiftY` all 0. The tessellator uses it
 only for the ground (§15.17 Tessellation), whose tile side it scales.
 
 `Art2DFactory` follows `08` §8.11a's factory rule. Every other art type is
@@ -1526,7 +1529,19 @@ only for the ground (§15.17 Tessellation), whose tile side it scales.
   shape, grown by the cell's grow and by half the shape's softness,
   inside `16 .. 1008`.
 - **A cell definition** has a grow distance (design units, 0 or more),
-  an edge value, a mirror flag and an ordered list of shapes.
+  an edge value, a mirror flag, an **opacity** (0 to 255, 255 unless
+  given; Q-131) and an ordered list of shapes. The opacity scales the
+  composited alpha once, at output, so a cell made of overlapping opaque
+  shapes (the aircraft `Shadow` silhouettes) comes out at one even
+  alpha, never darker where its shapes overlap.
+- **Translucent shapes (Q-131).** Overlapping instances compose, so two
+  shapes with alpha below 255 are darker where they overlap. A cell
+  therefore keeps its translucent shapes apart, except where the darker
+  overlap is meant (the corners of `Parapet`'s roof shade and of
+  `StandPad`'s line), and in a mirrored cell a
+  shape whose alpha is below 255 anywhere stays within `x ≤ 512` so its
+  reflection does not overlap it. A translucent whole is made with
+  opaque shapes and the cell's opacity instead.
 - **A shape** is a polygon (3 or more integer vertices, simple, with
   either winding) or a circle (integer centre and radius). Each shape
   also has a **softness** `k` (design units, 0 or more; Q-131) and a
@@ -1535,54 +1550,54 @@ only for the ground (§15.17 Tessellation), whose tile side it scales.
 - **A fill (Q-131)** has a value pair `V0, V1` and an alpha pair
   `A0, A1` (integers, −255 to 510, so that a sum can be pushed past a
   clamp on purpose, as sparse stains are), a gradient, and an optional
-  noise term with amplitudes `NV` and `NA` (integers, −510 to 510). At a design
-  point `p`:
-  `value = clamp(V0 + (V1 − V0) × t(p) + NV × n(p), 0, 255)` and
-  `alpha = clamp(A0 + (A1 − A0) × t(p) + NA × n(p), 0, 255)`, where
-  `n(p)` is the noise below (0 when there is none) and `t(p)` is the
-  gradient's parameter:
-  - **flat:** `t = 0`, so a flat fill is `V0` and `A0` (the Q-130 shape);
-  - **linear** from `P0` to `P1` (integer points, distinct):
-    `t = clamp(((p − P0) · (P1 − P0)) / |P1 − P0|², 0, 1)`;
-  - **radial** about `C` with radius `R` (integer, > 0):
-    `t = clamp(|p − C| / R, 0, 1)`.
+  noise term with amplitudes `NV` and `NA` (integers, −510 to 510). The
+  value and alpha at a sample point are the integer formulas of
+  Rasterisation (below). The gradient is one of:
+  - **flat:** no parameter, so a flat fill is `V0` and `A0` (the Q-130
+    shape);
+  - **linear** from `P0` to `P1` (integer points, distinct): 0 at `P0`, 1
+    at `P1` and beyond, along `P1 − P0`;
+  - **radial** about `C` (integer point) with radius `R` (integer, > 0):
+    0 at `C`, 1 at distance `R` and beyond.
 - **Noise (Q-131, binding).** A noise term has a lattice spacing `s` (a
   power of two, 8 to 512 design units), an octave count `O` (1 to 4,
-  with `s >> (O − 1) ≥ 4`), an integer salt `σ`, and a `smooth` flag.
-  Octave `o` has spacing `s_o = s >> o`, period `P_o = ART_UNITS / s_o`
-  lattice points and weight `w_o = 1 / 2^o`. Its lattice value at integer
-  `(a, b)` is `g = (H & 0xFFFF) / 32767.5 − 1`, where `H` is FNV-1a-32
-  (offset `0x811C9DC5`, prime `0x01000193`, as §15.16) over 12 bytes:
-  `σ + o`, `a mod P_o` and `b mod P_o` (made non-negative), each as
-  `int32` little-endian. With `x = p.X / s_o`, `y = p.Y / s_o`,
-  `a = floor(x)`, `b = floor(y)`: a smooth octave is the bilinear blend of
-  the four lattice values around `p` with weights `f² (3 − 2f)` of the
-  fractions `f = x − a` and `y − b`; a stepped octave (`smooth` false) is
-  `g(a, b)`, one flat value per lattice square. Then
-  `n(p) = Σ w_o × octave_o(p) / Σ_all w_o`, where the sum leaves out every
-  octave with `s_o < 2u` at the mip being rasterised (below), but the
-  denominator keeps every octave. So `n` is in `[−1, 1]`, periodic with
-  period `ART_UNITS` on both axes, the same on every run and platform,
-  and smoother at smaller mips instead of aliased. It never uses the
+  with `s >> (O − 1) ≥ 4`), an integer salt `σ` (0 to 10 000), and a
+  `smooth` flag. Octave `o` (0 to `O − 1`) has spacing `s_o = s >> o`,
+  period `P_o = ART_UNITS / s_o` lattice points, and salt `σ + o`. **Every
+  octave salt `σ + o` in the whole atlas is distinct**, so no two noise
+  terms share a lattice; the style guide's salts are multiples of 10 for
+  that reason. A smooth octave blends the four lattice values around the
+  point with a smoothstep weight; a stepped octave (`smooth` false) is one
+  flat value per lattice square. Finer octaves are weighted half as much
+  as the one before, and an octave finer than two pixels at the mip being
+  rasterised is left out, so smaller mips are smoother instead of
+  aliased. The exact integer formulas are in Rasterisation. The noise is
+  periodic with period `ART_UNITS` on both axes, and it never uses the
   sim's RNG or `System.Random`.
 - **Grow** dilates every shape of the cell by that distance. An outline
   cell is the part's silhouette with grow > 0, drawn under the part, so
   that only a ring of the grow width shows.
 - **Mirror.** When set, each shape is drawn twice, itself and then its
-  reflection about `x = ART_UNITS / 2`. The reflection reflects the
-  gradient's points too. So mirrored parts are symmetric by construction.
-  A mirrored shape has no noise term.
+  reflection about `x = ART_UNITS / 2`. The reflection is evaluated as the
+  shape itself at the reflected sample point (Rasterisation), so its
+  gradient is reflected too and mirrored parts are symmetric by
+  construction. A shape in a mirrored cell has no noise term.
 - **Tiled cells (Q-131)** are drawn repeated edge to edge (§15.17
-  Tessellation), so each is **periodic**: its content at `(x, y)` equals
-  its content at `(x ± 1024, y)` and `(x, y ± 1024)` wherever both are
-  inside the cell's pixels. A shape that crosses the visible square's
-  edge is therefore also drawn shifted by `±1024` across it, and noise is
-  periodic by construction.
+  Tessellation), so each is **periodic**: the rasteriser wraps every
+  sample point into the visible square before evaluating any shape
+  (Rasterisation), so a texel and the texel one visible side away are
+  equal byte for byte. The art must make a shape that crosses an edge of
+  the visible square appear again 1024 units across it, or the seam cuts
+  it: the style guide's "every multiple of 128 (or 32)" rows include both
+  0 and 1024, and its full-width strips span `−64 .. 1088`. Tiled cells
+  are never mirrored.
 - **Sliced cells (Q-131).** In a cell drawn nine-sliced with inset `s`,
   everything that varies lies within `s` of the visible square's edge. The
   centre square `s .. 1024 − s` is uniform, and each edge band varies only
   across its width, never along it, because the tessellator stretches
-  them.
+  them. Each shape's edge, grown by half its softness, keeps at least 8
+  units clear of the slice lines at `s` and `1024 − s`, except where it
+  runs straight across them, so anti-aliasing never leaks across.
 - **Lit from the upper left (Q-131).** World light comes from `−X, +Y`,
   so shadows fall toward `+X, −Y` (§15.17 Visual layers). Cells drawn
   unrotated (every `Box` layer and the tiled cells) may shade for that
@@ -1630,40 +1645,106 @@ only for the ground (§15.17 Tessellation), whose tile side it scales.
 
 ### Rasterisation (binding)
 
+**Integer arithmetic only (Q-131, binding).** The rasteriser uses no
+`float`, no `double` and no `Math` function. Every quantity is an `int64`
+(`long`), except the hash, which is `uint32` with wrap-around
+multiplication (`unchecked`). The operations are `+`, `−`, `×`,
+comparison, and these three:
+
+- `fdiv(a, b)`, for `b > 0`, is `⌊a / b⌋`, rounding toward −∞. C#'s `/`
+  truncates toward zero, so `fdiv` differs from it when `a < 0`.
+- `mod(a, b)`, for `b > 0`, is `a − b × fdiv(a, b)`, in `0 .. b − 1`.
+- `isqrt(x)`, for `x ≥ 0`, is the largest `r` with `r² ≤ x`, computed
+  exactly in integers, never through `Math.Sqrt`.
+
+`clamp(x, lo, hi)` is `min(max(x, lo), hi)`. **Q8** means 1/256 of a
+design unit. Every intermediate value below fits in `int64`; the largest
+is `cr²` in a polygon's distance, below 2^62. So the atlas is the same
+byte for byte on every run, runtime (CoreCLR or Mono) and platform, and
+two implementations of these formulas cannot differ.
+
 - **Per mip `m`**, with `0 ≤ m < ATLAS_MIP_COUNT`, for a cell of side
-  `c`: the cell side is `c_m = c >> m` pixels, the border is
-  `b = (c / 32) / 2^m` pixels, the visible side is `v = c_m − 2b`, and
-  there are `u = ART_UNITS / v` design units per pixel. Pixel `(i, j)` of
-  the cell, counted from its bottom-left, samples the design point
-  `p = ((i + 0.5 − b) × u, (j + 0.5 − b) × u)`. All of this is in
-  `double`.
-- **Coverage.** `d_s(p)` is the signed distance in design units, negative
-  inside, minus the cell's grow. For a circle it is
-  `|p − centre| − radius`. For a polygon it is the distance to the
-  nearest edge, negative when `p` is inside by the even-odd rule. The
-  shape's coverage is `clamp(0.5 − d_s / (u + k), 0, 1)`, with `k` its
-  softness (Q-131), so a shape with `k = 0` has the Q-130 edge. This
-  anti-aliases every edge in the texture itself, so `Low` (no MSAA) still
-  draws clean edges, and a soft shape fades over `u + k` design units,
-  which is how shadows are soft.
-- **Compositing**, premultiplied, starting from value 0 and alpha 0:
-  every shape in order, mirror copies included, "over" the result with
-  alpha `alpha(p) × coverage / 255` and value `value(p)` (its fill).
-  Output: alpha `A8 = floor(A × 255 + 0.5)`.
-  RGB are all `floor(C / A + 0.5)` when `A8 > 0`, else the cell's edge
-  value, so filtering at an edge never pulls in a foreign colour.
+  `c` (512 or 128): the cell is `c >> m` pixels square. Its bleed border
+  is `c / 32` pixels at mip 0 and its visible square `15c / 16` pixels,
+  both divided by `2^m`, so either may be fractional at small mips. Pixel
+  `(i, j)` of the cell, counted from its bottom-left, samples the design
+  point `p = (px, py)` in Q8:
+  `N = 32 × 2^m × i + 16 × 2^m − c`, then
+  `px = fdiv(2 × N × 131072 + 15c, 30c)`, and `py` the same with `j`.
+  This is `(i + 0.5 − border) × 1024 / visible` design units, times 256,
+  rounded half up. The design units per pixel, in Q8, are
+  `U = fdiv(2 × 4194304 × 2^m + 15c, 30c)`.
+- **Wrap (tiled cells only):** `px = mod(px, 262144)` and
+  `py = mod(py, 262144)` before anything else.
+- **Instances.** Shapes are evaluated in list order. Each shape is one
+  instance at `p`, then, in a mirrored cell, a second instance: the same
+  shape at `(262144 − px, py)`. Every formula below takes the instance's
+  point as `(px, py)`.
+- **Distance** `d`, in Q8, negative inside:
+  - circle with centre `(cx, cy)` and radius `r`: with
+    `dx = px − 256 cx` and `dy = py − 256 cy`,
+    `d = isqrt(dx × dx + dy × dy) − 256 r`;
+  - polygon with vertices `V_0 .. V_{n−1}`: for each edge `A = V_k`,
+    `B = V_{(k+1) mod n}`, with `ex = Bx − Ax`, `ey = By − Ay`,
+    `L2 = ex × ex + ey × ey`, `qx = px − 256 Ax`, `qy = py − 256 Ay`,
+    `dot = qx × ex + qy × ey` and `cr = qx × ey − qy × ex`:
+    - its squared distance `e2` is `qx × qx + qy × qy` if `dot ≤ 0`;
+      else `(px − 256 Bx)² + (py − 256 By)²` if `dot ≥ 256 × L2`; else
+      `fdiv(cr × cr, L2)`;
+    - it is **crossed** iff `(256 Ay > py) ≠ (256 By > py)`, and
+      `cr < 0` when `ey > 0`, or `cr > 0` when `ey < 0`.
+
+    Then `dist = isqrt(min over edges of e2)`, and `d = −dist` if an odd
+    number of edges are crossed (even-odd rule), else `d = dist`.
+
+  Then `d = d − 256 × grow`, with the cell's grow.
+- **Coverage**, in 0 .. 256: with `k` the shape's softness,
+  `w = U + 256 k` and `cov = clamp(128 − fdiv(256 × d, w), 0, 256)`. So
+  an edge fades over one pixel plus the softness: `k = 0` is the Q-130
+  anti-aliased edge, so `Low` (no MSAA) still draws clean edges, and a
+  soft shape is how shadows are soft.
+- **Gradient parameter** `t`, in 0 .. 256: flat, `t = 0`. Linear, with
+  `gx = P1x − P0x`, `gy = P1y − P0y`:
+  `t = clamp(fdiv((px − 256 P0x) × gx + (py − 256 P0y) × gy, gx × gx + gy × gy), 0, 256)`.
+  Radial: with `dx = px − 256 Cx` and `dy = py − 256 Cy`,
+  `t = clamp(fdiv(isqrt(dx × dx + dy × dy), R), 0, 256)`.
+- **Noise** `n`, in −32768 .. 32767, or 0 when the fill has none. For
+  octave `o`: `S = 256 × s_o` and `P = 1024 / s_o`. The octave is
+  **included** iff `S ≥ 2 × U`. Its lattice value at integers `(a, b)` is
+  `g(a, b) = (H & 0xFFFF) − 32768`, where `H` is FNV-1a-32 (offset
+  `0x811C9DC5`, prime `0x01000193`, as §15.16) over 12 bytes: `σ + o`,
+  `mod(a, P)` and `mod(b, P)`, each as `int32` little-endian, in that
+  order. With `a = fdiv(px, S)`, `b = fdiv(py, S)`,
+  `fx = fdiv(65536 × (px − a × S), S)` and `fy` the same with `py` and
+  `b` (both in 0 .. 65535):
+  - stepped: `oct = g(a, b)`;
+  - smooth: `wx = fdiv(fdiv(fx × fx, 65536) × (196608 − 2 fx), 65536)`
+    and `wy` the same with `fy`;
+    `g0 = g(a, b) + fdiv((g(a + 1, b) − g(a, b)) × wx, 65536)`;
+    `g1 = g(a, b + 1) + fdiv((g(a + 1, b + 1) − g(a, b + 1)) × wx, 65536)`;
+    `oct = g0 + fdiv((g1 − g0) × wy, 65536)`.
+
+  Then `n = fdiv(Σ over included o of oct_o × 2^(O − 1 − o), 2^O − 1)`.
+  Integer addition is exact, so the summation order does not matter.
+- **Value and alpha** of the instance:
+  `value = clamp(V0 + fdiv((V1 − V0) × t, 256) + fdiv(NV × n, 32768), 0, 255)`
+  and `alpha = clamp(A0 + fdiv((A1 − A0) × t, 256) + fdiv(NA × n, 32768), 0, 255)`.
+- **Compositing**, premultiplied, in Q16: start with `A = 0` and
+  `C = 0`. For each instance in order:
+  `a = fdiv(alpha × cov × 256, 255)` (0 .. 65536), then
+  `A = a + fdiv(A × (65536 − a), 65536)` and
+  `C = value × a + fdiv(C × (65536 − a), 65536)`, both new values
+  computed from the old `A` and `C`. **Output:** with the cell's opacity
+  `op`, `A8 = fdiv(A × op + 32768, 65536)` (`op = 255` gives the
+  unscaled alpha); when `A8 > 0`, R, G and B are all
+  `min(255, fdiv(2 C + A, 2 A))`, else the cell's edge value, so filtering
+  at an edge never pulls in a foreign colour.
 - **Every mip is rasterised directly** this way, and none is downsampled.
   So no cell bleeds into another at any level. Every byte of every mip is
-  written. A shape may be skipped for a pixel outside its bounding box
-  grown by the cell's grow, half its softness and `u`, which changes no
-  output.
-- **Arithmetic (Q-131, binding).** The rasteriser uses `double` with
-  `+`, `−`, `×`, `/`, `Math.Sqrt`, `Math.Floor`, `Math.Abs`, `Math.Min`
-  and `Math.Max` only, all of which IEEE 754 makes exact or correctly
-  rounded, plus integer arithmetic for the noise hash. It uses no other
-  `Math` function (no `Pow`, `Exp`, `Sin` or `Atan2`), no
-  `MathF`, no `float`, and no fused multiply-add. So the atlas is the
-  same byte for byte on every run and platform.
+  written. An instance with `cov = 0` leaves `A` and `C` unchanged, so an
+  implementation may skip it wherever it can prove `cov = 0` (for
+  example, outside the shape's bounding box grown by the grow, the
+  softness and one pixel), which changes no output.
 
 ### Visual layers (binding)
 
@@ -1812,9 +1893,33 @@ every UV is computed in `double` and converted to `float` once.
 - **Colour:** role gives `roleColours[(int)Colour]`, with its alpha.
   Region gives `Paint.Region_R` with alpha 255. Fixed gives the constant
   with alpha 255. When `linear` is true, R, G and B go through the table
-  `L(c) = floor(255 × lin(c / 255) + 0.5)`, where `lin(x)` is `x / 12.92`
-  for `x ≤ 0.04045` and `((x + 0.055) / 1.055)^2.4` otherwise, in
-  `double`. Alpha is unchanged. All four corners get the same colour.
+  `L(c)` below. Alpha is unchanged. All four corners get the same colour.
+  **`L` is this literal table (Q-131, binding)**, 16 entries per row, `c`
+  from 0 to 255. It is `floor(255 × lin(c / 255) + 0.5)` for the sRGB
+  curve (`lin(x) = x / 12.92` for `x ≤ 0.04045`, else
+  `((x + 0.055) / 1.055)^2.4`), evaluated by the Architect in 60-digit
+  decimal arithmetic, with no entry within `10⁻⁶` of a rounding tie. The
+  code holds the 256 literals in an instance field (§15.3) and never
+  computes the curve, so no runtime's `Math.Pow` is involved:
+
+  ```
+    0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+    1,   1,   2,   2,   2,   2,   2,   2,   2,   2,   3,   3,   3,   3,   3,   3,
+    4,   4,   4,   4,   4,   5,   5,   5,   5,   6,   6,   6,   6,   7,   7,   7,
+    8,   8,   8,   8,   9,   9,   9,  10,  10,  10,  11,  11,  12,  12,  12,  13,
+   13,  13,  14,  14,  15,  15,  16,  16,  17,  17,  17,  18,  18,  19,  19,  20,
+   20,  21,  22,  22,  23,  23,  24,  24,  25,  25,  26,  27,  27,  28,  29,  29,
+   30,  30,  31,  32,  32,  33,  34,  35,  35,  36,  37,  37,  38,  39,  40,  41,
+   41,  42,  43,  44,  45,  45,  46,  47,  48,  49,  50,  51,  51,  52,  53,  54,
+   55,  56,  57,  58,  59,  60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,
+   71,  72,  73,  74,  76,  77,  78,  79,  80,  81,  82,  84,  85,  86,  87,  88,
+   90,  91,  92,  93,  95,  96,  97,  99, 100, 101, 103, 104, 105, 107, 108, 109,
+  111, 112, 114, 115, 116, 118, 119, 121, 122, 124, 125, 127, 128, 130, 131, 133,
+  134, 136, 138, 139, 141, 142, 144, 146, 147, 149, 151, 152, 154, 156, 157, 159,
+  161, 163, 164, 166, 168, 170, 171, 173, 175, 177, 179, 181, 183, 184, 186, 188,
+  190, 192, 194, 196, 198, 200, 202, 204, 206, 208, 210, 212, 214, 216, 218, 220,
+  222, 224, 226, 229, 231, 233, 235, 237, 239, 242, 244, 246, 248, 250, 253, 255
+  ```
 - **Buffers** are reused and grow only when a frame needs more quads than
   ever before. They are valid until the next `Fill`. `roleColours` must
   have exactly one entry per `ColourRole` (Q-131): a `null` list throws
@@ -1863,14 +1968,18 @@ angle is computed anywhere in tested code.
   are (Q-131): lit area 215 to 255; curvature and lighting gradients
   within 170 to 255; shading detail (intakes, joints, seams, skylights,
   roof shade) 140 to 215; and a dark detail of 60 or less only in fixed
-  layers, plus the control tower's cab glazing at 70. Shadows are black
-  fixed layers whose cells set only the alpha: 112 at full cover.
+  layers, plus the control tower's cab glazing at 70. These steps bind
+  every role and region cell; fixed cells (wings, glazing, shadows,
+  rubber, the stand edge line, equipment) take any value. Shadows are
+  black fixed layers whose cells set only the alpha: 112 at full cover
+  (`SoftBox` and `SoftBar` by their one shape's alpha, the aircraft
+  `Shadow` cells by their opacity).
 - **Tiled textures (Q-131, testable).** At mip 0, over each tiled
   cell's visible square: every texel has alpha 255 and `R = G = B`; the
   values lie in the cell's range and their mean in its mean range (table
   below); their standard deviation is at least 3, so no texture is flat;
-  and the cell is periodic, each border texel within ±2 of the texel
-  one visible side away.
+  and the cell is periodic: each border texel equals, byte for byte, the
+  texel one visible side away (the wrap makes this exact).
 - **Outline weight**, as grow (design units, out of 1024): aircraft
   status 32 (about 3 % of the cell) and passenger 48. There is none on
   markings, surfaces, stands, buildings and lane pips, which use a border
@@ -1883,33 +1992,37 @@ angle is computed anywhere in tested code.
 The cells (Q-131 rewrote the table; alpha is 255 and softness 0 unless
 given). `noise(s, O, σ)` is a smooth noise term and `steps(s, σ)` a
 one-octave stepped one (above). **Worn** means alpha `A0 = 235` with
-`NA = 20` and `noise(64, 3, σ)`, a salt of its own per cell, so paint
-fades in patches but never below alpha 215.
+`NA = 20` and `noise(64, 3, σ)`, so paint fades in patches but never
+below alpha 215. **Salts (Q-131):** every salt is a multiple of 10 and
+`O ≤ 4`, so the octave salts `σ .. σ + 3` of different terms never meet.
+The worn salts are `RunwayEdgeLines` 700, `CentreStripe` 710,
+`RunwayThreshold` 720, `StandLeadIn` 730, and `DigitN` `740 + 10 N`
+(740 to 830).
 
 | Cell | Art |
 |---|---|
 | `Solid` | one square, value 255 (flat: it is `QueueFill`'s) |
-| `Disc` | circle at `(512,512)`, radius 496, with `Asphalt`'s two fills (salts 111, 112) |
+| `Disc` | circle at `(512,512)`, radius 496, with `Asphalt`'s two fills but salts 120 and 130 |
 | `RunwayEdgeLines` | two full-height bars, `x` 16 to 48 and 976 to 1008, value 255, worn |
 | `CentreStripe` | one full-height bar, `x` 480 to 544, value 255, worn |
 | `RunwayThreshold` | eight bars 64 wide, `y` 128 to 832, `x` from 64 with gaps of 48 (64–128, 176–240, 288–352, 400–464, and their reflections 560–624, 672–736, 784–848, 896–960), value 255, worn; the cell is not mirrored |
-| `Asphalt` (tiled) | (1) the square, value 236, `NV = 14`, `noise(128, 4, 101)`; (2) the square, value 236, `NV = 40`, `steps(8, 102)`, alpha 64 (aggregate). Range 200–255, mean 228–244 |
-| `Concrete` (tiled, 8 m slabs at tile 64) | (1) the square, value 234, `NV = 8`, `steps(128, 201)` (one shade per slab); (2) the square, value 234, `NV = 12`, `noise(64, 3, 202)`, alpha 96; (3) stains: the square, value 150, `A0 = −220`, `NA = 300`, `noise(256, 2, 203)`; (4) joints: bars 6 wide centred on every multiple of 128 in `X` and in `Y`, value 180. Range 160–255, mean 220–240 |
-| `Grass` (tiled) | (1) the square, value 228, `NV = 20`, `noise(256, 4, 301)`; (2) the square, value 228, `NV = 30`, `steps(8, 302)`, alpha 80 (blades). Range 190–255, mean 220–236 |
-| `Roof` (tiled, 1 m seams at tile 32) | (1) the square, value 238, `NV = 5`, `noise(256, 2, 401)`; (2) standing seams: bars 4 wide along `Y` centred on every multiple of 32 in `X`, value 222; (3) skylight strips across the whole width, `y` 224 to 288 and 736 to 800, value 150, with mullions 4 wide every 64 in `X` at value 205; (4) a plant unit: its baked shade `x` 600 to 856, `y` 400 to 560, value 175, alpha 140, softness 16, then the unit `x` 576 to 832, `y` 432 to 592, value 210, and a fan circle at `(704, 512)`, radius 48, value 165. Range 140–255, mean 215–240 |
-| `Parapet` (sliced 128) | lit parapet bars 16 to 80 wide along each edge: top and left value 205, bottom and right value 160; inside them, a roof shade bar 80 to 128 along each edge, value 140, alpha a linear gradient from 120 at the parapet to 0 at 128; the centre transparent |
+| `Asphalt` (tiled) | (1) the square, value 236, `NV = 14`, `noise(128, 4, 100)`; (2) the square, value 236, `NV = 40`, `steps(8, 110)`, alpha 64 (aggregate). Range 200–255, mean 228–244 |
+| `Concrete` (tiled, 8 m slabs at tile 64) | (1) the square, value 234, `NV = 8`, `steps(128, 200)` (one shade per slab); (2) the square, value 234, `NV = 12`, `noise(64, 3, 210)`, alpha 96; (3) stains: the square, value 150, `A0 = −220`, `NA = 300`, `noise(256, 2, 220)`; (4) joints: bars 6 wide centred on every multiple of 128 in `X` and in `Y`, value 180. Range 160–255, mean 220–240 |
+| `Grass` (tiled) | (1) the square, value 228, `NV = 20`, `noise(256, 4, 300)`; (2) the square, value 228, `NV = 30`, `steps(8, 310)`, alpha 80 (blades). Range 190–255, mean 220–236 |
+| `Roof` (tiled, 1 m seams at tile 32) | (1) the square, value 238, `NV = 5`, `noise(256, 2, 400)`; (2) standing seams: bars 4 wide along `Y` centred on every multiple of 32 in `X`, value 222; (3) skylight strips across the whole width, `y` 224 to 288 and 736 to 800, value 150, with mullions 4 wide every 64 in `X` at value 205; (4) a plant unit: its baked shade `x` 600 to 856, `y` 400 to 560, value 175, alpha 140, softness 16, then the unit `x` 576 to 832, `y` 432 to 592, value 210, and a fan circle at `(704, 512)`, radius 48, value 165. Range 140–255, mean 215–240 |
+| `Parapet` (sliced 128) | lit parapet bars 16 to 80 wide along each edge: top and left value 205, bottom and right value 160; inside them, a roof shade bar 80 to 120 along each edge, value 140, alpha a linear gradient from 120 at the parapet to 0 at 120; the centre transparent |
 | `SoftBox` (sliced 128) | square 64 to 960, softness 96, value 255, alpha 112 |
 | `SoftBar` | bar `x` 128 to 896, full length, softness 96, value 255, alpha 112 |
 | `ControlTower` | base square 96 to 928, a linear gradient from `(96, 928)` at 215 to `(928, 96)` at 170; cab glazing circle at `(512, 512)`, radius 384, value 70; cab roof circle radius 320, a radial gradient about `(448, 576)`, radius 400, from 250 to 200; antenna mast circle radius 32, value 140 |
-| `JetBridge` (mirrored) | half-tunnel `x` 128 to 512, full length, a linear gradient from `(128, 0)` at 195 to `(512, 0)` at 245; ribs 8 tall every 128 along `y`, value 150, alpha 90; edge line `x` 128 to 176, value 165; cab at the aircraft end, `x` 96 to 512, `y` 896 to 1088, value 225 |
+| `JetBridge` (mirrored) | half-tunnel `x` 128 to 512, full length, a linear gradient from `(128, 0)` at 195 to `(512, 0)` at 245; ribs 8 tall every 128 along `y`, `x` 128 to 512, value 190 (opaque, since they meet their reflection at 512); edge line `x` 128 to 176, value 165; cab at the aircraft end, `x` 96 to 512, `y` 896 to 1088, value 225 |
 | `StandPad` (sliced 128) | a line along each edge, 48 to 80 from it, value 255, alpha 230; the rest transparent (the concrete below shows the stand's role colour) |
 | `StandLeadIn` | line `x` 488 to 536 from `y` 16 to 848, and stop bar `x` 352 to 672, `y` 800 to 848, value 255, worn |
 | `GseBody` | parked ground equipment beside the nose position, outside the lead-in, design units at 25.6 per metre of a 40 m stand: left, a pushback tug about 2.6 × 6 m with its cab, and a ground power unit about 1.5 × 3 m; right, a baggage tractor and two baggage carts about 1.5 × 3 m each, in a line along `Y`; all inside `x` 40 to 300 and 724 to 984, `y` 640 to 1000; bodies at 215 to 255 with curvature gradients |
 | `GseDetail` | the same equipment's tyres, cab glazing and cart beds, value 200 to 255, and a soft, unshifted ground shade under each item (alpha 60, softness 24) |
-| `Rubber` | two streak fields, `x` 64 to 960: `y` 16 to 512 with an alpha gradient from 0 at `y` 16 to 150 at 512, and `y` 512 to 1008 from 150 at 512 to 0 at 1008; both value 255, `NA = 110`, `noise(32, 3, 601)` and `noise(32, 3, 602)`. Stretched along the runway, the noise becomes tyre streaks |
+| `Rubber` | one streak field, `x` 64 to 960, `y` 16 to 1008, value 255, alpha a radial gradient about `(512, 512)`, radius 496, from 150 to 0, with `NA = 110` and `noise(32, 3, 600)`. Stretched along the runway, the noise becomes tyre streaks, densest mid-zone |
 | `Digit0`–`Digit9` | block digits with a stroke of 96, inside `x` 256 to 768 and `y` 128 to 896, value 255, worn |
-| `TerminalZone` | border band 16 to 1008 at value 205, floor 128 to 896 at value 245 |
-| `LanePip` | rim square 96 to 928 at value 120, booth square 128 to 896 at value 230 over it, and an officer circle of radius 128 at value 150 |
+| `TerminalZone` | border band 16 to 1008 at value 205, floor 120 to 904 at value 245 (Q-131: was 128 to 896, on the slice line) |
+| `LanePip` | rim square 96 to 928 at value 140 (Q-131: was 120, below the shading floor), booth square 128 to 896 at value 230 over it, and an officer circle of radius 128 at value 150 |
 | passenger layers | top-down figure facing `+Y`: `Outline` is the whole silhouette grown by 48; `Bottom` is two small feet polygons ahead of the body; `Bag` is a box at the right hip; `Top` is a shoulders polygon about 640 by 380; `Skin` is two hands at the shoulder ends; `Hair` is a head circle of radius 150. All are mirrored except `Bag` |
 | logo marks | each a simple filled mark within the whole visible square, value 255 |
 
@@ -1968,8 +2081,9 @@ these rules). Every aircraft cell is mirrored and has no noise.
   about 0.014 of L apart, from 0.14 to 0.80 of L; and, for `A`, the two
   propeller discs, radius 0.07 of S, at alpha 60.
 - **Shadow** (layer 0): the silhouette (fuselage, wings, tailplane and
-  engines), softness 48, value 255, alpha 112. **Status** (layer 1): the
-  same silhouette grown by 32.
+  engines), each shape softness 48, value 255, alpha 255, in a cell of
+  opacity 112, so the shadow is one even alpha. **Status** (layer 1): the
+  same silhouette grown by 32, value 255.
 
 **Palette** (`DefaultPalette.asset`, sRGB hex, alpha 255 unless given):
 
@@ -2080,7 +2194,32 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
 - `test_art2d_tiled_textures_follow_the_style_guide` (Q-131): for
   `Asphalt`, `Concrete`, `Grass` and `Roof`, at mip 0, §15.17's
   "Tiled textures" checks: opaque, grey, range, mean, standard deviation
-  at least 3, and periodic within ±2.
+  at least 3, and periodic byte for byte.
+- `test_art2d_cells_follow_the_value_and_alpha_rules` (Q-131), at mip 0:
+  - **value steps:** in every role or region cell (every cell except the
+    fixed ones: `Wings`, `Glazing`, `Shadow`, `SoftBox`, `SoftBar`,
+    `Rubber`, `StandPad`, `GseBody`, `GseDetail`), every texel with
+    alpha > 0 has R ≥ 140, or ≥ 70 in `ControlTower`;
+  - **worn floor:** in `CentreStripe` every texel whose sample point has
+    `x` in 488 .. 536, and in `RunwayEdgeLines` every texel with `x` in
+    24 .. 40 or 984 .. 1000, has alpha 215 to 255;
+  - **shadow alpha:** the texel at pixel `(c / 2, c / 2)` of the cell
+    (`c` its side, counted from its bottom-left) has alpha 112
+    in `SoftBox`, `SoftBar` and each of the six aircraft `Shadow` cells;
+  - **sliced cells** (`Parapet`, `SoftBox`, `StandPad`, `TerminalZone`,
+    inset `s = 128`): every texel whose sample point lies in
+    `s + 16 .. 1024 − s − 16` on both axes equals the centre texel; and
+    within each edge band (the sample point within `s` of one edge and in
+    `s + 16 .. 1024 − s − 16` along it), texels at the same distance from
+    that edge are equal. The 16-unit margin clears one pixel's
+    anti-aliasing at mip 0.
+
+  **Declared untested** (checked by the Reviewer against §15.17 and by
+  eye at T-025): the lit range 215 to 255 and the gradient range 170 to
+  255 within role and region cells; the upper-left light rule and the
+  symmetric shading of rotating cells (beyond the aircraft mirror test);
+  the worn floor in cells other than the two above; and every art detail
+  not named in a test.
 - `test_art2d_aircraft_follow_the_proportion_table`: at mip 0, the
   alpha ≥ 128 bounding box of each `Status` cell has width `span × 480`
   and height `length × 480`, each ± 3 pixels (Q-131 table). Span grows
@@ -2136,7 +2275,8 @@ not merged; its Test Author updates them, and no worker edits them):
 | `test_art2d_tessellator_colours_follow_role_region_and_fixed` | ground quads first; layer indices move as above; `roleColours` with too many entries and `null` also throw (`ParamName` `roleColours`) |
 | `test_art2d_tessellator_fill_within_budget_and_allocates_nothing` | 2.0 ms mean and 4.0 ms p99 |
 
-New: `test_art2d_tiled_textures_follow_the_style_guide`,
+New: `test_art2d_cells_follow_the_value_and_alpha_rules`,
+`test_art2d_tiled_textures_follow_the_style_guide`,
 `test_art2d_tessellator_ground_tiles_follow_the_camera` and
 `test_art2d_tessellator_tiles_boxes_and_segments` (above). Any static-field
 test follows §15.3's 2D art rule, which forbids static array fields, as

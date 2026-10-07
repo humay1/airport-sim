@@ -4293,6 +4293,51 @@ Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
                  slightly for that reason.
                - **§15.18:** a table lists each T-052 test (PR #144) and
                  what Q-131 changes in it.
+             - **Review of #147 (changes requested at `cab51c6`), folded in:**
+               - **The rasteriser is integer-only.** It uses no `float`,
+                 no `double` and no `Math` function. Every step is pinned
+                 in `int64`, with `fdiv` (floor division), `mod` and an
+                 exact `isqrt`, in Q8 design units and Q16 alpha:
+                 - the sample point and units per pixel, both rounded
+                   half up;
+                 - the wrap for tiled cells, which makes periodicity
+                   exact and replaces shifted copies;
+                 - the instance order: the shape, then its reflection,
+                   evaluated at the reflected point;
+                 - the circle and polygon distance, with the edge cases
+                   and the even-odd crossing test;
+                 - coverage, linear and radial gradients;
+                 - the noise lattice, its smoothstep and bilinear blend,
+                   and the octave sum;
+                 - value and alpha;
+                 - premultiplied "over" compositing and its output.
+
+                 So the atlas cannot differ between implementations,
+                 runtimes or platforms. A cell `opacity` is new, applied
+                 once at output, so overlapping opaque shapes give one
+                 even shadow alpha. A rule keeps translucent shapes from
+                 overlapping, including their reflections.
+               - **sRGB table:** `L` is now a literal 256-entry table in
+                 the spec, computed in 60-digit decimal with no near-ties.
+                 No `Math.Pow` is involved.
+               - **Value steps:** the steps bind role and region cells
+                 only, and fixed cells take any value. `LanePip`'s rim
+                 goes from 120 to 140. `TerminalZone`'s floor moves from
+                 128..896 to 120..904, and `Parapet`'s shade ends at 120,
+                 so no sliced cell's anti-aliasing crosses a slice line.
+                 `JetBridge`'s ribs are opaque. `Rubber` is one
+                 radial-gradient field.
+               - **Salts:** all multiples of 10, with every octave salt
+                 distinct across the atlas. Worn salts are 700 to 830.
+               - **`GroundLayer()`:** every field is stated, including
+                 the sub-square `0,0,1024,1024`.
+               - **Tests:** a new
+                 `test_art2d_cells_follow_the_value_and_alpha_rules`
+                 covers the value-step floor, the worn floor in two cells,
+                 the shadow alpha of 112 and the sliced-cell uniformity.
+                 The lit and gradient ranges, the light rule and the
+                 remaining art are declared untested and reviewed by eye.
+                 Tiled periodicity is now byte-exact.
              - **Not touched:** `01`, `02`, the sim, `data/`, `app.ui`,
                `app.host`.
              - **LOW CONFIDENCE:** (1) `Low` dropping nothing of the art
