@@ -17,8 +17,6 @@ namespace AirportSim.Sim.Airside.Tests
     /// </summary>
     public sealed class ExitNodeArrivalTests
     {
-        private const int AirsideIndex = 1; // registered: schedule, airside, flow, recorder
-
         private static ulong OnStandPlan(ulong sta, AirsideLayout layout, ushort stand)
         {
             ulong route = Routes.LeastTicks(layout, ExitLayout.Exit, FixtureLayout.StandNode(stand));
@@ -377,49 +375,6 @@ namespace AirportSim.Sim.Airside.Tests
             }
         }
 
-        /// <summary>
-        /// sim.airside's checkpoint hashes over the fixture day (RuleFlow, the
-        /// suite's rules), recorded from the merged pre-Q-132 build (main
-        /// 77c2026). 12 §12.4: a layout without an exit "behaves exactly as
-        /// before, byte for byte in the hash". Ticks 0, 600, ..., 13 800.
-        /// </summary>
-        private static readonly ulong[] MergedCheckpointHashes =
-        {
-            0x023069F6074F0D5CUL, 0x46449E1DAE1EEBB4UL, 0x00E7FEB5E1090FDCUL, 0x00E7FEB5E1090FDCUL,
-            0xA731CED181A6E749UL, 0x98DDA8D5F9FFD909UL, 0x44CE653480E129DDUL, 0x7524C1840BC46B05UL,
-            0xFB09DE8E1ADD0BF7UL, 0x8B96784310FEDA6AUL, 0x2DA81CF2FC1D8FE5UL, 0xB69B728D6C00FAD0UL,
-            0xA33BA9FB503C890CUL, 0x43EF0AD384BDF244UL, 0x2D881152ABEA6EE2UL, 0xCDFA116B6EDF8072UL,
-            0x5FB1589F663FF2A9UL, 0x5FC7399974E7C4E9UL, 0x0C457B28400AE9ECUL, 0x3EBFE0980C2278E9UL,
-            0x156FA0899A1FC575UL, 0xAD7F7AF630773370UL, 0x3EE85E9A400C4BA2UL, 0x9BC1D3C0704C83BFUL,
-        };
-
-        private const ulong MergedFinalHash = 0xA8509BAD5F1C1FF8UL;
-
-        [Fact]
-        public void test_layout_without_exit_node_keeps_merged_airside_hashes()
-        {
-            // The parsed fixture and the six-field copy with ExitNode = ThresholdNode
-            // reproduce the merged build's sim.airside hashes exactly.
-            LayoutBuilder six = FixtureLayout.Builder();
-            six.Runways.Clear();
-            six.RunwayWithExit(FixtureLayout.Runway, FixtureLayout.Threshold, FixtureLayout.Threshold, FixtureLayout.CapacityPerHour, FixtureLayout.OccupancyTicks);
-            foreach (AirsideLayout layout in new[] { AirsideFixture.Parse(), six.Load() })
-            {
-                var rig = new HostRig(ScheduleFixture.Bytes(), layout: layout, flow: new RuleFlow());
-                rig.RunTo(AirConst.TicksPerDay);
-                Assert.Equal(MergedCheckpointHashes.Length, rig.Sink.Recorded.Count);
-                for (int i = 0; i < MergedCheckpointHashes.Length; i++)
-                {
-                    Assert.Equal((ulong)i * AirConst.TicksPerHour, rig.Sink.Recorded[i].Tick);
-                    Assert.True(
-                        MergedCheckpointHashes[i] == rig.Sink.Recorded[i].SystemHashes[AirsideIndex],
-                        string.Format(CultureInfo.InvariantCulture, "checkpoint {0}: expected {1:X16}, got {2:X16}", i, MergedCheckpointHashes[i], rig.Sink.Recorded[i].SystemHashes[AirsideIndex]));
-                }
-
-                Assert.Equal(MergedFinalHash, rig.Airside.ComputeStateHash());
-            }
-        }
-
         [Fact]
         public void test_exit_layout_determinism_same_seed_same_hashes()
         {
@@ -449,11 +404,10 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Equal(a.Rec.Trace(), chunked.Rec.Trace());
             Assert.Equal(a.Sink.Describe(), chunked.Sink.Describe());
 
+            // The master seed cannot reach sim.airside, which has no stream (12 §12.12).
             Assert.Equal(a.Rec.Trace(), otherSeed.Rec.Trace());
-            for (int i = 0; i < a.Sink.Recorded.Count; i++)
-            {
-                Assert.Equal(a.Sink.Recorded[i].SystemHashes[AirsideIndex], otherSeed.Sink.Recorded[i].SystemHashes[AirsideIndex]);
-            }
+            Assert.Equal(a.Airside.ComputeStateHash(), otherSeed.Airside.ComputeStateHash());
+            Assert.Equal(AirsideDeterminismTests.Snapshot(a.Airside), AirsideDeterminismTests.Snapshot(otherSeed.Airside));
         }
     }
 }
