@@ -60,6 +60,7 @@ namespace AirportSim.Sim.Airside
             CheckReferences(runways, nodes, edges, stands);
             CheckKinds(runways, nodes, stands);
             CheckConnected(runways, nodes, edges);
+            CheckExitsReachStands(runways, nodes, edges);
 
             return new AirsideLayout(runways, nodes, edges, stands);
         }
@@ -202,6 +203,11 @@ namespace AirportSim.Sim.Airside
                 {
                     throw Ref("runways", r.Id.Value, "threshold_node", r.ThresholdNode.Value);
                 }
+
+                if (!Has(nodes, r.ExitNode.Value))
+                {
+                    throw Ref("runways", r.Id.Value, "exit_node", r.ExitNode.Value);
+                }
             }
 
             foreach (TaxiEdgeDef e in edges)
@@ -247,6 +253,11 @@ namespace AirportSim.Sim.Airside
                 {
                     throw new FormatException(Prefix + "runways: object " + N(r.Id.Value) + " field threshold_node names node " + N(r.ThresholdNode.Value) + " which is not a runway threshold");
                 }
+
+                if (r.ExitNode.Value != r.ThresholdNode.Value && KindOf(nodes, r.ExitNode.Value) != TaxiNodeKind.Junction)
+                {
+                    throw new FormatException(Prefix + "runways: object " + N(r.Id.Value) + " field exit_node names node " + N(r.ExitNode.Value) + " which is neither its threshold nor a junction");
+                }
             }
 
             foreach (StandDef s in stands)
@@ -284,6 +295,34 @@ namespace AirportSim.Sim.Airside
                 if (nodes[i].Kind != TaxiNodeKind.Junction && (!forward[i] || !backward[i]))
                 {
                     throw new FormatException(Prefix + "nodes: node " + N(nodes[i].Id.Value) + " is not reachable from and to the lowest runway threshold");
+                }
+            }
+        }
+
+        /// <summary>Check 7 (Q-132): every stand node is reachable from each runway's distinct exit node.</summary>
+        private static void CheckExitsReachStands(RunwayDef[] runways, TaxiNodeDef[] nodes, TaxiEdgeDef[] edges)
+        {
+            int n = nodes.Length;
+            var index = new Dictionary<ushort, int>();
+            for (int i = 0; i < n; i++)
+            {
+                index.Add(nodes[i].Id.Value, i);
+            }
+
+            foreach (RunwayDef r in runways)
+            {
+                if (r.ExitNode.Value == r.ThresholdNode.Value)
+                {
+                    continue;
+                }
+
+                bool[] seen = Reach(n, edges, index, index[r.ExitNode.Value], false);
+                for (int i = 0; i < n; i++)
+                {
+                    if (nodes[i].Kind == TaxiNodeKind.StandPosition && !seen[i])
+                    {
+                        throw new FormatException(Prefix + "runways: object " + N(r.Id.Value) + " field exit_node names node " + N(r.ExitNode.Value) + " from which node " + N(nodes[i].Id.Value) + " is not reachable");
+                    }
                 }
             }
         }

@@ -4568,3 +4568,40 @@ Impact:      - **Sim change, DETERMINISM-RELEVANT (reviewer-core).**
                left pending are now decided.
 Signed off:  owner decisions recorded (Q-132); determinism review of A1
              required (reviewer-core).
+
+## 2026-10-08 — spec/15 §15.17 (aircraft parts, cell table, new "Thin parts at small mips"), §15.18; open-questions Q-133 — thin cells at mip 2
+Reason:      `RunwayEdgeLines`' pinned 32-unit worn bars are narrower
+             than a small cell's mip 2 pixel (34.13 units), so their best
+             mip 2 texel has alpha 125 (`cov = 136`, no noise octave)
+             and §15.18's alpha ≥ 128 cell test could never pass. The
+             same check over every thin part found two worker-sized
+             risks in the large cells (mip 2 pixel 8.53 units): the
+             cheatlines of rows `A` to `C` (about 4.4 to 7.9 units) and
+             the windscreens.
+Raised by:   worker / T-052 (Q-133)
+Impact:      - **§15.18 test change (T-052 Test Author, PR #144):**
+               `test_art2d_every_cell_is_drawn_inside_its_border` keeps
+               alpha ≥ 128 (≥ 64 for the shadow cells and `Rubber`) at
+               mips 0 to 2 and > 0 at mips 3 to 5, with two exceptions
+               at mip 2 only: `RunwayEdgeLines` ≥ 64, and the six
+               `Cheatline` and six `Glazing` cells > 0. The §15.18
+               change table's row says so.
+             - **§15.17 art, constraints only:** the cheatline is 0.12 of
+               the fuselage width but at least 5 units (row `A`'s was
+               4.4); the windscreen is at least 5 units deep; each
+               passenger foot, hand and bag and each logo mark contains
+               a circle of radius 32. Each makes mips 0 and 1 (and mip 2
+               for the small cells) certain to hold a sample inside.
+               The look is otherwise unchanged; no pinned coordinate,
+               alpha or wear moves.
+             - **Checked and unaffected:** `CentreStripe` (mip 2 best
+               221), `RunwayThreshold` (235), `StandLeadIn` (199),
+               `StandPad` (137), the digits (stroke 96), and every
+               opaque or large cell. Mips 3 to 5 (> 0) hold for every
+               cell.
+             - **Merged work:** none invalidated. T-052 (PR #144) is not
+               merged; its Test Author updates the one assertion.
+             - **LOW CONFIDENCE:** none. **Scope:** none added.
+               **PENDING HUMAN:** none.
+Signed off:  not required (test tolerance and art constraints; no
+             balance, scope or `01`/`02` change).

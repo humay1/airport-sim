@@ -12,7 +12,7 @@ namespace AirportSim.Sim.Airside
     {
         private const long Infinity = long.MaxValue / 4;
 
-        // Route cost in ticks, arrivals indexed runway * stands + stand (threshold to stand),
+        // Route cost in ticks, arrivals indexed runway * stands + stand (exit node to stand, Q-132),
         // departures indexed stand * runways + runway (stand to threshold).
         private ulong[] _arrTicks = null!;
         private ulong[] _depTicks = null!;
@@ -99,7 +99,7 @@ namespace AirportSim.Sim.Airside
             {
                 for (int s = 0; s < stands; s++)
                 {
-                    _arrTicks[(r * stands) + s] = (ulong)_distTo[_standNode[s]]![_rwyNode[r]];
+                    _arrTicks[(r * stands) + s] = (ulong)_distTo[_standNode[s]]![_rwyExit[r]];
                     _depTicks[(s * runways) + r] = (ulong)_distTo[_rwyNode[r]]![_standNode[s]];
                 }
             }

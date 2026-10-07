@@ -359,6 +359,13 @@ namespace AirportSim.Sim.Airside.Tests
             return this;
         }
 
+        /// <summary>A runway through the six-field constructor, with its ExitNode (12 §12.4, Q-132).</summary>
+        public LayoutBuilder RunwayWithExit(ushort id, ushort threshold, ushort exit, int capacityPerHour, uint occupancyTicks, int directionDeg = 270)
+        {
+            Runways.Add(new RunwayDef(new RunwayId(id), new TaxiNodeId(threshold), directionDeg, capacityPerHour, occupancyTicks, new TaxiNodeId(exit)));
+            return this;
+        }
+
         public LayoutBuilder Node(ushort id, TaxiNodeKind kind)
         {
             Nodes.Add(new TaxiNodeDef(new TaxiNodeId(id), kind));

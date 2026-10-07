@@ -45,6 +45,7 @@ namespace AirportSim.Sim.Airside
         private readonly int[] _standIndexById;
         private readonly ushort[] _rwyId;
         private readonly int[] _rwyNode;
+        private readonly int[] _rwyExit;
         private readonly ulong[] _rwyOccTicks;
         private readonly ulong[] _rwySep;
         private readonly Dictionary<ContentId, int> _aircraftOrd = new Dictionary<ContentId, int>();
@@ -176,6 +177,7 @@ namespace AirportSim.Sim.Airside
 
             _rwyId = new ushort[runways];
             _rwyNode = new int[runways];
+            _rwyExit = new int[runways];
             _rwyOccTicks = new ulong[runways];
             _rwySep = new ulong[runways];
             for (int i = 0; i < runways; i++)
@@ -183,6 +185,7 @@ namespace AirportSim.Sim.Airside
                 RunwayDef r = layout.Runways[i];
                 _rwyId[i] = r.Id.Value;
                 _rwyNode[i] = _nodeIndexById[r.ThresholdNode.Value];
+                _rwyExit[i] = _nodeIndexById[r.ExitNode.Value];
                 _rwyOccTicks[i] = r.OccupancyTicks;
                 ulong cap = (ulong)r.DeclaredCapacityPerHour;
                 _rwySep[i] = (SimConstants.TICKS_PER_SIM_HOUR + cap - 1UL) / cap;
