@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (not releasable until T-051 merges) |
+| Status | MERGED (#146, tests #143, 2026-10-07) |
 | Module | `app.host` |
 | Assigned role | worker (after the Test Author) |
 | Depends on | T-051 |
