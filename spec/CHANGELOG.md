@@ -4408,3 +4408,163 @@ Impact:      - **Scene layer (§15.16), its merged tests, `data/looks/` and
                and nothing in `01` or `02`.
 Signed off:  owner decision recorded (Q-131); mechanism not required;
              LOW CONFIDENCE items for the owner's review.
+
+## 2026-10-07 — spec/15 §15.1, §15.3–§15.6, §15.8, §15.9, §15.11, §15.12, §15.14, §15.16, §15.17 (one sentence), new §15.19–§15.23; 16 §16.6; 07 L4; INDEX; open-questions Q-132 — the living airport (owner decision)
+Reason:      HUMAN DECISION, owner, 2026-10-07 (Q-132, scope change
+             approved by the owner): smooth motion, landing and takeoff,
+             and passengers boarding, all before the T-025 playtest.
+             Ground vehicles and the turnaround stay deferred.
+Raised by:   human owner, via the team lead (Q-132)
+Impact:      - **No sim change.** No sim member, state, hash, event or
+               command is added, and `01` and `02` are untouched. The
+               scene reads three more existing read-only queries
+               (§15.6: `TryGetCohort`, `PopulationForFlight`,
+               `TryGetOutstanding`) between `Step`s, and uses
+               `TryGetFlight` for one more purpose (an arrival's
+               rotation).
+             - **Scene layer (new task M1):** `ITickPacer` gains
+               `SubTickMicroseconds`. `ISceneBuilder` gains a
+               three-argument `Build`; the two-argument one is sub-tick
+               0. The rebuild key gains the sub-tick, so a running game
+               rebuilds nearly every frame (the 2 ms budget already
+               assumed a rebuild). `DrawPrimitive` gains
+               `float Elevation` (kept ten-field constructor).
+               `SourceKind` gains `BridgePassenger`, appended.
+               `RenderLayout` gains `Walkways` and `LayoutBridge` gains
+               `Stand` (kept constructors). The layout file goes to
+               version 3, with two more ordered checks and a check 6.
+               Off-graph aircraft are now drawn (§15.20).
+             - **Art2D (new task M2):** `Elevation` is drawn as scale
+               and a longer ground shadow (§15.22; reconciled with
+               Q-131's shadows, see the next entry). Unchanged when
+               nothing is airborne.
+             - **Host (new task M3):** `16` §16.6 step 4 passes
+               `Pacer.SubTickMicroseconds`.
+             - **Merged work:** one merged test breaks,
+               `test_render_layout_version_2_loads_scenery_and_rejects_faults`,
+               which asserts the fixture text says version 2; M1's Test
+               Author moves it to 3. `test_scene_aircraft_off_graph_is_not_drawn`
+               still passes (its tracks have no `Runway`) and is
+               extended. Merged `FrameLoopTests` that
+               compare with a two-argument reference `Build` are
+               updated by M3's Test Author. Several tests are extended
+               (§15.23). No merged code is invalidated: every type
+               change is additive under `07` L10's kept-constructor
+               clause, and the `α = 0` taxi value is bit-identical.
+             - **In-flight tasks:** T-052 and T-054 are not changed. M1
+               waits for T-052 (shared test project, `DrawPrimitive`),
+               and M3 for T-054 (same paths). **T-053 needs nothing**:
+               it copies whatever `Fill` emits.
+             - **Tolerance:** a second test tolerance, 0.01 world units
+               for motion values (§15.3, §15.23, `07` L4).
+             - **Scope added (running total):** smooth motion;
+               approach, hold, landing and takeoff visuals; corridor
+               walkers; a boarding stream. Presentation only, and
+               owner-approved.
+             - **LOW CONFIDENCE:** every motion constant (§15.19);
+               arrivals land toward the threshold node, opposite to
+               departures, because the sim exits arrivals there
+               (§15.20); runway prediction for approaching arrivals
+               when there are several runways; the jump when a held
+               arrival is released; departures vanish at `Airborne`
+               4 km out, since the stateless scene cannot keep a
+               removed track; the boarding stream runs for the whole
+               stay rather than a boarding window (§15.21).
+             - **PENDING HUMAN:** (1) deboarding is not drawn, because
+               the sim has no arriving passengers at Phase 1; (2)
+               landing in the departure direction needs an arrival exit
+               node in the airside layout (sim data); (3) at 1x a
+               landing lasts about 1 real second, the game's 60x time
+               scale (§15.19).
+Signed off:  owner decision recorded (Q-132); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.
+
+## 2026-10-07 — spec/12 §12.3, §12.4, §12.6, §12.7, §12.8a, §12.9, §12.11, §12.13; 15 §15.18 (one sentence), §15.19–§15.23; 16 §16.3; 19 §19.2c; 07 L10; INDEX; open-questions Q-132 — owner decisions on #145: arrivals land in the departure direction (runway exit node)
+Reason:      HUMAN DECISIONS, owner, 2026-10-07, on the points #145
+             left open: (1) the 1x time scale is accepted, with no extra
+             speed setting; (2) arrivals must land in the same direction
+             as departures before T-025; (3) deboarding is deferred until
+             arriving passengers exist (a sim phase after T-025), and the
+             whole-stay boarding stream is accepted; (4) Q-131 is
+             realism's and Q-132 is this one, and the airborne shadow
+             stays (whichever PR merges second reconciles).
+Raised by:   human owner, via the team lead (Q-132)
+Impact:      - **Sim change, DETERMINISM-RELEVANT (reviewer-core).**
+               `RunwayDef` gains `TaxiNodeId ExitNode`: where an arrival
+               leaves the runway and enters the taxi graph (`12` §12.4).
+               The file gets one optional runway key, `exit_node`,
+               defaulting to `threshold_node`. `schema_version` stays 1,
+               so the merged parser test that rejects version 2 is
+               untouched. The kept five-field constructor sets
+               `ExitNode = ThresholdNode` (`07` L10). Checks 4 and 5 gain
+               `exit_node`, which must be that runway's threshold or a
+               `Junction`. A new check 7 requires a distinct exit to
+               reach every stand. Arrival routes run exit → stand, and
+               §12.3's planned arrival `OnStand` uses
+               `RouteTicks(exit, stand)`. `OffRunway`, the stand-wait
+               hold and §12.9's `AtNode` use the exit. Departures are
+               unchanged.
+             - **Hash and goldens.** No new hashed field: the layout is
+               not fed. Fed values change only for arrivals in a layout
+               with a distinct exit. Every merged fixture except the
+               playtest copy has none, so their runs and hashes are
+               byte-identical. `tests/fixtures/airside/phase1-single-runway.json`
+               is unchanged. **Soak golden: unaffected** (the soak does
+               not register `sim.airside`). **Phase 1 checkpoints dump:
+               changes** once the playtest copy gains its exit (task
+               M3); no expected dump is committed, because the harness
+               renders it from the same composition. **Cross-runtime
+               check: unaffected** (it compares live, with no stored
+               output).
+             - **Merged tests:** none break in A1. In M3, host tests
+               that compose the playtest bundle with an airside see the
+               new fixture. `07` L10's kept-constructor wording is
+               generalised to allow a constructor per earlier amendment
+               (`RenderLayout` now has three) and lists the Q-132
+               structs.
+             - **Fixtures:** the playtest airside copy (`19` §19.2c)
+               gains `"exit_node": 4`, junctions 4 to 6 and one-way edges
+               7 to 9. A new `tests/fixtures/render/playtest-layout.json`
+               (`phase1-layout.json` plus three taxi-node positions)
+               becomes the playtest's `render_layout.fixture` (`16`
+               §16.3). The two change together in M3, since either alone
+               fails §15.4 check 4 at presentation assembly.
+             - **Render (§15.20):** arrivals fly the final toward the
+               departures' threshold, touch down at `N + u × Lr / 8` and
+               roll out to the exit node, facing `fDep`. The hold is
+               mirrored to the approach side. The fixture examples now
+               use the playtest layout. The LOW CONFIDENCE item about
+               opposite-direction landing is removed.
+             - **Tasks:** new **A1** (airside exit node, sim, reviewed by
+               reviewer-core, no fixture change, depends on nothing
+               unmerged). M1 now also depends on A1. M3 also writes
+               `PlaytestBundleBuildStep.cs` and the playtest airside
+               copy, and depends on A1, M1 and T-054. T-053 is still
+               unaffected. T-025 waits for A1, M1, M2 and M3.
+             - **Shadow reconciled with Q-131 (#147), §15.22.** Q-131
+               gives every aircraft a ground shadow, layer 0 `Shadow`,
+               shifted by size row along the one light direction
+               `(3, −4) / 5`. §15.22 no longer adds its own shadow quad:
+               at `Elevation e > 0` that layer stays unscaled and its
+               shift gains `e / 4` along the same direction
+               (`(0.15 e, −0.2 e)` world units), while every other layer
+               is scaled. `SHADOW_DIVISOR` and `SHADOW_ALPHA` are
+               removed. No quad is added, so T-053 is still unaffected.
+               M2's tests follow.
+             - **Review wording (reviewer-core, #145 at `bacfc88`):**
+               `exit_node` joins check 1's list of node-reference fields
+               that are not range-checked, and check 5 reports
+               `threshold_node` before `exit_node`. §15.21's walker index
+               `j` is now computed with a clamped cast in `int64`, since
+               an out-of-range `double` → `int` cast is unspecified in
+               C#. Q-132's answer items (a), (c) and (f) now match the
+               exit node and task A1.
+             - **Scope added:** the runway exit node (owner-approved).
+             - **LOW CONFIDENCE:** the playtest exit geometry and its
+               taxi times (aesthetic and fixture sizing, not balance);
+               otherwise unchanged from the entry above, minus the
+               landing direction.
+             - **PENDING HUMAN:** none. All three points the entry above
+               left pending are now decided.
+Signed off:  owner decisions recorded (Q-132); determinism review of A1
+             required (reviewer-core).

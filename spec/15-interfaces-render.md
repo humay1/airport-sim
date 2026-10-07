@@ -56,7 +56,8 @@ At Phase 1, `app.render` owns:
 - any sim module's state beyond the queries in §15.6. In particular it reads
   nothing from `sim.turnaround` or `sim.delay` at Phase 1. From
   `sim.schedule` it reads `TryGetFlight` only, and only to choose an
-  aircraft's visual and livery (§15.16, Q-130).
+  aircraft's visual and livery (§15.16, Q-130) and to find an arrival's
+  rotation for the bridge walkers (§15.21, Q-132).
 
 Since 2026-10-07 the draw list is drawn as **art**: realistic top-down
 2D art, made by agents, with no third-party assets, which must look like
@@ -162,13 +163,15 @@ Rules binding on the scene layer:
   by powers of two (Q-131). A tiled layer's `Uvs` are exact too wherever
   the tile's edges lie at whole world units, so tiled test vectors use
   whole-number boxes and axis-aligned segments of whole-number length
-  (§15.17). The tessellator's `Corners` are the **one** exception
+  (§15.17). The tessellator's `Corners` are the first exception
   to "no tolerance". They are compared within `1e-3` world units, under
   §15.17's tolerance note and with its chosen test vectors, because a
   normalised `Facing` is not exact. `double` may appear only to compute
   those expected corners. §15.17's sRGB table is a literal table, and the
   tests compare against those literals (Q-131). No other float
-  comparison in `tests/app/render/` has a tolerance.
+  comparison in `tests/app/render/` has a tolerance, except the motion
+  values of §15.19 to §15.22 (Q-132), under §15.23's tolerance note,
+  where `double` may also appear to compute the expected values.
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
 - It targets `netstandard2.1` with `LangVersion 9`, the same as the sim
@@ -192,7 +195,9 @@ readonly struct FlowNodeBox      { NodeId Node; int32 MinX; int32 MinY; int32 Ma
 
 enum AreaKind { Apron, Terminal, Pier, ControlTower }                     // Q-130
 readonly struct LayoutArea   { uint32 Id; AreaKind Kind; int32 MinX; int32 MinY; int32 MaxX; int32 MaxY }   // Q-130
-readonly struct LayoutBridge { uint32 Id; int32 X0; int32 Y0; int32 X1; int32 Y1; int32 Width }             // Q-130; a jet bridge
+readonly struct LayoutBridge { uint32 Id; int32 X0; int32 Y0; int32 X1; int32 Y1; int32 Width;
+                               StandId? Stand }      // Q-130; a jet bridge. Stand: Q-132, §15.21; (X1,Y1) is the aircraft end
+readonly struct LayoutWalkway { NodeId Node; int32 X0; int32 Y0; int32 X1; int32 Y1; int32 Width }          // Q-132, §15.21
 
 readonly struct RenderLayout {
   IReadOnlyList<TaxiNodePosition> TaxiNodes
@@ -204,6 +209,7 @@ readonly struct RenderLayout {
   int32 TaxiwayWidth
   IReadOnlyList<LayoutArea>       Areas   // Q-130; scenery: paved aprons and building footprints
   IReadOnlyList<LayoutBridge>     Bridges // Q-130; scenery: jet bridges
+  IReadOnlyList<LayoutWalkway>    Walkways // Q-132, §15.21; the path agents walk inside a corridor's box
 }
 
 interface IRenderLayoutLoader {
@@ -257,12 +263,13 @@ plus exactly these two:
 ```
 
 A version 1 file is still valid and loads with empty `Areas` and
-`Bridges`. Any other version is a parse failure. A `kind` string other
+`Bridges`. **Version 3 (Q-132)** adds walkways and each bridge's stand,
+and is §15.21. Any other version is a parse failure. A `kind` string other
 than the four is a parse failure. `kind` is the only string value in the
 file.
 
 - Each object has exactly the keys shown for its version.
-  `schema_version` must be `1` or `2`.
+  `schema_version` must be `1`, `2` or `3` (§15.21).
 - An integer is `0` or `-?[1-9][0-9]*`. One outside its C# type's range is
   a parse failure. Values inside the range parse, and the checks below
   apply to them.
@@ -341,7 +348,8 @@ fields (Q-097): `Kind` ordinal, then `Id`, then `Sub`, each ascending.
 | queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` | `QueueFill` | `(QueueFill, id, 0)` |
 | lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` | `LanePip` | `(Lane, id, index)` |
 | agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize`; `Paint` by passenger (§15.16) | `Agent` | `Agent` | `Passenger` | `(Agent, id, rank)` |
-| each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize`; `Facing` and `Paint` by livery (§15.16) | by phase, below | `Aircraft` | by size category (§15.16) | `(Aircraft, flight, 0)` |
+| each tracked aircraft that is on the graph, or off it under §15.20 (Q-132) | `Dot` | see below, diameter `AircraftSize`; `Facing` and `Paint` by livery (§15.16) | by phase, below | `Aircraft` | by size category (§15.16) | `(Aircraft, flight, 0)` |
+| bridge walkers (Q-132): §15.21 | `Dot` | §15.21, diameter `AgentSize`; `Paint` by walker (§15.21) | `Agent` | `Agent` | `Passenger` | `(BridgePassenger, bridge id, walker index)` |
 
 **Visuals, facing, paint and scenery (Q-130)** are §15.16: what every
 new field holds, the marking and scenery rules, and the draw order of the
@@ -365,8 +373,9 @@ promoted returns empty (`09` §9.7), and the box simply draws no agents.
 `MAX_DRAWN_AGENTS_PER_NODE`. An agent's rank *k*, the `Sub` of its
 `SourceRef`, is its 0-based index in that sorted, truncated list. The
 *k*-th agent's position is a pure function of *k* and the box. The exact arrangement is the worker's choice, and tests
-assert only count and containment. `ProgressAlongEdge` is not used at
-Phase 1, because corridors are not drawn.
+assert only count and containment. An agent of a node that has a
+walkway is placed on the walkway instead (§15.21, Q-132).
+`ProgressAlongEdge` is not used (§15.21 says why).
 
 **Lane pips** (Q-010, the visible half of D5's lane control). The *k*-th pip's
 position is a pure function of *k*, the pip count and the box. As with
@@ -378,10 +387,13 @@ gets no pips.
 §12.9, as amended):
 
 - if `OnEdge` is set: interpolate from the position of `AtNode` (the entry
-  node) to the edge's other endpoint, by `EdgeProgress` converted to a float;
+  node) to the edge's other endpoint, by `EdgeProgress` converted to a
+  float, advanced by the sub-tick (§15.20, Q-132);
 - else if `AtNode` is set: the node's position;
-- else the aircraft is off-graph (approaching, or held off-graph before
-  `Landed`, §12.6) and is **not drawn**.
+- else the aircraft is off-graph (approaching, held off-graph before
+  `Landed`, or on the runway, §12.6, §12.9). It is drawn by §15.20's
+  approach, hold, landing and takeoff rules (Q-132), and is **not drawn**
+  where those rules say so.
 
 **Aircraft colour** by `Phase`:
 
@@ -390,7 +402,8 @@ gets no pips.
 | `HeldForRunway`, `HeldOnTaxiway` | `AircraftHolding` |
 | `OnRunway`, `Taxiing` | `AircraftMoving` |
 | `OnStand`, `AwaitingPushbackClearance` | `AircraftOnStand` |
-| `AwaitingApproach`, `Departed` | not drawn |
+| `AwaitingApproach` | `AircraftMoving` inside §15.20's approach window (Q-132), else not drawn |
+| `Departed` | not drawn |
 
 **Absent modules.** If `RenderSources.Airside` is null, no runway, taxiway,
 stand or aircraft primitive is produced. That includes the runway, taxiway
@@ -402,9 +415,11 @@ still runs). If `Flow` is null, no landside primitive is produced. A build
 that has only some sim modules still renders what it has.
 
 **Not drawn at Phase 1**, each additive by amendment: vehicles and turnaround
-jobs, corridors and flow edges, delay state of any kind, text and labels,
-terrain beyond the layout's areas, weather, and interpolation between
-ticks. Painted stand numbers and runway designators are ground markings
+jobs, flow edges between boxes, delay state of any kind, text and labels,
+terrain beyond the layout's areas, weather, and arriving passengers
+(§15.21). Corridors are drawn as their boxes, with walkers on their
+walkways, and motion is interpolated between ticks (§15.19 to §15.21,
+Q-132). Painted stand numbers and runway designators are ground markings
 made of digit visuals, not text (§15.16). They are never localised, and
 `app.ui` still owns all text.
 
@@ -434,21 +449,27 @@ rejection, and the fakes in §15.12 throw if one is called.
 | `IFlowSystem.AgentsAt` | `09` §9.7 | scene builder | per rebuild, per promoted `FlowNodeBox` |
 | `IFlowSystem.TryGetLaneState` | `09` §9.7b | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.SetPromoted` | `09` §9.7 | promotion controller only | §15.7 |
-| `IScheduleSystem.TryGetFlight` | `11` §11.7 | scene builder | per rebuild, per drawn aircraft (Q-130) |
+| `IScheduleSystem.TryGetFlight` | `11` §11.7 | scene builder | per rebuild, per drawn aircraft (Q-130); and per §15.21 bridge whose stand holds an arrival (Q-132) |
+| `IFlowSystem.TryGetCohort` | `09` §9.7 | scene builder | per rebuild, once per distinct cohort among a walkway node's drawn agents (Q-132, §15.21) |
+| `IFlowSystem.PopulationForFlight`, `TryGetOutstanding` | `09` §9.7, §9.7a | scene builder | per rebuild, per §15.21 bridge that passes its stand test (Q-132) |
 | `IContentIndex.AllOf`, `TryGet` | `08` §8.11 | scene builder | once, at construction (Q-130) |
 
 Cadence:
 
 - `Build` is called at most once per rendered frame. It **rebuilds** only if
-  `CurrentTick`, the camera or the `GraphicsSettings` (§15.14) differs from
-  the previous `Build`; otherwise it returns the previous frame unchanged. At 60 fps and 1x, the sim advances
-  every sixth frame, so most frames re-read nothing.
+  `CurrentTick`, the camera, the `GraphicsSettings` (§15.14) or the
+  sub-tick (§15.19, Q-132) differs from
+  the previous `Build`; otherwise it returns the previous frame unchanged.
+  While the game runs, the sub-tick changes almost every frame, so almost
+  every frame rebuilds. While it is paused, nothing changes and no frame
+  re-reads anything.
 - No query is ever made while `Step` is running. Given §15.8's frame order and
   the fact that `Step` is synchronous (`08` §8.5), this holds by construction.
   It also means a frame never mixes two ticks' state.
 - `WorldStateHash`, `TrySubmit`, `Inject`, `Absorb`, every query of
   `sim.turnaround` and `sim.delay`, and every `sim.schedule` query except
-  `TryGetFlight` are **not** called.
+  `TryGetFlight` are **not** called. Nor is any `IWorldSystem` member:
+  walkways come from the layout (§15.21).
 
 ---
 
@@ -497,6 +518,7 @@ enum GameSpeed { X1 = 1, X2 = 2, X4 = 4 }          // the value is the multiplie
 
 interface ITickPacer {
   uint32 Advance(int64 elapsedRealMicroseconds, bool paused, GameSpeed speed)   // ticks to Step this frame
+  int64  SubTickMicroseconds { get }                                            // Q-132; below
 }
 ```
 
@@ -506,6 +528,12 @@ interface ITickPacer {
   amendment to `GameSpeed`, never a worker's choice.
 - The pacer holds an integer accumulator of *speed-scaled* microseconds. That
   is presentation state, not sim state, and it is never saved.
+- **Sub-tick (Q-132).** `ITickPacer` also has the get-only property
+  `int64 SubTickMicroseconds`: the accumulator's value after the last
+  `Advance`, and 0 before the first. It is always in
+  `[0, REAL_MICROSECONDS_PER_TICK_1X)`, so it is the fraction of the next
+  tick already elapsed, in speed-scaled microseconds. It is what the frame
+  loop passes to `Build` (`16` §16.6, §15.19).
 - `paused`: returns 0, discards `elapsed` and leaves the accumulator
   unchanged. Unpausing does not replay the paused time, and the partial
   tick held before the pause is kept.
@@ -565,7 +593,8 @@ enum ColourRole {
 enum SourceKind {
   Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft, Lane,
   RunwayMarking, TaxiNode, TaxiCentreline,              // appended, Q-130
-  Apron, Building, StandMarking, StandNumber, JetBridge // appended, Q-130
+  Apron, Building, StandMarking, StandNumber, JetBridge, // appended, Q-130
+  BridgePassenger                                       // appended, Q-132
 }
 enum VisualId {                                         // Q-130: WHAT is drawn, never how (§15.16)
   RunwaySurface, RunwayEdgeLines, RunwayThreshold, RunwayCentreDash,
@@ -606,6 +635,9 @@ readonly struct DrawPrimitive {
                                // (a Segment's forward is A to B).
   Paint         Paint          // Q-130; all zero unless the visual has regions (§15.16)
   SourceRef     Source
+  float         Elevation      // Q-132: height above the ground, world units, >= 0; non-zero only
+                               // for an airborne aircraft (§15.20). Semantic: how it is drawn is
+                               // the backend's (§15.22)
 }
 
 readonly struct AirlineLivery { AirlineId Airline; Livery Livery }   // Q-130
@@ -637,7 +669,10 @@ readonly struct RenderSources {
   IContentIndex?   Content     // Q-130; null: AircraftC for every aircraft
 }
 
-interface ISceneBuilder        { RenderFrame Build(in CameraView camera, in GraphicsSettings graphics) }        // D10
+interface ISceneBuilder {
+  RenderFrame Build(in CameraView camera, in GraphicsSettings graphics)                                       // D10; = sub-tick 0
+  RenderFrame Build(in CameraView camera, in GraphicsSettings graphics, int64 subTickMicroseconds)            // Q-132, §15.19
+}
 interface IPromotionController { void Update(in CameraView camera, in GraphicsSettings graphics) }        // D10
 // ITickPacer: §15.8.   IRenderLayoutLoader: §15.4.   RenderConstants: §15.2 (Q-099).
 ```
@@ -666,7 +701,9 @@ behaving as before. `RenderSources` keeps `(host, airside, flow)`, which
 sets `Schedule` and `Content` to null. `RenderLayout` keeps its
 seven-field one (§15.4). `DrawPrimitive`'s
 one constructor takes its ten fields in declared order. `Paint`'s default
-value is all zero.
+value is all zero. **Q-132:** `DrawPrimitive` keeps that ten-field
+constructor, which sets `Elevation` to 0, and gains one taking all eleven
+fields in declared order. The other Q-132 shapes are in §15.19 and §15.21.
 
 `RenderFactory` follows `08` §8.11a's factory rule (stateless static
 methods only). In a playable build,
@@ -805,6 +842,13 @@ layer:
   machine, since CI has no GPU (§15.14). Integrated graphics uses shared
   memory, so the game's GPU memory counts against the 8 GB of RAM. The
   process's combined budget is in `16` §16.10.
+- **Motion (Q-132).** The 2 ms and 4 ms limits are unchanged, and they
+  already applied to a rebuilding frame, which is now nearly every frame
+  (§15.6). The per-rebuild cost adds, with no allocation: the motion
+  arithmetic of every drawn aircraft, one `TryGetCohort` per distinct
+  cohort on a walkway, and per bridge at most one `TryGetFlight`, one
+  `PopulationForFlight` and one `TryGetOutstanding`. The max-tier fakes
+  gain §15.23's motion load.
 - `app.render` adds nothing to the sim's 6 ms. The cost of `SetPromoted` and
   `AgentsAt` is `sim.flow`'s.
 
@@ -896,7 +940,8 @@ format (Q-094), binding on the Test Author:
   the §15.14 invariant
 
 The Q-130 tests, the T-020 tests that Q-130 changes, and the fixture's
-version 2 lists are in §15.18.
+version 2 lists are in §15.18. The Q-132 ones, and the fixture's version
+3 lists, are in §15.23.
 
 ---
 
@@ -966,10 +1011,12 @@ and the `determinism_promotion` gate prove it.
 **Invariant: graphics never affect gameplay or difficulty.** This is binding,
 owner, 2026-09-27 (D10 addendum).
 
-1. **Same information at every setting.** For any sim state, camera and
-   `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
-   layer is **identical** in kind, layer, colour, visual, geometry,
-   facing, paint and source (Q-130), and so is their order. That covers
+1. **Same information at every setting.** For any sim state, camera,
+   sub-tick (Q-132) and `GraphicsSettings`, every primitive `Build`
+   produces outside the `Agent` layer is **identical** in kind, layer,
+   colour, visual, geometry, facing, paint, source (Q-130) and elevation
+   (Q-132), and so is their order. Motion is interpolated at every
+   setting; no knob turns it off. That covers
    the scenery, runways and their markings, taxiways, junction fills and
    centrelines, stands with their markings and bridges, landside nodes,
    queue fill, lane pips and aircraft. Only `Agent`-layer primitives
@@ -1225,6 +1272,9 @@ normalises it (§15.17), and a 3D backend derives a yaw from it.
    `Stand`. The vector is the destination's position minus `AtNode`'s.
 5. In every other case, and whenever the rule's id is unset or a position
    or geometry is missing: `(0, 0)`.
+
+An aircraft with neither `OnEdge` nor `AtNode` set is drawn only under
+§15.20 (Q-132), whose facings replace these rules for it.
 
 A node's **nose-in vector** is its position minus the position of the
 other endpoint of the lowest-`TaxiEdgeId` edge incident to it, or `(0, 1)`
@@ -1984,8 +2034,8 @@ every UV is computed in `double` and converted to `float` once.
 
 Tessellator tests may compare corner positions within `1e-3` world
 units, because a normalised vector is not exact in floating point. That
-is the one tolerance allowed in `tests/app/render/`, and it applies only
-to the tessellator's corner positions. The test vectors are chosen far
+tolerance applies only to the tessellator's corner positions. The only
+other tolerance in `tests/app/render/` is §15.23's, for motion (Q-132). The test vectors are chosen far
 from that edge: axis-aligned facings (exact), `(3, 4)` (with `n = 5`
 exact), and `(1, 1)`, all with `Size ≤ 1000` and centres within ±10 000.
 Each corner is computed in `double` and converted to `float` once, which
@@ -2402,7 +2452,8 @@ worker edits a test.
 
 `tests/fixtures/render/phase1-layout.json` becomes version 2 with these
 lists, and no other value changes. It is also the playtest bundle's
-`render_layout.fixture` (`16` §16.3). The terminal encloses the landside
+`render_layout.fixture` (`16` §16.3), until Q-132's playtest layout
+replaces it there (§15.23). The terminal encloses the landside
 zones, the pier faces the stands, and each bridge reaches its stand's
 aircraft door:
 
@@ -2475,3 +2526,631 @@ The T-025 playtest waits for all four, and is validated against
 Task 3 is unchanged by Q-131 apart from §15.10's two notes (no extra
 pass, no reference kept to the atlas), and its texture size and mip
 count come from `Art2DConstants`.
+
+---
+
+## 15.19 The living airport — owner decision, 2026-10-07 (Q-132)
+
+> **HUMAN DECISION — owner, 2026-10-07** (Q-132, a scope change approved
+> by the owner): the player should be "fully immersed". The owner asked
+> "will I see the passengers hopping into the plane, see the plane
+> landing before taxiing?", and chose three features to land **before**
+> the T-025 playtest:
+> 1. **Smooth motion:** aircraft and passengers glide between sim ticks
+>    instead of stepping.
+> 2. **Landing and takeoff:** the final approach, touchdown and rollout
+>    before taxiing; and the takeoff roll, rotation and climb-out instead
+>    of vanishing.
+> 3. **Passengers boarding:** passengers visibly walk between terminal
+>    areas, and along the jet bridge into the aircraft.
+>
+> Not in scope: ground vehicles and the turnaround, deferred until after
+> T-025. The Architect specified the mechanism and did not decide the
+> scope.
+
+**Presentation only, with one sim change.** The one sim change is the
+runway exit node (`12` §12.4, task A1), from the owner's decision that
+arrivals land in the departure direction (§15.20). It adds a layout
+field, not a query, and it is determinism-relevant (`12` §12.13).
+Everything else is derived in the
+scene layer from read-only queries the sim already publishes (§15.6).
+For that part, no sim member, sim state, hash, event or command is
+added or changed, and the scene layer's tasks touch nothing in
+`src/sim`. `02-determinism.md` is unaffected: the new queries are reads
+made between `Step`s, like every other
+(§15.6, §15.7), and nothing read is fed back. The scene layer still uses
+no RNG: what looks random is a fixed FNV hash, as for clothes (§15.16).
+`flow.presentation` (`09` §9.1) stays unused.
+
+**The render time τ.** `Build(camera, graphics, subTickMicroseconds)`
+draws the sim at the fractional tick
+
+`τ = (double)CurrentTick − 1 + subTickMicroseconds / 100 000.0`
+
+in `double`, where 100 000 is `REAL_MICROSECONDS_PER_TICK_1X`.
+`CurrentTick − 1` is the last tick executed (`08` §8.5), so τ runs from
+that tick toward the next one as the pacer's accumulator fills, and it
+reaches the next tick's value exactly when that tick is stepped. Every
+motion rule below is a function of τ and of state that the sim already
+holds as a deadline (`DueAt`, `PhaseEnteredAt`, `EnteredNodeAt`), so
+positions **extrapolate along the sim's own schedule** and never lag a
+tick behind. Nothing is remembered between `Build`s, so the frame stays a
+pure function of the sim state, the camera, the settings and the
+sub-tick, plus the construction inputs.
+
+- `subTickMicroseconds` outside `[0, REAL_MICROSECONDS_PER_TICK_1X)`
+  throws `ArgumentOutOfRangeException` with `ParamName`
+  `subTickMicroseconds` (`07` "Error handling"), before anything is read.
+- The two-argument `Build` is the three-argument one with 0. At 0, every
+  primitive is the one this file specified before Q-132, except where
+  §15.20 and §15.21 now draw something that was not drawn before
+  (off-graph aircraft and walkers), or place agents on a walkway.
+- The frame loop passes `Pacer.SubTickMicroseconds` (§15.8, `16` §16.6).
+  While paused the accumulator, and so τ, is frozen, and the picture
+  holds still. After a catch-up cap it is 0.
+- `RenderFrame.Tick` stays `CurrentTick`.
+
+**Arithmetic (binding).** Every motion position and elevation is
+computed in `double`, in the order written, and converted to `float`
+once, at the end. Vector lengths are `Math.Sqrt` of the sum of squares.
+`Facing` stays an exact integer vector (§15.16) in every rule below.
+Tests compare motion values within the tolerance of §15.23.
+
+**Constants (Q-132).** Presentation constants, in `RenderConstants`
+(§15.2), all `int`. World units are metres (§15.2), and a tick is 6
+sim-seconds (`08` §8.2).
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `APPROACH_TICKS` | 15 | how long before `STA` an approaching arrival appears (90 sim-s) |
+| `APPROACH_ENTRY_M` | 8000 | where it appears: this far out from touchdown, on the extended centreline |
+| `FINAL_FIX_M` | 2000 | the final approach fix, this far out from touchdown |
+| `HOLD_LEG_M` | 1000 | the side of the square holding pattern |
+| `HOLD_LEG_TICKS` | 3 | the time to fly one side |
+| `CLIMB_OUT_M` | 4000 | how far past lift-off a departure climbs before `Airborne` removes it |
+| `GLIDE_RATIO` | 20 | approach elevation = distance to touchdown / 20 (about 3°) |
+| `CLIMB_RATIO` | 10 | climb elevation = distance past lift-off / 10 |
+| `BRIDGE_WALK_TICKS` | 3 | the time one walker takes to cross a jet bridge |
+| `MAX_BRIDGE_WALKERS` | 8 | walkers per bridge at most |
+
+> **LOW CONFIDENCE — every value in this table.** They are aesthetic, not
+> balance: none moves a sim outcome, the score or difficulty. They are
+> the Architect's first guess at "looks right", sized so that approach
+> speeds come out near 70 m/s and walkers near 1 m/s. The climb-out is
+> faster (about 130 m/s in the fixture), so that a departure is far out
+> when its track disappears. Retuned after the
+> T-025 playtest by amendment, never by a worker.
+
+> **What "seeing it land" looks like at 1x — ACCEPTED, HUMAN DECISION,
+> owner, 2026-10-07 (Q-132): no extra speed setting.** A tick is
+> 6 sim-seconds and 0.1 real seconds, so the sim runs 60 times faster
+> than real time at 1x (`08` §8.2, `01`). With the fixture's 10-tick
+> runway occupancy, final approach plus rollout lasts **1 real second at
+> 1x**, the approach from its entry 1.5 s more, and a takeoff 1 s. That
+> is the game's time scale, not this design's choice. Pausing and
+> zooming in shows every step, since the picture is a pure function of
+> τ. Slowing only the visuals would need the picture to lag the sim,
+> which the stateless design rules out.
+
+**Graphics (§15.14, Q-034).** Motion has no knob, and the invariant
+holds: aircraft motion, approaches, holds, takeoffs and `Elevation` are
+the same at every setting (they are outside the `Agent` layer).
+Walkway walkers and bridge walkers are `Agent`-layer decoration. So
+`DrawAgents` false (`Low`) draws none of them, and
+`MaxDrawnAgentsPerNode` caps both, as for agents in boxes. `Low` also
+pays for a rebuild on nearly every frame now (§15.6), which §15.11's
+budget already assumed.
+
+**3D (§15.15 decision 3).** Everything new is semantic: positions,
+integer facings, `VisualId`s that already exist, and `Elevation` as a
+height in world units. No new `VisualId` is added. A 3D backend lifts
+each mesh by `Elevation` and lets its own lighting cast the shadow, so
+only §15.22, which is 2D, is replaced.
+
+---
+
+## 15.20 Aircraft motion (scene layer, Q-132)
+
+**Taxiing glides.** For a track with `OnEdge` set, §15.5's interpolation
+factor becomes
+
+`t = clamp(EdgeProgress.Raw / 2^32 + α / Trav, 0, 1)`, converted to `float`,
+
+with `α = subTickMicroseconds / 100 000.0`, `Trav = DueAt −
+PhaseEnteredAt` as a signed difference, and the `α` term 0 when
+`Trav ≤ 0`. The float interpolation from `AtNode`'s position then runs
+exactly as before. At `α = 0` this is bit for bit the merged value
+(`(float)` of `Raw / 2^32` is the same single rounding). As `α` nears
+1 it nears the next tick's `EdgeProgress`, up to `Fx` truncation, and
+the aircraft reaches the end node at the tick it leaves the edge
+(`12` §12.9), so there is no step at either end. A track at a node
+(`AtNode` set, `OnEdge` unset) does not move.
+
+**The runway frame.** For a runway `R` that has a `RunwayGeometry`, a
+`RunwayDef` in `Layout()`, and positions `T` for its `ThresholdNode` and
+`X` for its `ExitNode` (`12` §12.4, Q-132): `N` is its active end and `F`
+its other end, by §15.16's rule (`N` is `P0` if `|P0 − T|² ≤ |P1 − T|²`
+in `int64`, else `P1`). Then, in `double`: `Lr = |F − N|`,
+`u = (F − N) / Lr`, and
+
+| Point | Value | In the playtest layout (§15.23) |
+|---|---|---|
+| touchdown `TD` | `N + u × (Lr / 8)` | `(−250, 0)` |
+| lift-off `LO` | `N + u × (Lr × 3 / 4)` | `(−1500, 0)` |
+| final fix `FF` | `TD − u × FINAL_FIX_M` | `(1750, 0)` |
+| approach entry `AE` | `TD − u × APPROACH_ENTRY_M` | `(7750, 0)` |
+| climb end `CE` | `LO + u × CLIMB_OUT_M` | `(−5500, 0)` |
+
+(Playtest: runway `(−2000,0)`–`(0,0)`, `T = (0, 0)` and `X = (−1850, 0)`,
+so `N = (0, 0)`, `F = (−2000, 0)`, `Lr = 2000` and `u = (−1, 0)`.) The
+integer facings are `fDep = F − N` and `fArr = N − F`, in `int64` then
+`float`, exact as in §15.16. If the runway a row uses is unset (a
+track's `Runway`, or no runway to predict), if any of the four inputs is
+missing, or if `Lr = 0`, the aircraft is **not drawn**.
+
+**Arrivals and departures use the same direction** (HUMAN DECISION,
+owner, 2026-10-07, Q-132), as at a real airport. Both move along `u`,
+away from the threshold the departures use. An arrival flies the final
+over the threshold end toward `N`, touches down just past it, and rolls
+out to `X`, its runway's exit node, where the sim puts it at `OffRunway`
+(`12` §12.6). A departure rolls from `T` the same way, as §15.16 rule 3
+already faces it. In a layout whose `ExitNode` is its `ThresholdNode`
+(every layout without `exit_node`, such as `12` §12.13's test fixture),
+`X = T` and the rollout runs back a short way from `TD` to `T`. Only test
+layouts do that; the playtest's does not.
+
+**Off-graph tracks.** A track with neither `OnEdge` nor `AtNode` set is
+drawn by the row that matches its phase and kind, else not drawn. `w`
+is `clamp((τ − PhaseEnteredAt) / O, 0, 1)` with `O = DueAt −
+PhaseEnteredAt`, and `w = 1` when `O ≤ 0`. Colour follows §15.5's phase
+table.
+
+| Phase, `Kind` | Runway used | Drawn when | Position `P` | `Elevation` | `Facing` |
+|---|---|---|---|---|---|
+| `AwaitingApproach`, arrival | the **predicted** runway, below | `τ ≥ DueAt − APPROACH_TICKS` (`DueAt` is `STA`, `12` §12.9) | `AE + (FF − AE) × v`, with `v = clamp((τ − (DueAt − APPROACH_TICKS)) / APPROACH_TICKS, 0, 1)` | `|P − TD| / GLIDE_RATIO` | `fDep` |
+| `HeldForRunway`, arrival | `Runway` | always | the hold, below | `FINAL_FIX_M / GLIDE_RATIO` | the hold's leg, below |
+| `OnRunway`, arrival | `Runway` | always | `w ≤ 1/2`: `FF + (TD − FF) × v`, `v = 2w`. Else `TD + (X − TD) × (1 − (1 − v)²)`, `v = 2w − 1` | `w ≤ 1/2`: `|P − TD| / GLIDE_RATIO`. Else 0 | `fDep` |
+| `OnRunway`, departure | `Runway` | always | `w ≤ 1/2`: `T + (LO − T) × v²`, `v = 2w`. Else `LO + u × (CLIMB_OUT_M × v)`, `v = 2w − 1` | `w ≤ 1/2`: 0. Else `CLIMB_OUT_M × v / CLIMB_RATIO` | `fDep` |
+
+- **The predicted runway.** An arrival chooses its runway only at `STA`
+  (`12` §12.5), so while it approaches, the scene predicts it with the
+  same rule: over `Layout().Runways` in ascending `RunwayId`, the first
+  with the smallest `RunwayQueueLength`. It is computed at most once per
+  rebuild. With one runway it is always right.
+- **The hold** is a square flown from the final fix, to the left of the
+  outbound direction `−u`. With `l = (u.y, −u.x)` and `S = HOLD_LEG_M`,
+  the corners are `C0 = FF`, `C1 = FF + l × S`, `C2 = C1 − u × S` and
+  `C3 = FF − u × S`. With `s = max(0, τ − PhaseEnteredAt) / HOLD_LEG_TICKS`,
+  leg `k = floor(s) mod 4` runs from `C_k` to `C_(k+1) mod 4`, and
+  `P = C_k + (C_(k+1) mod 4 − C_k) × (s − floor(s))`. Leg facings, with
+  `g = fArr`: leg 0 `(−g.y, g.x)`, leg 1 `g`, leg 2 `(g.y, −g.x)`,
+  leg 3 `fDep`. In the playtest layout the corners are `(1750, 0)`,
+  `(1750, 1000)`, `(2750, 1000)` and `(2750, 0)`.
+- **Continuity.** The approach ends at `FF` at `τ = STA`. An unheld
+  arrival lands at `STA` (`12` §12.5), and its `OnRunway` starts at `FF`.
+  A held one starts its hold at `FF`. The rollout ends at `X`, where
+  `OffRunway` places it (`HeldOnTaxiway`, or a taxi edge from `X`). A
+  departure's roll starts at `T`, where it held or arrived. Touchdown and
+  lift-off are at elevation 0 on both sides.
+- Every other off-graph case (for example a `Departed` track, which is a
+  bug, `12` §12.9) is not drawn.
+
+> **LOW CONFIDENCE — what the stateless rules cannot hide.** (1) With
+> several runways, a misprediction makes an approaching arrival jump to
+> the runway the sim chose, at `STA`. (2) A held arrival is somewhere on
+> its square when the sim releases it, and jumps to `FF` (at most `S√2`,
+> 1.4 km). (3) A departure disappears at `Airborne`, at the climb end,
+> 400 m up and 4 km past lift-off, because the sim drops its track (`12`
+> §12.6) and the scene keeps no memory. At a wide zoom that is visible.
+> Keeping a departed track (the reserved `Departed` phase) would be a
+> sim state change, so it is not done here.
+
+---
+
+## 15.21 Passengers in motion (scene layer, Q-132)
+
+### Layout version 3
+
+`"schema_version": 3` has every version 2 key, with two changes:
+
+- every bridge object also has `"stand": <uint16>`, the `StandId` it
+  serves. Its `(x1, y1)` end is the aircraft's door, as the §15.18
+  fixture already draws it;
+- one more top-level key:
+
+```
+  "walkways": [ { "node": <uint32>, "x0": <int32>, "y0": <int32>,
+                  "x1": <int32>, "y1": <int32>, "width": <int32> }, ... ]
+```
+
+A walkway is the path that the agents of a **corridor** node walk,
+inside that node's `FlowNodeBox`, from `(x0, y0)` to `(x1, y1)`. In
+version 1 and 2 files `Walkways` is empty and every `LayoutBridge.Stand`
+is null. `Load` returns `Walkways` in ascending `NodeId`.
+
+**Validation (Q-132)**, added to §15.4's ordered checks, each naming its
+id as there:
+
+- check 4 gains a last step, only when `airside` is given: every
+  bridge's `Stand` names a `StandDef` of the airside layout (names the
+  lowest bridge id that does not);
+- check 5 gains a last step: no two bridges name the same `Stand` (names
+  the higher bridge id of the lowest such pair);
+- check 6, always: `LayoutWalkway.Node` is unique; it has a
+  `FlowNodeBox` with the same `Node`; `Width > 0`;
+  `(X0,Y0) ≠ (X1,Y1)`; and both ends lie inside that box, edges
+  included. Each names the walkway's `Node`.
+
+The loader cannot check that a walkway's node is a `Corridor`
+(`IFlowSystem` offers no enumeration, §15.4). The §15.12 integration test
+checks it against the flow fixture.
+
+**C# shape (`07` L10, kept constructors).** `LayoutBridge` keeps its
+six-field constructor, which sets `Stand` to null, and gains one with
+all seven. `LayoutWalkway` has one constructor, in declared order.
+`RenderLayout` keeps its seven- and nine-field constructors, which set
+`Walkways` to empty, and gains one with all ten.
+
+### Walkers on walkways
+
+Corridors stay drawn as their boxes (`TerminalZone`, §15.5). A walkway
+draws nothing itself. What changes is where a promoted node's agents
+are: if the node has a walkway, each agent that §15.5 would draw (same
+list, truncation, rank, source, visual, layer, colour, size and paint)
+is placed on it instead of in the box arrangement.
+
+- **The cohort's progress.** For an agent of cohort `c`,
+  `TryGetCohort(c)` is called once per distinct cohort, in list order
+  (the list is sorted by cohort). If it returns true, with `E` its
+  `EnteredNodeAt` and `D` its `DueAt`: `p = clamp((τ − E) / (D − E), 0,
+  1)` when `D > E`, else `p = 1`. If it returns false, `p = 0`. A
+  corridor sets `DueAt = EnteredNodeAt + traversalTicks` (`09` §9.6), so
+  the group walks the walkway in exactly its traversal time, and a group
+  blocked past `DueAt` waits at the far end.
+- **Placement.** With `A = (X0,Y0)`, `B = (X1,Y1)`, `Lw = |B − A|`,
+  `d = (B − A) / Lw` and `n = (−d.y, d.x)`, and `h` the FNV-1a-32 of
+  §15.16's passenger paint taken with the byte `r = 5`:
+  - lateral offset `e = ((h mod 1024) / 1023.0 − 0.5) × max(0, Width −
+    AgentSize)`;
+  - trail `a = ((h >> 10) mod 1024) / 1023.0 × min(Lw, 4 × Width)`;
+  - `s = clamp(p × Lw − a, 0, Lw)`, and the centre is `A + d × s + n × e`.
+
+  So a group straggles behind its leader, stays inside the walkway's
+  rectangle, and every agent's `s` is non-decreasing in τ.
+- **`Facing`** is `(X1 − X0, Y1 − Y0)`, exact. Agents in boxes keep
+  `(0, 0)`.
+
+**Why not `AgentView.ProgressAlongEdge`.** `09` §9.7 declares it without
+defining it, and merged `sim.flow` fills it with 0 (`19` §19.2d). Giving
+it a meaning would be a `sim.flow` change, with a task and a
+determinism review. The cohort's `EnteredNodeAt` and `DueAt` already
+carry the same information through an existing read-only query, and
+the sub-tick can advance them. The field stays unused and undefined.
+
+### Walkers on jet bridges (boarding)
+
+`sim.flow` boards a flight in one step: at the doors-close point,
+`Absorb` removes every passenger of the flight who is at a gate (`09`
+§9.7, `12` §12.8). There is no per-passenger boarding in the sim, so the
+scene draws a **stylised stream**, consistent with the sim's counts: it
+runs while the flight has passengers at a gate and its aircraft is on
+stand, and it stops the tick the sim boards them.
+
+For each bridge with `Stand` set, in ascending bridge id, walkers are
+drawn only if all of these hold:
+
+1. `Airside` and `Flow` are not null, `graphics.DrawAgents` is true,
+   `camera.ViewHeight ≤ AGENT_ZOOM_THRESHOLD` (as `float`, §15.7), and
+   the bridge's bounding box intersects the view rectangle (closed, as
+   §15.7);
+2. **the stand test:** `TryGetStand(Stand)` returns true with
+   `Occupant` set to `o`, and `TryGetTrack(o)` returns true with `Phase
+   = OnStand`;
+3. **the boarding flight `G`:** `o` itself if the track's `Kind` is
+   `Departure`. If it is `Arrival`: `Schedule` is not null and
+   `TryGetFlight(o)` returns true with `HasRotation`, and `G` is its
+   `Rotation`. Otherwise there are no walkers;
+4. `Bg = PopulationForFlight(G, Departing) − x`, where `x` is
+   `TryGetOutstanding(G)`'s `Count` when it returns true and 0 when it
+   returns false, so `Bg` is the flight's passengers at a gate. It must
+   be above 0.
+
+Then `nw = min(Bg, MAX_BRIDGE_WALKERS, graphics.MaxDrawnAgentsPerNode)`.
+Walker `k`, `0 ≤ k < nw`:
+
+- `c = τ / BRIDGE_WALK_TICKS + k / (double)nw`, `m = floor(c)`, and the
+  centre is `(X0,Y0) + ((X1,Y1) − (X0,Y0)) × (c − m)`: it walks from the
+  pier to the door, enters the aircraft, and the next one follows;
+- a `Dot`, layer and colour `Agent`, visual `Passenger`, diameter
+  `AgentSize`, `Facing (X1 − X0, Y1 − Y0)`, source
+  `(BridgePassenger, bridge id, k)`;
+- `Paint` by §15.16's passenger rule, with the 13 bytes replaced by
+  `G.Value` as 8 bytes little-endian, then `j` as 4 bytes
+  little-endian, then the byte `r`. So each crossing shows a new face.
+  `j` is computed in integers, with no out-of-range cast:
+  `mL = (long)Math.Min(m, 2^53)`, which is in range because `m ≥ −1`
+  (τ ≥ −1) and 2^53 is exact in `double`; then
+  `j = unchecked((int)(mL × MAX_BRIDGE_WALKERS + k))`, in `int64`
+  arithmetic (at most 2^56 + 7, so it cannot overflow), truncated to its
+  low 32 bits.
+
+The stand test reads `OnStand` only. During a boarding hold (`12` §12.8)
+the departure is still `OnStand`, so the walkers keep coming while its
+late passengers reach the gate. Without `sim.turnaround`, a departure's
+track exists only from the handoff, so it is the arrival's `Rotation`
+that finds the boarding flight.
+
+> **A stream for the whole stay — ACCEPTED as is for now, HUMAN DECISION,
+> owner, 2026-10-07 (Q-132).** Walkers flow from the
+> moment the first passenger of the flight reaches a gate until the
+> doors close, which can be most of the aircraft's time on stand. Real
+> boarding starts about 30 minutes before departure. A window keyed on
+> `STD` was rejected because the fallback can close the doors before it
+> (the early-pushback note, Q-007), and the owner would then never see
+> boarding. The same passengers also still show in the gate's box: the
+> walkers are a depiction, not a second count. Both are decoration
+> (`Agent` layer, §15.14 invariant 1).
+
+### Arriving passengers — not drawn
+
+There are **no arriving passengers** in the sim at Phase 1: `Inject`
+rejects them (`09` §9.6, Q-040), and an arrival's `PaxCount` is 0 (`11`
+§11.1). Walkers leaving an arriving aircraft would be people the sim
+does not have, with no count to follow, so the scene draws none.
+**DECIDED, DEFERRED — HUMAN DECISION, owner, 2026-10-07 (Q-132):**
+boarding only for now. Arriving passengers come with a later sim phase,
+after T-025, and deboarding is drawn then, by amendment (`09` §9.6 says
+admitting them needs one that defines their destinations).
+
+---
+
+## 15.22 Elevation in the 2D art (Art2D, Q-132)
+
+The 2D tessellator (§15.17) draws `Elevation` as **scale and a longer
+ground shadow**. It reuses the aircraft's own shadow, layer 0 `Shadow`
+of §15.17 (Q-131), which already falls along the one light direction
+`(3, −4) / 5` with a shift by size row. New constants in
+`Art2DConstants`, both `int`: `ELEVATION_SCALE_M = 800` and
+`ELEVATION_SCALE_MAX = 2`.
+
+For a primitive whose `Visual` is `AircraftA` to `AircraftF` and whose
+`Elevation e > 0`, `Fill` emits the same quads, in the same order, as
+§15.17 does for it, with two changes:
+
+1. **The `Shadow` layer (0)** keeps the primitive's own `Size`, so it
+   stays the aircraft's true footprint on the ground, and its shift
+   gains `e / 4` world units along `(3, −4) / 5`: the corners move by
+   `(ShiftX / 100 + 0.15 × e, ShiftY / 100 − 0.2 × e)` instead of §15.17's
+   `(ShiftX / 100, ShiftY / 100)`. So the shadow moves out from under the
+   aircraft as it climbs, falls the same way as every other shadow in
+   the game, and converges on its ground shift at touchdown. Its rect,
+   colour and alpha are §15.17's.
+2. **Every other layer** (status outline, parts, logo, glazing) uses
+   `Size × min(ELEVATION_SCALE_MAX, 1 + e / ELEVATION_SCALE_M)` in place of
+   `Size`, so the aircraft looks nearer the camera as it climbs: 1.5
+   times at the 400 m of the approach entry and the climb end. Its own
+   shift, if any, is §15.17's.
+
+The arithmetic is in `double`, converted to `float` once, as in §15.17.
+With `e = 0`, and for every other visual whatever its `Elevation`, `Fill`
+is exactly §15.17's, so every frame with nothing airborne is unchanged
+byte for byte. No quad is added, and no new atlas cell, layer or
+`VisualId` is needed.
+
+---
+
+## 15.23 Q-132: tests and tasks
+
+**Tolerance note.** Motion positions (`DrawPrimitive.A` under §15.20 and
+§15.21) and `Elevation` are compared within `0.01` world units. Their
+expected values are computed in the test from these formulas in
+`double`, and converted to `float` once. Test vectors keep every
+coordinate below 32 768 in magnitude, where a `float` ULP is at most
+`0.004`. §15.22's corners keep §15.17's `1e-3`, with its test vectors.
+Two builds of the same inputs are compared exactly, and so are counts,
+sources, facings, paint, colours and the `α = 0` taxi value.
+
+### Tests
+
+Scene layer (task M1), phrased per `07-conventions.md`:
+
+- `test_tick_pacer_sub_tick_is_the_remainder`: 0 before the first
+  `Advance`; the remainder after each call; unchanged while paused and
+  by a throwing call; 0 after a catch-up cap; kept across a speed
+  change; always below `REAL_MICROSECONDS_PER_TICK_1X`.
+- `test_scene_build_rejects_sub_tick_out_of_range`: −1 and 100 000
+  throw with the `ParamName`; 0 and 99 999 do not.
+- `test_scene_two_argument_build_equals_sub_tick_zero`.
+- `test_scene_rebuilds_when_sub_tick_changes`: a changed sub-tick
+  rebuilds; the same tick, camera, settings and sub-tick return the
+  previous frame.
+- `test_scene_taxiing_aircraft_glides_with_sub_tick`: `α = 0` equals the
+  merged value exactly; the factor rises with `α`; near `α = 1` it nears
+  the next tick's position; `Trav ≤ 0` adds nothing; it clamps at 1.
+- `test_scene_arrival_appears_in_the_approach_window`: not drawn before
+  `STA − APPROACH_TICKS`; at `AE` at the window's start and at `FF` at
+  `STA`, with the playtest layout's values; elevations 400 and 100;
+  facing `fDep`; `AircraftMoving`; the predicted runway is the lowest-id
+  one with the smallest queue, over three runways.
+- `test_scene_held_arrival_flies_the_square_hold`: the playtest layout's
+  four corners and leg facings, elevation 100, `AircraftHolding`, the
+  wrap after four legs, and `τ < PhaseEnteredAt` held at `FF`.
+- `test_scene_arrival_lands_and_rolls_out_to_the_exit_node`: `w = 0` at
+  `FF`, `w = 1/2` at `TD` with elevation 0, `w = 1` at `X`; elevation
+  decreasing over the final; `O ≤ 0` at `X`; facing `fDep`, the same
+  direction as a departure's; and with `ExitNode = ThresholdNode`, `X = T`.
+- `test_render_playtest_layout_extends_the_phase1_layout`: the playtest
+  layout loads against `12` §12.13's fixture with `19` §19.2c's exit
+  lines added in code, and equals `phase1-layout.json` plus the three
+  taxi-node positions below.
+- `test_scene_departure_rolls_lifts_off_and_climbs`: `w = 0` at `T`,
+  `w = 1/2` at `LO` with elevation 0, `w = 1` at `CE` with elevation 400;
+  facing `fDep`.
+- `test_scene_off_graph_aircraft_without_a_runway_frame_is_not_drawn`:
+  an unset `Runway`, missing geometry, a missing `RunwayDef`, a missing
+  threshold position, and `Lr = 0`, each for every off-graph row.
+- `test_scene_elevation_is_zero_except_airborne_aircraft`: over a
+  max-tier scene, every primitive except approaching, held, final and
+  climbing aircraft has `Elevation` 0.
+- `test_render_layout_version_3_loads_walkways_and_bridge_stands`: the
+  fixture loads with its walkways and stands; version 1 and 2 files load
+  with empty walkways and null stands; each new check fails in its
+  order, naming its id.
+- `test_scene_walkway_agents_follow_their_cohort_progress`: `p` from
+  `EnteredNodeAt` and `DueAt` at several τ, `p = 1` when `D ≤ E`, `p = 0`
+  for an unknown cohort; the exact placement from the hash; every centre
+  inside the walkway's rectangle; `s` non-decreasing in τ; the facing;
+  one `TryGetCohort` per distinct cohort; a box without a walkway
+  unchanged.
+- `test_scene_bridge_walkers_follow_the_boarding_flight`: each of the
+  four conditions failing alone gives none; a departure on stand, and an
+  arrival with a rotation, give `min(Bg, 8, cap)` walkers at the exact
+  centres, facings, sources and paints; a rotation-less arrival, and an
+  arrival with a null `Schedule`, give none; `Bg ≤ 0` gives none.
+- `test_scene_calls_only_listed_sim_members` is **extended** with
+  `TryGetCohort`, `PopulationForFlight` and `TryGetOutstanding`.
+- `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+  is **extended**: each comparison is made at several sub-ticks, and
+  `Prims.Show` gains `Elevation`.
+- `test_render_loop_is_outcome_neutral_with_scripted_camera` and
+  `test_render_loop_is_outcome_neutral_across_graphics_changes` are
+  **extended**: the loop builds with the pacer's sub-tick, and the
+  fixture is version 3, so walkers are drawn on both walkways and the
+  bridges. Checkpoints must still be identical. The test also checks
+  that every walkway's node is a `corridor` in the flow fixture.
+- `test_scene_build_within_frame_budget_at_max_tier` and
+  `test_scene_build_and_update_allocate_nothing_after_first_call` are
+  **extended**: the max-tier scene gains 20 approaching, 5 held and 3
+  runway aircraft, a walkway on each of the 16 promoted nodes, and a
+  bridge with boarders on every stand. The sub-tick changes every frame,
+  so every frame rebuilds.
+
+Merged tests that Q-132 changes, each updated by M1's Test Author (no
+worker edits a test):
+
+- `test_render_layout_version_2_loads_scenery_and_rejects_faults`
+  **breaks**: it asserts that the fixture text contains
+  `"schema_version": 2`. That assertion moves to version 3; the rest of
+  the test, which builds its version 1 and 2 variants itself, stays.
+- `test_render_layout_fixture_file_equals_built_layout` is **extended**:
+  the kit's `Phase1RenderLayout` gains the walkways and stands. Any
+  fake-based test that then reaches a walkway or a bridge calls the
+  three new members, so the kit's flow fake answers them rather than
+  throwing.
+- `test_scene_aircraft_off_graph_is_not_drawn` keeps passing unchanged:
+  its off-graph tracks have no `Runway`, so §15.20 draws none of them.
+  It is **extended** with an `AwaitingApproach` arrival outside its
+  window.
+- Every other merged test keeps passing through the kept constructors
+  and the two-argument `Build`.
+
+2D art (task M2):
+
+- `test_art2d_airborne_aircraft_scaled_with_a_ground_shadow`: the same
+  quad count and order as at `e = 0`; the `Shadow` layer's quad unscaled,
+  at its row shift plus `(0.15 e, −0.2 e)`, with §15.17's rect and
+  colour; every other layer scaled by `1 + e / 800`, and by 2 from 800 m
+  up, with its own shift unchanged.
+- `test_art2d_elevation_zero_or_non_aircraft_is_unchanged`: buffers
+  identical to §15.17's for `e = 0`, and for a non-aircraft primitive
+  with `e > 0`.
+- `test_art2d_tessellator_fill_within_budget_and_allocates_nothing` is
+  **extended** with 25 airborne aircraft.
+
+Host (task M3):
+
+- `test_frame_loop_builds_with_the_pacer_sub_tick`: each frame's
+  `RenderFrame` equals a reference `Build` with the pacer's
+  `SubTickMicroseconds`, paused frames included.
+- Merged `FrameLoopTests` that compare with a two-argument reference
+  `Build` are updated to the three-argument one.
+- `test_playtest_bundle_lands_arrivals_at_the_far_exit`: the bundle's
+  `airside.fixture` parses with `ExitNode` 4 and §19.2c's lines, and the
+  presentation composes with it and `playtest-layout.json` (`12`
+  §12.13's playtest-fixture test).
+
+### Fixture (task M1's Test Author)
+
+`tests/fixtures/render/phase1-layout.json` becomes version 3. Bridges 1
+to 4 gain `"stand"` 1 to 4, the stand each one reaches, and corridors 4
+and 7 of the flow fixture get walkways along their boxes' middles. No
+other value changes, and the text `"stand_size": 40` stays:
+
+```
+"walkways": [
+  { "node": 4, "x0": 300, "y0": 230, "x1": 380, "y1": 230, "width": 40 },
+  { "node": 7, "x0": 600, "y0": 230, "x1": 680, "y1": 230, "width": 40 }
+]
+```
+
+**The playtest layout (Q-132).** The playtest's airside fixture gains
+three taxi nodes for its runway exit (`12` §12.13, `19` §19.2c), and
+§15.4 check 4 requires a position for every taxi node of the airside
+layout it is loaded against, and none for any other. `phase1-layout.json`
+is loaded against `12` §12.13's fixture, which has no exit, so it cannot
+carry them. A new file, `tests/fixtures/render/playtest-layout.json`, is
+`phase1-layout.json` (version 3, as above) with three more `taxi_nodes`
+entries, and no other change:
+
+```
+{ "node": 4, "x": -1850, "y": 0 },
+{ "node": 5, "x": -1850, "y": -90 },
+{ "node": 6, "x": 0, "y": -90 }
+```
+
+Node 4 is on the runway, 150 m from its far end. Nodes 5 and 6 carry the
+parallel taxiway 90 m south of the centreline, clear of the runway, back
+to junction 2. It becomes the playtest bundle's `render_layout.fixture`
+(`16` §16.3).
+
+### For the Planner
+
+Four tasks, beside Q-130's four (T-051 to T-054). Each starts only when
+its dependencies are merged.
+
+- **A1. Airside: the runway exit node (sim; determinism-relevant).**
+  Test Author first, then a worker. **Reviewed by reviewer-core.** It
+  implements `12` §12.4's `ExitNode` (the optional `exit_node` key, the
+  kept constructor, checks 4, 5 and 7, and routing) and its use in §12.3,
+  §12.6, §12.7, §12.8a, §12.9 and §12.11, with `12` §12.13's tests
+  except the playtest-fixture one. Writable paths: `src/sim/airside/**`
+  and `tests/sim/airside/**`. No fixture file changes, so every merged
+  run is byte-identical. It depends on nothing unmerged. Done-when
+  includes the determinism gate.
+- **M1. Render scene: motion, approaches and walkers.** Test Author
+  first, then a worker. Writable paths: `src/app/render/Scene/**`,
+  `tests/app/render/**` and `tests/fixtures/render/**`. It depends on
+  T-052, because both write `tests/app/render/**` and its shared kit,
+  and M1 changes `DrawPrimitive`, which T-052's tests construct. It
+  also depends on **A1**, because the arrival rollout reads
+  `RunwayDef.ExitNode`. M1 writes `playtest-layout.json`, and its test
+  loads it against `12` §12.13's fixture with §19.2c's exit lines added
+  in code, since the playtest airside file changes only in M3.
+- **M2. Render 2D art: elevation.** Test Author first, then a worker.
+  Writable paths: `src/app/render/Art2D/**` and `tests/app/render/**`.
+  It depends on M1 (`Elevation`). It edits no `.sln`.
+- **M3. Host: the sub-tick into `Build`, and the playtest's exit.**
+  Test Author first, then a worker. Writable paths: `src/app/host/**`,
+  `tests/app/host/**`,
+  `unity/AirportSim/Assets/Editor/PlaytestBundleBuildStep.cs`, whose
+  `render_layout.fixture` source becomes `playtest-layout.json` (`16`
+  §16.3, §16.6), and, for its Test Author,
+  `tests/fixtures/harness/checkpoints-phase1/airside.fixture` (`19`
+  §19.2c's exit lines), with `12` §12.13's playtest-fixture test. The
+  airside file and the render-layout switch change **together**, in one
+  PR: either alone makes the playable build fail §15.4 check 4 at
+  presentation assembly. This PR changes the Phase 1 checkpoints dump
+  (`12` §12.13's determinism note), so reviewer-core reviews the fixture
+  change. Done-when includes `unity-build` and the Phase 1 checkpoints
+  tests green. It depends on A1, M1, and T-054, which writes the same
+  paths.
+
+**T-053 does not wait, and needs no follow-up.** The Unity backend calls
+`Fill` and copies its quads on every `Draw` (§15.10), and M2 adds no
+quad: it only moves and scales existing ones. Its draw-call rule, buffers and contract are
+unchanged.
+
+The T-025 playtest waits for A1, M1, M2 and M3 as well as T-051 to T-054.
+Until M3 merges, a playable build already shows approaches, takeoffs
+and walkers, but at whole ticks: the host still calls the two-argument
+`Build`.

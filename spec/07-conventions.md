@@ -213,9 +213,10 @@ test fails, its message names the seed and the iteration index.
 `08` §8.3 bans floating point in tests too. There are three exceptions.
 `tests/app/render/` may use `float` for the values of `15`'s `float`-typed
 members only, and `double` only to compute the expected tessellator
-corners and sRGB table values that `15` §15.3 names; §15.3 is
-authoritative on both and on the one tolerance (`15` §15.3, Q-100,
-Q-130). `tests/app/ui/` may use `float` for the
+corners and motion values that `15` §15.3 names (the sRGB table is
+literal since Q-131);
+§15.3 is authoritative on both and on the tolerances (`15` §15.3, Q-100,
+Q-130, Q-132). `tests/app/ui/` may use `float` for the
 values of `15`'s and `17`'s `float`-typed members and parameters only
 (`17` §17.2, Q-102). `tests/app/host/` may use `float` for the values of
 `15`'s, `16`'s and `17`'s `float`-typed members and parameters only, such
@@ -314,12 +315,14 @@ no other choices about public shape.
   the constructor omits and sets to 0; the service's stored copy carries the
   assigned value. **Second exception (Q-130), the kept constructor.** When an
   amendment appends members to an existing struct and names it in a "kept
-  constructor" clause, the struct has exactly two public constructors: the
-  full one, and the earlier one taking only the pre-amendment members in
-  their declared order. The earlier one sets the appended members to the
-  defaults the clause states. It exists so that callers written before the
-  amendment compile unchanged. Today it applies only to `RenderSources`,
-  `RenderLayout` (`15` §15.9, §15.4) and `ComposedSim` (`16` §16.4). Structs with a single `Value` member (ids, `PlayerId`) and
+  constructor" clause, the struct has exactly the public constructors the
+  clause names: the full one, and each earlier one taking only the
+  members of an earlier amendment, in their declared order. An earlier one
+  sets the appended members to the defaults the clause states. It exists so
+  that callers written before the amendment compile unchanged. Today it
+  applies only to `RenderSources`, `RenderLayout` (`15` §15.9, §15.4) and
+  `ComposedSim` (`16` §16.4), and (Q-132) `DrawPrimitive`, `LayoutBridge`
+  (`15` §15.9, §15.21) and `RunwayDef` (`12` §12.4). Structs with a single `Value` member (ids, `PlayerId`) and
   `EventId` implement `IEquatable<T>`, `==` and `!=`. `EventId` also
   implements `IComparable<EventId>` over `(Tick, Sequence)`.
 - `X?` of a struct type is `System.Nullable<X>` (Q-018). An `event X { ... }`

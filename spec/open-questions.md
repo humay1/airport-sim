@@ -3522,3 +3522,76 @@ Answer:      OWNER DECISION recorded in `15` §15.15; mechanism by the
              and its start-up time on Mono; the style values and texture
              ranges; the tessellator's raised 2.0 ms budget.
 Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130, §15.17)
+
+### Q-132 — `app.render`: a living airport before the T-025 playtest (owner decision)
+Raised by:   human owner, 2026-10-07, via the team lead
+Blocking:    T-025 (the playtest waits for the three Q-132 tasks too)
+Question:    HUMAN DECISION, owner, 2026-10-07 (scope change approved by
+             the owner): the player should be "fully immersed" ("will I
+             see the passengers hopping into the plane, see the plane
+             landing before taxiing?"). Three features before T-025:
+             (1) smooth motion between ticks; (2) the final approach,
+             touchdown, rollout, takeoff roll, rotation and climb-out;
+             (3) passengers walking between terminal areas and along the
+             jet bridge into the aircraft. Ground vehicles and the
+             turnaround are not in scope. How is this drawn without
+             touching the sim, keeping the scene a tested pure function,
+             renderer-agnostic and carried over to 3D?
+Why it matters: today the scene draws whole ticks only, never an
+             off-graph aircraft (so nothing is seen on a runway), and
+             agents only in boxes. Interpolating in the engine would be
+             untested; adding sim state would touch determinism.
+Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
+             (`15` §15.19 to §15.23).
+             (a) One sim change, the runway exit node (decision (2)
+             below, `12` §12.4, task A1), and no new sim query. The
+             rest is derived from existing read-only queries; §15.6 now
+             also lists `TryGetCohort`, `PopulationForFlight` and
+             `TryGetOutstanding` (`09` §9.7, §9.7a).
+             (b) `ITickPacer.SubTickMicroseconds` and a three-argument
+             `Build(camera, graphics, subTick)`. The scene draws at
+             τ = CurrentTick − 1 + subTick / 100 000 and extrapolates
+             along the sim's own deadlines, statelessly (§15.19). The
+             host passes it (`16` §16.6).
+             (c) Taxiing glides. Arrivals appear 15 ticks before STA on
+             the predicted runway, fly a square hold when held, fly the
+             final in the departure direction and roll out to the
+             runway's exit node. Departures roll,
+             lift off and climb out until `Airborne`. `DrawPrimitive`
+             gains a semantic `Elevation` (§15.20).
+             (d) Layout v3: corridor walkways and each bridge's stand.
+             Agents on a corridor walk its walkway at their cohort's
+             progress. A stylised boarding stream on the jet bridge
+             follows the flight's passengers at the gate and stops when
+             the sim boards them (§15.21). Arriving passengers do not
+             exist in the sim, so none are drawn (decided, deferred,
+             below).
+             (e) Art2D draws `Elevation` as scale and a longer ground
+             shadow: Q-131's aircraft `Shadow` layer, shifted a further
+             `e / 4` along `(3, −4) / 5` (§15.22). No new `VisualId`, no
+             new quad.
+             (f) Four tasks: A1 (airside exit node, sim, reviewed by
+             reviewer-core), M1 (scene), M2 (Art2D), M3 (host and the
+             playtest's exit fixtures). T-053 is unaffected (§15.23).
+             LOW CONFIDENCE: the motion constants; runway prediction;
+             the hold's release jump; departures vanishing at
+             `Airborne`.
+             HUMAN DECISIONS, owner, 2026-10-07, on the review of #145:
+             (1) the 1x time scale (a landing lasts about 1 real
+             second) is ACCEPTED, with no extra speed setting;
+             (2) arrivals must land in the same direction as
+             departures, FIXED before T-025: `RunwayDef.ExitNode`, an
+             optional `exit_node` key defaulting to the threshold
+             (`12` §12.4), set only in the playtest's airside copy
+             (`12` §12.13, `19` §19.2c). This is the one sim change. It
+             is determinism-relevant, is task A1, and is reviewed by
+             reviewer-core. §15.20 flies arrivals toward the
+             departures' threshold and rolls them out to the exit;
+             (3) boarding only: deboarding is DEFERRED until arriving
+             passengers come with a sim phase after T-025, and the
+             whole-stay boarding stream is accepted as is;
+             (4) Q-131 is realism's and Q-132 is this one. The airborne
+             shadow stays, reconciled with #147: it is Q-131's `Shadow`
+             layer, with the elevation added to its shift (§15.22).
+             So there are four tasks: A1, M1, M2, M3 (§15.23).
+Status:      ANSWERED (spec/15-interfaces-render.md#1519-the-living-airport--owner-decision-2026-10-07-q-132)

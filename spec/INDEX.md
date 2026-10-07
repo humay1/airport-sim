@@ -268,7 +268,11 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 - Owns: runways, taxiways, stands, movement, door milestones, the turnaround
   handshake and fallback, the boarding hold.
 - Key: milestone ownership and `PlannedTick` table (§12.3); two `FlightId`s
-  per rotation, with the stand handed off (§12.3, §12.8); **boarding hold:
+  per rotation, with the stand handed off (§12.3, §12.8); **runway exit
+  node (owner, Q-132, §12.4): `RunwayDef.ExitNode`, optional
+  `exit_node` key defaulting to the threshold; arrivals leave the runway
+  and route from it; only the playtest copy has one (§12.13,
+  determinism note)**; **boarding hold:
   hold at the doors-close point while passengers are outstanding, at most
   `AirsideRules.BoardingHoldMaxMinutes`, then close and miss the remainder
   (§12.8, HD, D6)**; no RNG; factory with an explicit `turnaroundRegistered`,
@@ -400,7 +404,17 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   soft shadows, gradients, deterministic periodic noise, weathering and
   real-proportion aircraft, all baked into the atlas; grass, surface tiles
   and shadows are ordinary quads; no backend pass, no scene change, and
-  `Low` keeps the full art**.
+  `Low` keeps the full art**; **living airport (owner, 2026-10-07, Q-132, §15.19–§15.23),
+  presentation, plus one sim change, the runway exit node (`12` §12.4):
+  `Build` takes the pacer's sub-tick
+  and draws at a fractional tick τ; taxiing glides; approaches, a square
+  hold, landing, takeoff and climb-out are drawn off-graph with a
+  semantic `Elevation`, arrivals and departures in the same direction
+  (owner); the playtest uses `playtest-layout.json`; layout v3 adds corridor walkways and each
+  bridge's stand; walkers on walkways follow their cohort's progress;
+  a stylised boarding stream on jet bridges follows the flight's
+  passengers at the gate; Art2D draws elevation as scale and a longer
+  Q-131 aircraft shadow**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
@@ -412,9 +426,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   the fixture's satellite pier (§15.18). **LC, not yet reviewed (Q-131):**
   `Low` dropping nothing of the art (§15.14); the 85 MiB atlas and its
   start-up time (§15.11); the style values and texture ranges (§15.17);
-  the tessellator's raised 2.0 ms budget (§15.17).
+  the tessellator's raised 2.0 ms budget (§15.17). **LC, not yet reviewed
+  (Q-132):** every motion constant (§15.19); runway prediction, the
+  hold's release jump and departures vanishing at `Airborne` (§15.20).
+  **Decided (owner, Q-132):** the 1x time scale; the whole-stay boarding
+  stream; deboarding deferred until arriving passengers exist.
 - Read if: T-020; the render backend task (§15.10); the Q-130 tasks
-  (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18).
+  (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18); the Q-132 tasks (§15.4,
+  §15.5, §15.6, §15.8, §15.9, §15.19–§15.23; `16` §16.3, §16.6; `12`
+  §12.4, §12.13).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
 - Owns: the Unity project `unity/AirportSim/`, the headless composition root,
