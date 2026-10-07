@@ -3988,7 +3988,7 @@ Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
 Signed off:  not required (interfaces and clarifications; English wording
              is not balance; no scope or `01`/`02` change).
 
-## 2026-10-07 — spec/15 §15.1, §15.3, §15.4, §15.5, §15.6, §15.9, §15.10, §15.11, §15.12, §15.14, new §15.15–§15.18; 16 §16.4, §16.5, §16.7, §16.11; 04 Files, Conventions; INDEX; open-questions — real art: semantic visuals, paint, scenery and the 2D art (Q-130, owner decisions)
+## 2026-10-07 — spec/07 L10; spec/15 §15.1, §15.3, §15.4, §15.5, §15.6, §15.9, §15.10, §15.11, §15.12, §15.14, new §15.15–§15.18; 16 §16.4, §16.5, §16.7, §16.11; 04 Files, Conventions; INDEX; open-questions — real art: semantic visuals, paint, scenery and the 2D art (Q-130, owner decisions)
 Reason:      HUMAN DECISIONS — owner, 2026-10-07, four of them, all
              recorded under Q-130:
              (1) the abstract shapes are too ugly, so the game gets real
@@ -4075,15 +4075,39 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                the bootstrap calls `RenderFactory.LoadLooks`. Three host
                tests are added (§16.11).
              - **Merged tests:** the tests named in §15.18, each updated
-               by the named task's Test Author. One breaks
-               (`test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`).
-               Four are extended (`test_scene_calls_only_listed_sim_members`,
+               by the named task's Test Author. Three break: task 1's
+               `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`
+               (it counts 3 `Taxiway`-layer primitives) and
+               `test_scene_stand_colour_follows_occupancy` (it counts 2
+               `Stand`-layer primitives; the stand markings stay in that
+               layer, and the test counts `SourceKind.Stand` instead),
+               and task 4's `test_host_assembly_public_surface_matches_spec`
+               (its `ComposedSim` constructor and property pins, and its
+               `IPresentationComposer` method list, `16` §16.11). Four
+               are extended (`test_scene_calls_only_listed_sim_members`,
                `test_scene_build_within_frame_budget_at_max_tier`,
                `test_scene_build_and_update_allocate_nothing_after_first_call`,
                `test_render_layout_fixture_file_equals_built_layout`). Two
-               are covered through the kit's `Prims.Show`. No `app.ui` or
-               `app.host` test changes, because every old constructor
-               and signature stays.
+               are covered through the kit's `Prims.Show`. No `app.ui`
+               test changes.
+             - **07 L10 (Q-130), a narrow exception:** the "kept
+               constructor" clause. A struct whose members an amendment
+               appends keeps exactly one earlier constructor beside the
+               full one, with stated defaults. Today that is only
+               `RenderSources`, `RenderLayout` and `ComposedSim`. This
+               was chosen over dropping the extra constructors, which
+               would have rewritten constructor calls in seven render,
+               ui and host test files (one of them `app.ui`'s) for no
+               behaviour change.
+             - **15 §15.3 (Q-130):** the tests' float rule now covers
+               `Art2D`. `AtlasRect` and `Uvs` are compared exactly. The
+               tessellator's `Corners` are the one stated `1e-3`
+               tolerance, and `double` may appear only for expected
+               corners and the sRGB table.
+             - **Arithmetic pinned (Q-130):** stand-number centres are
+               `int64` with truncating division (fixture stand 2 →
+               `(439, −161)`). The logo sub-square is integer, rounding
+               half up (`AircraftC` side 131, `AircraftF` side 193).
              - **Merged code:** the scene layer (T-020), the backend
                (T-032), the host and the bootstrap (T-031, T-034) change,
                in four new tasks (§15.18). **From the scene task merging

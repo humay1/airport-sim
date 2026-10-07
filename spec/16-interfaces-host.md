@@ -299,10 +299,10 @@ interface ISimComposer {
 
 **`ComposedSim.Content` (Q-130).** `Compose` returns, as `Content`, the
 same `IContentIndex` instance that step 1 passed to `CreateBuilder`.
-`ComposedSim` has two constructors: one taking all eight fields in
-declared order, and the earlier seven-argument one, which sets `Content`
-to null. Only presentation reads `Content`, for aircraft sprites
-(`15` §15.5). A null `Content` draws every aircraft as `AircraftC`.
+Under `07` L10's "kept constructor" clause, `ComposedSim` has exactly two
+public constructors: one taking all eight fields in declared order, and
+the earlier seven-argument one, which sets `Content` to null. Only
+presentation reads `Content`, for aircraft visuals (`15` §15.16). A null `Content` draws every aircraft as `AircraftC`.
 
 `Compose` does exactly this, in this order:
 
@@ -941,8 +941,17 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
   from the given `RenderLooks`. With the three-argument one, it is
   `DefaultLooks()`'s livery
 
-The Q-130 host task changes no merged host test, because the
-seven-argument `ComposedSim` constructor and the three-argument `Compose`
+**One merged host test changes (Q-130).** The host task's Test Author
+updates `test_host_assembly_public_surface_matches_spec`
+(`tests/app/host/HostAssemblyTests.cs`) to this spec. `ComposedSim` now
+has exactly the two public constructors of `07` L10's "kept constructor"
+clause: the eight-parameter one, `(…, IDelaySystem, IContentIndex)`, and
+the earlier seven-parameter one. Its properties are `Host` to `Delay` plus
+`Content`. `IPresentationComposer`'s methods are the two `Compose`
+overloads (three and four parameters). The test's other pins are
+unchanged: exported types, `HostFactory`'s methods, and the other
+structs and interfaces. Every other merged host test is unchanged,
+because the seven-argument constructor and the three-argument `Compose`
 stay.
 
 Host tests may use `float` only as `07` L4's `tests/app/host/` exception

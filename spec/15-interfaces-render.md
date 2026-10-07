@@ -138,6 +138,17 @@ Rules binding on the scene layer:
   `DrawPrimitive.Size`). Expected values are written as the scene layer
   computes them from integer inputs, for example `(float)x`, and compared
   exactly, with no tolerance. Budget tests stay `long`-only (`07` L11).
+- **The 2D art's floats (Q-130, §15.17).** The same test project also
+  tests `AirportSim.App.Render.Art2D`, and `float` may appear there to
+  build and check its `float`-typed members: `AtlasRect`, and the
+  tessellator's `Corners` and `Uvs` buffers. `AtlasRect` values and every
+  `Uvs` entry are compared exactly: they are multiples of 1/2048, scaled
+  by powers of two. The tessellator's `Corners` are the **one** exception
+  to "no tolerance". They are compared within `1e-3` world units, under
+  §15.17's tolerance note and with its chosen test vectors, because a
+  normalised `Facing` is not exact. `double` may appear only to compute
+  those expected corners and §15.17's sRGB table values. No other float
+  comparison in `tests/app/render/` has a tolerance.
 - It depends on the sim **read-only**, following `03-module-map.md`'s
   `app.render` row. It never references `app.ui`.
 - It targets `netstandard2.1` with `LangVersion 9`, the same as the sim
@@ -188,9 +199,10 @@ like a real airport. The layout could not say where pavement and
 buildings are, so it gains two lists. Both are renderer-agnostic
 geometry with semantic kinds, and neither names an atlas or a sprite.
 Grass is not data: it is the ground everywhere else, the backend's
-background colour. **C# shape:** `RenderLayout` keeps its constructor
-with the seven earlier fields, which sets `Areas` and `Bridges` to empty
-lists, and gains one that takes all nine fields in declared order.
+background colour. **C# shape (kept constructor, `07` L10):** `RenderLayout`
+keeps its constructor with the seven earlier fields, which sets `Areas`
+and `Bridges` to empty lists, and gains one that takes all nine fields in
+declared order.
 
 ### File format (Q-094)
 
@@ -624,10 +636,11 @@ The two-argument `CreateSceneBuilder` is the three-argument one with
 
 **C# shape (Q-130).** As for every type in this file, the fields above
 are get-only properties, and each struct has one constructor taking them
-in declared order. The exceptions keep every caller written before Q-130
-compiling and behaving as before. `RenderSources` has a second
-constructor, `(host, airside, flow)`, which sets `Schedule` and `Content`
-to null. `RenderLayout` has its seven-field one (§15.4). `DrawPrimitive`'s
+in declared order. The exceptions are `07` L10's "kept constructor"
+clause, and they keep every caller written before Q-130 compiling and
+behaving as before. `RenderSources` keeps `(host, airside, flow)`, which
+sets `Schedule` and `Content` to null. `RenderLayout` keeps its
+seven-field one (§15.4). `DrawPrimitive`'s
 one constructor takes its ten fields in declared order. `Paint`'s default
 value is all zero.
 
@@ -1210,9 +1223,18 @@ For each stand, at its node `N` with nose-in vector `v` (above) and
   `(StandNumber, stand id, i)`, centred at
   `(N.x + (v.x × d − v.y × e_i) / Ls, N.y + (v.y × d + v.x × e_i) / Ls)`,
   with `d = (StandSize × 13) / 32` and
-  `e_i = ((c − 1 − 2i) × 3 × G) / 10`. The number sits at the nose end of
-  the stand and reads upright for a pilot taxiing in. A large aircraft
-  may cover part of it, as on a real apron.
+  `e_i = ((c − 1 − 2i) × 3 × G) / 10`. **Arithmetic (binding):** every
+  quantity here (`v`, `Ls`, `G`, `d`, `e_i` and both centre coordinates) is
+  an integer, computed in `int64`. Every `/` is C# `long` division, which
+  truncates toward zero, also for negative numerators. Each coordinate is
+  converted to `float` only at the end, so the centres are whole numbers.
+  For example, fixture stand 2 at node 12 `(450, −150)` has
+  `v = (−150, −150)` (edge 4, from node 3 at `(600, 0)`), `Ls = 212`,
+  `G = 6`, `d = 16` and `e_0 = 0`. So its one digit `2` is centred at
+  `(450 + (−2400) / 212, −150 + (−2400) / 212) = (439, −161)`, not
+  `438.68`. The number sits at the nose end of the stand and reads
+  upright for a pilot taxiing in. A large aircraft may cover part of it,
+  as on a real apron.
 
 ### Aircraft visual and livery
 
@@ -1498,9 +1520,23 @@ The aircraft layers are: 0 `Status` (the silhouette grown by 32): role;
 1 `Wings` (wings only): fixed `#D5D8DC`; 2 `Engines`: region 3;
 3 `Fuselage`: region 0; 4 `Cheatline` (a band along each side of the
 fuselage): region 2; 5 `Tail` (tailplane and fin top): region 1; then the
-logo: region 4, `IsLogo`, on the sub-square centred at
-`(512, 512 − 0.30 × length × 1024)` with side `0.2 × length × 1024`,
-rounded to integers; then 6 `Glazing` (windscreen): fixed `#2A3138`.
+logo: region 4, `IsLogo`, on a sub-square (below); then 6 `Glazing`
+(windscreen): fixed `#2A3138`.
+
+**The logo sub-square (binding, integer arithmetic).** Let `Lh` be the
+row's length in hundredths (40, 50, 64, 76, 88, 94 for `A` to `F`).
+
+- `side = (Lh × 2048 + 500) / 1000`, which is `0.2 × length × 1024`
+  rounded half up;
+- `off = (Lh × 3072 + 500) / 1000`, which is `0.30 × length × 1024`
+  rounded half up;
+- `half = side / 2`.
+
+All are non-negative, so `/` (C# integer division) is floor division.
+Then `MinX = 512 − half`, `MaxX = MinX + side`,
+`MinY = 512 − off − half` and `MaxY = MinY + side`. So `AircraftC` has
+`side = 131`, `off = 197`, and `(447, 250)–(578, 381)`. `AircraftF` has
+`side = 193` (192.512 rounds up), `off = 289`, and `(416, 127)–(609, 320)`.
 Every region and role layer is drawn at values 225 to 255, so that the
 colour reads true. Darker values are used only for shading inside a
 part, such as engine intakes at 150.
@@ -1677,7 +1713,9 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
   geometry, and the in-layer order.
 - `test_scene_stand_lead_in_and_numbers`: the facing as the nose-in
   vector, the digit count and visuals for 1-, 2- and 5-digit stand ids,
-  the exact centres, and no digits when `StandSize < 6`.
+  the exact integer centres (including fixture stand 2's `(439, −161)`
+  and a case that truncates toward zero from a negative numerator), and
+  no digits when `StandSize < 6`.
 - `test_scene_aircraft_visual_follows_size_category`: ordinals 0 to 5,
   ordinal 6 giving `AircraftF`, and `AircraftC` for an unresolved type, an
   unresolved category, a missing flight, a null `Schedule` and a null
@@ -1722,7 +1760,9 @@ New, phrased per `07-conventions.md`. Scene layer (task 1):
   and height `length × 240`, each ± 3 pixels. Both grow strictly from `A`
   to `F`. Each aircraft cell is mirror-symmetric within ± 1 per byte.
 - `test_art2d_layers_match_the_visual_table`: `LayersOf` for every
-  `VisualId` matches §15.17's table, including the logo sub-square.
+  `VisualId` matches §15.17's table, including the logo sub-square of
+  each size from the integer rule (`AircraftC` `(447, 250)–(578, 381)`,
+  `AircraftF` `(416, 127)–(609, 320)`).
 - `test_art2d_tessellator_corners_follow_kind_facing_and_slicing`: box,
   segment, zero-length segment, and a dot facing `(0, 0)`, `(0, 1)`,
   `(1, 0)`, `(−1, 0)`, `(0, −1)`, `(3, 4)` and `(1, 1)` (§15.17's tolerance
@@ -1744,6 +1784,13 @@ worker edits a test.
     the junction fill and the centrelines are there too. It counts the
     `TaxiEdge`-sourced primitives instead, and asserts their
     `TaxiwaySurface` visual.
+  - `test_scene_stand_colour_follows_occupancy` (`SceneTests.cs:29`)
+    **breaks**. It asserts exactly 2 primitives in the `Stand` layer,
+    and each stand's lead-in and number digits are now there too. The
+    markings stay in `Stand`: they must draw over the pads and under the
+    aircraft, and a new layer would shift every ordinal again. So the
+    test counts the `SourceKind.Stand`-sourced primitives (2) instead,
+    and asserts their `StandPad` visual.
   - `test_scene_calls_only_listed_sim_members` is **extended**. The
     max-tier fakes gain a guarded schedule and content index, and the
     test asserts that content is read only at construction.
@@ -1758,9 +1805,18 @@ worker edits a test.
     and `test_scene_primitive_order_is_stable` are **covered by the
     kit**. `Prims.Show` gains `Visual`, `Facing` and `Paint`, so both
     compare the new fields with their own code unchanged.
-- No `app.ui` or `app.host` test changes. The old `RenderSources`,
-  `RenderLayout`, `ComposedSim`, `CreateSceneBuilder` and `Compose`
-  shapes all stay, and a version 2 fixture still keeps the text
+- Task 4:
+  - `test_host_assembly_public_surface_matches_spec`
+    (`tests/app/host/HostAssemblyTests.cs`) **breaks**. It pins
+    `ComposedSim` to one seven-parameter constructor and the properties
+    `Host` to `Delay`, and `IPresentationComposer`'s methods to one
+    `Compose`. It is updated as `16` §16.11 states: two constructors
+    under `07` L10's kept-constructor clause, `Content` added, and two
+    `Compose` overloads.
+- No `app.ui` test changes, and no other `app.host` test does. The kept
+  `RenderSources`, `RenderLayout` and `ComposedSim` constructors (`07`
+  L10), the two-argument `CreateSceneBuilder` and the three-argument
+  `Compose` all stay. A version 2 fixture still keeps the text
   `"stand_size": 40`, which a host test edits.
 
 ### Fixture (task 1's Test Author)

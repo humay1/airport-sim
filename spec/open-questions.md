@@ -3449,9 +3449,16 @@ Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
              backend. There is a recolourable-region style guide for
              future art.
              (h) The host passes schedule, content and looks
-             (`16` §16.4, §16.5, §16.7). Every older constructor and
-             signature stays. One merged test breaks and four are
-             extended. There are four tasks (§15.18).
+             (`16` §16.4, §16.5, §16.7). The older constructors stay
+             under a narrow `07` L10 "kept constructor" exception, and
+             the three-argument `Compose` stays beside a four-argument
+             overload. Three merged tests break:
+             `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`,
+             `test_scene_stand_colour_follows_occupancy` and
+             `test_host_assembly_public_surface_matches_spec`. Four are
+             extended (§15.18, `16` §16.11). There are four tasks.
+             §15.3's float rule covers `Art2D`. Stand-number centres and
+             the logo sub-square use pinned integer arithmetic.
              LOW CONFIDENCE: held-aircraft facing; Unity atlas
              mechanics; the tessellator budget; the fixture's satellite
              pier; the style values.

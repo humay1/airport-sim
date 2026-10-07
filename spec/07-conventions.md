@@ -298,7 +298,14 @@ no other choices about public shape.
   constructor taking the members in declared order. The only exception is a
   member the spec says a service assigns, such as `Command.Sequence`, which
   the constructor omits and sets to 0; the service's stored copy carries the
-  assigned value. Structs with a single `Value` member (ids, `PlayerId`) and
+  assigned value. **Second exception (Q-130), the kept constructor.** When an
+  amendment appends members to an existing struct and names it in a "kept
+  constructor" clause, the struct has exactly two public constructors: the
+  full one, and the earlier one taking only the pre-amendment members in
+  their declared order. The earlier one sets the appended members to the
+  defaults the clause states. It exists so that callers written before the
+  amendment compile unchanged. Today it applies only to `RenderSources`,
+  `RenderLayout` (`15` §15.9, §15.4) and `ComposedSim` (`16` §16.4). Structs with a single `Value` member (ids, `PlayerId`) and
   `EventId` implement `IEquatable<T>`, `==` and `!=`. `EventId` also
   implements `IComparable<EventId>` over `(Tick, Sequence)`.
 - `X?` of a struct type is `System.Nullable<X>` (Q-018). An `event X { ... }`
