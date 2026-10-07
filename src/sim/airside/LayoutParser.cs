@@ -90,7 +90,8 @@ namespace AirportSim.Sim.Airside
 
                             hasRunways = true;
                             ParseArray(RunwayKeys, RunwayTypes, v => runways.Add(new RunwayDef(
-                                new RunwayId((ushort)v.I[0]), new TaxiNodeId((ushort)v.I[1]), (int)v.I[2], (int)v.I[3], (uint)v.I[4])));
+                                new RunwayId((ushort)v.I[0]), new TaxiNodeId((ushort)v.I[1]), (int)v.I[2], (int)v.I[3], (uint)v.I[4],
+                                v.Seen[5] ? new TaxiNodeId((ushort)v.I[5]) : new TaxiNodeId((ushort)v.I[1]))), 5);
                             break;
                         case "nodes":
                             if (hasNodes)
@@ -154,8 +155,8 @@ namespace AirportSim.Sim.Airside
             return new AirsideLayout(runways, nodes, edges, stands);
         }
 
-        private readonly string[] RunwayKeys = { "id", "threshold_node", "active_direction_deg", "declared_capacity_per_hour", "occupancy_ticks" };
-        private readonly char[] RunwayTypes = { TUInt16, TUInt16, TInt32, TInt32, TUInt32 };
+        private readonly string[] RunwayKeys = { "id", "threshold_node", "active_direction_deg", "declared_capacity_per_hour", "occupancy_ticks", "exit_node" };
+        private readonly char[] RunwayTypes = { TUInt16, TUInt16, TInt32, TInt32, TUInt32, TUInt16 };
         private readonly string[] NodeKeys = { "id", "kind" };
         private readonly char[] NodeTypes = { TUInt16, TString };
         private readonly string[] EdgeKeys = { "id", "from", "to", "traversal_ticks", "bidirectional" };
@@ -168,6 +169,7 @@ namespace AirportSim.Sim.Airside
         {
             public readonly long[] I;
             public readonly string?[] S;
+            public bool[] Seen = Array.Empty<bool>();
             public int Line;
 
             public Values(int n)
@@ -188,7 +190,7 @@ namespace AirportSim.Sim.Airside
             }
         }
 
-        private void ParseArray(string[] keys, char[] types, Action<Values> add)
+        private void ParseArray(string[] keys, char[] types, Action<Values> add, int required = -1)
         {
             Require('[');
             SkipWs();
@@ -200,7 +202,7 @@ namespace AirportSim.Sim.Airside
             while (true)
             {
                 SkipWs();
-                add(ParseObject(keys, types));
+                add(ParseObject(keys, types, required < 0 ? keys.Length : required));
                 SkipWs();
                 if (TryConsume(','))
                 {
@@ -222,11 +224,12 @@ namespace AirportSim.Sim.Airside
             }
         }
 
-        private Values ParseObject(string[] keys, char[] types)
+        private Values ParseObject(string[] keys, char[] types, int required)
         {
             var values = new Values(keys.Length);
             var seen = new bool[keys.Length];
             values.Line = _line;
+            values.Seen = seen;
             Require('{');
             SkipWs();
             if (!TryConsume('}'))
@@ -266,7 +269,7 @@ namespace AirportSim.Sim.Airside
                 }
             }
 
-            for (int k = 0; k < keys.Length; k++)
+            for (int k = 0; k < required; k++)
             {
                 if (!seen[k])
                 {
