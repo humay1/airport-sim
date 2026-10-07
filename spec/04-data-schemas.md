@@ -22,6 +22,7 @@ falls back to a default.
 | `queue_profiles.schema.json` | `data/queue_profiles/*.json` | — |
 | `balance.schema.json` | `data/balance/*.json` (human-authored, below) | 1 at Phase 1 |
 | `strings.schema.json` | `data/strings/en.json` (player-visible text, `17` §17.4b) | 1 at Phase 1 |
+| `looks.schema.json` | `data/looks/looks.json` (liveries and passenger clothing colours, `15` §15.16, Q-130) | 1 at Phase 1 |
 
 A schema's file name must equal its directory's name, because
 `ci/validate-content.py` pairs them by name. That is why the pax profile
@@ -74,6 +75,12 @@ build to CSV for anything.
   `data/strings/en.json` are `17-interfaces-ui.md` §17.4b (Q-125). The
   string table is not sim content: `08` §8.11's loader ignores
   `strings/`.
+- Presentation looks (airline liveries, passenger clothing colours) are
+  `data/looks/looks.json`, read by `app.render` (`15` §15.16, Q-130).
+  They are not sim content: `08` §8.11's loader ignores `looks/`, so
+  they never change the content hash. They name regions and plain sRGB
+  colours, never an atlas or a sprite, so a 3D renderer can use them as
+  material slots. The colours are aesthetic, not balance.
 - Every file declares `"schema_version"`. Migrations are mandatory, not optional.
 - Modders use this exact pipeline. If it is awkward for a designer, it is wrong.
 

@@ -398,12 +398,19 @@ readonly struct Presentation {
 
 interface IPresentationComposer {
   Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences)   // D10
+  Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences,
+                       in RenderLooks looks)                                                     // Q-130
 }
 ```
 
 - Builds `RenderSources { Host, Airside, Flow, Schedule, Content }`
   (`15` §15.9, Q-130) from the `ComposedSim`, with its five-argument
   constructor.
+- **Looks (Q-130).** The four-argument `Compose` builds the scene with
+  `RenderFactory.CreateSceneBuilder(sources, layout, looks)`. The
+  three-argument one is the four-argument one with
+  `RenderFactory.DefaultLooks()`. The host never reads `data/looks/`
+  itself, and `IHeadlessRun` uses no looks.
 - Loads `render_layout.fixture` through `IRenderLayoutLoader`, passing
   `Airside.Layout()` when `sim.airside` is registered, and `null`
   otherwise. Its `sourceName` is exactly `render_layout.fixture`, as for
@@ -512,8 +519,13 @@ enough for the Reviewer to check line by line against this list:
   `IContentSource` over `StreamingAssets/Content/` that it gives
   `HostFactory.LoadContent` (§16.3), and hand the table to the UI backend
   before the backend's first draw. Apart from handing the backends what
-  they draw, this is its only call into a module other than `app.host`.
-  The bootstrap does not catch its exception.
+  they draw, this and the looks below are its only calls into a module
+  other than `app.host`. The bootstrap does not catch its exception.
+- **The looks (Q-130).** Also at scene start, never in a checkpoint run:
+  call `RenderFactory.LoadLooks` (`15` §15.16) with that same
+  `IContentSource`, and pass the result to the four-argument
+  `IPresentationComposer.Compose` (§16.5). It does not catch the
+  exception.
 - **Each engine frame:** get this frame's `CameraView` from the render backend
   and this frame's `UiInput`s from the UI backend, read the screen size,
   convert the engine's frame delta to integer microseconds (the float
@@ -922,11 +934,16 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
   else
 - `test_presentation_render_sources_carry_schedule_and_content` (Q-130):
   with a tracked aircraft on the graph, a frame's `Scene.Build` calls
-  `TryGetFlight` on the composed `sim.Schedule`, and the aircraft's sprite
+  `TryGetFlight` on the composed `sim.Schedule`, and the aircraft's visual
   follows its size category in the composed content
+- `test_presentation_passes_looks_to_the_scene` (Q-130): with the
+  four-argument `Compose`, an aircraft's `Paint` is its airline's livery
+  from the given `RenderLooks`. With the three-argument one, it is
+  `DefaultLooks()`'s livery
 
 The Q-130 host task changes no merged host test, because the
-seven-argument `ComposedSim` constructor stays.
+seven-argument `ComposedSim` constructor and the three-argument `Compose`
+stay.
 
 Host tests may use `float` only as `07` L4's `tests/app/host/` exception
 allows (Q-116).

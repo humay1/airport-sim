@@ -3988,108 +3988,121 @@ Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
 Signed off:  not required (interfaces and clarifications; English wording
              is not balance; no scope or `01`/`02` change).
 
-## 2026-10-07 — spec/15 §15.1, §15.2, §15.5, §15.6, §15.9, §15.10, §15.11, §15.12, §15.14, new §15.15; 16 §16.4, §16.5, §16.11; INDEX; open-questions — sprite art (Q-130, owner decision)
-Reason:      HUMAN DECISION — owner, 2026-10-07: the abstract shapes are
-             too ugly, so the game gets real top-down art before the
-             T-025 playtest. The art is agent-made flat vector art, in a
-             clean, consistent, flat top-down style, made by agents, with
-             no third-party assets. The Architect specified the smallest
-             mechanism and a style guide. The look is aesthetic, not
-             balance.
+## 2026-10-07 — spec/15 §15.1, §15.3, §15.4, §15.5, §15.6, §15.9, §15.10, §15.11, §15.12, §15.14, new §15.15–§15.18; 16 §16.4, §16.5, §16.7, §16.11; 04 Files, Conventions; INDEX; open-questions — real art: semantic visuals, paint, scenery and the 2D art (Q-130, owner decisions)
+Reason:      HUMAN DECISIONS — owner, 2026-10-07, four of them, all
+             recorded under Q-130:
+             (1) the abstract shapes are too ugly, so the game gets real
+             top-down art before the T-025 playtest. It is agent-made
+             flat vector art, clean, consistent and flat, with no
+             third-party assets.
+             (2) Assets are reusable and parameterised: passenger
+             clothes and airline branding change by data.
+             (3) 3D comes after the T-025 gate. Keep this 2D but
+             transferable, and add only a note about 3D.
+             (4) T-025 is not validated until the graphics actually look
+             like a real airport.
+             The Architect specified the mechanism and a style guide.
+             The look is aesthetic, not balance.
 Raised by:   human directive (Q-130)
-Impact:      - **§15.9:** `DrawPrimitive` gains `SpriteId Sprite` (after
-               `Colour`) and `WorldPoint Facing` (after `Size`). Its one
-               constructor takes nine fields. The enum `SpriteId` has 15
-               values, and its value is the atlas cell. `ColourRole`
-               gains `RunwayMarking` and `TaxiwayMarking`, and
-               `SourceKind` gains `RunwayMarking`, `TaxiNode` and
-               `TaxiCentreline`, all appended. `RenderSources` gains
-               `Schedule` and `Content` and keeps its three-argument
-               constructor. Added: `AtlasRect`, `SpriteAtlas` and
-               `RenderFactory.BuildSpriteAtlas()`.
-             - **§15.5:** a sprite and a `SourceRef` column for every row.
-               New rows: runway markings (edge lines, two thresholds and
-               centreline dashes, on an exact `int64` rule), a taxiway
-               junction fill at nodes with two or more edges, and a
-               centreline per taxi edge. The appended source kinds draw
-               every marking after every surface. Aircraft sprite by size
-               ordinal (A to F, with C as the fallback), read through
-               `TryGetFlight` per rebuild and a content map built at
-               construction. Aircraft facing is an exact vector of
-               layout differences under five ordered rules, with no
-               angle and no quantisation. `ColourRole` tints the
-               sprite, so states still read by colour. No older
-               primitive's geometry, colour, layer or source changes.
-             - **§15.1, §15.6:** `app.render` may call
-               `IScheduleSystem.TryGetFlight` (per rebuild) and
-               `IContentIndex.AllOf`/`TryGet` (at construction only).
-             - **§15.10:** the backend uploads the atlas once, as one
-               texture, and maps each primitive to a tinted quad, rotated
-               by `Facing` or along the segment, with an exact corner-to-UV
-               rule. It is still one mesh, one material and one draw
-               call, with no per-frame engine allocation (Q-034 kept),
-               and every primitive is drawn at every setting (§15.14
-               invariant, now including sprite and facing). The palette
-               gains the two roles.
-             - **§15.15 (new):** the pipeline is art as code (option a):
-               C# shape tables in `src/app/render/Scene/Art/`, rasterised
-               headless by a binding signed-distance algorithm into a
-               1024² RGBA32 atlas of 16 cells of 256 px, with an 8 px
-               bleed border and 5 directly rasterised mips. It reaches the
-               player inside the tested plugin, with no asset, `.meta`,
-               build step or package. Option (b) (SVG plus
-               `com.unity.vectorgraphics` preview, or a third-party
-               rasteriser) and option (c) (binary PNGs) are rejected, with
-               reasons. Also: a style guide (flat, greyscale value steps
-               tinted by the palette, outline weights, per-sprite art,
-               aircraft proportions per size category, the palette in
-               sRGB), the tests, and the task breakdown.
-             - **§15.2:** five `int` constants: `ATLAS_SIZE`,
-               `ATLAS_CELL_PIXELS`, `ATLAS_CELL_BORDER_PIXELS`,
-               `ATLAS_MIP_COUNT` and `ART_UNITS`.
-             - **§15.11:** the per-rebuild additions fit the same 2 ms.
-               The atlas is about 5.6 MB of GPU memory. Its build time is
-               unbudgeted and is noted at T-025.
-             - **16 §16.4, §16.5:** `ComposedSim` gains `IContentIndex?
-               Content`, the instance step 1 built, and keeps its
-               seven-argument constructor. The presentation composer
-               passes `Schedule` and `Content` into `RenderSources`. Two
-               host tests are added (§16.11).
-             - **Merged tests (spec-driven updates by the scene task's
-               Test Author, as Q-125 did):**
-               `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`
-               **breaks** (it counts 3 `Taxiway`-layer primitives).
-               `test_scene_calls_only_listed_sim_members`,
+Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
+               gains `VisualId Visual` (34 semantic ids, with no atlas
+               meaning), `int32 Heading` (tenths of a degree, `H(v)` of
+               an integer layout vector, rounded from `Math.Atan2`) and
+               `Paint` (five `Rgb` regions and a `Mark`). There are now
+               ten fields. Added: `Rgb`, `Paint`, `AircraftRegion`,
+               `PassengerRegion`, `LogoMark`, `Livery`, `AirlineLivery`
+               and `RenderLooks`; `RenderFactory.LoadLooks`,
+               `DefaultLooks` and a three-argument `CreateSceneBuilder`.
+               `DrawLayer` gains `Ground`, **inserted first**, so every
+               later layer's ordinal moves up by one while their relative
+               order is kept. `ColourRole` gains `RunwayMarking`,
+               `TaxiwayMarking`, `Apron` and `Building`, and
+               `SourceKind` gains eight kinds, all appended.
+             - **New primitives (§15.5, §15.16):** aprons and buildings
+               (`Ground`); runway edge lines, thresholds, two-digit
+               designators and centreline dashes (exact `int64` frames);
+               taxiway junction fills and centrelines; stand lead-ins,
+               painted stand numbers and jet bridges. Aircraft get their
+               visual by size category and their livery by airline,
+               through one `TryGetFlight` per drawn aircraft. Passengers
+               get clothes from FNV-1a-32 of their `PassengerRef`, never
+               from the sim RNG. A recolourable-region table binds future
+               art.
+             - **Data (§15.16, `04`):** the new `data/looks/looks.json`
+               and `looks.schema.json` hold the liveries and clothing
+               lists. They are validated by `ci/validate-content.py`,
+               ignored by `08` §8.11's loader, and so do not change the
+               content hash. There are defaults for a missing airline and
+               for builders without looks. A missing or malformed file in
+               the player fails loudly.
+             - **Layout v2 (§15.4):** `areas` (apron, terminal, pier,
+               control tower) and `bridges`, with a check 5. Version 1
+               still loads. The fixture gains the lists (§15.18), and is
+               also the playtest's `render_layout.fixture`.
+             - **2D art (§15.3, §15.17, new assembly `Art2D`):** art as
+               code (option (a); (b) and (c) rejected, with reasons). One
+               2048² atlas, with large 256 cells for aircraft layers and
+               small 128 cells for the rest, at fixed packing. It has
+               five directly rasterised mips under a binding
+               signed-distance algorithm. There is a visual-to-layer table
+               (role, region or fixed colour) and a tessellator that
+               emits tinted, rotated, optionally nine-sliced quads with an
+               sRGB-to-linear table, and that has its own budget. A style
+               guide gives the palette, value steps, outline weights,
+               per-cell art and aircraft proportions.
+             - **§15.10:** the Unity backend only uploads the atlas once
+               and copies the tessellator's quads into one mesh: one
+               material, one draw call and no per-instance material
+               (Q-034 kept). The palette gains the four roles and the
+               grass background, and aircraft roles now colour a status
+               outline.
+             - **3D (§15.1, §15.15):** a note that 3D is planned after
+               T-025. A 3D backend replaces only `Art2D` and the Unity
+               backend, mapping `VisualId` to meshes, `Paint` regions to
+               material slots and `Heading` to yaw.
+             - **§15.1, §15.6:** `app.render` may call `TryGetFlight`
+               (per rebuild) and `IContentIndex.AllOf`/`TryGet` (at
+               construction only).
+             - **§15.11:** the scene additions fit the same 2 ms. The atlas
+               is about 21 MB of GPU memory. Its build time is noted at
+               T-025.
+             - **16 §16.4, §16.5, §16.7:** `ComposedSim.Content`; the
+               five-field `RenderSources`; a four-argument
+               `IPresentationComposer.Compose` taking `RenderLooks`; and
+               the bootstrap calls `RenderFactory.LoadLooks`. Three host
+               tests are added (§16.11).
+             - **Merged tests:** the tests named in §15.18, each updated
+               by the named task's Test Author. One breaks
+               (`test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`).
+               Four are extended (`test_scene_calls_only_listed_sim_members`,
                `test_scene_build_within_frame_budget_at_max_tier`,
-               `test_scene_build_and_update_allocate_nothing_after_first_call`
-               and `test_render_constants_match_spec_values_and_types`
-               are **extended**. `Prims.Show` in the kit gains `Sprite`
-               and `Facing`, so
-               `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
-               and `test_scene_primitive_order_is_stable` compare them
-               with their code unchanged. No `app.ui` or `app.host` test
-               changes, because the old constructors stay.
+               `test_scene_build_and_update_allocate_nothing_after_first_call`,
+               `test_render_layout_fixture_file_equals_built_layout`). Two
+               are covered through the kit's `Prims.Show`. No `app.ui` or
+               `app.host` test changes, because every old constructor
+               and signature stays.
              - **Merged code:** the scene layer (T-020), the backend
-               (T-032) and the host (T-031) each change, in three new
-               tasks (§15.15 "For the Planner"). **Between the scene task
-               merging and the backend task merging, a playable build
-               throws:** the merged backend's 13-colour palette is indexed
-               by the two new roles. The checkpoint smoke is unaffected,
-               because its backends are deactivated. So the backend task
-               merges right after the scene task, and no playtest runs in
-               between.
-             - **LOW CONFIDENCE:** (1) a held aircraft faces its
-               destination in a straight line, not along its route, since
-               `sim.airside` exposes no route (§15.5). (2) Unity
-               mechanics no agent can run (§15.15): `Sprites/Default`
-               tinting with straight alpha, per-level `SetPixelData` with
-               an explicit mip count, and the colour-space handling of
-               the palette. (3) The style values themselves (palette,
-               proportions, the compressed 2.4× span range) are the
-               Architect's taste, for the owner to revise after T-025.
-             - **Scope:** the owner's decision only. Art for drawn things
-               only; vehicles, corridors and the other §15.5 "not drawn"
-               items stay undrawn. No new knob, layer, package, asset type
-               or sim change. Nothing in `01` or `02` is touched.
-Signed off:  owner decision recorded (Q-130); mechanism not required; LOW
-             CONFIDENCE items for the owner's review.
+               (T-032), the host and the bootstrap (T-031, T-034) change,
+               in four new tasks (§15.18). **From the scene task merging
+               until the backend task merges, a playable build throws:**
+               the merged backend's 13-colour palette is indexed by the
+               four new roles. The checkpoint smoke is unaffected. No
+               playtest runs in between.
+             - **LOW CONFIDENCE:** (1) a held aircraft heads straight at
+               its destination, not along its route (§15.16).
+               (2) `Math.Atan2` in a tested integer result (§15.16).
+               (3) Unity mechanics: `Sprites/Default` tinting,
+               per-level `SetPixelData`, and vertex colours in a Linear
+               project (§15.17). (4) The tessellator budget (§15.17).
+               (5) The fixture's satellite pier, which is kept because
+               merged coordinates are not moved (§15.18). (6) The style
+               values themselves, for the owner to revise at T-025.
+             - **Scope (running total for this decision):** art,
+               parameterised looks data, scenery (aprons, buildings, jet
+               bridges, tower), ground markings and painted digits, a
+               new headless assembly and a new data file. All of it is
+               owner-directed. Vehicles, corridors and labels stay
+               undrawn. No sim change, no new knob, no package, and
+               nothing in `01` or `02`.
+Signed off:  owner decisions recorded (Q-130); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.
