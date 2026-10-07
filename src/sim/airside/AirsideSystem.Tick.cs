@@ -139,7 +139,7 @@ namespace AirportSim.Sim.Airside
                 if (s.Kind == MovementKind.Arrival)
                 {
                     s.OffRunwayEvent = Ref(Milestone(ctx, s.Flight, FlightMilestone.OffRunway, s.Sched + _rwyOccTicks[r], EventRef.None));
-                    s.AtNode = _rwyNode[r];
+                    s.AtNode = _rwyExit[r];
                     s.Phase = AircraftLegPhase.HeldOnTaxiway;
                     s.PhaseEnteredAt = t;
                     s.DueAt = Unscheduled;
@@ -641,7 +641,7 @@ namespace AirportSim.Sim.Airside
 
             s.OpenHold = Ref(ctx.Events.Publish(new AircraftHeldOnTaxiway(new FlightId(s.Flight), new TaxiEdgeId(_edgeId[e]), new FlightId(blocking)), s.Placed));
             s.Placed = EventRef.None;
-            bool arrivalAtThreshold = s.Kind == MovementKind.Arrival && s.AtNode == _rwyNode[s.Rwy];
+            bool arrivalAtThreshold = s.Kind == MovementKind.Arrival && s.AtNode == _rwyExit[s.Rwy];
             s.Phase = AircraftLegPhase.HeldOnTaxiway;
             if (!arrivalAtThreshold)
             {
