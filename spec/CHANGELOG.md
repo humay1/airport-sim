@@ -3987,3 +3987,163 @@ Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
                file and one schema added.
 Signed off:  not required (interfaces and clarifications; English wording
              is not balance; no scope or `01`/`02` change).
+
+## 2026-10-07 — spec/07 L10; spec/15 §15.1, §15.3, §15.4, §15.5, §15.6, §15.9, §15.10, §15.11, §15.12, §15.14, new §15.15–§15.18; 16 §16.4, §16.5, §16.7, §16.11; 04 Files, Conventions; INDEX; open-questions — real art: semantic visuals, paint, scenery and the 2D art (Q-130, owner decisions)
+Reason:      HUMAN DECISIONS — owner, 2026-10-07, four of them, all
+             recorded under Q-130:
+             (1) the abstract shapes are too ugly, so the game gets real
+             top-down art before the T-025 playtest. It is agent-made
+             flat vector art, clean, consistent and flat, with no
+             third-party assets.
+             (2) Assets are reusable and parameterised: passenger
+             clothes and airline branding change by data.
+             (3) 3D comes after the T-025 gate. Keep this 2D but
+             transferable, and add only a note about 3D.
+             (4) T-025 is not validated until the graphics actually look
+             like a real airport.
+             The Architect specified the mechanism and a style guide.
+             The look is aesthetic, not balance.
+Raised by:   human directive (Q-130)
+Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
+               gains `VisualId Visual` (34 semantic ids, with no atlas
+               meaning), `WorldPoint Facing` (an exact integer layout
+               vector under five ordered aircraft rules, with no angle
+               and no trigonometry in tested code; the team lead
+               settled vector over angle on 2026-10-07) and `Paint` (five `Rgb` regions and a `Mark`). There are now
+               ten fields. Added: `Rgb`, `Paint`, `AircraftRegion`,
+               `PassengerRegion`, `LogoMark`, `Livery`, `AirlineLivery`
+               and `RenderLooks`; `RenderFactory.LoadLooks`,
+               `DefaultLooks` and a three-argument `CreateSceneBuilder`.
+               `DrawLayer` gains `Ground`, **inserted first**, so every
+               later layer's ordinal moves up by one while their relative
+               order is kept. `ColourRole` gains `RunwayMarking`,
+               `TaxiwayMarking`, `Apron` and `Building`, and
+               `SourceKind` gains eight kinds, all appended.
+             - **New primitives (§15.5, §15.16):** aprons and buildings
+               (`Ground`); runway edge lines, thresholds, two-digit
+               designators (numbered from the integer
+               `RunwayDef.ActiveDirectionDeg`, never from a computed
+               angle) and centreline dashes (exact `int64` frames);
+               taxiway junction fills and centrelines; stand lead-ins,
+               painted stand numbers and jet bridges. Aircraft get their
+               visual by size category and their livery by airline,
+               through one `TryGetFlight` per drawn aircraft. Passengers
+               get clothes from FNV-1a-32 of their `PassengerRef`, never
+               from the sim RNG. A recolourable-region table binds future
+               art.
+             - **Data (§15.16, `04`):** the new `data/looks/looks.json`
+               and `looks.schema.json` hold the liveries and clothing
+               lists. They are validated by `ci/validate-content.py`,
+               ignored by `08` §8.11's loader, and so do not change the
+               content hash. There are defaults for a missing airline and
+               for builders without looks. A missing or malformed file in
+               the player fails loudly.
+             - **Layout v2 (§15.4):** `areas` (apron, terminal, pier,
+               control tower) and `bridges`, with a check 5. Version 1
+               still loads. The fixture gains the lists (§15.18), and is
+               also the playtest's `render_layout.fixture`.
+             - **2D art (§15.3, §15.17, new assembly `Art2D`):** art as
+               code (option (a); (b) and (c) rejected, with reasons). One
+               2048² atlas, with large 256 cells for aircraft layers and
+               small 128 cells for the rest, at fixed packing. It has
+               five directly rasterised mips under a binding
+               signed-distance algorithm. There is a visual-to-layer table
+               (role, region or fixed colour) and a tessellator that
+               emits tinted, rotated, optionally nine-sliced quads with an
+               sRGB-to-linear table, and that has its own budget. A style
+               guide gives the palette, value steps, outline weights,
+               per-cell art and aircraft proportions.
+             - **§15.10:** the Unity backend only uploads the atlas once
+               and copies the tessellator's quads into one mesh: one
+               material, one draw call and no per-instance material
+               (Q-034 kept). The palette gains the four roles and the
+               grass background, and aircraft roles now colour a status
+               outline.
+             - **3D (§15.1, §15.15):** a note that 3D is planned after
+               T-025. A 3D backend replaces only `Art2D` and the Unity
+               backend, mapping `VisualId` to meshes, `Paint` regions to
+               material slots, and deriving its yaw from `Facing`.
+             - **§15.1, §15.6:** `app.render` may call `TryGetFlight`
+               (per rebuild) and `IContentIndex.AllOf`/`TryGet` (at
+               construction only).
+             - **§15.11:** the scene additions fit the same 2 ms. The atlas
+               is about 21 MB of GPU memory. Its build time is noted at
+               T-025.
+             - **16 §16.4, §16.5, §16.7:** `ComposedSim.Content`; the
+               five-field `RenderSources`; a four-argument
+               `IPresentationComposer.Compose` taking `RenderLooks`; and
+               the bootstrap calls `RenderFactory.LoadLooks`. Three host
+               tests are added (§16.11).
+             - **Merged tests:** the tests named in §15.18, each updated
+               by the named task's Test Author. Three break: task 1's
+               `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`
+               (it counts 3 `Taxiway`-layer primitives) and
+               `test_scene_stand_colour_follows_occupancy` (it counts 2
+               `Stand`-layer primitives; the stand markings stay in that
+               layer, and the test counts `SourceKind.Stand` instead),
+               and task 4's `test_host_assembly_public_surface_matches_spec`
+               (its `ComposedSim` constructor and property pins, and its
+               `IPresentationComposer` method list, `16` §16.11). Four
+               are extended (`test_scene_calls_only_listed_sim_members`,
+               `test_scene_build_within_frame_budget_at_max_tier`,
+               `test_scene_build_and_update_allocate_nothing_after_first_call`,
+               `test_render_layout_fixture_file_equals_built_layout`). Two
+               are covered through the kit's `Prims.Show`. No `app.ui`
+               test changes.
+             - **07 L10 (Q-130), a narrow exception:** the "kept
+               constructor" clause. A struct whose members an amendment
+               appends keeps exactly one earlier constructor beside the
+               full one, with stated defaults. Today that is only
+               `RenderSources`, `RenderLayout` and `ComposedSim`. This
+               was chosen over dropping the extra constructors, which
+               would have rewritten constructor calls in seven render,
+               ui and host test files (one of them `app.ui`'s) for no
+               behaviour change.
+             - **15 §15.3 (Q-130):** the tests' float rule now covers
+               `Art2D`. `AtlasRect` and `Uvs` are compared exactly. The
+               tessellator's `Corners` are the one stated `1e-3`
+               tolerance, and `double` may appear only for expected
+               corners and the sRGB table.
+             - **Arithmetic pinned (Q-130):** stand-number centres are
+               `int64` with truncating division (fixture stand 2 →
+               `(439, −161)`). The logo sub-square is integer, rounding
+               half up (`AircraftC` side 131, `AircraftF` side 193).
+               Tessellator corners are computed in `double` and
+               converted to `float` once. The stated error bound is
+               below `5e-4` (half a float ULP under 16 384), not `1e-4`.
+             - **Wording (review of #138):** absent airside drops the
+               markings but not the scenery, and a bridge is not a stand
+               primitive. `Facing` is exact up to 2^24 per component,
+               which §15.4 does not check. `LoadLooks` lets `ReadAll`'s own
+               exception (`FileNotFoundException` in the player) pass
+               through. The backend's throwing window is described exactly
+               (every frame; the smoke is unaffected because `Awake`
+               deactivates the object).
+             - **Merged code:** the scene layer (T-020), the backend
+               (T-032), the host and the bootstrap (T-031, T-034) change,
+               in four new tasks (§15.18). **From the scene task merging
+               until the backend task merges, a playable build throws:**
+               the merged backend's 13-colour palette is indexed by the
+               four new roles. The checkpoint smoke is unaffected. No
+               playtest runs in between.
+             - **LOW CONFIDENCE:** (1) a held aircraft faces straight at
+               its destination, not along its route (§15.16).
+               (2) Unity mechanics: `Sprites/Default` tinting,
+               per-level `SetPixelData`, and vertex colours in a Linear
+               project (§15.17). (3) The tessellator budget (§15.17).
+               (4) The fixture's satellite pier, which is kept because
+               merged coordinates are not moved (§15.18). (5) The style
+               values themselves, for the owner to revise at T-025.
+               Facing is an exact vector, so it has no rounding
+               concern. The tessellator normalises it in `double`, and
+               its tests use the `1e-3` tolerance with vectors chosen
+               far from it (§15.17).
+             - **Scope (running total for this decision):** art,
+               parameterised looks data, scenery (aprons, buildings, jet
+               bridges, tower), ground markings and painted digits, a
+               new headless assembly and a new data file. All of it is
+               owner-directed. Vehicles, corridors and labels stay
+               undrawn. No sim change, no new knob, no package, and
+               nothing in `01` or `02`.
+Signed off:  owner decisions recorded (Q-130); mechanism not required;
+             LOW CONFIDENCE items for the owner's review.

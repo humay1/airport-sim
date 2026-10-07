@@ -3390,3 +3390,76 @@ Why it matters: splitting on CR and LF separately would forward an empty
 Answer:      LF, or CR followed by LF, is one line break. A lone CR is
              part of the line.
 Status:      ANSWERED (spec/16-interfaces-host.md#167-the-unity-bootstrap-contract)
+
+### Q-130 — `app.render`: real top-down art before the T-025 playtest (owner decision)
+Raised by:   human owner, 2026-10-07
+Blocking:    T-025 (the playtest waits for the four Q-130 tasks)
+Question:    Four owner decisions of 2026-10-07:
+             (1) The abstract shapes are too ugly, so the game gets real
+             top-down art before the T-025 playtest. It is agent-made flat
+             vector art in a clean, consistent, flat top-down style, with
+             no third-party assets.
+             (2) Assets are reusable and parameterised. Passenger clothes
+             and airline branding change by data, not by baked variants.
+             (3) The game moves to 3D after T-025. Keep this 2D, but make
+             it carry over.
+             (4) T-025 is not validated until it "actually looks like a
+             real airport".
+             How does a primitive select its art and colours, how do
+             aircraft point along their path, where do liveries and
+             clothing colours come from, what draws the ground and the
+             buildings, how does the backend stay within Q-034's
+             draw-call rule, and how does the art reach the player when
+             agents can write only text?
+Why it matters: the scene layer emits palette-coloured boxes, segments
+             and headless dots, and the backend draws flat quads. Art
+             decided in the backend would be untested, sprite ids in the
+             scene would bind it to 2D, and any import pipeline would
+             need an editor that no agent can run.
+Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
+             (a) The scene layer emits semantic data only (`15` §15.9,
+             §15.16). `DrawPrimitive` gains `VisualId Visual` (34 ids),
+             `WorldPoint Facing` (an exact integer layout vector, with no
+             angle and no trigonometry; settled by the team lead
+             2026-10-07, since a vector carries over to 3D) and `Paint` (five named region colours and a logo
+             mark).
+             (b) New primitives: aprons and buildings in a new `Ground`
+             layer; runway edge lines, thresholds, designators and
+             dashes; taxiway junction fills and centrelines; stand
+             lead-ins, painted stand numbers and jet bridges.
+             (c) Aircraft get their visual by size category and their
+             livery by airline, both through `TryGetFlight`. Passengers
+             get clothes from a fixed FNV hash of their `PassengerRef`,
+             never from the sim RNG.
+             (d) Liveries and clothing palettes are in
+             `data/looks/looks.json`, which has a schema and is
+             validated, but is ignored by the content loader, so the
+             content hash cannot change. There are defaults for every
+             missing case.
+             (e) The render layout goes to version 2, with areas (apron,
+             terminal, pier, control tower) and bridges (§15.4). The
+             fixture gains them (§15.18).
+             (f) The 2D art is a separate headless assembly, `Art2D`
+             (§15.17). It holds the art as code, rasterises one 2048²
+             atlas with directly rasterised mips, and tessellates a frame
+             into layered quads (role, region or fixed colour). It is all
+             tested. The Unity backend uploads the atlas once and copies
+             the quads into one mesh, so there is one draw call.
+             (g) A 3D backend later replaces only `Art2D` and the Unity
+             backend. There is a recolourable-region style guide for
+             future art.
+             (h) The host passes schedule, content and looks
+             (`16` §16.4, §16.5, §16.7). The older constructors stay
+             under a narrow `07` L10 "kept constructor" exception, and
+             the three-argument `Compose` stays beside a four-argument
+             overload. Three merged tests break:
+             `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`,
+             `test_scene_stand_colour_follows_occupancy` and
+             `test_host_assembly_public_surface_matches_spec`. Four are
+             extended (§15.18, `16` §16.11). There are four tasks.
+             §15.3's float rule covers `Art2D`. Stand-number centres and
+             the logo sub-square use pinned integer arithmetic.
+             LOW CONFIDENCE: held-aircraft facing; Unity atlas
+             mechanics; the tessellator budget; the fixture's satellite
+             pier; the style values.
+Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130)

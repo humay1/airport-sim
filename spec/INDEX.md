@@ -107,7 +107,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   queue profiles, with pax-profile and queue-profile values owner-authored as
   balance (Q-011)**; a schema's name must equal its directory's name;
   **player-visible text is `data/strings/en.json`, validated by
-  `strings.schema.json`, not sim content (`17` §17.4b, Q-125)**.
+  `strings.schema.json`, not sim content (`17` §17.4b, Q-125)**;
+  **liveries and passenger clothing colours are `data/looks/looks.json`,
+  validated by `looks.schema.json`, not sim content (`15` §15.16,
+  Q-130)**.
 - LC: none.
 - Read if: content tasks; anyone about to write a number that might be
   balance.
@@ -140,6 +143,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
+  **L10's narrow "kept constructor" exception: `RenderSources`,
+  `RenderLayout` and `ComposedSim` keep their pre-Q-130 constructor beside
+  the full one (Q-130)**;
   **one integration test project, `tests/integration/`, references both
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
   **`sim.turnaround`'s test project also references `sim.airside`, for
@@ -380,13 +386,27 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   Q-099); floats allowed in `tests/app/render` (§15.3, Q-100); `Build`
   applies the promotion predicate itself (§15.5, Q-101)**; **the backend
   is the local package `com.airportsim.render.unity`, build-checked by
-  `unity-build` (§15.3, §15.10, Q-114)**.
+  `unity-build` (§15.3, §15.10, Q-114)**; **real art (owner, 2026-10-07,
+  Q-130, §15.15–§15.18): parameterised, 3D-transferable, "looks like a
+  real airport"; the scene emits semantic `VisualId`, an exact integer
+  `Facing` vector and region `Paint` (liveries by airline, clothes by a fixed hash, from
+  `data/looks/looks.json`, not sim content); layout v2 adds aprons,
+  buildings and jet bridges; markings, designators, stand lead-ins and
+  numbers; the headless `Art2D` assembly holds the art as code, the one
+  2048² atlas and a tested tessellator; the backend copies quads into one
+  mesh, one draw call; 3D after T-025 replaces only `Art2D` and the
+  backend**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
   revise (Q-034):** the `Low` and `Medium` values and the 1920 × 1080
   measurement condition (§15.14); the backend's draw-call bound (§15.10).
-- Read if: T-020; the render backend task (§15.10).
+  **LC, not yet reviewed (Q-130):** the straight-line facing of a held
+  aircraft (§15.16); Unity's texture,
+  shader and colour-space behaviour and the tessellator budget (§15.17);
+  the fixture's satellite pier (§15.18).
+- Read if: T-020; the render backend task (§15.10); the Q-130 tasks
+  (§15.4, §15.5, §15.9, §15.10, §15.15–§15.18).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
 - Owns: the Unity project `unity/AirportSim/`, the headless composition root,
@@ -405,7 +425,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   D10). **`bundle.json` has a strict form, and each system's `Name` is its
   module name (§16.3, Q-069); a loader's `sourceName` is the bundle file
   name (§16.4, Q-073); `IHeadlessRun` submits no command and steps one
-  sim-day per `Step` (§16.8, Q-071, Q-074); D7 runs on two test bundles,
+  sim-day per `Step` (§16.8, Q-071, Q-074); `ComposedSim.Content` and
+  the five-field `RenderSources`, a four-argument `Compose` taking
+  `RenderLooks`, and the bootstrap's `LoadLooks` call (§16.4, §16.5,
+  §16.7, Q-130); D7 runs on two test bundles,
   `tests/fixtures/harness/checkpoints-phase0/` and `-phase1/`, not on the
   playtest bundle (§16.8, Q-070)**; **the D7 test lives in
   `tests/integration/` and calls both sides in process (§16.8, Q-077)**;
