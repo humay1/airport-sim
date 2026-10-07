@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (extends committed skeleton `unity/AirportSim/` from c48e163, does not create it; rescoped 2026-10-06 per Q-114, `16` §16.2/§16.3) |
+| Status | MERGED (#137, 2026-10-07) |
 | Module | `app.host` (Unity project shell) |
 | Assigned role | worker |
 | Depends on | T-027, T-028, T-031, T-032, T-033, T-050 |

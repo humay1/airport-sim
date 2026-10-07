@@ -6,7 +6,7 @@
 | Module | `app.render` (Unity backend) |
 | Assigned role | worker only (CI has no behaviour test for the backend, `15` §15.3) |
 | Depends on | T-052 |
-| Spec source | `spec/15-interfaces-render.md` §15.3, §15.10, §15.15, §15.18 "For the Planner" task 3 (Q-130); `spec/16-interfaces-host.md` §16.2, §16.7 |
+| Spec source | `spec/15-interfaces-render.md` §15.3, §15.10, §15.15, §15.18 "For the Planner" task 3 (Q-130, Q-131), §15.23 (Q-132 note); `spec/16-interfaces-host.md` §16.2, §16.7 |
 | Blocked by | — |
 
 ## Writable paths
@@ -61,6 +61,21 @@ draws one of the four new roles, which the airside scene always does. The
 checkpoint smoke is unaffected: in batch mode the bootstrap's `Awake`
 deactivates the object, so the backend's `Start` and `Update` never run
 (`16` §16.7). The Integrator should not queue this behind other merges.
+
+**Q-131 notes (`15` §15.10, §15.18 task 3).** (1) **No extra pass:** shadows,
+the grass, surface textures and weathering arrive as ordinary quads in
+`Fill`'s output, in list order. The backend adds no shadow pass, no second
+texture, no second material and no sort of its own; the camera's clear
+colour is the palette's background, which the ground tiles cover. (2) **No
+reference kept to the atlas:** the managed atlas copy is released after
+upload. The texture size and mip count come from `Art2DConstants`, not from
+literals; the atlas is 4096 square with six mips (about 85 MiB of GPU
+memory).
+
+**Q-132 (`15` §15.23): this task does not wait and needs no follow-up.**
+The backend calls `Fill` and copies its quads on every `Draw`, and M2
+(T-057) adds no quad: it only moves and scales existing ones. The
+draw-call rule, buffers and contract are unchanged.
 
 The Reviewer checks the backend against §15.10 line by line; there is no
 test to catch a deviation.

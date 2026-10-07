@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | IN PROGRESS (PR #131 approved except the Q-125 text change; waiting on T-050) |
+| Status | MERGED (#131, 2026-10-07) |
 | Module | `app.ui` (backend only) |
 | Assigned role | worker |
 | Depends on | T-029, T-031, T-050 |

@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (not releasable until T-051 merges) |
+| Status | IN PROGRESS (T-051 merged #141; Test Author's PR #144 is open, being updated to Q-131; worker not released until the tests are approved) |
 | Module | `app.render` (new headless assembly `AirportSim.App.Render.Art2D`) |
 | Assigned role | worker (after the Test Author) |
-| Depends on | T-051 |
-| Spec source | `spec/15-interfaces-render.md` §15.15, §15.17, §15.18 "For the Planner" task 2 (Q-130); `spec/07-conventions.md` "Solution" |
+| Depends on | T-051 (merged #141) |
+| Spec source | `spec/15-interfaces-render.md` §15.15, §15.17, §15.17, §15.18 "For the Planner" task 2 (Q-130, Q-131); `spec/07-conventions.md` "Solution" and L1 |
 | Blocked by | — |
 
 ## Writable paths
@@ -38,8 +38,9 @@ branch carries the Test Author's files byte-identical and that PR merges.
 
 ## Interface to implement
 
-Exactly `spec/15-interfaces-render.md` §15.17: the code-held art, the one
-rasterised atlas (`Size`, mips, rects, `LayersOf`, `LogoRect`) and the
+Exactly `spec/15-interfaces-render.md` §15.17 as rewritten by Q-131: the
+code-held art, the one rasterised atlas (4096 square, six mips, `Size`,
+rects, `LayersOf`, `LogoRect`, `GroundLayer`) and the
 tessellator that turns a frame into tinted quads. Copy signatures from the
 spec; this file does not restate them. The scene assembly must not reference
 `AirportSim.App.Render.Art2D`, and Art2D has no engine reference.
@@ -55,17 +56,28 @@ tests/app/render/**
 ```
 
 Written by the Test Author before this task is released to the worker (`15`
-§15.18, 2D art):
+§15.18, 2D art, as rewritten by Q-131). The Test Author's PR #144 was written
+against Q-130 and is **in progress**; its author updates it to Q-131 (the
+table of changed tests in `15` §15.18), and no worker edits them.
 
-- `test_art2d_assembly_references`
-- `test_art2d_atlas_shape_and_packing_match_spec`
-- `test_art2d_atlas_is_deterministic`
-- `test_art2d_every_cell_is_drawn_inside_its_border`
-- `test_art2d_aircraft_follow_the_proportion_table`
-- `test_art2d_layers_match_the_visual_table`
-- `test_art2d_tessellator_corners_follow_kind_facing_and_slicing`
-- `test_art2d_tessellator_colours_follow_role_region_and_fixed`
-- `test_art2d_tessellator_fill_within_budget_and_allocates_nothing`
+- `test_art2d_assembly_references` (unchanged)
+- `test_art2d_atlas_shape_and_packing_match_spec` (changed: 4096 atlas, 6 mips)
+- `test_art2d_atlas_is_deterministic` (changed only by the atlas size)
+- `test_art2d_every_cell_is_drawn_inside_its_border` (changed)
+- `test_art2d_aircraft_follow_the_proportion_table` (changed)
+- `test_art2d_layers_match_the_visual_table` (changed)
+- `test_art2d_tessellator_corners_follow_kind_facing_and_slicing` (changed)
+- `test_art2d_tessellator_colours_follow_role_region_and_fixed` (changed)
+- `test_art2d_tessellator_fill_within_budget_and_allocates_nothing` (changed:
+  2.0 ms mean, 4.0 ms p99)
+- New (Q-131): `test_art2d_cells_follow_the_value_and_alpha_rules`,
+  `test_art2d_tiled_textures_follow_the_style_guide`,
+  `test_art2d_tessellator_ground_tiles_follow_the_camera`,
+  `test_art2d_tessellator_tiles_boxes_and_segments`
+
+The art tests build the atlas (about 85 MiB) once per test class and share
+it, except the determinism test (`15` §15.18). Static array fields are
+forbidden in Art2D (`15` §15.3's 2D art rule).
 
 **Do not edit them.** If a test contradicts the spec, file an open question
 and stop.
@@ -73,7 +85,8 @@ and stop.
 ## Performance budget
 
 `test_art2d_tessellator_fill_within_budget_and_allocates_nothing` is the
-check; the figures are `15` §15.17's.
+check; the figures are `15` §15.17's, **raised by Q-131 from 1.5 ms mean
+and 3.0 ms p99 to 2.0 ms mean and 4.0 ms p99**.
 
 ## Done when
 
@@ -86,7 +99,20 @@ check; the figures are `15` §15.17's.
 
 ## Worker notes
 
-Depends on T-051 (the `VisualId`, `Facing` and `Paint` types it consumes).
+**One task, not split (manager decision).** Q-131 roughly doubled the work:
+the fills, noise and softness in the rasteriser, 15 more cells, the ground
+and tile emission and the shift in the tessellator, and six detailed
+aircraft. It stays a single task in a single assembly.
+
+**Project file (`07` L1).** The Art2D csproj row is now in `07` L1:
+`src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj`, assembly
+`AirportSim.App.Render.Art2D`, `netstandard2.1`, C# 9. The worker creates it
+under `src/app/render/Art2D/**` and adds it to `AirportSim.sln`.
+
+**Later task.** Q-132's M2 (T-057) edits `src/app/render/Art2D/**` again,
+after T-056; this task does not implement elevation.
+
+Depends on T-051 (merged #141; the `VisualId`, `Facing` and `Paint` types it consumes).
 T-051 also writes `tests/app/render/**`, so release this only after T-051
 has merged. T-053 depends on this task. T-054 may run in parallel, since it
 shares no path (it does not write `AirportSim.sln`).
