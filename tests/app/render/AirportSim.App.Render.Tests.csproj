@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/app/render/Scene/AirportSim.App.Render.csproj" />
+    <ProjectReference Include="../../../src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj" />
   </ItemGroup>
 
 </Project>
