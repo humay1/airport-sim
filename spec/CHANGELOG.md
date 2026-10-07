@@ -4108,6 +4108,17 @@ Impact:      - **Semantic draw list (§15.9, §15.16):** `DrawPrimitive`
                `int64` with truncating division (fixture stand 2 →
                `(439, −161)`). The logo sub-square is integer, rounding
                half up (`AircraftC` side 131, `AircraftF` side 193).
+               Tessellator corners are computed in `double` and
+               converted to `float` once. The stated error bound is
+               below `5e-4` (half a float ULP under 16 384), not `1e-4`.
+             - **Wording (review of #138):** absent airside drops the
+               markings but not the scenery, and a bridge is not a stand
+               primitive. `Facing` is exact up to 2^24 per component,
+               which §15.4 does not check. `LoadLooks` lets `ReadAll`'s own
+               exception (`FileNotFoundException` in the player) pass
+               through. The backend's throwing window is described exactly
+               (every frame; the smoke is unaffected because `Awake`
+               deactivates the object).
              - **Merged code:** the scene layer (T-020), the backend
                (T-032), the host and the bootstrap (T-031, T-034) change,
                in four new tasks (§15.18). **From the scene task merging
