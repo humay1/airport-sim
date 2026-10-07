@@ -35,14 +35,24 @@ namespace AirportSim.Sim.Airside
         /// <summary>Runway-surface time per movement, in ticks.</summary>
         public uint OccupancyTicks { get; }
 
-        /// <summary>Constructs the runway definition.</summary>
+        /// <summary>Where an arrival leaves the runway and enters the taxi graph (Q-132).</summary>
+        public TaxiNodeId ExitNode { get; }
+
+        /// <summary>Constructs the runway definition with its exit at the threshold (the kept constructor, 07 L10).</summary>
         public RunwayDef(RunwayId id, TaxiNodeId thresholdNode, int activeDirectionDeg, int declaredCapacityPerHour, uint occupancyTicks)
+            : this(id, thresholdNode, activeDirectionDeg, declaredCapacityPerHour, occupancyTicks, thresholdNode)
+        {
+        }
+
+        /// <summary>Constructs the runway definition with all six fields in declared order.</summary>
+        public RunwayDef(RunwayId id, TaxiNodeId thresholdNode, int activeDirectionDeg, int declaredCapacityPerHour, uint occupancyTicks, TaxiNodeId exitNode)
         {
             Id = id;
             ThresholdNode = thresholdNode;
             ActiveDirectionDeg = activeDirectionDeg;
             DeclaredCapacityPerHour = declaredCapacityPerHour;
             OccupancyTicks = occupancyTicks;
+            ExitNode = exitNode;
         }
     }
 

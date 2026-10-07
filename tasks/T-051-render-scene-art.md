@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (releasable now: Test Author first, then worker) |
+| Status | MERGED (#141, tests #140) |
 | Module | `app.render` (scene layer only) |
 | Assigned role | worker (after the Test Author) |
 | Depends on | none unmerged (T-020 merged #111, T-029 merged #118, T-031 merged #130) |

@@ -239,7 +239,7 @@ name says nothing about the format.
   | `airside_rules.json` | `data/balance/airside_rules.json` |
   | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-five-vehicles.json` |
   | `flow.fixture` | `tests/fixtures/flow/phase0-landside.flow.json`, the `sim.flow` fixture T-023 runs |
-  | `render_layout.fixture` | `15` §15.12, `tests/fixtures/render/phase1-layout.json` |
+  | `render_layout.fixture` | `15` §15.23, `tests/fixtures/render/playtest-layout.json` (Q-132: `phase1-layout.json` plus the playtest's runway-exit nodes; it was `phase1-layout.json` until task M3, which switches this row and `airside.fixture`'s exit lines together) |
 
   (Q-069, review of #83 at `a8e3edb`: the walk graph was missing from this
   list. The bundle lists `sim.world`, which needs `world.fixture`, and it
@@ -475,7 +475,9 @@ Each `RunFrame`, in this order:
 2. `Promotion.Update(input.Camera, Ui.Graphics)`.
 3. `n = Pacer.Advance(input.ElapsedRealMicroseconds, Ui.Pacing.Paused,
    Ui.Pacing.Speed)`; if `n > 0`, `Host.Step(n)`.
-4. `render = Scene.Build(input.Camera, Ui.Graphics)`.
+4. `render = Scene.Build(input.Camera, Ui.Graphics,
+   Pacer.SubTickMicroseconds)` (Q-132, `15` §15.19), so that motion
+   glides between ticks. The property is read after step 3's `Advance`.
 5. If `Ui.Graphics` differs from the value last written, write
    `UiFactory.EncodeGraphicsPreference(Ui.Graphics)` to the
    `IPreferenceStore` under the key `airportsim.graphics` (D10).

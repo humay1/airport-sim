@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | QUEUED (releasable now: Test Author first, then worker) |
+| Status | MERGED (#136, tests #135, 2026-10-07) |
 | Module | `app.ui` (scene layer only) |
 | Assigned role | worker (after the Test Author) |
 | Depends on | T-029 (merged #118), T-027 (merged) |

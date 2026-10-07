@@ -20,9 +20,9 @@ namespace AirportSim.Sim.Airside.Tests
     /// </summary>
     public sealed class LayoutTests
     {
-        private const string Bad = "bad.json";
+        internal const string Bad = "bad.json";
 
-        private static void AssertNames(string message, string field, params int[] ids)
+        internal static void AssertNames(string message, string field, params int[] ids)
         {
             Assert.True(
                 Regex.IsMatch(message, @"(?<![A-Za-z0-9_])" + Regex.Escape(field) + @"(?![A-Za-z0-9_])"),
@@ -34,7 +34,7 @@ namespace AirportSim.Sim.Airside.Tests
             }
         }
 
-        private static void AssertRejects(LayoutBuilder b, string field, params int[] ids)
+        internal static void AssertRejects(LayoutBuilder b, string field, params int[] ids)
         {
             IAirsideLayoutLoader loader = AirsideFactory.CreateLayoutLoader();
             AirsideLayout raw = b.Raw();
@@ -285,7 +285,7 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.Throws<ArgumentNullException>(() => loader.Parse(file, null!));
         }
 
-        private static void AssertParseFails(List<string> lines, int line)
+        internal static void AssertParseFails(List<string> lines, int line)
         {
             byte[] file = Join(lines);
             IAirsideLayoutLoader loader = AirsideFactory.CreateLayoutLoader();
@@ -295,7 +295,7 @@ namespace AirportSim.Sim.Airside.Tests
             Assert.True(Regex.IsMatch(ex.Message, @"(?<![A-Za-z0-9_])line " + n + @"(?![0-9])"), "expected line " + n + ": " + ex.Message);
         }
 
-        private static void AssertLoadFailsThroughParse(List<string> lines, string field, params int[] ids)
+        internal static void AssertLoadFailsThroughParse(List<string> lines, string field, params int[] ids)
         {
             byte[] file = Join(lines);
             IAirsideLayoutLoader loader = AirsideFactory.CreateLayoutLoader();
@@ -319,7 +319,7 @@ namespace AirportSim.Sim.Airside.Tests
             return lines;
         }
 
-        private static byte[] Join(List<string> lines)
+        internal static byte[] Join(List<string> lines)
         {
             return Csv.Utf8(string.Join("\n", lines) + "\n");
         }
@@ -339,8 +339,8 @@ namespace AirportSim.Sim.Airside.Tests
         internal static void AssertSameLayout(AirsideLayout expected, AirsideLayout actual)
         {
             Assert.Equal(
-                Sorted(expected.Runways, r => Key(r.Id.Value, r.ThresholdNode.Value, r.ActiveDirectionDeg, r.DeclaredCapacityPerHour, r.OccupancyTicks)),
-                Sorted(actual.Runways, r => Key(r.Id.Value, r.ThresholdNode.Value, r.ActiveDirectionDeg, r.DeclaredCapacityPerHour, r.OccupancyTicks)));
+                Sorted(expected.Runways, r => Key(r.Id.Value, r.ThresholdNode.Value, r.ActiveDirectionDeg, r.DeclaredCapacityPerHour, r.OccupancyTicks, r.ExitNode.Value)),
+                Sorted(actual.Runways, r => Key(r.Id.Value, r.ThresholdNode.Value, r.ActiveDirectionDeg, r.DeclaredCapacityPerHour, r.OccupancyTicks, r.ExitNode.Value)));
             Assert.Equal(Sorted(expected.Nodes, n => Key(n.Id.Value, n.Kind)), Sorted(actual.Nodes, n => Key(n.Id.Value, n.Kind)));
             Assert.Equal(
                 Sorted(expected.Edges, e => Key(e.Id.Value, e.From.Value, e.To.Value, e.TraversalTicks, e.Bidirectional)),
