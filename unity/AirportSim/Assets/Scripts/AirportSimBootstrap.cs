@@ -17,6 +17,7 @@ namespace AirportSim.Shell
     /// and the content, hands the backends what they draw, and quits with the checkpoint run's code in
     /// batch mode. It calls no sim member, never branches on sim state and never reads a bundle file.
     /// </summary>
+    [DefaultExecutionOrder(-32000)]
     public sealed class AirportSimBootstrap : MonoBehaviour
     {
         private const int ExitBadArguments = 2;
@@ -27,25 +28,28 @@ namespace AirportSim.Shell
 
         private void Awake()
         {
-            Debug.Log("DIAG bootstrap Awake");
+            if (!Application.isBatchMode)
+            {
+                return;
+            }
+
+            // Nothing is drawn in a checkpoint run: deactivating the object, first in Awake order,
+            // keeps the backends on it from starting.
+            gameObject.SetActive(false);
+            string streaming = Application.streamingAssetsPath;
+            RunBatch(
+                new DirectoryBundle(Path.Combine(streaming, "Scenario")),
+                new DirectoryContentSource(Path.Combine(streaming, "Content")));
         }
 
         private void Start()
         {
-            Debug.Log("DIAG bootstrap Start");
             render = GetComponent<RenderBackend>();
             ui = GetComponent<UiBackend>();
 
             string streaming = Application.streamingAssetsPath;
             var bundle = new DirectoryBundle(Path.Combine(streaming, "Scenario"));
             var contentSource = new DirectoryContentSource(Path.Combine(streaming, "Content"));
-
-            if (Application.isBatchMode)
-            {
-                RunBatch(bundle, contentSource);
-                return;
-            }
-
             var content = HostFactory.LoadContent(contentSource);
             ui.SetStringTable(UiFactory.LoadStringTable(contentSource));
 
