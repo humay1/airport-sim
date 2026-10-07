@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "taxi_nodes": [
     { "node": 1, "x": 0, "y": 0 },
     { "node": 2, "x": 300, "y": 0 },
@@ -26,5 +26,17 @@
   "stand_size": 40,
   "aircraft_size": 30,
   "agent_size": 2,
-  "taxiway_width": 15
+  "taxiway_width": 15,
+  "areas": [
+    { "id": 1, "kind": "apron",         "min_x": 20,  "min_y": -180, "max_x": 900, "max_y": 190 },
+    { "id": 2, "kind": "terminal",      "min_x": -10, "min_y": 190,  "max_x": 890, "max_y": 275 },
+    { "id": 3, "kind": "pier",          "min_x": 280, "min_y": -205, "max_x": 780, "max_y": -180 },
+    { "id": 4, "kind": "control_tower", "min_x": 920, "min_y": 200,  "max_x": 940, "max_y": 220 }
+  ],
+  "bridges": [
+    { "id": 1, "x0": 308, "y0": -180, "x1": 306, "y1": -160, "width": 3 },
+    { "id": 2, "x0": 452, "y0": -180, "x1": 446, "y1": -163, "width": 3 },
+    { "id": 3, "x0": 608, "y0": -180, "x1": 606, "y1": -160, "width": 3 },
+    { "id": 4, "x0": 770, "y0": -180, "x1": 761, "y1": -158, "width": 3 }
+  ]
 }

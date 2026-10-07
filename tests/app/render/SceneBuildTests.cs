@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using Xunit;
 
@@ -25,13 +26,22 @@ namespace AirportSim.App.Render.Tests
         {
             var m = new MaxTierScene();
             IPromotionController c = RenderFactory.CreatePromotionController(m.Sources, m.Layout);
-            ISceneBuilder b = RenderFactory.CreateSceneBuilder(m.Sources, m.Layout);
+            ISceneBuilder b = m.Builder();
             CameraView cam = MaxTierScene.Camera;
             GraphicsSettings high = Gfx.High();
 
             c.Update(cam, high);
             RenderFrame first = b.Build(cam, high);
-            Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(Prims.Copy(first), DrawLayer.Agent).Count);
+            List<DrawPrimitive> all = Prims.Copy(first);
+            Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(all, DrawLayer.Agent).Count);
+
+            // Q-130 (15 §15.11): the measured frame carries the scenery, the
+            // markings, and a TryGetFlight per drawn aircraft.
+            Assert.Equal(MaxTierScene.Piers + 3, Art.OfKind(all, SourceKind.Apron).Count + Art.OfKind(all, SourceKind.Building).Count);
+            Assert.Equal(MaxTierScene.Stands, Art.OfKind(all, SourceKind.JetBridge).Count);
+            Assert.Equal(MaxTierScene.Stands, Art.OfKind(all, SourceKind.StandMarking).Count);
+            Assert.True(Art.OfKind(all, SourceKind.RunwayMarking).Count > 0, "max-tier frame has no runway marking");
+            Assert.Equal((long)MaxTierScene.Aircraft, m.Schedule.FlightCalls);
 
             for (int i = 0; i < WarmUpFrames; i++)
             {
@@ -62,7 +72,7 @@ namespace AirportSim.App.Render.Tests
         {
             var m = new MaxTierScene();
             IPromotionController c = RenderFactory.CreatePromotionController(m.Sources, m.Layout);
-            ISceneBuilder b = RenderFactory.CreateSceneBuilder(m.Sources, m.Layout);
+            ISceneBuilder b = m.Builder();
             GraphicsSettings high = Gfx.High();
             GraphicsSettings low = Gfx.Custom(false, 32, 60, 75, false);
 
@@ -71,6 +81,7 @@ namespace AirportSim.App.Render.Tests
             b.Build(MaxTierScene.Camera, high);
 
             CameraView[] cameras = { MaxTierScene.Camera, Cam.Away(), Cam.At(35f, 35f, 500f), MaxTierScene.Camera };
+            long flights = m.Schedule.FlightCalls;
             long start = Allocation.Start();
             for (int frame = 0; frame < 120; frame++)
             {
@@ -84,6 +95,7 @@ namespace AirportSim.App.Render.Tests
             long allocated = Allocation.Since(start);
             Assert.True(allocated == 0, "Update + Build allocated " + allocated + " bytes over 120 frames after the first call (15 §15.11)");
             Assert.True(m.Flow.SetPromotedCount > 16, "the metered frames never changed promotion");
+            Assert.Equal(flights + (120L * MaxTierScene.Aircraft), m.Schedule.FlightCalls);
             Assert.Empty(m.Guard.Violations);
         }
     }

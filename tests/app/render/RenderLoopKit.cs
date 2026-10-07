@@ -205,9 +205,35 @@ namespace AirportSim.App.Render.Tests
     ///   runway 1: (-2000,0)-(0,0), width 45, threshold node 1 at (0,0)
     ///   junctions 2 (300,0), 3 (600,0); stand nodes 11..14 at (150k - 1350, -150)
     ///   flow node k: box ((k-1)·100, 200)-((k-1)·100 + 80, 260)
+    ///
+    /// Version 2 (Q-130): 15 §15.18's scenery, an apron, a terminal enclosing
+    /// the landside zones, a satellite pier facing the stands, a control
+    /// tower, and a jet bridge from the pier to each stand's aircraft door.
     /// </summary>
     internal static class Phase1RenderLayout
     {
+        public static List<LayoutArea> Areas()
+        {
+            return new List<LayoutArea>
+            {
+                new LayoutArea(1U, AreaKind.Apron, 20, -180, 900, 190),
+                new LayoutArea(2U, AreaKind.Terminal, -10, 190, 890, 275),
+                new LayoutArea(3U, AreaKind.Pier, 280, -205, 780, -180),
+                new LayoutArea(4U, AreaKind.ControlTower, 920, 200, 940, 220),
+            };
+        }
+
+        public static List<LayoutBridge> Bridges()
+        {
+            return new List<LayoutBridge>
+            {
+                new LayoutBridge(1U, 308, -180, 306, -160, 3),
+                new LayoutBridge(2U, 452, -180, 446, -163, 3),
+                new LayoutBridge(3U, 608, -180, 606, -160, 3),
+                new LayoutBridge(4U, 770, -180, 761, -158, 3),
+            };
+        }
+
         public static RenderLayout Build()
         {
             var taxi = new List<TaxiNodePosition>
@@ -229,7 +255,7 @@ namespace AirportSim.App.Render.Tests
                 boxes.Add(new FlowNodeBox(new NodeId(k), x, 200, x + 80, 260, k == 5 || k == 6 ? 200 : 100));
             }
 
-            return new RenderLayout(taxi, runways, boxes, 40, 30, 2, 15);
+            return new RenderLayout(taxi, runways, boxes, 40, 30, 2, 15, Areas(), Bridges());
         }
     }
 }

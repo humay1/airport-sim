@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using AirportSim.Sim.Airside;
 using AirportSim.Sim.Core;
 using AirportSim.Sim.Flow;
+using AirportSim.Sim.Schedule;
 
 namespace AirportSim.App.Render.Tests
 {
@@ -342,6 +343,22 @@ namespace AirportSim.App.Render.Tests
             return s.Promoted ? s.Agents : Array.Empty<AgentView>();
         }
 
+        /// <summary>
+        /// Replaces a node's passengers with these refs, which the caller gives
+        /// sorted by (Cohort, Index) as 09 §9.7 returns them. Population follows.
+        /// </summary>
+        public void SetAgents(uint node, params PassengerRef[] refs)
+        {
+            NodeState s = _nodes[node];
+            var agents = new AgentView[refs.Length];
+            for (int i = 0; i < refs.Length; i++)
+            {
+                agents[i] = new AgentView(refs[i], new NodeId(node), Fx.Zero);
+            }
+
+            _nodes[node] = new NodeState(refs.Length, s.Lanes, agents) { Promoted = s.Promoted };
+        }
+
         private sealed class NodeState
         {
             public NodeState(uint node, int population, LaneState? lanes)
@@ -356,6 +373,13 @@ namespace AirportSim.App.Render.Tests
                 }
             }
 
+            public NodeState(int population, LaneState? lanes, AgentView[] agents)
+            {
+                Population = population;
+                Lanes = lanes;
+                Agents = agents;
+            }
+
             public int Population { get; }
 
             public LaneState? Lanes { get; }
@@ -363,6 +387,224 @@ namespace AirportSim.App.Render.Tests
             public AgentView[] Agents { get; }
 
             public bool Promoted { get; set; }
+        }
+    }
+
+    /// <summary>
+    /// An IScheduleSystem whose only permitted member is TryGetFlight (15
+    /// §15.6, Q-130). It records each lookup while RecordCalls is set, and
+    /// counts them always, so the budget tests can meter through it.
+    /// </summary>
+    internal sealed class FakeSchedule : IScheduleSystem
+    {
+        public readonly CallGuard Guard;
+        public readonly List<ulong> Asked = new List<ulong>();
+        public bool RecordCalls = true;
+        public long FlightCalls;
+
+        private readonly Dictionary<ulong, FlightRecord> _flights = new Dictionary<ulong, FlightRecord>();
+
+        public FakeSchedule(CallGuard guard)
+        {
+            Guard = guard;
+        }
+
+        public SystemId Id => throw Guard.Forbidden("IScheduleSystem.Id");
+
+        public string Name => throw Guard.Forbidden("IScheduleSystem.Name");
+
+        /// <summary>A departure record with this airline and aircraft type; every other field is a fixed placeholder.</summary>
+        public FakeSchedule Add(ulong flight, uint airline, string aircraftType)
+        {
+            _flights[flight] = new FlightRecord(
+                new FlightId(flight),
+                new AirlineId(airline),
+                new ContentId(aircraftType),
+                MovementKind.Departure,
+                0U,
+                1000UL,
+                0UL,
+                new FlightId(flight),
+                false,
+                Fx.Zero,
+                new ContentId("business"),
+                100,
+                0,
+                0,
+                new NodeId(1));
+            return this;
+        }
+
+        public void Tick(in TickContext ctx)
+        {
+            throw Guard.Forbidden("IScheduleSystem.Tick");
+        }
+
+        public ulong ComputeStateHash()
+        {
+            throw Guard.Forbidden("IScheduleSystem.ComputeStateHash");
+        }
+
+        public bool TryGetFlight(FlightId id, out FlightRecord flight)
+        {
+            FlightCalls++;
+            if (RecordCalls)
+            {
+                Asked.Add(id.Value);
+            }
+
+            return _flights.TryGetValue(id.Value, out flight);
+        }
+
+        public IReadOnlyList<FlightId> PublishedFlights()
+        {
+            throw Guard.Forbidden("IScheduleSystem.PublishedFlights");
+        }
+
+        public IReadOnlyList<FlightId> MovementsBetween(ulong fromInclusive, ulong toExclusive, MovementKind kind)
+        {
+            throw Guard.Forbidden("IScheduleSystem.MovementsBetween");
+        }
+
+        public bool TryGetRotation(FlightId flight, out FlightId counterpart)
+        {
+            throw Guard.Forbidden("IScheduleSystem.TryGetRotation");
+        }
+
+        public int PendingInjectionCount(FlightId flight)
+        {
+            throw Guard.Forbidden("IScheduleSystem.PendingInjectionCount");
+        }
+    }
+
+    /// <summary>
+    /// An IContentIndex over a fixed definition set, counting both members
+    /// (15 §15.6: read once, at construction). AllOf returns the ids the
+    /// test lists for a kind, sorted ordinally, which may include an id
+    /// that TryGet does not resolve.
+    /// </summary>
+    internal sealed class FakeContent : IContentIndex
+    {
+        public readonly CallGuard Guard;
+        public long AllOfCalls;
+        public long TryGetCalls;
+
+        private readonly Dictionary<string, IContentDefinition> _defs = new Dictionary<string, IContentDefinition>(StringComparer.Ordinal);
+        private readonly Dictionary<ContentKind, List<string>> _ids = new Dictionary<ContentKind, List<string>>();
+
+        public FakeContent(CallGuard guard)
+        {
+            Guard = guard;
+        }
+
+        public long Calls => AllOfCalls + TryGetCalls;
+
+        public FakeContent Size(string id, int ordinal)
+        {
+            return Add(new SizeCategoryDefinition(new ContentId(id), ordinal));
+        }
+
+        public FakeContent Aircraft(string id, string sizeCategory)
+        {
+            return Add(new AircraftDefinition(new ContentId(id), new ContentId(sizeCategory)));
+        }
+
+        /// <summary>An id AllOf lists under the kind with no definition behind it.</summary>
+        public FakeContent Phantom(ContentKind kind, string id)
+        {
+            ListOf(kind).Add(id);
+            ListOf(kind).Sort(StringComparer.Ordinal);
+            return this;
+        }
+
+        public bool TryGet<T>(ContentId id, out T definition)
+            where T : IContentDefinition
+        {
+            TryGetCalls++;
+            if (id.Value == null)
+            {
+                throw new ArgumentException("null content id", nameof(id));
+            }
+
+            if (_defs.TryGetValue(id.Value, out IContentDefinition? d) && d is T t)
+            {
+                definition = t;
+                return true;
+            }
+
+            definition = default!;
+            return false;
+        }
+
+        public IReadOnlyList<ContentId> AllOf(ContentKind kind)
+        {
+            AllOfCalls++;
+            var result = new List<ContentId>();
+            foreach (string id in ListOf(kind))
+            {
+                result.Add(new ContentId(id));
+            }
+
+            return result;
+        }
+
+        private FakeContent Add(IContentDefinition d)
+        {
+            _defs[d.Id.Value] = d;
+            ListOf(d.Kind).Add(d.Id.Value);
+            ListOf(d.Kind).Sort(StringComparer.Ordinal);
+            return this;
+        }
+
+        private List<string> ListOf(ContentKind kind)
+        {
+            if (!_ids.TryGetValue(kind, out List<string>? list))
+            {
+                list = new List<string>();
+                _ids.Add(kind, list);
+            }
+
+            return list;
+        }
+    }
+
+    /// <summary>
+    /// An IContentSource for RenderFactory.LoadLooks (15 §15.16): ReadAll
+    /// returns the given bytes (null allowed) or throws the given exception,
+    /// and Files is a violation, since the loader must never call it.
+    /// </summary>
+    internal sealed class FakeContentSource : IContentSource
+    {
+        public readonly CallGuard Guard = new CallGuard();
+        public readonly List<string> Reads = new List<string>();
+
+        private readonly byte[]? _bytes;
+        private readonly Exception? _throws;
+
+        public FakeContentSource(byte[]? bytes)
+        {
+            _bytes = bytes;
+        }
+
+        public FakeContentSource(Exception throws)
+        {
+            _throws = throws;
+        }
+
+        public IReadOnlyList<string> Files()
+        {
+            throw Guard.Forbidden("IContentSource.Files");
+        }
+
+        public byte[] ReadAll(string path)
+        {
+            Reads.Add(path);
+            if (_throws != null)
+            {
+                throw _throws;
+            }
+
+            return _bytes!;
         }
     }
 

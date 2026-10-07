@@ -268,18 +268,41 @@ namespace AirportSim.App.Render.Tests
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}/{1}/{2} A=({3:R},{4:R}) B=({5:R},{6:R}) size={7:R} src={8}:{9}:{10}",
+                "{0}/{1}/{2}/{3} A=({4:R},{5:R}) B=({6:R},{7:R}) size={8:R} facing=({9:R},{10:R}) paint={11} src={12}:{13}:{14}",
                 p.Kind,
                 p.Layer,
                 p.Colour,
+                p.Visual,
                 p.A.X,
                 p.A.Y,
                 p.B.X,
                 p.B.Y,
                 p.Size,
+                p.Facing.X,
+                p.Facing.Y,
+                Show(p.Paint),
                 p.Source.Kind,
                 p.Source.Id,
                 p.Source.Sub);
+        }
+
+        /// <summary>15 §15.9's Paint: its five regions in order, then Mark.</summary>
+        public static string Show(in Paint paint)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0},{1},{2},{3},{4}/{5}",
+                Show(paint.Region0),
+                Show(paint.Region1),
+                Show(paint.Region2),
+                Show(paint.Region3),
+                Show(paint.Region4),
+                paint.Mark);
+        }
+
+        public static string Show(in Rgb c)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "#{0:X2}{1:X2}{2:X2}", c.R, c.G, c.B);
         }
 
         public static string Show(IReadOnlyList<DrawPrimitive> all)
