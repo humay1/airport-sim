@@ -143,6 +143,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   byte-for-byte `.csproj` files, xUnit with no property library, public iff
   spec-named, test names are method names, who creates each project and the
   sln, tests merge with their implementation, IDL-to-C# mapping (enum members PascalCase, Q-028)**;
+  **L10's narrow "kept constructor" exception: `RenderSources`,
+  `RenderLayout` and `ComposedSim` keep their pre-Q-130 constructor beside
+  the full one (Q-130)**;
   **one integration test project, `tests/integration/`, references both
   `app.host` and the harness, and holds only the D7 test (L1, L3, Q-077)**;
   **`sim.turnaround`'s test project also references `sim.airside`, for
