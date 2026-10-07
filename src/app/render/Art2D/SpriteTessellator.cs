@@ -394,14 +394,10 @@ namespace AirportSim.App.Render.Art2D
             for (int q = from; q < to; q++)
             {
                 int o = 16 * q;
-                for (int k = 0; k < 4; k++)
-                {
-                    colours[o] = lr;
-                    colours[o + 1] = lg;
-                    colours[o + 2] = lb;
-                    colours[o + 3] = a;
-                    o += 4;
-                }
+                colours[o] = lr; colours[o + 1] = lg; colours[o + 2] = lb; colours[o + 3] = a;
+                colours[o + 4] = lr; colours[o + 5] = lg; colours[o + 6] = lb; colours[o + 7] = a;
+                colours[o + 8] = lr; colours[o + 9] = lg; colours[o + 10] = lb; colours[o + 11] = a;
+                colours[o + 12] = lr; colours[o + 13] = lg; colours[o + 14] = lb; colours[o + 15] = a;
             }
         }
 
