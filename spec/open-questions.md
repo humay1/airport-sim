@@ -3595,26 +3595,3 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              layer, with the elevation added to its shift (§15.22).
              So there are four tasks: A1, M1, M2, M3 (§15.23).
 Status:      ANSWERED (spec/15-interfaces-render.md#1519-the-living-airport--owner-decision-2026-10-07-q-132)
-
-### Q-133 — `sim.airside`: two T-055 tests compare hashes across different layouts
-Raised by:   worker / T-055
-Blocking:    T-055
-Question:    `test_exit_node_leaves_departures_unchanged` asserts equal
-             `ComputeStateHash()` at every tick between the fixture layout
-             and the exit layout, and `test_exit_node_changes_airside_hash_from_first_off_runway`
-             asserts the hashes first differ at the first OffRunway. Both
-             say "the layout is not hashed". But §12.12 feeds the taxi edge
-             list (per `TaxiEdgeId`: occupant, hold queue) and the runway
-             and stand lists, unprefixed, so a layout with more edges
-             (the exit layout adds edges, e.g. edge 7) hashes differently
-             from t = 0. Merged code is unchanged by T-055 here, and
-             §12.12 forbids a new hashed field, so the hash cannot be made
-             equal. The second test also fails with "no OffRunway in the
-             fixture day" (the host rig's RuleFlow).
-Why it matters: Both tests fail at t = 0 / before any arrival; the worker
-             may not edit tests and cannot make them pass without breaking
-             byte-identical hashing.
-Answer:      (Architect / Test Author: compare only the hash-relevant
-             tracks, or give both rigs the same edge count, or drop the
-             two tests.)
-Status:      OPEN
