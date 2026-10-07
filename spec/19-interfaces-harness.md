@@ -538,7 +538,13 @@ and `airside_rules.json`, and `sim.delay` takes none. It holds no `render_layout
   exactly three substitutions, applied to every
   `max_aircraft_size_category` value and to nothing else:
   `"medium"` becomes `"size_c"`, `"heavy"` becomes `"size_e"` and
-  `"super"` becomes `"size_f"`. Every other byte is the same. The reason:
+  `"super"` becomes `"size_f"`. Every other byte is the same, except the
+  Q-132 additions (`12` §12.13, owner, 2026-10-07): runway 1's
+  `"exit_node": 4`, the `junction` nodes 4, 5 and 6, and the one-way
+  edges `{ "id": 7, "from": 4, "to": 5, "traversal_ticks": 5 }`,
+  `{ "id": 8, "from": 5, "to": 6, "traversal_ticks": 40 }` and
+  `{ "id": 9, "from": 6, "to": 2, "traversal_ticks": 10 }`, each with
+  `"bidirectional": false`, appended at the ends of their lists. The reason:
   §12.13's fixture names the size categories that the airside, turnaround,
   delay, render and UI test kits build in code (`small` 1, `medium` 2,
   `heavy` 3, `super` 4), but `data/` defines only `size_a` to `size_f`,

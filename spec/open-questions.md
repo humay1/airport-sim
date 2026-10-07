@@ -3508,8 +3508,25 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              (§15.22). No new `VisualId`.
              (f) Three tasks: M1 (scene), M2 (Art2D), M3 (host). T-053
              is unaffected (§15.23).
-             LOW CONFIDENCE: the motion constants; arrivals landing
-             toward the threshold node; runway prediction; the hold's
-             release jump; departures vanishing at `Airborne`; the
-             boarding stream for the whole stay.
+             LOW CONFIDENCE: the motion constants; runway prediction;
+             the hold's release jump; departures vanishing at
+             `Airborne`.
+             HUMAN DECISIONS, owner, 2026-10-07, on the review of #145:
+             (1) the 1x time scale (a landing lasts about 1 real
+             second) is ACCEPTED, with no extra speed setting;
+             (2) arrivals must land in the same direction as
+             departures, FIXED before T-025: `RunwayDef.ExitNode`, an
+             optional `exit_node` key defaulting to the threshold
+             (`12` §12.4), set only in the playtest's airside copy
+             (`12` §12.13, `19` §19.2c). This is the one sim change. It
+             is determinism-relevant, is task A1, and is reviewed by
+             reviewer-core. §15.20 flies arrivals toward the
+             departures' threshold and rolls them out to the exit;
+             (3) boarding only: deboarding is DEFERRED until arriving
+             passengers come with a sim phase after T-025, and the
+             whole-stay boarding stream is accepted as is;
+             (4) Q-131 is realism's and Q-132 is this one. The airborne
+             shadow stays, and whichever of #145 and #147 merges second
+             reconciles the shadow sentence at rebase.
+             So there are four tasks: A1, M1, M2, M3 (§15.23).
 Status:      ANSWERED (spec/15-interfaces-render.md#1519-the-living-airport--owner-decision-2026-10-07-q-132)

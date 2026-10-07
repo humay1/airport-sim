@@ -175,7 +175,7 @@ time, holds excluded.
 | `InboundAirborne` | arrival | `max(0, STA − CRUISE_LEAD_TICKS)` (§12.6, Q-048) |
 | `Landed` | arrival | `STA` |
 | `OffRunway` | arrival | `STA + OccupancyTicks` |
-| `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(threshold, stand)`, for the stand the aircraft actually reaches |
+| `OnStand` | arrival | `STA + OccupancyTicks + RouteTicks(exit, stand)`, for the stand the aircraft actually reaches, where `exit` is its runway's `ExitNode` (Q-132) |
 | `DoorsOpen` | arrival | planned `OnStand` + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE`, with the planned `OnStand` that was emitted, read from the track's `PlannedOnStand` (§12.9). A `ReassignStand` between the two does not move it (Q-083) |
 | `OnStand` | departure | `max(0, STD − MinTurnaround)` (§12.8 step 3; §12.7 for a rotation-less departure, whose due tick this is) |
 | `DoorsClosed` | departure | `STD` |
@@ -235,6 +235,7 @@ readonly struct RunwayDef {
   int32      ActiveDirectionDeg      // fixed at Phase 0/1, §12.1
   int32      DeclaredCapacityPerHour // content-declared, arrivals+departures pooled
   uint32     OccupancyTicks          // runway-surface time per movement
+  TaxiNodeId ExitNode                // Q-132: where an arrival leaves the runway; below
 }
 
 readonly struct TaxiNodeDef { TaxiNodeId Id; TaxiNodeKind Kind }
@@ -271,6 +272,24 @@ readonly struct AirsideRules {           // construction data, beside the layout
   uint32 DoorsOpenDelayMinutes           // §12.3 DoorsOpen after OnStand; 0 = the same tick (Q-047)
 }
 ```
+
+**The exit node (Q-132, HUMAN DECISION, owner, 2026-10-07: arrivals land
+in the same direction as departures).** `ThresholdNode` is where a
+departure starts its takeoff roll. `ExitNode` is where an arrival leaves
+the runway at the end of its landing roll and enters the taxi graph. A
+runway whose arrivals land in its active direction has its `ExitNode`
+near the far end, so the two are different nodes. `ExitNode` equal to
+`ThresholdNode` is the earlier model, in which an arrival enters the taxi
+graph at the threshold. **Reading rule:** wherever this file places,
+routes, holds or plans an **arrival** at "its runway's threshold node",
+or uses `RouteTicks(threshold, stand)` for it, that node is its runway's
+`ExitNode`. A departure's node is always `ThresholdNode`. The sections
+that say so are amended in place (§12.3, §12.6, §12.7, §12.8a, §12.9,
+§12.11). **C# shape (`07` L10, kept constructor):** `RunwayDef` keeps its
+five-field constructor, which sets `ExitNode` to `ThresholdNode`, and gains
+one with all six fields in declared order. So every layout built before
+Q-132, and every file without `exit_node` (below), behaves exactly as
+before, byte for byte in the hash.
 
 `AirsideRules` is construction data: immutable for the session and not
 hashed, like the layout. Neither field is **ever a compiled constant**.
@@ -313,12 +332,15 @@ assert the type, the prefix, the field name and the ids, and nothing else.
 3. **Unique ids.** `RunwayDef.Id`, `TaxiNodeDef.Id`, `TaxiEdgeDef.Id` and
    `StandDef.Id` are each unique within their list. The message names the
    list and the duplicated id.
-4. **References.** Every `TaxiEdgeDef.From`/`To`, `StandDef.Node` and
-   `RunwayDef.ThresholdNode` is a declared node. The message names the
-   referring object's id, the field (`from`, `to`, `node` or
-   `threshold_node`) and the undeclared node id.
+4. **References.** Every `TaxiEdgeDef.From`/`To`, `StandDef.Node`,
+   `RunwayDef.ThresholdNode` and `RunwayDef.ExitNode` (Q-132) is a declared
+   node. The message names the referring object's id, the field (`from`,
+   `to`, `node`, `threshold_node` or `exit_node`) and the undeclared node
+   id. Within a runway, `threshold_node` is checked before `exit_node`.
 5. **Kinds.** A `StandDef.Node` is a `StandPosition` node, and a
-   `RunwayDef.ThresholdNode` is a `RunwayThreshold` node. The message names
+   `RunwayDef.ThresholdNode` is a `RunwayThreshold` node. A
+   `RunwayDef.ExitNode` (Q-132) is either that runway's own
+   `ThresholdNode` or a `Junction` node. The message names
    the stand or runway id, the field and the node id.
 6. **Connected.** Let `R0` be the lowest-id `RunwayThreshold` node. Every
    `StandPosition` and every `RunwayThreshold` node is reachable from `R0`,
@@ -326,6 +348,12 @@ assert the type, the prefix, the field name and the ids, and nothing else.
    That is the same as "every one reachable from every other". The message
    names the field `nodes` and the lowest-id such node that fails either
    way.
+7. **Exits reach the stands (Q-132).** For each runway whose `ExitNode`
+   is not its `ThresholdNode`, every `StandPosition` node is reachable
+   from its `ExitNode` over edges in their allowed directions. The message
+   names the runway id, the field `exit_node` and the lowest-id stand node
+   that cannot be reached. (An `ExitNode` equal to the threshold is
+   covered by check 6.)
 
 `Load` returns each of the four lists sorted by ascending id. So nothing
 downstream sees declaration order, as in `18` §18.2.
@@ -358,6 +386,12 @@ The exact shape is:
 ```
 
 - Each object has exactly the keys shown. `schema_version` must be `1`.
+- **One optional key (Q-132).** A runway object may also have
+  `"exit_node": <uint16>`, which is `RunwayDef.ExitNode`. Without it,
+  `ExitNode` is the runway's `threshold_node`. It is the only optional key
+  in the file: a duplicate is still a shape failure, and every other key
+  is still required. The version stays `1`, so every existing file is
+  still valid and means what it meant.
 - An integer is `0` or `-?[1-9][0-9]*`. One outside its C# type's range,
   for example `70000` for a `uint16`, is a **parse** failure.
 - After parsing, `Parse` calls `Load` on the result. So the validation
@@ -376,7 +410,10 @@ Computed once at load, not per tick (`01-architecture.md`, pathfinding rule —
 this is the same "never per-agent A\*" discipline applied to a graph small
 enough to solve exhaustively up front): for every `(RunwayThreshold,
 StandPosition)` pair, the least-`TraversalTicks` path, ties broken by ascending
-`TaxiEdgeId` at the first diverging edge. Stored as an ordered edge list per
+`TaxiEdgeId` at the first diverging edge. Precisely (Q-132): an arrival's
+route runs from its runway's `ExitNode` to the stand, and a departure's
+from the stand to its runway's `ThresholdNode`. With `ExitNode` equal to
+`ThresholdNode`, that is the pair above, as before. Stored as an ordered edge list per
 pair. A layout with more than one runway repeats this per runway. The
 Phase 0/1 fixture ships exactly one, and §12.5 "Runway choice" says which
 runway a movement uses.
@@ -536,7 +573,8 @@ whose id the track keeps in `OpenHold` meanwhile (§12.9, Q-079).
   `AircraftHeldForRunway` with `queuePosition = 0` is ever emitted. The case
   returns by amendment when upstream delay is modelled.
 - `OffRunway` fires `OccupancyTicks` after `Landed`; the aircraft then enters
-  the taxi graph at the runway's `ThresholdNode` and follows the precomputed
+  the taxi graph at the runway's `ExitNode` (Q-132; the `ThresholdNode`
+  when they are the same) and follows the precomputed
   route (§12.4) toward a stand chosen per §12.7.
 - Symmetric on departure: `Pushback` places the aircraft at the stand's `Node`
   heading for the assigned runway's `ThresholdNode`; `TakeoffRoll` fires when a
@@ -572,8 +610,8 @@ whose id the track keeps in `OpenHold` meanwhile (§12.9, Q-079).
   The queue is in joining order. Every entry is a `FlightId`, of one of two
   kinds:
   - an **arrival**. It emits `StandUnavailable { Flight, Stand: null,
-    occupying: null }` as it joins, and it waits at its runway's threshold
-    node with `Phase = HeldOnTaxiway`, `AtNode` = that node, `Stand` unset
+    occupying: null }` as it joins, and it waits at its runway's exit
+    node (`ExitNode`, Q-132) with `Phase = HeldOnTaxiway`, `AtNode` = that node, `Stand` unset
     and `DueAt = TICK_UNSCHEDULED`. On success it emits `StandAssigned {
     Flight, Stand, occupying: null }`. Its `Cause` is the `Pushback` that
     freed that stand, or `EventRef.None` if a `ReassignStand` freed it. It
@@ -879,7 +917,7 @@ taken in ascending `FlightId` unless the step says otherwise.
   `InboundAirborne` tick is `t` (§12.6, §12.11 "How flights are found"),
   and fire `InboundAirborne`.
 - **S3 Runway exits.** `OffRunway` for each arrival due, which puts it at
-  its threshold node needing a stand (S5). `Airborne` for each departure
+  its runway's exit node (`ExitNode`, Q-132) needing a stand (S5). `Airborne` for each departure
   due, which leaves tracked state.
 - **S4 Ground.** For each tracked flight on stand, the §12.8 actions that
   fell due at `t` in an earlier tick's reckoning, each flight's in this
@@ -1106,7 +1144,7 @@ keeps the value it already had.
 | `AwaitingApproach` | arrival | unset | unset | unset | unset | its `InboundAirborne` tick | `STA` |
 | `HeldForRunway` | arrival | unset | unset | unset | the chosen runway | `STA` | `TICK_UNSCHEDULED` |
 | `OnRunway` | arrival | unset | unset | unset | kept | its `Landed` tick | `Landed` tick + `OccupancyTicks` |
-| `HeldOnTaxiway`, waiting for a stand (§12.7) | arrival | its runway's threshold node | unset | unset | kept | its `OffRunway` tick | `TICK_UNSCHEDULED` |
+| `HeldOnTaxiway`, waiting for a stand (§12.7) | arrival | its runway's exit node (`ExitNode`, Q-132) | unset | unset | kept | its `OffRunway` tick | `TICK_UNSCHEDULED` |
 | `HeldOnTaxiway`, held for an edge (§12.6) | either | the node it holds at | unset | kept | kept | the tick it entered `HeldOnTaxiway`. An arrival that waited for a stand keeps its `OffRunway` tick | `TICK_UNSCHEDULED` |
 | `Taxiing` | either | the node it entered the edge from | the edge | kept | kept | the tick it entered this edge | that tick + the edge's `TraversalTicks` |
 | `OnStand` | arrival | its stand's node | unset | its stand | kept | its `OnStand` tick | `OnStand` tick + `DoorsOpenDelayMinutes × TICKS_PER_SIM_MINUTE` until `DoorsOpen` fires. Then the fallback handoff tick (`DoorsOpen` tick + `MinTurnaround`), for an arrival with a rotation in a build with `turnaroundRegistered` false. Otherwise `TICK_UNSCHEDULED` |
@@ -1138,7 +1176,7 @@ The set and clear rules this table implies:
   entered (S6.2) and cleared when the aircraft reaches the edge's end node
   (S6.1).
 - **`AtNode`** follows the table. It is set when the aircraft enters the
-  graph (an arrival's `OffRunway` puts it at its threshold node, and a
+  graph (an arrival's `OffRunway` puts it at its runway's `ExitNode`, Q-132, and a
   departure's creation puts it at its stand node). It is updated on edge
   entry (to the entry node) and on edge exit (to the end node).
   `ReassignStand` (§12.10) sets it to `newStand`'s node, together with
@@ -1163,7 +1201,7 @@ The set and clear rules this table implies:
 on the side:
 
 - the route and the position on it: the route of §12.4 for
-  `(Runway`'s threshold, `Stand)` (arrival) or `(Stand, Runway`'s
+  `(Runway`'s `ExitNode`, `Stand)` (arrival, Q-132) or `(Stand, Runway`'s
   threshold`)` (departure), and `AtNode`/`OnEdge` on it. A least-cost route
   visits no node twice, so `AtNode` fixes the next edge;
 - every planned tick of §12.3, for example planned `OnStand` from `STA`,
@@ -1278,7 +1316,7 @@ published in the same tick or read from hashed state: from
 |---|---|
 | `AircraftHeldForRunway` | None |
 | `AircraftHeldForRunwayReleased` | the hold event, from `OpenHold` |
-| `AircraftHeldOnTaxiway` | for the flight's **first edge request of its route**, when that request is made in this tick, the event that made it ready to ask, just emitted: its `Pushback` (departure, placed at its stand node); its `OffRunway` (arrival placed at its threshold node and granted a stand in S5 of the same tick); or its `StandAssigned` (arrival already waiting at its threshold node, which became ready to ask when the stand-wait queue gave it a stand in S5) (Q-080). None for a request at a node the flight reached along its route |
+| `AircraftHeldOnTaxiway` | for the flight's **first edge request of its route**, when that request is made in this tick, the event that made it ready to ask, just emitted: its `Pushback` (departure, placed at its stand node); its `OffRunway` (arrival placed at its exit node, Q-132, and granted a stand in S5 of the same tick); or its `StandAssigned` (arrival already waiting at its exit node, which became ready to ask when the stand-wait queue gave it a stand in S5) (Q-080). None for a request at a node the flight reached along its route |
 | `AircraftHeldOnTaxiwayReleased` | the hold event, from `OpenHold` |
 | `StandUnavailable` | the arrival's `OffRunway`, just emitted (S3, then S5 of the same tick) |
 | `StandAssigned` | the stand's `VacatedBy`: the freeing `Pushback`, or None if a `ReassignStand` freed it (§12.7) |
@@ -1598,6 +1636,76 @@ fixture is unchanged, and no merged suite changes. A composition over
 also the playtest bundle's `airside.fixture` (`16` §16.3). That copy is
 a separate file and is not required to follow later changes to this one,
 like the other bundle files of `19` §19.2c.
+
+**The exit node in the fixtures (Q-132).** This fixture is **unchanged**:
+it has no `exit_node`, so its arrivals still enter the taxi graph at the
+threshold, and no T-021 oracle, route table or merged suite changes. Only
+the playtest copy gains an exit, so that the playtest's arrivals land in
+the departure direction (`19` §19.2c gives its exact lines):
+
+- runway 1 gains `"exit_node": 4`;
+- three `junction` nodes 4, 5 and 6: node 4 is on the runway near its far
+  end, and 5 and 6 carry a parallel taxiway back to junction 2;
+- three one-way edges: 7 from 4 to 5 (5 ticks), 8 from 5 to 6 (40 ticks)
+  and 9 from 6 to 2 (10 ticks).
+
+Arrivals then taxi exit → 5 → 6 → 2 → stand, and never use edge 1, which
+departures still take to the threshold. Every departure route is
+unchanged, because the new edges are one-way toward junction 2.
+
+> **DETERMINISM-RELEVANT — Q-132 (for reviewer-core).** This is a change
+> to sim behaviour and to `sim.airside`'s code, reviewed as such.
+> - **Hash.** No new hashed field: the layout is construction data and is
+>   not fed (§12.12). What changes is the *value* of fed fields for an
+>   arrival in a layout whose `ExitNode` differs from its `ThresholdNode`:
+>   `AtNode` from `OffRunway` on, and every later `OnEdge`, `DueAt`,
+>   `PhaseEnteredAt` and `EdgeProgress` along the new route, plus the
+>   planned and actual ticks of `OnStand` and everything after it.
+> - **Layouts without an exit node** (every merged fixture except the
+>   playtest copy, every code-built layout through the kept constructor):
+>   byte-identical behaviour and hashes. `tests/fixtures/airside/phase1-single-runway.json`
+>   and every suite built on it are unchanged.
+> - **Soak golden** (`tests/golden/soak-500.hashes`): **unaffected**. The
+>   soak registers `sim.world`, `sim.schedule`, the boarding stand-in and
+>   `sim.flow`, not `sim.airside`.
+> - **The Phase 1 checkpoints bundle** (`19` §19.2c,
+>   `tests/fixtures/harness/checkpoints-phase1/`): its dump changes, from
+>   the first arrival's `OffRunway`. No expected dump is committed: the
+>   harness tests render the expected dump from the same composition, so
+>   they keep passing once the parser accepts `exit_node`. So the
+>   fixture changes only after the parser does: in task M3, together
+>   with the playtest render layout (`15` §15.23), never in A1.
+> - **Cross-runtime check** (`16` §16.9): it compares two runtimes on the
+>   same bundle in one run, with no stored output, so it is unaffected.
+> - **Playtest:** arrival taxi times grow by 25 ticks (55 ticks from
+>   the exit to junction 2, against 30 on edge 1), and arrival `OnStand`
+>   is planned and reached later. That is the intended effect.
+
+Tests for the exit node (task A1, `15` §15.23), phrased per
+`07-conventions.md`:
+
+- `test_layout_exit_node_defaults_to_threshold`: a file without
+  `exit_node`, and the five-field constructor, give `ExitNode =
+  ThresholdNode`; the fixture parses equal to its code-built layout as
+  before.
+- `test_layout_parse_reads_optional_exit_node`: present once, it is read;
+  a duplicate `exit_node` is a shape failure with its line; every other
+  missing key still fails.
+- `test_layout_rejects_bad_exit_node`: an undeclared exit (check 4, field
+  `exit_node`), a `StandPosition` or another runway's threshold as exit
+  (check 5), and an exit that cannot reach a stand (check 7, naming that
+  stand node), each in its order.
+- `test_arrival_leaves_runway_at_exit_node_and_taxis_from_it`: with an
+  exit, `OffRunway` puts `AtNode` at the exit, the stand-wait hold is at
+  the exit, the route is exit to stand, and the planned `OnStand` uses
+  `RouteTicks(exit, stand)`; departures are unchanged.
+- `test_layout_without_exit_node_runs_byte_identical`: a headless day on
+  the §12.13 fixture gives the same checkpoint hashes as the same fixture
+  with `"exit_node": 1` written out.
+- `test_playtest_bundle_lands_arrivals_at_the_far_exit`, owned by task
+  M3's Test Author, who also writes the playtest copy: it parses with
+  `ExitNode` 4, the three nodes and three one-way edges above, and is
+  otherwise §19.2c's substituted copy.
 
 Runs against `tests/fixtures/schedule/phase0-200.csv`
 (`11-interfaces-schedule.md` §11.10) with `sim.turnaround` **absent**, so

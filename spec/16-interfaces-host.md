@@ -239,7 +239,7 @@ name says nothing about the format.
   | `airside_rules.json` | `data/balance/airside_rules.json` |
   | `turnaround.fixture` | `13` §13.11, `tests/fixtures/turnaround/phase1-five-vehicles.json` |
   | `flow.fixture` | `tests/fixtures/flow/phase0-landside.flow.json`, the `sim.flow` fixture T-023 runs |
-  | `render_layout.fixture` | `15` §15.12, `tests/fixtures/render/phase1-layout.json` |
+  | `render_layout.fixture` | `15` §15.23, `tests/fixtures/render/playtest-layout.json` (Q-132: `phase1-layout.json` plus the playtest's runway-exit nodes; it was `phase1-layout.json` until task M3, which switches this row and `airside.fixture`'s exit lines together) |
 
   (Q-069, review of #83 at `a8e3edb`: the walk graph was missing from this
   list. The bundle lists `sim.world`, which needs `world.fixture`, and it

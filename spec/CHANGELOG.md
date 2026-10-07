@@ -4273,3 +4273,75 @@ Impact:      - **No sim change.** No sim member, state, hash, event or
                scale (§15.19).
 Signed off:  owner decision recorded (Q-132); mechanism not required;
              LOW CONFIDENCE items for the owner's review.
+
+## 2026-10-07 — spec/12 §12.3, §12.4, §12.6, §12.7, §12.8a, §12.9, §12.11, §12.13; 15 §15.18 (one sentence), §15.19–§15.23; 16 §16.3; 19 §19.2c; 07 L10; INDEX; open-questions Q-132 — owner decisions on #145: arrivals land in the departure direction (runway exit node)
+Reason:      HUMAN DECISIONS, owner, 2026-10-07, on the points #145
+             left open: (1) the 1x time scale is accepted, with no extra
+             speed setting; (2) arrivals must land in the same direction
+             as departures before T-025; (3) deboarding is deferred until
+             arriving passengers exist (a sim phase after T-025), and the
+             whole-stay boarding stream is accepted; (4) Q-131 is
+             realism's and Q-132 is this one, and the airborne shadow
+             stays (whichever PR merges second reconciles).
+Raised by:   human owner, via the team lead (Q-132)
+Impact:      - **Sim change, DETERMINISM-RELEVANT (reviewer-core).**
+               `RunwayDef` gains `TaxiNodeId ExitNode`: where an arrival
+               leaves the runway and enters the taxi graph (`12` §12.4).
+               The file gets one optional runway key, `exit_node`,
+               defaulting to `threshold_node`. `schema_version` stays 1,
+               so the merged parser test that rejects version 2 is
+               untouched. The kept five-field constructor sets
+               `ExitNode = ThresholdNode` (`07` L10). Checks 4 and 5 gain
+               `exit_node`, which must be that runway's threshold or a
+               `Junction`. A new check 7 requires a distinct exit to
+               reach every stand. Arrival routes run exit → stand, and
+               §12.3's planned arrival `OnStand` uses
+               `RouteTicks(exit, stand)`. `OffRunway`, the stand-wait
+               hold and §12.9's `AtNode` use the exit. Departures are
+               unchanged.
+             - **Hash and goldens.** No new hashed field: the layout is
+               not fed. Fed values change only for arrivals in a layout
+               with a distinct exit. Every merged fixture except the
+               playtest copy has none, so their runs and hashes are
+               byte-identical. `tests/fixtures/airside/phase1-single-runway.json`
+               is unchanged. **Soak golden: unaffected** (the soak does
+               not register `sim.airside`). **Phase 1 checkpoints dump:
+               changes** once the playtest copy gains its exit (task
+               M3); no expected dump is committed, because the harness
+               renders it from the same composition. **Cross-runtime
+               check: unaffected** (it compares live, with no stored
+               output).
+             - **Merged tests:** none break in A1. In M3, host tests
+               that compose the playtest bundle with an airside see the
+               new fixture. `07` L10's kept-constructor wording is
+               generalised to allow a constructor per earlier amendment
+               (`RenderLayout` now has three) and lists the Q-132
+               structs.
+             - **Fixtures:** the playtest airside copy (`19` §19.2c)
+               gains `"exit_node": 4`, junctions 4 to 6 and one-way edges
+               7 to 9. A new `tests/fixtures/render/playtest-layout.json`
+               (`phase1-layout.json` plus three taxi-node positions)
+               becomes the playtest's `render_layout.fixture` (`16`
+               §16.3). The two change together in M3, since either alone
+               fails §15.4 check 4 at presentation assembly.
+             - **Render (§15.20):** arrivals fly the final toward the
+               departures' threshold, touch down at `N + u × Lr / 8` and
+               roll out to the exit node, facing `fDep`. The hold is
+               mirrored to the approach side. The fixture examples now
+               use the playtest layout. The LOW CONFIDENCE item about
+               opposite-direction landing is removed.
+             - **Tasks:** new **A1** (airside exit node, sim, reviewed by
+               reviewer-core, no fixture change, depends on nothing
+               unmerged). M1 now also depends on A1. M3 also writes
+               `PlaytestBundleBuildStep.cs` and the playtest airside
+               copy, and depends on A1, M1 and T-054. T-053 is still
+               unaffected. T-025 waits for A1, M1, M2 and M3.
+             - **Scope added:** the runway exit node (owner-approved).
+             - **LOW CONFIDENCE:** the playtest exit geometry and its
+               taxi times (aesthetic and fixture sizing, not balance);
+               otherwise unchanged from the entry above, minus the
+               landing direction.
+             - **PENDING HUMAN:** none. All three points the entry above
+               left pending are now decided.
+Signed off:  owner decisions recorded (Q-132); determinism review of A1
+             required (reviewer-core).

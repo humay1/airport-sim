@@ -1897,7 +1897,8 @@ worker edits a test.
 
 `tests/fixtures/render/phase1-layout.json` becomes version 2 with these
 lists, and no other value changes. It is also the playtest bundle's
-`render_layout.fixture` (`16` §16.3). The terminal encloses the landside
+`render_layout.fixture` (`16` §16.3), until Q-132's playtest layout
+replaces it there (§15.23). The terminal encloses the landside
 zones, the pier faces the stands, and each bridge reaches its stand's
 aircraft door:
 
@@ -1983,11 +1984,16 @@ The T-025 playtest waits for all four, and is validated against
 > T-025. The Architect specified the mechanism and did not decide the
 > scope.
 
-**Presentation only, and no sim change.** All three are derived in the
+**Presentation only, with one sim change.** The one sim change is the
+runway exit node (`12` §12.4, task A1), from the owner's decision that
+arrivals land in the departure direction (§15.20). It adds a layout
+field, not a query, and it is determinism-relevant (`12` §12.13).
+Everything else is derived in the
 scene layer from read-only queries the sim already publishes (§15.6).
-No sim member, sim state, hash, event or command is added or changed,
-and nothing in `src/sim` is touched. `02-determinism.md` is unaffected:
-the new queries are reads made between `Step`s, like every other
+For that part, no sim member, sim state, hash, event or command is
+added or changed, and the scene layer's tasks touch nothing in
+`src/sim`. `02-determinism.md` is unaffected: the new queries are reads
+made between `Step`s, like every other
 (§15.6, §15.7), and nothing read is fed back. The scene layer still uses
 no RNG: what looks random is a fixed FNV hash, as for clothes (§15.16).
 `flow.presentation` (`09` §9.1) stays unused.
@@ -2051,7 +2057,8 @@ sim-seconds (`08` §8.2).
 > when its track disappears. Retuned after the
 > T-025 playtest by amendment, never by a worker.
 
-> **For the owner — what "seeing it land" looks like at 1x.** A tick is
+> **What "seeing it land" looks like at 1x — ACCEPTED, HUMAN DECISION,
+> owner, 2026-10-07 (Q-132): no extra speed setting.** A tick is
 > 6 sim-seconds and 0.1 real seconds, so the sim runs 60 times faster
 > than real time at 1x (`08` §8.2, `01`). With the fixture's 10-tick
 > runway occupancy, final approach plus rollout lasts **1 real second at
@@ -2096,31 +2103,37 @@ the aircraft reaches the end node at the tick it leaves the edge
 (`AtNode` set, `OnEdge` unset) does not move.
 
 **The runway frame.** For a runway `R` that has a `RunwayGeometry`, a
-`RunwayDef` in `Layout()`, and a position `T` for its `ThresholdNode`:
-`N` is its active end and `F` its other end, by §15.16's rule (`N` is
-`P0` if `|P0 − T|² ≤ |P1 − T|²` in `int64`, else `P1`). Then, in
-`double`: `Lr = |F − N|`, `u = (F − N) / Lr`, and
+`RunwayDef` in `Layout()`, and positions `T` for its `ThresholdNode` and
+`X` for its `ExitNode` (`12` §12.4, Q-132): `N` is its active end and `F`
+its other end, by §15.16's rule (`N` is `P0` if `|P0 − T|² ≤ |P1 − T|²`
+in `int64`, else `P1`). Then, in `double`: `Lr = |F − N|`,
+`u = (F − N) / Lr`, and
 
-| Point | Value | In the §15.12 fixture |
+| Point | Value | In the playtest layout (§15.23) |
 |---|---|---|
-| touchdown `TD` | `F − u × (Lr / 8)` | `(−1750, 0)` |
+| touchdown `TD` | `N + u × (Lr / 8)` | `(−250, 0)` |
 | lift-off `LO` | `N + u × (Lr × 3 / 4)` | `(−1500, 0)` |
-| final fix `FF` | `TD + u × FINAL_FIX_M` | `(−3750, 0)` |
-| approach entry `AE` | `TD + u × APPROACH_ENTRY_M` | `(−9750, 0)` |
+| final fix `FF` | `TD − u × FINAL_FIX_M` | `(1750, 0)` |
+| approach entry `AE` | `TD − u × APPROACH_ENTRY_M` | `(7750, 0)` |
 | climb end `CE` | `LO + u × CLIMB_OUT_M` | `(−5500, 0)` |
 
-(Fixture: runway `(−2000,0)`–`(0,0)` and `T = (0, 0)`, so `N = (0, 0)`,
-`F = (−2000, 0)`, `Lr = 2000` and `u = (−1, 0)`.) The integer facings
-are `fDep = F − N` and `fArr = N − F`, in `int64` then `float`, exact as
-in §15.16. If the runway a row uses is unset (a track's `Runway`, or no
-runway to predict), if any of the three inputs is missing, or if
-`Lr = 0`, the aircraft is **not drawn**.
+(Playtest: runway `(−2000,0)`–`(0,0)`, `T = (0, 0)` and `X = (−1850, 0)`,
+so `N = (0, 0)`, `F = (−2000, 0)`, `Lr = 2000` and `u = (−1, 0)`.) The
+integer facings are `fDep = F − N` and `fArr = N − F`, in `int64` then
+`float`, exact as in §15.16. If the runway a row uses is unset (a
+track's `Runway`, or no runway to predict), if any of the four inputs is
+missing, or if `Lr = 0`, the aircraft is **not drawn**.
 
-So a departure rolls from the threshold node away from it, toward `F`,
-as §15.16 rule 3 already faces it. An arrival approaches from beyond `F`
-and rolls out **toward** the threshold node, because that is where the
-sim puts it at `OffRunway` (`12` §12.6). See the LOW CONFIDENCE note
-below.
+**Arrivals and departures use the same direction** (HUMAN DECISION,
+owner, 2026-10-07, Q-132), as at a real airport. Both move along `u`,
+away from the threshold the departures use. An arrival flies the final
+over the threshold end toward `N`, touches down just past it, and rolls
+out to `X`, its runway's exit node, where the sim puts it at `OffRunway`
+(`12` §12.6). A departure rolls from `T` the same way, as §15.16 rule 3
+already faces it. In a layout whose `ExitNode` is its `ThresholdNode`
+(every layout without `exit_node`, such as `12` §12.13's test fixture),
+`X = T` and the rollout runs back a short way from `TD` to `T`. Only test
+layouts do that; the playtest's does not.
 
 **Off-graph tracks.** A track with neither `OnEdge` nor `AtNode` set is
 drawn by the row that matches its phase and kind, else not drawn. `w`
@@ -2130,9 +2143,9 @@ table.
 
 | Phase, `Kind` | Runway used | Drawn when | Position `P` | `Elevation` | `Facing` |
 |---|---|---|---|---|---|
-| `AwaitingApproach`, arrival | the **predicted** runway, below | `τ ≥ DueAt − APPROACH_TICKS` (`DueAt` is `STA`, `12` §12.9) | `AE + (FF − AE) × v`, with `v = clamp((τ − (DueAt − APPROACH_TICKS)) / APPROACH_TICKS, 0, 1)` | `|P − TD| / GLIDE_RATIO` | `fArr` |
+| `AwaitingApproach`, arrival | the **predicted** runway, below | `τ ≥ DueAt − APPROACH_TICKS` (`DueAt` is `STA`, `12` §12.9) | `AE + (FF − AE) × v`, with `v = clamp((τ − (DueAt − APPROACH_TICKS)) / APPROACH_TICKS, 0, 1)` | `|P − TD| / GLIDE_RATIO` | `fDep` |
 | `HeldForRunway`, arrival | `Runway` | always | the hold, below | `FINAL_FIX_M / GLIDE_RATIO` | the hold's leg, below |
-| `OnRunway`, arrival | `Runway` | always | `w ≤ 1/2`: `FF + (TD − FF) × v`, `v = 2w`. Else `TD + (T − TD) × (1 − (1 − v)²)`, `v = 2w − 1` | `w ≤ 1/2`: `|P − TD| / GLIDE_RATIO`. Else 0 | `fArr` |
+| `OnRunway`, arrival | `Runway` | always | `w ≤ 1/2`: `FF + (TD − FF) × v`, `v = 2w`. Else `TD + (X − TD) × (1 − (1 − v)²)`, `v = 2w − 1` | `w ≤ 1/2`: `|P − TD| / GLIDE_RATIO`. Else 0 | `fDep` |
 | `OnRunway`, departure | `Runway` | always | `w ≤ 1/2`: `T + (LO − T) × v²`, `v = 2w`. Else `LO + u × (CLIMB_OUT_M × v)`, `v = 2w − 1` | `w ≤ 1/2`: 0. Else `CLIMB_OUT_M × v / CLIMB_RATIO` | `fDep` |
 
 - **The predicted runway.** An arrival chooses its runway only at `STA`
@@ -2141,38 +2154,32 @@ table.
   with the smallest `RunwayQueueLength`. It is computed at most once per
   rebuild. With one runway it is always right.
 - **The hold** is a square flown from the final fix, to the left of the
-  outbound direction. With `l = (−u.y, u.x)` and `S = HOLD_LEG_M`, the
-  corners are `C0 = FF`, `C1 = FF + l × S`, `C2 = C1 + u × S` and
-  `C3 = FF + u × S`. With `s = max(0, τ − PhaseEnteredAt) / HOLD_LEG_TICKS`,
+  outbound direction `−u`. With `l = (u.y, −u.x)` and `S = HOLD_LEG_M`,
+  the corners are `C0 = FF`, `C1 = FF + l × S`, `C2 = C1 − u × S` and
+  `C3 = FF − u × S`. With `s = max(0, τ − PhaseEnteredAt) / HOLD_LEG_TICKS`,
   leg `k = floor(s) mod 4` runs from `C_k` to `C_(k+1) mod 4`, and
   `P = C_k + (C_(k+1) mod 4 − C_k) × (s − floor(s))`. Leg facings, with
-  `f = fDep`: leg 0 `(−f.y, f.x)`, leg 1 `f`, leg 2 `(f.y, −f.x)`,
-  leg 3 `fArr`. In the fixture the corners are `(−3750, 0)`,
-  `(−3750, −1000)`, `(−4750, −1000)` and `(−4750, 0)`.
+  `g = fArr`: leg 0 `(−g.y, g.x)`, leg 1 `g`, leg 2 `(g.y, −g.x)`,
+  leg 3 `fDep`. In the playtest layout the corners are `(1750, 0)`,
+  `(1750, 1000)`, `(2750, 1000)` and `(2750, 0)`.
 - **Continuity.** The approach ends at `FF` at `τ = STA`. An unheld
   arrival lands at `STA` (`12` §12.5), and its `OnRunway` starts at `FF`.
-  A held one starts its hold at `FF`. The rollout ends at `T`, where
-  `OffRunway` places it (`HeldOnTaxiway`, or a taxi edge from `T`). A
+  A held one starts its hold at `FF`. The rollout ends at `X`, where
+  `OffRunway` places it (`HeldOnTaxiway`, or a taxi edge from `X`). A
   departure's roll starts at `T`, where it held or arrived. Touchdown and
   lift-off are at elevation 0 on both sides.
 - Every other off-graph case (for example a `Departed` track, which is a
   bug, `12` §12.9) is not drawn.
 
-> **LOW CONFIDENCE — what the stateless rules cannot hide.** (1) Arrivals
-> land toward the threshold node, the opposite way to departures (in the
-> fixture they land on `09` and depart on `27`). The sim moves an
-> arrival from the runway to the taxi graph at that node (`12` §12.6),
-> and landing the other way would need a rollout away from it and back.
-> Landing and departing the same way needs a separate exit node in the
-> airside layout, which is a sim data change (**owner's call**).
-> (2) With several runways, a misprediction makes an approaching arrival
-> jump to the runway the sim chose, at `STA`. (3) A held arrival is
-> somewhere on its square when the sim releases it, and jumps to `FF`
-> (at most `S√2`, 1.4 km). (4) A departure disappears at `Airborne`, at
-> the climb end, 400 m up and 4 km past lift-off, because the sim drops
-> its track (`12` §12.6) and the scene keeps no memory. At a wide zoom
-> that is visible. Keeping a departed track (the reserved `Departed`
-> phase) would be a sim state change, so it is not done here.
+> **LOW CONFIDENCE — what the stateless rules cannot hide.** (1) With
+> several runways, a misprediction makes an approaching arrival jump to
+> the runway the sim chose, at `STA`. (2) A held arrival is somewhere on
+> its square when the sim releases it, and jumps to `FF` (at most `S√2`,
+> 1.4 km). (3) A departure disappears at `Airborne`, at the climb end,
+> 400 m up and 4 km past lift-off, because the sim drops its track (`12`
+> §12.6) and the scene keeps no memory. At a wide zoom that is visible.
+> Keeping a departed track (the reserved `Departed` phase) would be a
+> sim state change, so it is not done here.
 
 ---
 
@@ -2304,7 +2311,8 @@ late passengers reach the gate. Without `sim.turnaround`, a departure's
 track exists only from the handoff, so it is the arrival's `Rotation`
 that finds the boarding flight.
 
-> **LOW CONFIDENCE — a stream for the whole stay.** Walkers flow from the
+> **A stream for the whole stay — ACCEPTED as is for now, HUMAN DECISION,
+> owner, 2026-10-07 (Q-132).** Walkers flow from the
 > moment the first passenger of the flight reaches a gate until the
 > doors close, which can be most of the aircraft's time on stand. Real
 > boarding starts about 30 minutes before departure. A window keyed on
@@ -2320,9 +2328,10 @@ There are **no arriving passengers** in the sim at Phase 1: `Inject`
 rejects them (`09` §9.6, Q-040), and an arrival's `PaxCount` is 0 (`11`
 §11.1). Walkers leaving an arriving aircraft would be people the sim
 does not have, with no count to follow, so the scene draws none.
-**PENDING HUMAN:** deboarding becomes visible when arriving passengers
-are modelled, which is a sim scope decision (`09` §9.6 says it needs an
-amendment that defines their destinations).
+**DECIDED, DEFERRED — HUMAN DECISION, owner, 2026-10-07 (Q-132):**
+boarding only for now. Arriving passengers come with a later sim phase,
+after T-025, and deboarding is drawn then, by amendment (`09` §9.6 says
+admitting them needs one that defines their destinations).
 
 ---
 
@@ -2385,15 +2394,20 @@ Scene layer (task M1), phrased per `07-conventions.md`:
   the next tick's position; `Trav ≤ 0` adds nothing; it clamps at 1.
 - `test_scene_arrival_appears_in_the_approach_window`: not drawn before
   `STA − APPROACH_TICKS`; at `AE` at the window's start and at `FF` at
-  `STA`, with the fixture's values; elevations 400 and 100; facing
-  `fArr`; `AircraftMoving`; the predicted runway is the lowest-id one
-  with the smallest queue, over three runways.
-- `test_scene_held_arrival_flies_the_square_hold`: the fixture's four
-  corners and leg facings, elevation 100, `AircraftHolding`, the wrap
-  after four legs, and `τ < PhaseEnteredAt` held at `FF`.
-- `test_scene_arrival_lands_and_rolls_out_to_the_threshold`: `w = 0` at
-  `FF`, `w = 1/2` at `TD` with elevation 0, `w = 1` at `T`; elevation
-  decreasing over the final; `O ≤ 0` at `T`.
+  `STA`, with the playtest layout's values; elevations 400 and 100;
+  facing `fDep`; `AircraftMoving`; the predicted runway is the lowest-id
+  one with the smallest queue, over three runways.
+- `test_scene_held_arrival_flies_the_square_hold`: the playtest layout's
+  four corners and leg facings, elevation 100, `AircraftHolding`, the
+  wrap after four legs, and `τ < PhaseEnteredAt` held at `FF`.
+- `test_scene_arrival_lands_and_rolls_out_to_the_exit_node`: `w = 0` at
+  `FF`, `w = 1/2` at `TD` with elevation 0, `w = 1` at `X`; elevation
+  decreasing over the final; `O ≤ 0` at `X`; facing `fDep`, the same
+  direction as a departure's; and with `ExitNode = ThresholdNode`, `X = T`.
+- `test_render_playtest_layout_extends_the_phase1_layout`: the playtest
+  layout loads against `12` §12.13's fixture with `19` §19.2c's exit
+  lines added in code, and equals `phase1-layout.json` plus the three
+  taxi-node positions below.
 - `test_scene_departure_rolls_lifts_off_and_climbs`: `w = 0` at `T`,
   `w = 1/2` at `LO` with elevation 0, `w = 1` at `CE` with elevation 400;
   facing `fDep`.
@@ -2474,6 +2488,10 @@ Host (task M3):
   `SubTickMicroseconds`, paused frames included.
 - Merged `FrameLoopTests` that compare with a two-argument reference
   `Build` are updated to the three-argument one.
+- `test_playtest_bundle_lands_arrivals_at_the_far_exit`: the bundle's
+  `airside.fixture` parses with `ExitNode` 4 and §19.2c's lines, and the
+  presentation composes with it and `playtest-layout.json` (`12`
+  §12.13's playtest-fixture test).
 
 ### Fixture (task M1's Test Author)
 
@@ -2489,22 +2507,66 @@ other value changes, and the text `"stand_size": 40` stays:
 ]
 ```
 
+**The playtest layout (Q-132).** The playtest's airside fixture gains
+three taxi nodes for its runway exit (`12` §12.13, `19` §19.2c), and
+§15.4 check 4 requires a position for every taxi node of the airside
+layout it is loaded against, and none for any other. `phase1-layout.json`
+is loaded against `12` §12.13's fixture, which has no exit, so it cannot
+carry them. A new file, `tests/fixtures/render/playtest-layout.json`, is
+`phase1-layout.json` (version 3, as above) with three more `taxi_nodes`
+entries, and no other change:
+
+```
+{ "node": 4, "x": -1850, "y": 0 },
+{ "node": 5, "x": -1850, "y": -90 },
+{ "node": 6, "x": 0, "y": -90 }
+```
+
+Node 4 is on the runway, 150 m from its far end. Nodes 5 and 6 carry the
+parallel taxiway 90 m south of the centreline, clear of the runway, back
+to junction 2. It becomes the playtest bundle's `render_layout.fixture`
+(`16` §16.3).
+
 ### For the Planner
 
-Three tasks, beside Q-130's four (T-051 to T-054). Each starts only when
+Four tasks, beside Q-130's four (T-051 to T-054). Each starts only when
 its dependencies are merged.
 
+- **A1. Airside: the runway exit node (sim; determinism-relevant).**
+  Test Author first, then a worker. **Reviewed by reviewer-core.** It
+  implements `12` §12.4's `ExitNode` (the optional `exit_node` key, the
+  kept constructor, checks 4, 5 and 7, and routing) and its use in §12.3,
+  §12.6, §12.7, §12.8a, §12.9 and §12.11, with `12` §12.13's tests
+  except the playtest-fixture one. Writable paths: `src/sim/airside/**`
+  and `tests/sim/airside/**`. No fixture file changes, so every merged
+  run is byte-identical. It depends on nothing unmerged. Done-when
+  includes the determinism gate.
 - **M1. Render scene: motion, approaches and walkers.** Test Author
   first, then a worker. Writable paths: `src/app/render/Scene/**`,
   `tests/app/render/**` and `tests/fixtures/render/**`. It depends on
   T-052, because both write `tests/app/render/**` and its shared kit,
-  and M1 changes `DrawPrimitive`, which T-052's tests construct.
+  and M1 changes `DrawPrimitive`, which T-052's tests construct. It
+  also depends on **A1**, because the arrival rollout reads
+  `RunwayDef.ExitNode`. M1 writes `playtest-layout.json`, and its test
+  loads it against `12` §12.13's fixture with §19.2c's exit lines added
+  in code, since the playtest airside file changes only in M3.
 - **M2. Render 2D art: elevation.** Test Author first, then a worker.
   Writable paths: `src/app/render/Art2D/**` and `tests/app/render/**`.
   It depends on M1 (`Elevation`). It edits no `.sln`.
-- **M3. Host: the sub-tick into `Build`.** Test Author first, then a
-  worker. Writable paths: `src/app/host/**` and `tests/app/host/**`
-  (`16` §16.6). It depends on M1, and on T-054, which writes the same
+- **M3. Host: the sub-tick into `Build`, and the playtest's exit.**
+  Test Author first, then a worker. Writable paths: `src/app/host/**`,
+  `tests/app/host/**`,
+  `unity/AirportSim/Assets/Editor/PlaytestBundleBuildStep.cs`, whose
+  `render_layout.fixture` source becomes `playtest-layout.json` (`16`
+  §16.3, §16.6), and, for its Test Author,
+  `tests/fixtures/harness/checkpoints-phase1/airside.fixture` (`19`
+  §19.2c's exit lines), with `12` §12.13's playtest-fixture test. The
+  airside file and the render-layout switch change **together**, in one
+  PR: either alone makes the playable build fail §15.4 check 4 at
+  presentation assembly. This PR changes the Phase 1 checkpoints dump
+  (`12` §12.13's determinism note), so reviewer-core reviews the fixture
+  change. Done-when includes `unity-build` and the Phase 1 checkpoints
+  tests green. It depends on A1, M1, and T-054, which writes the same
   paths.
 
 **T-053 does not wait, and needs no follow-up.** The Unity backend calls
@@ -2512,7 +2574,7 @@ its dependencies are merged.
 quads are more of the same. Its draw-call rule, buffers and contract are
 unchanged.
 
-The T-025 playtest waits for M1, M2 and M3 as well as T-051 to T-054.
+The T-025 playtest waits for A1, M1, M2 and M3 as well as T-051 to T-054.
 Until M3 merges, a playable build already shows approaches, takeoffs
 and walkers, but at whole ticks: the host still calls the two-argument
 `Build`.
