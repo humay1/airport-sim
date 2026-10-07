@@ -285,6 +285,7 @@ readonly struct ComposedSim {
   IFlowSystem?       Flow
   ITurnaroundSystem? Turnaround
   IDelaySystem?      Delay
+  IContentIndex?     Content                  // Q-130; the index step 1 built; null only from the 7-argument constructor
 }
 
 interface ISimComposer {
@@ -295,6 +296,13 @@ interface ISimComposer {
 `ISimComposer` is created with the content definitions:
 `HostFactory.CreateSimComposer(IReadOnlyList<IContentDefinition> content)`
 (see §16.3).
+
+**`ComposedSim.Content` (Q-130).** `Compose` returns, as `Content`, the
+same `IContentIndex` instance that step 1 passed to `CreateBuilder`.
+`ComposedSim` has two constructors: one taking all eight fields in
+declared order, and the earlier seven-argument one, which sets `Content`
+to null. Only presentation reads `Content`, for aircraft sprites
+(`15` §15.5). A null `Content` draws every aircraft as `AircraftC`.
 
 `Compose` does exactly this, in this order:
 
@@ -393,8 +401,9 @@ interface IPresentationComposer {
 }
 ```
 
-- Builds `RenderSources { Host, Airside, Flow }` (`15` §15.9) from the
-  `ComposedSim`.
+- Builds `RenderSources { Host, Airside, Flow, Schedule, Content }`
+  (`15` §15.9, Q-130) from the `ComposedSim`, with its five-argument
+  constructor.
 - Loads `render_layout.fixture` through `IRenderLayoutLoader`, passing
   `Airside.Layout()` when `sim.airside` is registered, and `null`
   otherwise. Its `sourceName` is exactly `render_layout.fixture`, as for
@@ -908,6 +917,16 @@ Done-condition tests for the headless host, phrased per `07-conventions.md`:
   leaves no new file, and writes exactly its one §16.8 failure line to a
   captured `Console.Error` (`output-exists`, `output-no-parent`, `load`);
   a successful `Run` writes nothing there
+- `test_compose_exposes_the_content_index` (Q-130): `ComposedSim.Content`
+  resolves every definition the composer was created with, and nothing
+  else
+- `test_presentation_render_sources_carry_schedule_and_content` (Q-130):
+  with a tracked aircraft on the graph, a frame's `Scene.Build` calls
+  `TryGetFlight` on the composed `sim.Schedule`, and the aircraft's sprite
+  follows its size category in the composed content
+
+The Q-130 host task changes no merged host test, because the
+seven-argument `ComposedSim` constructor stays.
 
 Host tests may use `float` only as `07` L4's `tests/app/host/` exception
 allows (Q-116).

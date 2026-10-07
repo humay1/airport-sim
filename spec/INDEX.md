@@ -380,13 +380,21 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   Q-099); floats allowed in `tests/app/render` (§15.3, Q-100); `Build`
   applies the promotion predicate itself (§15.5, Q-101)**; **the backend
   is the local package `com.airportsim.render.unity`, build-checked by
-  `unity-build` (§15.3, §15.10, Q-114)**.
+  `unity-build` (§15.3, §15.10, Q-114)**; **sprites (owner, 2026-10-07,
+  Q-130, §15.15): the scene layer picks each primitive's `SpriteId` and
+  integer `Facing`, adds runway and taxiway markings, picks aircraft art by
+  size category through `TryGetFlight` and content, and rasterises an
+  art-as-code atlas; the backend draws one tinted atlas in one draw call**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
   revise (Q-034):** the `Low` and `Medium` values and the 1920 × 1080
   measurement condition (§15.14); the backend's draw-call bound (§15.10).
-- Read if: T-020; the render backend task (§15.10).
+  **LC, not yet reviewed (Q-130):** the straight-line facing of a held
+  aircraft (§15.5); Unity's texture, shader and colour-space behaviour
+  for the atlas (§15.15).
+- Read if: T-020; the render backend task (§15.10); the Q-130 sprite tasks
+  (§15.5, §15.9, §15.10, §15.15).
 
 ### `16-interfaces-host.md` — `app.host` (new, D7)
 - Owns: the Unity project `unity/AirportSim/`, the headless composition root,
@@ -405,7 +413,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   D10). **`bundle.json` has a strict form, and each system's `Name` is its
   module name (§16.3, Q-069); a loader's `sourceName` is the bundle file
   name (§16.4, Q-073); `IHeadlessRun` submits no command and steps one
-  sim-day per `Step` (§16.8, Q-071, Q-074); D7 runs on two test bundles,
+  sim-day per `Step` (§16.8, Q-071, Q-074); `ComposedSim.Content` and
+  the five-field `RenderSources`, for aircraft sprites (§16.4, §16.5,
+  Q-130); D7 runs on two test bundles,
   `tests/fixtures/harness/checkpoints-phase0/` and `-phase1/`, not on the
   playtest bundle (§16.8, Q-070)**; **the D7 test lives in
   `tests/integration/` and calls both sides in process (§16.8, Q-077)**;

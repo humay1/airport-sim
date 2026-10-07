@@ -3390,3 +3390,40 @@ Why it matters: splitting on CR and LF separately would forward an empty
 Answer:      LF, or CR followed by LF, is one line break. A lone CR is
              part of the line.
 Status:      ANSWERED (spec/16-interfaces-host.md#167-the-unity-bootstrap-contract)
+
+### Q-130 — `app.render`: real top-down art before the T-025 playtest (owner decision)
+Raised by:   human owner, 2026-10-07
+Blocking:    T-025 (the playtest waits for the three Q-130 tasks)
+Question:    The abstract shapes are too ugly. The owner decided that the
+             game gets real top-down art before the T-025 playtest, as
+             agent-made flat vector art: a clean, consistent, flat
+             top-down style, made by agents, with no third-party assets.
+             How does a primitive select its art, how do aircraft point
+             along their path, how does the backend draw it within
+             Q-034's draw-call rule, and how does the art reach the
+             player when agents can write only text?
+Why it matters: the scene layer emits palette-coloured boxes, segments
+             and headless dots, and the backend draws flat quads. Art
+             decided in the backend would be untested, and any import
+             pipeline would need an editor that no agent can run.
+Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect.
+             The scene layer decides: `DrawPrimitive` gains `SpriteId
+             Sprite` and an integer-valued `WorldPoint Facing` (`15`
+             §15.9). New primitives are added for runway markings,
+             taxiway junction fills and centrelines (§15.5). Aircraft art
+             follows the size category, through `TryGetFlight` and the
+             content index, with `AircraftC` as the fallback. Facing is a
+             layout-difference vector with five ordered rules, with no
+             angle and no quantisation. `ColourRole` tints the sprite.
+             The art is C# source in the scene layer (option (a)),
+             rasterised by `RenderFactory.BuildSpriteAtlas` into one
+             1024² atlas with 5 directly rasterised mips. The backend
+             uploads it once and draws one tinted, rotated quad per
+             primitive in one draw call (§15.10). There is a style guide
+             with a palette and aircraft proportions (§15.15).
+             `ComposedSim` gains `Content`, and `RenderSources` gains
+             `Schedule` and `Content` (`16` §16.4, §16.5). The older
+             constructors stay. One merged test breaks and four are
+             extended (§15.15). There are three tasks.
+             LOW CONFIDENCE: held-aircraft facing; Unity atlas mechanics.
+Status:      ANSWERED (spec/15-interfaces-render.md#1515-sprite-art--owner-decision-2026-10-07-q-130)

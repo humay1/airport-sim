@@ -54,7 +54,14 @@ At Phase 1, `app.render` owns:
 - choosing the game speed or pausing. The pacer is told both (§15.8), and
   `app.ui` chooses them;
 - any sim module's state beyond the queries in §15.6. In particular it reads
-  nothing from `sim.turnaround`, `sim.delay` or `sim.schedule` at Phase 1.
+  nothing from `sim.turnaround` or `sim.delay` at Phase 1. From
+  `sim.schedule` it reads `TryGetFlight` only, and only to choose an
+  aircraft's sprite (§15.15, Q-130).
+
+Since 2026-10-07 the draw list is drawn as **sprites**: flat top-down
+vector art, made by agents, with no third-party assets (owner decision,
+Q-130). The art, its atlas and the style guide are §15.15. "Flat-colour"
+elsewhere in this file now means this flat style.
 
 ---
 
@@ -71,6 +78,11 @@ and none of them affects a sim outcome.
 | `MAX_DRAWN_LANES_PER_NODE` | 32 | §15.5; lane pips per queue node (Q-010) |
 | `MAX_CATCHUP_TICKS_PER_FRAME` | 3 | §15.8 |
 | `REAL_MICROSECONDS_PER_TICK_1X` | `TICK_MS × 1000` = 100 000 | §15.8, from `01-architecture.md` |
+| `ATLAS_SIZE` | 1024 | §15.15; side of the square sprite atlas, in pixels at mip 0 (Q-130) |
+| `ATLAS_CELL_PIXELS` | 256 | §15.15; side of one sprite cell at mip 0 |
+| `ATLAS_CELL_BORDER_PIXELS` | 8 | §15.15; bleed border inside each cell at mip 0 |
+| `ATLAS_MIP_COUNT` | 5 | §15.15; mip levels 0 to 4 |
+| `ART_UNITS` | 1024 | §15.15; design units across a sprite's visible square |
 
 World units are metres at Phase 1, with +Y pointing up the screen. They mean
 nothing to the sim.
@@ -79,8 +91,9 @@ nothing to the sim.
 in `AirportSim.App.Render`, as `public const` members with their IDL names
 (`07` L10). The types are: `AGENT_ZOOM_THRESHOLD`, `MAX_DRAWN_AGENTS_PER_NODE`
 and `MAX_DRAWN_LANES_PER_NODE` are `int`, `MAX_CATCHUP_TICKS_PER_FRAME` is
-`uint` (the type `ITickPacer.Advance` returns), and
-`REAL_MICROSECONDS_PER_TICK_1X` is `long`. §15.7 compares `ViewHeight` with
+`uint` (the type `ITickPacer.Advance` returns),
+`REAL_MICROSECONDS_PER_TICK_1X` is `long`, and the five atlas and art
+constants (Q-130) are `int`. §15.7 compares `ViewHeight` with
 `AGENT_ZOOM_THRESHOLD` converted to `float`, which is exact for 120.
 
 > **LOW CONFIDENCE — `AGENT_ZOOM_THRESHOLD = 120`.** "Close enough to see
@@ -237,16 +250,99 @@ ascending, and within a layer by `SourceRef` ascending (§15.9), which gives a
 total, stable order. `SourceRef` order is lexicographic over its declared
 fields (Q-097): `Kind` ordinal, then `Id`, then `Sub`, each ascending.
 
-| Source | Primitive | Geometry | `ColourRole` | `DrawLayer` |
-|---|---|---|---|---|
-| each runway | `Segment` | `(X0,Y0)`–`(X1,Y1)`, width `Width` | `RunwayQueued` if `RunwayQueueLength > 0`, else `Runway` | `Runway` |
-| each taxi edge | `Segment` | position of `From` to position of `To`, width `TaxiwayWidth` | `Taxiway` | `Taxiway` |
-| each stand | `Box` | centred on the stand's `Node` position, side `StandSize` | `StandOccupied` if `StandState.Occupant` is set, else `StandFree` | `Stand` |
-| each `FlowNodeBox` | `Box` | the box | `LandsideNode` | `LandsideNode` |
-| queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` |
-| lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` |
-| agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize` | `Agent` | `Agent` |
-| each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` |
+| Source | Primitive | Geometry | `ColourRole` | `DrawLayer` | `Sprite` (Q-130) | `SourceRef` |
+|---|---|---|---|---|---|---|
+| each runway | `Segment` | `(X0,Y0)`–`(X1,Y1)`, width `Width` | `RunwayQueued` if `RunwayQueueLength > 0`, else `Runway` | `Runway` | `Solid` | `(Runway, id, 0)` |
+| runway markings (Q-130) | edge lines, thresholds and centreline dashes, "Runway markings" below | below | `RunwayMarking` | `Runway` | below | `(RunwayMarking, id, Sub)` |
+| each taxi edge | `Segment` | position of `From` to position of `To`, width `TaxiwayWidth` | `Taxiway` | `Taxiway` | `Solid` | `(TaxiEdge, id, 0)` |
+| junction fill (Q-130): each taxi node with two or more incident edges in `Layout().Edges` | `Dot` | centred on the node's position, diameter `TaxiwayWidth` | `Taxiway` | `Taxiway` | `Disc` | `(TaxiNode, id, 0)` |
+| taxiway centreline (Q-130): each taxi edge | `Segment` | the taxi edge's geometry, width `TaxiwayWidth` | `TaxiwayMarking` | `Taxiway` | `CentreStripe` | `(TaxiCentreline, id, 0)` |
+| each stand | `Box` | centred on the stand's `Node` position, side `StandSize` | `StandOccupied` if `StandState.Occupant` is set, else `StandFree` | `Stand` | `Stand` | `(Stand, id, 0)` |
+| each `FlowNodeBox` | `Box` | the box | `LandsideNode` | `LandsideNode` | `Terminal` | `(FlowNode, id, 0)` |
+| queue fill, if `Population > 0` | `Box` | same `MinX`, `MinY`, `MaxY`; width = box width × `min(1, Population / FillCapacity)` | `QueueFill` | `QueueFill` | `Solid` | `(QueueFill, id, 0)` |
+| lane pips of a `FlowNodeBox` whose node `TryGetLaneState` accepts | `Dot` | inside the box, one per server up to `MAX_DRAWN_LANES_PER_NODE`, diameter `AgentSize` | `LaneOpen` for the first `ServersOpen` pips, `LaneClosed` for the rest | `Lane` | `LanePip` | `(Lane, id, index)` |
+| agents of a promoted `FlowNodeBox` | `Dot` | inside the box, one per agent, diameter `AgentSize` | `Agent` | `Agent` | `Passenger` | `(Agent, id, rank)` |
+| each tracked aircraft that is on the graph | `Dot` | see below, diameter `AircraftSize` | by phase, below | `Aircraft` | by size category, below | `(Aircraft, flight, 0)` |
+
+**Facing (Q-130).** Every primitive carries `Facing` (§15.9). It is
+`(0, 0)` for every primitive except aircraft (below) and runway thresholds
+(below). Boxes are never rotated, and `(0, 0)` on a `Dot` means unrotated.
+
+**Draw order of the new rows (Q-130).** The appended `SourceKind`s sort
+after the older ones, so within the `Runway` layer every runway surface is
+drawn before any marking, and within the `Taxiway` layer every edge surface
+comes first, then every junction fill, then every centreline. Markings are
+never hidden by a surface of the same layer.
+
+**Runway markings (Q-130).** For each runway, in integer arithmetic on the
+layout's `int32` values, widened to `int64`: `dx = X1 − X0`, `dy = Y1 − Y0`,
+`W = Width`, and `L = isqrt(dx² + dy²)`, the exact floor of the square root
+(the largest `s` with `s² ≤ dx² + dy²`). `Along(d)` is the point
+`(X0 + dx × d / L, Y0 + dy × d / L)`, with C# `long` division (truncating
+toward zero), each coordinate then converted to `float`. If `L = 0` the
+runway has no markings. Otherwise, all with layer `Runway`, colour
+`RunwayMarking` and source `(RunwayMarking, runway id, Sub)`:
+
+| `Sub` | What | Primitive | Geometry | `Sprite` | `Facing` |
+|---|---|---|---|---|---|
+| 0 | edge lines | `Segment` | the runway's own `A`, `B` and `Size` | `RunwayEdges` | `(0, 0)` |
+| 1 | threshold at `(X0,Y0)` | `Dot` | centre `Along(W / 2)`, diameter `W` | `RunwayThreshold` | `(dx, dy)` |
+| 2 | threshold at `(X1,Y1)` | `Dot` | centre `Along(L − W / 2)`, diameter `W` | `RunwayThreshold` | `(−dx, −dy)` |
+| `3 + k` | centreline dash `k`, `0 ≤ k < n` | `Segment` | `Along(s_k)` to `Along(s_k + W)`, width `W` | `CentreStripe` | `(0, 0)` |
+
+`W / 2` is integer division. The dashes: `M = 2W`, `R = L − 2M`;
+`n = 0` if `R < W`, else `n = (R + W) / (2W)`; and
+`s_k = M + (R − (2n − 1) × W) / 2 + 2W × k`. So `n` dashes of length `W`
+with gaps of `W` are centred between the two threshold zones. For the
+§15.12 fixture's runway (`L = 2000`, `W = 45`) that is `n = 20` and
+`s_0 = 122`. A threshold's `Facing` points into the runway, so the
+sprite's forward edge faces the runway's middle.
+
+**Aircraft sprite by size category (Q-130).** At construction the scene
+builder reads, when `RenderSources.Content` is not null,
+`Content.AllOf(ContentKind.Aircraft)`, and for each id
+`TryGet<AircraftDefinition>` and then `TryGet<SizeCategoryDefinition>` of
+its `SizeCategory`. That gives a fixed map from aircraft type to sprite:
+`AircraftA + min(Ordinal, 5)`, so ordinals 0 to 5 (`data/`'s `size_a` to
+`size_f`) are `AircraftA` to `AircraftF`, and a larger ordinal is
+`AircraftF`. A type whose definition or category does not resolve is left
+out of the map. Per rebuild, an aircraft's sprite is its type's entry,
+read through `Schedule.TryGetFlight(flight).AircraftType`. It is
+`AircraftC` when `Schedule` or `Content` is null, the flight is not found
+or its type is not in the map. The sprite never changes with phase:
+phase is shown by the colour, as before.
+
+**Aircraft facing (Q-130).** An integer direction vector taken from
+layout positions, never an angle. Positions are the §15.4 `int32` values,
+and the vector's components are their `int32` differences converted to
+`float`, so the value is exact and needs no quantisation and no
+trigonometry. The backend rotates continuously (§15.10). In this order:
+
+1. `OnEdge` set: the edge's other endpoint's position minus `AtNode`'s,
+   which is the direction of travel. A pushback is therefore drawn nose
+   first, a stylisation accepted for Phase 1.
+2. Else, `AtNode` set and `Phase` is `OnStand` or
+   `AwaitingPushbackClearance`: nose in. `AtNode`'s position minus the
+   position of the other endpoint of the lowest-`TaxiEdgeId` edge incident
+   to `AtNode`.
+3. Else, `AtNode` set and `Phase` is `OnRunway` or `HeldForRunway`: along
+   the runway, away from its threshold. With `Runway` set, `T` the position
+   of that runway's `RunwayDef.ThresholdNode`, and `P0 = (X0,Y0)`,
+   `P1 = (X1,Y1)` from its geometry: `P1 − P0` if
+   `|P0 − T|² ≤ |P1 − T|²` (in `int64`), else `P0 − P1`.
+4. Else, `AtNode` set and `Phase` is `HeldOnTaxiway` or `Taxiing`: toward
+   the destination, in a straight line. A `Departure`'s destination is the
+   `ThresholdNode` of its `Runway`, an `Arrival`'s is the `Node` of its
+   `Stand`. The vector is the destination's position minus `AtNode`'s.
+5. In every other case, and whenever the rule's id is unset, a position
+   or geometry is missing, or the vector is `(0, 0)`: `(0, 0)`.
+
+> **LOW CONFIDENCE — rule 4 points along a straight line, not the
+> route.** `IAirsideSystem` exposes no route, so an aircraft held at a
+> junction faces its destination, which can be off the next edge by up to
+> 90°. It holds only while the aircraft waits, and it is presentation
+> only. A route query on `sim.airside` would fix it, and is not worth
+> widening `12` for now.
 
 **Which boxes are promoted (Q-101).** The scene builder holds no reference
 to the promotion controller and reads no promotion state from `sim.flow`
@@ -302,7 +398,10 @@ terrain, weather, and interpolation between ticks.
 
 `ColourRole` names a meaning, not a colour. Mapping roles to RGB is the
 backend's palette (§15.10). It is aesthetic, not balance, and no test checks
-it.
+it. The role **tints** the primitive's sprite (§15.15): sprites carry
+value and coverage only, and the palette colour multiplies them. So phase,
+occupancy, queue and lane states still read by colour, with one sprite
+per thing drawn and never one per state.
 
 ---
 
@@ -322,6 +421,8 @@ rejection, and the fakes in §15.12 throw if one is called.
 | `IFlowSystem.AgentsAt` | `09` §9.7 | scene builder | per rebuild, per promoted `FlowNodeBox` |
 | `IFlowSystem.TryGetLaneState` | `09` §9.7b | scene builder | per rebuild, per `FlowNodeBox` |
 | `IFlowSystem.SetPromoted` | `09` §9.7 | promotion controller only | §15.7 |
+| `IScheduleSystem.TryGetFlight` | `11` §11.7 | scene builder | per rebuild, per drawn aircraft (Q-130) |
+| `IContentIndex.AllOf`, `TryGet` | `08` §8.11 | scene builder | once, at construction (Q-130) |
 
 Cadence:
 
@@ -332,8 +433,9 @@ Cadence:
 - No query is ever made while `Step` is running. Given §15.8's frame order and
   the fact that `Step` is synchronous (`08` §8.5), this holds by construction.
   It also means a frame never mixes two ticks' state.
-- `WorldStateHash`, `TrySubmit`, `Inject`, `Absorb` and every query of
-  `sim.schedule`, `sim.turnaround` and `sim.delay` are **not** called.
+- `WorldStateHash`, `TrySubmit`, `Inject`, `Absorb`, every query of
+  `sim.turnaround` and `sim.delay`, and every `sim.schedule` query except
+  `TryGetFlight` are **not** called.
 
 ---
 
@@ -444,23 +546,35 @@ enum ColourRole {
   Runway, RunwayQueued, Taxiway, StandFree, StandOccupied,
   LandsideNode, QueueFill, Agent,
   AircraftMoving, AircraftHolding, AircraftOnStand,
-  LaneOpen, LaneClosed                                  // appended, Q-010
+  LaneOpen, LaneClosed,                                 // appended, Q-010
+  RunwayMarking, TaxiwayMarking                         // appended, Q-130
 }
-enum SourceKind    { Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft, Lane }
+enum SourceKind {
+  Runway, TaxiEdge, Stand, FlowNode, QueueFill, Agent, Aircraft, Lane,
+  RunwayMarking, TaxiNode, TaxiCentreline               // appended, Q-130
+}
+enum SpriteId {                                         // Q-130; the value is the atlas cell (§15.15)
+  Solid, Disc, RunwayEdges, CentreStripe, RunwayThreshold,
+  Stand, Terminal, LanePip, Passenger,
+  AircraftA, AircraftB, AircraftC, AircraftD, AircraftE, AircraftF
+}
 
 readonly struct SourceRef {
   SourceKind Kind
-  uint64     Id                // RunwayId / TaxiEdgeId / StandId / NodeId / FlightId value
-  int32      Sub               // agent rank or lane index within its node; 0 otherwise
+  uint64     Id                // RunwayId / TaxiEdgeId / TaxiNodeId / StandId / NodeId / FlightId value
+  int32      Sub               // agent rank, lane index or runway marking index (§15.5); 0 otherwise
 }
 
 readonly struct DrawPrimitive {
   PrimitiveKind Kind
   DrawLayer     Layer
-  ColourRole    Colour
+  ColourRole    Colour         // tints Sprite (§15.15)
+  SpriteId      Sprite         // Q-130
   WorldPoint    A              // Box: min corner.  Segment: start.  Dot: centre.
   WorldPoint    B              // Box: max corner.  Segment: end.    Dot: unused.
   float         Size           // Box: unused.      Segment: width.  Dot: diameter.
+  WorldPoint    Facing         // Q-130. Dot: the direction the sprite's forward (+V) points; (0,0) = +Y.
+                               // Box and Segment: always (0,0); a Segment's forward is A to B.
   SourceRef     Source
 }
 
@@ -472,9 +586,19 @@ readonly struct RenderFrame {
 }
 
 readonly struct RenderSources {
-  ISimHost        Host
-  IAirsideSystem? Airside
-  IFlowSystem?    Flow
+  ISimHost         Host
+  IAirsideSystem?  Airside
+  IFlowSystem?     Flow
+  IScheduleSystem? Schedule    // Q-130; null: every aircraft uses AircraftC
+  IContentIndex?   Content     // Q-130; null: every aircraft uses AircraftC
+}
+
+readonly struct AtlasRect { float U0; float V0; float U1; float V1 }   // Q-130; texture coordinates, 0..1, V up
+
+readonly struct SpriteAtlas {                          // Q-130, §15.15; plain data, no engine type
+  int32                    Size      // ATLAS_SIZE
+  IReadOnlyList<byte[]>    Mips      // ATLAS_MIP_COUNT entries; Mips[m] is RGBA32, (Size >> m)² × 4 bytes, rows bottom to top
+  IReadOnlyList<AtlasRect> Rects     // indexed by (int)SpriteId, one per SpriteId
 }
 
 interface ISceneBuilder        { RenderFrame Build(in CameraView camera, in GraphicsSettings graphics) }        // D10
@@ -490,7 +614,15 @@ RenderFactory.CreateLayoutLoader() -> IRenderLayoutLoader
 RenderFactory.CreateSceneBuilder(in RenderSources sources, in RenderLayout layout) -> ISceneBuilder
 RenderFactory.CreatePromotionController(in RenderSources sources, in RenderLayout layout) -> IPromotionController
 RenderFactory.CreatePacer() -> ITickPacer
+RenderFactory.BuildSpriteAtlas() -> SpriteAtlas       // Q-130, §15.15; a fresh value per call
 ```
+
+**C# shape (Q-130).** As for every type in this file, the fields above
+are get-only properties and each struct has one constructor taking them in
+declared order. `RenderSources` has a second constructor,
+`(host, airside, flow)`, which sets `Schedule` and `Content` to null, so
+every caller written before Q-130 compiles and behaves as before.
+`DrawPrimitive`'s one constructor takes its nine fields in declared order.
 
 `RenderFactory` follows `08` §8.11a's factory rule (stateless static
 methods only). In a playable build,
@@ -507,6 +639,25 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
 
 - It consumes `RenderFrame` only, and draws its primitives in list order. It
   maps `ColourRole` to colour through a palette asset.
+- **Sprites (Q-130, §15.15).** Once, in its start-up, it calls
+  `RenderFactory.BuildSpriteAtlas()` and uploads the result as **one**
+  texture: `ATLAS_SIZE` square, RGBA32, `ATLAS_MIP_COUNT` mip levels, each
+  level set from `Mips[m]` as given (never generated by the engine),
+  trilinear filtering, clamped wrap, and not readable afterwards. It is
+  the only texture it draws with. Each primitive's quad samples
+  `Rects[(int)Sprite]`, and its vertex colour is the palette colour of
+  `Colour`, which multiplies the texel (the tint). Quad corners map to the
+  rectangle as follows. A `Box` is unrotated, with `(MinX, MinY)` at
+  `(U0, V0)` and `(MaxX, MaxY)` at `(U1, V1)`. A `Segment`'s forward
+  `f = (B − A) / |B − A|` maps to `+V`, and its right `r = (f.Y, −f.X)`
+  maps to `+U`. The corner `A − r × Size / 2` is `(U0, V0)`, and
+  `B + r × Size / 2` is `(U1, V1)`. A `Dot` does the same about its centre,
+  with `f` = `Facing` normalised, or `(0, 1)` when `Facing` is `(0, 0)`, and
+  half-side `Size / 2` along both `f` and `r`. That is the one place a
+  facing becomes a float rotation. A zero-length `Segment` is drawn as a
+  degenerate quad, which shows nothing.
+- **Palette (Q-130).** The palette asset has one colour per `ColourRole`,
+  including the appended ones. Its values are §15.15's style guide.
 - It turns input (pan, zoom) into a `CameraView` and keeps `ViewHeight` and
   `Aspect` positive.
 - It does **not** run the frame order. `app.host`'s frame loop does
@@ -530,7 +681,10 @@ Specified so that its eventual task cannot drift. **Not part of T-020.**
   The backend's number of draw calls per frame is bounded by the number of
   `DrawLayer`s and `ColourRole`s, never by the number of primitives. It
   creates no engine object per primitive and allocates no engine object per
-  frame after the first. **LOW CONFIDENCE**: this binds the implementation
+  frame after the first. Sprites keep this (Q-130): one atlas, one
+  material and one mesh, with UVs in a reused buffer that grows like the
+  vertex buffer, so one draw call still covers every layer, role and
+  sprite. No texture is created after start-up. **LOW CONFIDENCE**: this binds the implementation
   more tightly than the rest of the contract. It is the Architect's reading
   of what `Low` needs to hold budget on integrated graphics.
 - **Packaging (Q-114).** It is the local package
@@ -575,6 +729,12 @@ layer:
   rule, but a GC pause at 60 fps is a visible hitch.
 - The backend's draw cost is not budgeted here. It has no test to carry a
   number.
+- **Sprites (Q-130).** The per-rebuild cost adds one `TryGetFlight` per
+  drawn aircraft and the markings of §15.5, inside the same 2 ms. The
+  atlas costs about 5.6 MB of GPU memory (1024² RGBA32 and its mips),
+  which is shared memory on integrated graphics and counts against
+  `16` §16.10's budget. `BuildSpriteAtlas` runs once at start-up, outside
+  every frame. Its time is not budgeted, and the T-025 playtest notes it.
 - **On minimum spec, the `Low` preset holds the render target** (HUMAN
   DECISION — owner, 2026-09-27, Q-034). The minimum GPU is integrated
   graphics with no dedicated VRAM (`01-architecture.md`). The whole frame,
@@ -674,6 +834,9 @@ format (Q-094), binding on the Test Author:
 - `test_scene_gameplay_primitives_identical_at_every_graphics_setting` —
   the §15.14 invariant
 
+The sprite tests, and the T-020 tests that Q-130 changes, are listed in
+§15.15.
+
 ---
 
 ## 15.13 The HUMAN DECISIONS this file left open — all decided 2026-09-23
@@ -744,9 +907,10 @@ owner, 2026-09-27 (D10 addendum).
 
 1. **Same information at every setting.** For any sim state, camera and
    `GraphicsSettings`, every primitive `Build` produces outside the `Agent`
-   layer is **identical** in kind, layer, colour, geometry and source, and
-   so is their order. That covers runways, taxiways, stands, landside nodes,
-   queue fill, lane pips and aircraft. Only `Agent`-layer primitives
+   layer is **identical** in kind, layer, colour, sprite, geometry, facing
+   and source (Q-130), and so is their order. That covers runways and
+   their markings, taxiways, junction fills and centrelines, stands,
+   landside nodes, queue fill, lane pips and aircraft. Only `Agent`-layer primitives
    (individual passenger dots) may differ. They are decoration, since queue
    length is always shown by the queue fill. A lower preset may simplify
    **how** something is drawn, never **whether** it is shown.
@@ -798,7 +962,9 @@ Both are on `RenderFactory`, which stays the module's one factory (`08`
   `DrawAgents` and `MaxDrawnAgentsPerNode`, and the backend reads the other
   three (§15.10). `Preset` records the preset that produced the values.
   Any knob changed by hand makes it `Custom`. Visual effects do not exist
-  at Phase 1 (§15.5, flat colours), so there is no effects knob. A new knob
+  at Phase 1 (§15.5, flat sprites, §15.15), so there is no effects knob,
+  and the sprites have no knob of their own: the atlas is the same at
+  every setting (Q-130). A new knob
   is added by amendment.
 - **Bounds.** They are structural, not player-experience values.
   `FrameRateCap ≥ 15` keeps the pacer's catch-up cap from binding at 4x
@@ -860,3 +1026,282 @@ Both are on `RenderFactory`, which stays the module's one factory (`08`
   and heat budget, so heavy drawing can slow the sim's CPU. That is one
   more reason `Low` caps its frame rate. If real time is still missed, the
   pacer slows gracefully (§15.8), and outcomes stay unchanged.
+
+---
+
+## 15.15 Sprite art — owner decision, 2026-10-07 (Q-130)
+
+> **HUMAN DECISION — owner, 2026-10-07:** the abstract shapes are too
+> ugly, so the game gets real top-down art **before** the T-025 playtest.
+> The art is agent-made flat vector art: a clean, consistent, flat
+> top-down style, made by agents, with no third-party assets. The
+> Architect specified the mechanism and the style guide below. The look
+> is aesthetic, not balance.
+
+**Where the decisions live.** The scene layer decides everything that can
+be tested. It chooses each primitive's `Sprite` and `Facing` (§15.5), and
+it builds the atlas pixels (`BuildSpriteAtlas`). The backend only uploads
+the atlas and maps each primitive to a tinted, rotated quad (§15.10). The
+alternative, a fixed `(DrawLayer, ColourRole, kind)` to sprite map inside
+the backend, was rejected: it would put an untested decision in the engine
+and could not tell aircraft sizes apart. No older primitive's geometry,
+colour, layer or source changes. Aircraft keep diameter `AircraftSize`,
+and size categories differ inside that square (the proportion table
+below).
+
+### The pipeline: art as code
+
+The art is **C# source in the scene layer**, under
+`src/app/render/Scene/Art/`, compiled into `AirportSim.App.Render.dll`.
+`BuildSpriteAtlas` rasterises it into plain bytes. The art reaches the
+player inside that plugin, through the existing plugin copy (`16` §16.2).
+There is no asset file, no `.meta`, no import setting, no build step and
+nothing under `unity/`.
+
+Why this option (owner's option (a)):
+
+- **Reviewable as text, and written with Edit/Write.** The art is integer
+  coordinates in a declarative table, and nothing is generated by a
+  script.
+- **Tested in CI.** The rasteriser is headless and deterministic, so
+  `dotnet test` checks the art's shape, size and determinism, and CI is
+  the only place behaviour is tested (§15.3).
+- **No package and no editor step.** Option (b), committed SVG and an
+  editor step that rasterises it, needs `com.unity.vectorgraphics`
+  (a preview package), or a third-party SVG library, which brings native
+  dependencies and an import pipeline that no agent can run or CI test. It
+  would also add one more hand-written-`.meta` risk (`16` §16.2). Its
+  output would be untested, and SVG is a much larger surface than the
+  art needs.
+- **Rejected (c), committed PNGs:** agents cannot write binary files.
+
+### The art format (binding)
+
+- `Art/SpriteArt.cs` holds one definition per `SpriteId`, in enum order.
+  The rasteriser is in the same directory. Every art type is `internal`.
+  The public surface is only `SpriteId`, `AtlasRect`, `SpriteAtlas` and
+  `BuildSpriteAtlas` (§15.9).
+- **Design space.** Integer design units. A sprite's visible square is
+  `0 .. ART_UNITS` on both axes, with the origin at bottom-left and `+Y`
+  forward (an aircraft's nose; a threshold's runway side; a segment's
+  `B` end). The edge-to-edge sprites (`Solid`, `RunwayEdges` and
+  `CentreStripe`) extend their shapes to `−64` and `1088` along every
+  axis they span, so the bleed border is filled. Every other sprite keeps
+  every shape, with its outline, inside `16 .. 1008`.
+- **A definition** has an outline width (design units, 0 for none), an
+  outline value, an edge value, a mirror flag and an ordered list of
+  shapes.
+- **A shape** is a polygon (3 or more integer vertices, simple, with
+  either winding) or a circle (integer centre and radius). Each shape
+  also has a value (grey, 0 to 255) and an alpha (0 to 255).
+- **Mirror.** When set, each shape is drawn twice, itself and then its
+  reflection about `x = ART_UNITS / 2`. Aircraft, passengers and the
+  threshold use it, so they are symmetric by construction.
+- **Literal numbers only**, except that the six aircraft definitions may
+  come from one function of their row in the proportion table. Definitions
+  are built inside each `BuildSpriteAtlas` call, with no static mutable
+  state (§15.3).
+
+### Rasterisation (binding)
+
+- **Cells.** Cell `i = (int)SpriteId` is at column `i % 4` and row
+  `i / 4`, with rows counted from the bottom of the atlas. Cell 15 is
+  unused and fully transparent (all bytes 0).
+- **Rects.** `U0 = (col × 256 + 8) / 1024` and
+  `U1 = ((col + 1) × 256 − 8) / 1024`, and the same for `V` with `row`.
+  These are `ATLAS_CELL_PIXELS` and `ATLAS_CELL_BORDER_PIXELS` over
+  `ATLAS_SIZE`, and are exact in `float`. The rectangle is the visible
+  square.
+- **Per mip `m`**, with `0 ≤ m < ATLAS_MIP_COUNT`: the cell side is
+  `c = 256 >> m` pixels, the border is `b = 8 / 2^m` pixels (0.5 at mip 4),
+  the visible side is `v = c − 2b`, and there are `u = ART_UNITS / v`
+  design units per pixel. Pixel `(i, j)` of a cell, counted from the
+  cell's bottom-left, samples the design point
+  `p = ((i + 0.5 − b) × u, (j + 0.5 − b) × u)`. All of this is in `double`.
+- **Coverage.** `d_s(p)` is the signed distance in design units, negative
+  inside. For a circle it is `|p − centre| − radius`. For a polygon it is
+  the distance to the nearest edge, negative when `p` is inside by the
+  even-odd rule. The shape's coverage is `clamp(0.5 − d_s / u, 0, 1)`.
+  This anti-aliases every edge in the texture itself, so `Low` (no MSAA)
+  still draws clean edges.
+- **Compositing**, premultiplied, starting from value 0 and alpha 0.
+  First, if the outline width `w > 0`, an outline layer with
+  `d_o = (min over all shapes of d_s) − w`, the outline value and alpha
+  255. Then every shape in order, mirror copies included, "over" the
+  result with alpha `alpha × coverage / 255`. Output: alpha
+  `A8 = floor(A × 255 + 0.5)`. RGB are all `floor(C / A + 0.5)` when
+  `A8 > 0`, else the definition's edge value, so that filtering at an edge
+  never pulls in a foreign colour.
+- **Every mip is rasterised directly** this way, and none is downsampled.
+  So no cell bleeds into another at any level. Every byte of every mip is
+  written. A shape may be skipped for a pixel outside its bounding box
+  grown by `w + u`, which changes no output.
+
+### Style guide
+
+- **Flat.** No gradients, no noise, no shadows, no text, no logos and no
+  real-world liveries (`00-overview.md`: no licensing). Shapes are
+  separated by value steps and by outlines.
+- **Value, not colour.** Sprites are greyscale. The palette colour tints
+  them by multiplication (§15.5), so one sprite serves every state. The
+  value steps are: highlight 255, body 230, secondary 200 to 215, detail
+  110 to 120, glazing 60, and outline 40.
+- **Outline weight** (design units, out of 1024): aircraft 20 (about 2 %
+  of the cell), lane pip and passenger 48, and none on markings, surfaces,
+  stands and terminals, which use a border band instead.
+- **Scale per layer.** World sizes come from the layout: runway `Width`,
+  `TaxiwayWidth`, `StandSize`, `AircraftSize` and `AgentSize`. A sprite
+  fills its primitive, and only aircraft vary inside their square.
+
+| `SpriteId` | Used by | Art |
+|---|---|---|
+| `Solid` | runway and taxiway surfaces, queue fill | one square, value 255 |
+| `Disc` | taxiway junction fill | circle at `(512,512)`, radius 496, value 255 |
+| `RunwayEdges` | runway edge lines | two full-height bars, `x` 16 to 48 and 976 to 1008, value 255 |
+| `CentreStripe` | runway dashes, taxiway centrelines | one full-height bar, `x` 480 to 544, value 255 |
+| `RunwayThreshold` | runway thresholds | mirrored: four bars 64 wide, `x` from 64 with gaps of 48, `y` 128 to 832, value 255 |
+| `Stand` | stands | square 16 to 1008 at value 200, inner square 64 to 960 at value 235 |
+| `Terminal` | landside nodes | square 16 to 1008 at value 170, inner roof 56 to 968 at value 235, two roof seams `y` 332 to 348 and 676 to 692 across the roof, value 210 |
+| `LanePip` | lane pips | booth square 128 to 896 at value 230, outline 48, officer circle radius 128 at value 120 |
+| `Passenger` | agents | mirrored: shoulders polygon about 640 by 380 at value 230, head circle radius 150 at value 255, outline 48 |
+| `AircraftA` to `AircraftF` | aircraft | mirrored: fuselage (body, nose circle, tail cone) 255; wings and tailplane 215; engines 110; windscreen 60; outline 20 |
+
+**Aircraft proportions** are fractions of `ART_UNITS`, outline included,
+with span across `X`, length along `Y` and the nose at `+Y`, centred on
+`(512, 512)`. The fuselage is `length / 10` wide. Sweep is the wingtip's
+leading-edge setback as a fraction of the half-span. Size categories F
+and A differ by about 2.4 times in span, which reads at a glance and is
+compressed from the real ratio (about 5) so that `AircraftA` stays
+legible.
+
+| `SpriteId` | Ordinal (`data/`) | Span | Length | Sweep | Engines |
+|---|---|---|---|---|---|
+| `AircraftA` | 0 (`size_a`) | 0.40 | 0.40 | 0.05 | 2 propellers on a straight wing |
+| `AircraftB` | 1 (`size_b`) | 0.50 | 0.50 | 0.05 | 2 propellers on a straight wing |
+| `AircraftC` | 2 (`size_c`) | 0.62 | 0.64 | 0.35 | 2 under the wing |
+| `AircraftD` | 3 (`size_d`) | 0.76 | 0.76 | 0.38 | 2 under the wing |
+| `AircraftE` | 4 (`size_e`) | 0.88 | 0.88 | 0.42 | 2 large, under the wing |
+| `AircraftF` | 5 (`size_f`) | 0.96 | 0.94 | 0.45 | 4 under the wing |
+
+**Palette** (`DefaultPalette.asset`, sRGB hex, alpha 255 unless given):
+
+| Entry | Colour | Entry | Colour |
+|---|---|---|---|
+| Background (grass) | `#6F8F5E` | `Agent` | `#2E5A88` |
+| `Runway` | `#3A3E44` | `AircraftMoving` | `#FFFFFF` |
+| `RunwayQueued` | `#6A4B2F` | `AircraftHolding` | `#F3B13C` |
+| `Taxiway` | `#50565D` | `AircraftOnStand` | `#A9D2EE` |
+| `StandFree` | `#9AA0A6` | `LaneOpen` | `#43A047` |
+| `StandOccupied` | `#B5A679` | `LaneClosed` | `#C62828` |
+| `LandsideNode` | `#D9D5CC` | `RunwayMarking` | `#F4F4EE` |
+| `QueueFill` | `#E8A33A`, alpha 140 | `TaxiwayMarking` | `#F2C230` |
+
+> **LOW CONFIDENCE — Unity behaviour no agent can run.** These are the
+> Architect's reading: that `Sprites/Default` multiplies `_MainTex` by the
+> vertex colour with straight alpha; that a `Texture2D` created with an
+> explicit mip count accepts each level through `SetPixelData` and keeps
+> them through `Apply(false, true)`; and how the colour space treats the
+> tints. The atlas is created as sRGB. The palette is sRGB, and the backend
+> converts it with `Color.linear` once at start-up if
+> `QualitySettings.activeColorSpace` is `Linear`. `unity-build` checks
+> only that it compiles. The look is checked by eye in the T-025
+> playtest, and a mismatch is a spec question, filed, not a workaround.
+> The atlas build time on Mono is also unmeasured (§15.11).
+
+### Tests (scene-layer task)
+
+New, phrased per `07-conventions.md`:
+
+- `test_scene_sprites_follow_the_draw_table`: every row of §15.5 has its
+  sprite, colour, layer and source, and `Facing` is `(0, 0)` on every
+  primitive that is not an aircraft or a threshold.
+- `test_scene_runway_markings_follow_the_integer_rule`: the fixture
+  runway gives `n = 20` and `s_0 = 122`, with exact coordinates. A
+  diagonal runway exercises the truncating division. A short runway with
+  `R < W` keeps its edges and thresholds and has no dashes. A zero-length
+  runway has no markings. Markings keep `RunwayMarking` while the runway
+  is `RunwayQueued`.
+- `test_scene_taxiway_junction_fill_and_centrelines`: a fill only at nodes
+  with two or more incident edges, one centreline per edge on the edge's
+  geometry, and within the layer every surface, then every fill, then
+  every centreline.
+- `test_scene_aircraft_facing_follows_the_five_rules`: each rule,
+  including the lowest-id incident edge on a stand node with two edges,
+  the runway direction from either end, both destinations, and every
+  `(0, 0)` fallback.
+- `test_scene_aircraft_sprite_follows_size_category`: ordinals 0 to 5,
+  ordinal 6 giving `AircraftF`, and `AircraftC` for an unresolved type, an
+  unresolved category, a missing flight, a null `Schedule` and a null
+  `Content`. Content is read only at construction. `TryGetFlight` is
+  called once per drawn aircraft per rebuild, and never for an undrawn
+  one.
+- `test_sprite_atlas_shape_and_rects_match_spec`: `Size`, the mip count,
+  each mip's byte length, every `Rects` entry exactly, and cell 15 all
+  zero.
+- `test_sprite_atlas_is_deterministic`: two builds are equal byte for
+  byte, and each call returns fresh arrays.
+- `test_sprite_atlas_every_sprite_is_drawn_inside_its_cell`: every
+  sprite has a texel with alpha ≥ 128 at mips 0 to 2, and alpha > 0 at
+  mips 3 and 4. Every sprite except the three edge-to-edge ones has an
+  all-transparent border ring at mip 0. `Solid` is `(255, 255, 255, 255)`
+  on every texel of its cell at every mip.
+- `test_sprite_atlas_aircraft_follow_the_proportion_table`: at mip 0, the
+  alpha ≥ 128 bounding box of each aircraft has width `span × 240` and
+  height `length × 240`, each ± 3 pixels. Both grow strictly from `A` to
+  `F`. Each aircraft is mirror-symmetric, so the texel at cell column `i`
+  equals the one at `255 − i` within ± 1 per byte.
+
+Merged T-020 tests that Q-130 changes. The scene-layer task's Test
+Author updates each one to this spec, as Q-125 did for the UI surface
+test. No worker edits a test.
+
+- `test_scene_runway_colour_follows_queue_length_and_taxiways_follow_edges`
+  **breaks**. It asserts 3 primitives in the `Taxiway` layer, and now the
+  junction fill and the centrelines are in that layer too. It counts the
+  `TaxiEdge`-sourced primitives instead, and asserts each one's `Solid`
+  sprite.
+- `test_scene_calls_only_listed_sim_members` is **extended**. The
+  max-tier fakes gain a schedule and a content index, which are guarded
+  like the others, and the test asserts that content is read only at
+  construction.
+- `test_scene_gameplay_primitives_identical_at_every_graphics_setting`
+  and `test_scene_primitive_order_is_stable` are **covered by the kit**.
+  The kit's primitive printer (`Prims.Show`) gains `Sprite` and `Facing`,
+  so both tests compare the new fields. Their own code is unchanged.
+- `test_scene_build_within_frame_budget_at_max_tier` and
+  `test_scene_build_and_update_allocate_nothing_after_first_call` are
+  **extended**. The max-tier scene gains the schedule and content fakes,
+  so the per-rebuild `TryGetFlight` is measured and must not allocate.
+- `test_render_constants_match_spec_values_and_types` is **extended**
+  with the five rows of §15.2.
+
+Unchanged, and still binding: every other §15.12 test. Their fakes use the
+three-argument `RenderSources` constructor, so every aircraft is
+`AircraftC`. No `app.ui` or `app.host` test changes, because both
+three-argument constructors stay (§15.9, `16` §16.4).
+
+### For the Planner (Q-130)
+
+Three tasks. The second and third start once the first is merged, and
+they can run in parallel.
+
+1. **Render scene: sprites, facing, markings and the atlas.** Test Author
+   first (the tests above), then a worker. Writable paths:
+   `src/app/render/Scene/**` (including the project reference to
+   `sim.schedule`) and `tests/app/render/**`. It depends on nothing
+   unmerged.
+2. **Render backend: the atlas and sprite quads.** A worker only. CI has no
+   behaviour test for the backend (§15.3). Writable path:
+   `src/app/render/Unity/**`, meaning `RenderBackend.cs` and
+   `DefaultPalette.asset`, which keeps its GUID. Done-when:
+   `unity-build` green (`16` §16.2), and the Reviewer checks it against
+   §15.10 line by line. **Merge it right after task 1.** Until then, the
+   merged backend's palette has 13 roles, and indexing it with
+   `RunwayMarking` or `TaxiwayMarking` throws in a playable build. The
+   checkpoint smoke is unaffected, because it runs with the backends
+   deactivated (`16` §16.7).
+3. **Host: content and schedule into the render sources.** Test Author
+   then a worker. Writable paths: `src/app/host/**` and
+   `tests/app/host/**` (`16` §16.4, §16.5, §16.11).
+
+The T-025 playtest waits for all three.
