@@ -13,6 +13,11 @@ namespace AirportSim.App.Host
 
         public Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences)
         {
+            return Compose(in sim, bundle, preferences, RenderFactory.DefaultLooks());
+        }
+
+        public Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences, in RenderLooks looks)
+        {
             if (bundle == null)
             {
                 throw new ArgumentNullException(nameof(bundle));
@@ -23,7 +28,7 @@ namespace AirportSim.App.Host
                 throw new ArgumentNullException(nameof(preferences));
             }
 
-            var sources = new RenderSources(sim.Host, sim.Airside, sim.Flow);
+            var sources = new RenderSources(sim.Host, sim.Airside, sim.Flow, sim.Schedule, sim.Content);
 
             if (!bundle.Has(LayoutFile))
             {
@@ -33,7 +38,7 @@ namespace AirportSim.App.Host
             AirsideLayout? airside = sim.Airside != null ? sim.Airside.Layout() : (AirsideLayout?)null;
             RenderLayout layout = RenderFactory.CreateLayoutLoader().Load(bundle.ReadAll(LayoutFile), LayoutFile, in airside);
 
-            ISceneBuilder scene = RenderFactory.CreateSceneBuilder(in sources, in layout);
+            ISceneBuilder scene = RenderFactory.CreateSceneBuilder(in sources, in layout, in looks);
             IPromotionController promotion = RenderFactory.CreatePromotionController(in sources, in layout);
             ITickPacer pacer = RenderFactory.CreatePacer();
 
