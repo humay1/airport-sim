@@ -54,7 +54,8 @@ namespace AirportSim.Shell
             ui.SetStringTable(UiFactory.LoadStringTable(contentSource));
 
             ComposedSim sim = HostFactory.CreateSimComposer(content).Compose(bundle, new DiscardCheckpoints());
-            Presentation presentation = HostFactory.CreatePresentationComposer().Compose(sim, bundle, new PlayerPrefsStore());
+            RenderLooks looks = RenderFactory.LoadLooks(contentSource);
+            Presentation presentation = HostFactory.CreatePresentationComposer().Compose(sim, bundle, new PlayerPrefsStore(), looks);
             loop = presentation.Frame;
         }
 

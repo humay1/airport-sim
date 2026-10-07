@@ -45,7 +45,10 @@ namespace AirportSim.App.Host
         /// <summary>sim.delay, or null when not registered.</summary>
         public IDelaySystem? Delay { get; }
 
-        /// <summary>Constructs the value as given.</summary>
+        /// <summary>The content index step 1 built (Q-130); null only from the seven-argument constructor.</summary>
+        public IContentIndex? Content { get; }
+
+        /// <summary>Constructs the value as given, with no content index (kept constructor, 07 L10).</summary>
         public ComposedSim(
             ISimHost host,
             IWorldSystem? world,
@@ -54,7 +57,22 @@ namespace AirportSim.App.Host
             IFlowSystem? flow,
             ITurnaroundSystem? turnaround,
             IDelaySystem? delay)
+            : this(host, world, schedule, airside, flow, turnaround, delay, null)
         {
+        }
+
+        /// <summary>Constructs the value as given.</summary>
+        public ComposedSim(
+            ISimHost host,
+            IWorldSystem? world,
+            IScheduleSystem? schedule,
+            IAirsideSystem? airside,
+            IFlowSystem? flow,
+            ITurnaroundSystem? turnaround,
+            IDelaySystem? delay,
+            IContentIndex? content)
+        {
+            Content = content;
             Host = host;
             World = world;
             Schedule = schedule;
@@ -106,6 +124,9 @@ namespace AirportSim.App.Host
     {
         /// <summary>Loads render_layout.fixture (a failure throws <see cref="System.FormatException"/>) and builds the parts and the frame loop.</summary>
         Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences);
+
+        /// <summary>As the three-argument overload, with the scene built over <paramref name="looks"/> (Q-130).</summary>
+        Presentation Compose(in ComposedSim sim, IScenarioBundle bundle, IPreferenceStore preferences, in RenderLooks looks);
     }
 
     /// <summary>The player's preferences, over the engine's. Spec: 16 §16.6 (D10).</summary>
