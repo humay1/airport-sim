@@ -36,7 +36,7 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
 | `app.render` scene (T-020) | `15` §15.1–§15.12; `08` §8.5; `09` §9.1, §9.7; `12` §12.4, §12.9; `16` §16.6 (frame order) |
 | `app.ui` scene | `17` all; `15` §15.4, §15.5, §15.8, §15.9; `16` §16.6; `08` §8.7; `09` §9.7b, §9.8 |
 | `app.host` | `16` all; `15` §15.3, §15.9, §15.10; `17` §17.4, §17.7; `08` §8.5, §8.9 |
-| Unity backends / project shell | `16` §16.2, §16.7; `15` §15.10; `17` §17.8 |
+| Unity backends / project shell | `16` §16.2, §16.7; `15` §15.10; `17` §17.4b, §17.8 |
 | Test Author | `07` Testing; the "fixtures and tests" section of your module's file (`11` §11.10, `12` §12.13, `13` §13.11, `14` §14.14, `15` §15.12, `16` §16.11, `17` §17.10) |
 | Planner | `03`; `00` build order; `CHANGELOG.md` Impact lines; `open-questions.md` Blocking lines |
 
@@ -105,7 +105,9 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `doors_open_delay_minutes` = 2, HD, owner, 2026-09-30, Q-047)**;
   **Phase 0/1 content fields for size categories, aircraft, pax profiles and
   queue profiles, with pax-profile and queue-profile values owner-authored as
-  balance (Q-011)**; a schema's name must equal its directory's name.
+  balance (Q-011)**; a schema's name must equal its directory's name;
+  **player-visible text is `data/strings/en.json`, validated by
+  `strings.schema.json`, not sim content (`17` §17.4b, Q-125)**.
 - LC: none.
 - Read if: content tasks; anyone about to write a number that might be
   balance.
@@ -431,8 +433,15 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   arguments never sit between the token and its values (§16.8, Q-122); a
   composer may compose many times (§16.4, Q-123); the player is
   `AirportSim.x86_64`, and the build step refreshes the asset database
-  (§16.3, §16.9, Q-124)**.
-- LC: Unity mechanics no agent can run (§16.2, Q-114); that the staged
+  (§16.3, §16.9, Q-124)**; **`flow.fixture` loads after the world system
+  is built, everything else in row order, and failure order is not the
+  harness's (§16.4, Q-126); a presentation needs `sim.flow` (§16.5,
+  Q-127); the `?` rule is per UTF-16 code unit (§16.8, Q-128); CR LF is
+  one line break for the forwarder (§16.7, Q-129); the bootstrap loads
+  the string table with `UiFactory.LoadStringTable` and hands it to the
+  UI backend (§16.7, Q-125)**.
+- LC: the bootstrap calling `UiFactory` directly (§16.7, Q-125, in
+  `CHANGELOG.md`); Unity mechanics no agent can run (§16.2, Q-114); that the staged
   streaming assets are byte copies (§16.9, Q-115);
   the 2 GB process memory budget, which counts shared GPU memory (§16.10,
   Q-034); D7 on test bundles rather than the playtest bundle (§16.8,
@@ -454,7 +463,12 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `Validate` (§17.4a, Q-103); argument checks and exception types (§17.7,
   Q-104); the lane sink's own allocation rule (§17.9, Q-105)**; **the
   backend is the local package `com.airportsim.ui.unity`, build-checked by
-  `unity-build` (§17.2, §17.8, Q-114)**.
+  `unity-build` (§17.2, §17.8, Q-114)**; **`LocalisedKey`, the naming
+  scheme, the twelve Phase 1 keys with their English text in
+  `data/strings/en.json`, `UiFactory.LoadStringTable` and
+  `IStringTable.Resolve`; the backend resolves every text it draws
+  (§17.4b, §17.7, §17.8, Q-125); no ignore-all lane sink (§17.7,
+  Q-127)**.
 - LC: none marked; the +1/−1 click grammar is flagged in `CHANGELOG.md`.
 - Read if: the UI scene-layer and UI backend tasks.
 
@@ -485,6 +499,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   L1/L3), T-009's kill-gate tests included (Q-041); the divergence seam is
   an injected composer, with no CLI flag;
   `saveload` is replay from seed plus command log until `sim.save`;
+  **`checkpoints` may load each file just before its factory, with
+  `flow.fixture` after the world system (§19.2c, Q-126)**;
   **`Promotion`'s second run gives `compose` a recording builder, and if
   it registered an `IFlowSystem` at 4 and an `IWorldSystem` at 1, it
   promotes the lowest-id `Gate` node (found with `KindOf`) and calls

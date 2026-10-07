@@ -3900,3 +3900,90 @@ Impact:      - **07 L4 (Q-116):** a third float exception, for
              - **Scope:** none added.
 Signed off:  not required (interfaces and clarifications; no balance,
              scope or `01`/`02` change).
+
+## 2026-10-07 — spec/17 §17.1, new §17.4b, §17.7, §17.8, §17.9, §17.10, §17.11; 04 Files table, Conventions; 16 §16.1, §16.4, §16.5, §16.7, §16.8, §16.11; 19 §19.2c; INDEX; open-questions — `LocalisedKey` and the English string table (Q-125); T-031 review follow-ups (Q-126 to Q-129)
+Reason:      T-033 (PR #131) drew raw localisation keys, because no spec
+             defined a key type, the panel's keys, a string table or who
+             resolves a key (Q-125, blocking). T-031's reviews (PR #130)
+             found four places where §16 disagreed with itself, with
+             `17`, or with the merged host: the flow graph cannot load
+             before the world system exists (Q-126); `17` §17.7 promised
+             an ignore-all sink the host does not build (Q-127); the `?`
+             rule's "character" (Q-128); CR LF in the forwarder (Q-129).
+Raised by:   coordinator, from T-033 (PR #131); reviewer / T-031 (PR #130)
+Impact:      - **§17.4b (Q-125), new:** `LocalisedKey { string Value }`,
+               naming scheme `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$` with
+               the drawing module first (`ui`); exactly twelve Phase 1 keys
+               (title, three presets, five knob labels, `on`, `off`,
+               `uncapped`) with their English text, written by the
+               Architect (wording, not balance); knob values shown as
+               `on`/`off`, invariant digits, or `uncapped` for a
+               `FrameRateCap` of 0. The text is `data/strings/en.json`,
+               printable ASCII only; `data/schemas/strings.schema.json`
+               pins the exact key set, checked by the existing
+               `ci/validate-content.py` with no `ci/` change.
+               `08` §8.11's loader already ignores `strings/`, so the
+               text is not in the content index or hash and cannot change
+               a checkpoint; the build step already copies it (§16.3).
+             - **§17.7:** `LocalisedKey`, `IStringTable.Resolve` and
+               `UiFactory.LoadStringTable(IContentSource)`, with their
+               failures. **§17.8:** the backend draws every text as
+               `Resolve` of its key, over the table the bootstrap hands
+               it, and holds no English literal. **§17.9:** `Resolve`
+               allocates nothing. **§17.10:** a new scene-layer task and
+               five done-condition tests.
+             - **§16.1, §16.7 (Q-125):** at scene start, never in a
+               checkpoint run, the bootstrap calls
+               `UiFactory.LoadStringTable` over the same `IContentSource`
+               it gives `HostFactory.LoadContent`, and hands the table to
+               the UI backend. **§16.11:** the Unity shell waits for the
+               string-table task.
+             - **§16.4, `19` §19.2c (Q-126):** `flow.fixture` loads after
+               the world system is built; everything else in row order.
+               The claim that the host's failure order is the harness's
+               is withdrawn: the harness loads each file just before its
+               factory, so a bundle with several faults may report a
+               different first failure, which nothing compares.
+             - **§16.5, `17` §17.7 (Q-127):** a presentation needs
+               `sim.flow`; without it `CreateLaneCommandSink`'s
+               `ArgumentNullException` (`flow`) passes through, after the
+               layout load. The ignore-all sink sentence is removed.
+             - **§16.8 (Q-128):** the `?` rule is per UTF-16 code unit.
+             - **§16.7 (Q-129):** LF or CR LF is one line break for the
+               forwarder; a lone CR is part of the line.
+             - **Tests:** one merged test changes:
+               `test_ui_public_surface_matches_spec`
+               (`tests/app/ui/UiTests.cs`) pins `app.ui`'s exact public
+               types and `UiFactory`'s methods, so its lists gain
+               `LocalisedKey`, `IStringTable` and `LoadStringTable`
+               (review of #133). The string-table task's Test Author
+               makes that spec-driven change and writes the five new
+               §17.10 tests. No other merged test pins the `app.ui`
+               surface or the `data/` file set: the tests that read
+               `data/` go through `08` §8.11's loader, which ignores
+               `strings/`, and `HostFactory`'s pinned methods are
+               unchanged.
+             - **Task files (Planner):** a new `app.ui` scene-layer task
+               for the string table and the two `data/` files; T-033
+               depends on it, receives the table through its own API,
+               resolves every label and value through it (not only a
+               label-call swap: on/off and `uncapped` value text are
+               added); T-034 depends on it and adds the §16.7 call and
+               the Q-129 line-break rule. T-031 (merged) needs no change.
+             - **Merged work:** no merged code is invalidated. Q-126 to
+               Q-128 describe what the merged host and harness already do,
+               and Q-127 removes a `17` sentence no merged code
+               implemented. The one merged test above is updated by the
+               string-table task's Test Author, in the same task that adds
+               the surface. PR #131 (open) must change as above.
+             - **LOW CONFIDENCE:** the bootstrap calls `UiFactory`
+               directly instead of a `HostFactory` pass-through. That
+               keeps `app.host` unchanged (its merged surface test pins
+               `HostFactory`'s methods) and saves a task, at the cost of
+               a second module the bootstrap calls. Reversible by
+               amendment.
+             - **Scope:** none added beyond D10's panel text: one
+               language, no language choice, no templates. One content
+               file and one schema added.
+Signed off:  not required (interfaces and clarifications; English wording
+             is not balance; no scope or `01`/`02` change).
