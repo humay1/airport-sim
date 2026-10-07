@@ -398,9 +398,13 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   `data/looks/looks.json`, not sim content); layout v2 adds aprons,
   buildings and jet bridges; markings, designators, stand lead-ins and
   numbers; the headless `Art2D` assembly holds the art as code, the one
-  2048² atlas and a tested tessellator; the backend copies quads into one
+  4096² atlas and a tested tessellator; the backend copies quads into one
   mesh, one draw call; 3D after T-025 replaces only `Art2D` and the
-  backend**; **living airport (owner, 2026-10-07, Q-132, §15.19–§15.23),
+  backend**; **realistic 2D (owner, 2026-10-07, Q-131, §15.15, §15.17):
+  soft shadows, gradients, deterministic periodic noise, weathering and
+  real-proportion aircraft, all baked into the atlas; grass, surface tiles
+  and shadows are ordinary quads; no backend pass, no scene change, and
+  `Low` keeps the full art**; **living airport (owner, 2026-10-07, Q-132, §15.19–§15.23),
   presentation, plus one sim change, the runway exit node (`12` §12.4):
   `Build` takes the pacer's sub-tick
   and draws at a fractional tick τ; taxiing glides; approaches, a square
@@ -409,8 +413,8 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   (owner); the playtest uses `playtest-layout.json`; layout v3 adds corridor walkways and each
   bridge's stand; walkers on walkways follow their cohort's progress;
   a stylised boarding stream on jet bridges follows the flight's
-  passengers at the gate; Art2D draws elevation as scale and a ground
-  shadow**.
+  passengers at the gate; Art2D draws elevation as scale and a longer
+  Q-131 aircraft shadow**.
 - LC (all accepted as provisional, HD, D8): zoom threshold 120 (§15.2); the
   split layout (§15.4); the 2 ms scene budget (§15.11). Also: pips drawn in
   render rather than as a UI overlay (`CHANGELOG`, Q-010). **LC, owner may
@@ -419,7 +423,10 @@ Legend: **LC** = LOW CONFIDENCE marker; **HD** = HUMAN DECISION — owner
   **LC, not yet reviewed (Q-130):** the straight-line facing of a held
   aircraft (§15.16); Unity's texture,
   shader and colour-space behaviour and the tessellator budget (§15.17);
-  the fixture's satellite pier (§15.18). **LC, not yet reviewed
+  the fixture's satellite pier (§15.18). **LC, not yet reviewed (Q-131):**
+  `Low` dropping nothing of the art (§15.14); the 85 MiB atlas and its
+  start-up time (§15.11); the style values and texture ranges (§15.17);
+  the tessellator's raised 2.0 ms budget (§15.17). **LC, not yet reviewed
   (Q-132):** every motion constant (§15.19); runway prediction, the
   hold's release jump and departures vanishing at `Airborne` (§15.20).
   **Decided (owner, Q-132):** the 1x time scale; the whole-stay boarding

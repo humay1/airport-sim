@@ -3464,6 +3464,65 @@ Answer:      OWNER DECISIONS 2026-10-07; mechanism by the Architect.
              pier; the style values.
 Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130)
 
+### Q-131 — `app.render`: realistic 2D art (owner decision)
+Raised by:   human owner, 2026-10-07
+Blocking:    T-052 (its Test Author waits on the style), T-053, T-025
+Question:    HUMAN DECISION — owner, 2026-10-07: "make the art as
+             realistic as possible. It is very important for the fun to
+             have the player fully immersed." The owner chose "Realistic
+             2D": keep Q-130's art-as-code pipeline (option (a): C#
+             integer tables rasterised headless at start-up, tested in
+             CI, no asset files, no third-party assets), but lift the
+             "flat" rule: soft drop shadows, subtle gradients,
+             deterministic texture noise for asphalt, concrete and grass,
+             weathering (rubber marks, apron stains, faded paint),
+             real-proportion aircraft per size category, detailed
+             terminals and piers, jet bridges, a control tower, and
+             ground equipment where the scene already places scenery.
+             Everything stays parameterised and must carry over to 3D.
+             Q-034's low-end settings must still hold. What does the
+             rasteriser gain, what does `Low` drop, how big is the atlas,
+             and what changes for the scene, the backend and the tests?
+Why it matters: T-052's Test Author is writing only style-independent
+             tests until the style is fixed, and no T-052 or T-053 worker
+             has started. A flat-art spec would be implemented faithfully
+             and then thrown away.
+Answer:      OWNER DECISION recorded in `15` §15.15; mechanism by the
+             Architect in §15.17.
+             (a) Realism is baked into the one atlas. The rasteriser
+             gains a per-shape softness, fills with linear or radial
+             gradients, and a pinned periodic value noise (FNV-1a-32
+             lattice hash with literal salts, never any RNG), all in
+             `double` with only exactly-rounded operations, so the atlas
+             stays byte-identical on every run and platform.
+             (b) Shadows are soft black layers drawn just before their
+             caster, shifted by a fixed world offset along one light
+             direction (`(3, −4)`), never rotated. Grass is a world-
+             anchored tiled ground emitted first in every `Fill` (at
+             most 1024 quads). Runway and taxiway asphalt, apron and stand
+             concrete, and roofs are tiled periodic textures. Rubber marks
+             are two sub-square layers of the runway surface. Parked
+             ground equipment is two fixed layers of the stand lead-in.
+             (c) `ArtLayer` gains `SliceInset`, `SliceWorld`, `Tile`,
+             `ShiftX` and `ShiftY`; `Art2DFactory` gains `GroundLayer()`.
+             `ATLAS_SIZE` 4096, `LARGE_CELL` 512, `ATLAS_MIP_COUNT` 6, and
+             `GROUND_TILE` and `GROUND_TILES_PER_AXIS` are new. The atlas
+             is about 85 MiB, about 4 % of `16` §16.10's 2 GB.
+             (d) A new proportion table gives six real archetypes
+             (turboprop, regional jet, A320-, 767-, 777- and A380-like),
+             with an eighth aircraft layer, `Shadow`.
+             (e) `Low` drops nothing of the art (§15.14): its only
+             per-frame cost is a few thousand extra quads, and `Low`
+             already drops 24 576 passenger quads. No knob is added, so
+             the scene layer, `app.ui` and `app.host` are untouched.
+             (f) The backend gains no pass, texture or material (§15.10).
+             The scene layer, its merged tests and `data/looks/` do not
+             change.
+             LOW CONFIDENCE: `Low` keeping the full art; the atlas size
+             and its start-up time on Mono; the style values and texture
+             ranges; the tessellator's raised 2.0 ms budget.
+Status:      ANSWERED (spec/15-interfaces-render.md#1515-real-art--owner-decisions-2026-10-07-q-130, §15.17)
+
 ### Q-132 — `app.render`: a living airport before the T-025 playtest (owner decision)
 Raised by:   human owner, 2026-10-07, via the team lead
 Blocking:    T-025 (the playtest waits for the three Q-132 tasks too)
@@ -3484,9 +3543,10 @@ Why it matters: today the scene draws whole ticks only, never an
              untested; adding sim state would touch determinism.
 Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              (`15` §15.19 to §15.23).
-             (a) No sim change and no new sim query. Everything is
-             derived from existing read-only queries; §15.6 now also
-             lists `TryGetCohort`, `PopulationForFlight` and
+             (a) One sim change, the runway exit node (decision (2)
+             below, `12` §12.4, task A1), and no new sim query. The
+             rest is derived from existing read-only queries; §15.6 now
+             also lists `TryGetCohort`, `PopulationForFlight` and
              `TryGetOutstanding` (`09` §9.7, §9.7a).
              (b) `ITickPacer.SubTickMicroseconds` and a three-argument
              `Build(camera, graphics, subTick)`. The scene draws at
@@ -3495,7 +3555,8 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              host passes it (`16` §16.6).
              (c) Taxiing glides. Arrivals appear 15 ticks before STA on
              the predicted runway, fly a square hold when held, fly the
-             final and roll out to the threshold node. Departures roll,
+             final in the departure direction and roll out to the
+             runway's exit node. Departures roll,
              lift off and climb out until `Airborne`. `DrawPrimitive`
              gains a semantic `Elevation` (§15.20).
              (d) Layout v3: corridor walkways and each bridge's stand.
@@ -3503,11 +3564,15 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              progress. A stylised boarding stream on the jet bridge
              follows the flight's passengers at the gate and stops when
              the sim boards them (§15.21). Arriving passengers do not
-             exist in the sim, so none are drawn (PENDING HUMAN).
-             (e) Art2D draws `Elevation` as scale and a ground shadow
-             (§15.22). No new `VisualId`.
-             (f) Three tasks: M1 (scene), M2 (Art2D), M3 (host). T-053
-             is unaffected (§15.23).
+             exist in the sim, so none are drawn (decided, deferred,
+             below).
+             (e) Art2D draws `Elevation` as scale and a longer ground
+             shadow: Q-131's aircraft `Shadow` layer, shifted a further
+             `e / 4` along `(3, −4) / 5` (§15.22). No new `VisualId`, no
+             new quad.
+             (f) Four tasks: A1 (airside exit node, sim, reviewed by
+             reviewer-core), M1 (scene), M2 (Art2D), M3 (host and the
+             playtest's exit fixtures). T-053 is unaffected (§15.23).
              LOW CONFIDENCE: the motion constants; runway prediction;
              the hold's release jump; departures vanishing at
              `Airborne`.
@@ -3526,7 +3591,7 @@ Answer:      OWNER DECISION 2026-10-07; mechanism by the Architect
              passengers come with a sim phase after T-025, and the
              whole-stay boarding stream is accepted as is;
              (4) Q-131 is realism's and Q-132 is this one. The airborne
-             shadow stays, and whichever of #145 and #147 merges second
-             reconciles the shadow sentence at rebase.
+             shadow stays, reconciled with #147: it is Q-131's `Shadow`
+             layer, with the elevation added to its shift (§15.22).
              So there are four tasks: A1, M1, M2, M3 (§15.23).
 Status:      ANSWERED (spec/15-interfaces-render.md#1519-the-living-airport--owner-decision-2026-10-07-q-132)

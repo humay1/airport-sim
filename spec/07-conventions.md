@@ -39,6 +39,7 @@ letter upper-cased (`core` → `Core`, `turnaround` → `Turnaround`).
 | `sim.<m>` | `src/sim/<m>/AirportSim.Sim.<M>.csproj` | `AirportSim.Sim.<M>` | `netstandard2.1`, C# 9 |
 | tests of `sim.<m>` | `tests/sim/<m>/AirportSim.Sim.<M>.Tests.csproj` | `AirportSim.Sim.<M>.Tests` | `net8.0`, C# 12 |
 | `app.render` scene layer | `src/app/render/Scene/AirportSim.App.Render.csproj` | `AirportSim.App.Render` | `netstandard2.1`, C# 9 |
+| `app.render` 2D art (Q-130, `15` §15.17) | `src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj` | `AirportSim.App.Render.Art2D` | `netstandard2.1`, C# 9 |
 | `app.ui` scene layer | `src/app/ui/Scene/AirportSim.App.Ui.csproj` | `AirportSim.App.Ui` | `netstandard2.1`, C# 9 |
 | `app.host` headless host | `src/app/host/AirportSim.App.Host.csproj` | `AirportSim.App.Host` | `netstandard2.1`, C# 9 |
 | tests of `app.<m>` | `tests/app/<m>/AirportSim.App.<M>.Tests.csproj` | `AirportSim.App.<M>.Tests` | `net8.0`, C# 12 |
@@ -98,7 +99,8 @@ transitively. For Phase 0/1 the list is binding:
 | `AirportSim.Sim.Airside` | Core, Schedule, Flow |
 | `AirportSim.Sim.Turnaround` | Core, Schedule |
 | `AirportSim.Sim.Delay` | Core (it learns everything through events, which are defined in `sim.core`) |
-| `AirportSim.App.Render` | Core, Airside, Flow (`15` §15.9 `RenderSources`) |
+| `AirportSim.App.Render` | Core, Airside, Flow, Schedule (`15` §15.9 `RenderSources`; Schedule since Q-130, `15` §15.6) |
+| `AirportSim.App.Render.Art2D` | App.Render (`15` §15.17; the sim comes transitively, and the scene layer never references it) |
 | `AirportSim.App.Ui` | Core, Flow, App.Render (`17` §17.7) |
 | `AirportSim.App.Host` | Core, World, Schedule, Airside, Flow, Turnaround, Delay, App.Render, App.Ui |
 
@@ -115,10 +117,10 @@ enforces "Comments and documentation" mechanically.
 **L3. Test project file, byte for byte.** `tests/sim/core/AirportSim.Sim.Core.Tests.csproj`
 is exactly the text below, with the same encoding rules as L2. Every other test
 project in L1, except the integration test project, `sim.turnaround`'s
-test project and `sim.delay`'s test project (all three below), is this file
-with the two names and the one `ProjectReference` changed. A test project
-references **only** the production project of the module it tests, with the
-same three exceptions. The other modules it sees come through that project's own
+test project, `sim.delay`'s test project and `app.render`'s test project
+(all four below), is this file with the two names and the one
+`ProjectReference` changed. A test project references **only** the
+production project of the module it tests, with the same four exceptions. The other modules it sees come through that project's own
 references. For the harness's test project, that one reference is
 `../../../tools/SimHarness/AirportSim.Tools.SimHarness.csproj`. Harness
 tests call the harness in process, through its public surface (`19`
@@ -162,6 +164,15 @@ use of a module other than `sim.delay` there needs an amendment. The
 production project `AirportSim.Sim.Delay` still references Core only (L2,
 `14` §14.13a).
 
+**`app.render`'s test project (Q-130, Q-131).** It is this file with the
+two names changed to `AirportSim.App.Render.Tests` and exactly two
+`ProjectReference`s, in this order:
+`../../../src/app/render/Scene/AirportSim.App.Render.csproj`, then
+`../../../src/app/render/Art2D/AirportSim.App.Render.Art2D.csproj`. The
+module has two production projects, the scene layer and the 2D art
+(`15` §15.3), and one test project tests both. Until the 2D art task adds
+the second reference, the file has the first only.
+
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -202,7 +213,8 @@ test fails, its message names the seed and the iteration index.
 `08` §8.3 bans floating point in tests too. There are three exceptions.
 `tests/app/render/` may use `float` for the values of `15`'s `float`-typed
 members only, and `double` only to compute the expected tessellator
-corners, sRGB table values and motion values that `15` §15.3 names;
+corners and motion values that `15` §15.3 names (the sRGB table is
+literal since Q-131);
 §15.3 is authoritative on both and on the tolerances (`15` §15.3, Q-100,
 Q-130, Q-132). `tests/app/ui/` may use `float` for the
 values of `15`'s and `17`'s `float`-typed members and parameters only

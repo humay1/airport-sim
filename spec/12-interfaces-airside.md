@@ -324,7 +324,8 @@ assert the type, the prefix, the field name and the ids, and nothing else.
    `TraversalTicks ≥ 1`; `0 ≤ ActiveDirectionDeg ≤ 359`;
    `DepartureSinkNode.Value ≥ 1`. The message names the object's id and
    the field, using the file-format key (`id`, `occupancy_ticks`, and so
-   on). Node-reference fields (`from`, `to`, `node`, `threshold_node`) are
+   on). Node-reference fields (`from`, `to`, `node`, `threshold_node`,
+   `exit_node`) are
    **not** range-checked. A `0` there fails at check 4 as an undeclared
    node, because no node has id `0` once check 1 has passed.
 2. **Non-empty.** At least one runway and at least one stand. The message
@@ -341,7 +342,9 @@ assert the type, the prefix, the field name and the ids, and nothing else.
    `RunwayDef.ThresholdNode` is a `RunwayThreshold` node. A
    `RunwayDef.ExitNode` (Q-132) is either that runway's own
    `ThresholdNode` or a `Junction` node. The message names
-   the stand or runway id, the field and the node id.
+   the stand or runway id, the field and the node id. Within a runway,
+   `threshold_node` is checked before `exit_node`, so when both fail the
+   message names `threshold_node`.
 6. **Connected.** Let `R0` be the lowest-id `RunwayThreshold` node. Every
    `StandPosition` and every `RunwayThreshold` node is reachable from `R0`,
    and `R0` is reachable from it, over edges in their allowed directions.
