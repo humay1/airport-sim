@@ -102,13 +102,15 @@ namespace AirportSim.App.Render.Tests
             AssertGetOnly(tess, "Colours", typeof(byte[]));
             Assert.Equal(new[] { "Fill", "get_Colours", "get_Corners", "get_QuadCount", "get_Uvs" }, tess.GetMethods().Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
 
-            // Art2DConstants: public const int (Q-131 values).
+            // Art2DConstants: public const int (Q-131 values; the elevation pair is
+            // Q-132's, 15 §15.22, read by reflection only).
             Type consts = typeof(Art2DConstants);
             Assert.True(consts.IsAbstract && consts.IsSealed, "Art2DConstants is a static class");
             var expectedConsts = new Dictionary<string, int>
             {
                 { "ATLAS_SIZE", 4096 }, { "LARGE_CELL", 512 }, { "SMALL_CELL", 128 }, { "ATLAS_MIP_COUNT", 6 }, { "ART_UNITS", 1024 },
                 { "GROUND_TILE", 64 }, { "GROUND_TILES_PER_AXIS", 32 },
+                { "ELEVATION_SCALE_M", 800 }, { "ELEVATION_SCALE_MAX", 2 },
             };
             FieldInfo[] fields = consts.GetFields(BindingFlags.Public | BindingFlags.Static);
             Assert.Equal(expectedConsts.Keys.OrderBy(n => n, StringComparer.Ordinal).ToArray(), fields.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
