@@ -118,8 +118,3 @@ scene, and allocation-free after the first call (the two extended tests).
 The host still calls the two-argument `Build` until T-058 merges, so a build
 shows approaches, takeoffs and walkers at whole ticks only. T-057 (Art2D
 elevation) and T-058 depend on this task.
-
-**BLOCKED (worker, 2026-10-08), Q-134.** `test_scene_taxiing_aircraft_glides_with_sub_tick`
-asserts an exact `(30, 12)` at `α = 0` for `EdgeProgress = FromRatio(6, 20)` (line 246);
-§15.20's literal float rule, and the merged code, give `(30.000002, 12)`. Everything else
-passes (86 of 87 in `tests/app/render`). Waiting for the Architect's answer; no workaround built.
