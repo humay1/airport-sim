@@ -24,7 +24,7 @@ namespace AirportSim.Shell.Editor
             { "airside_rules.json", "data/balance/airside_rules.json" },
             { "turnaround.fixture", "tests/fixtures/turnaround/phase1-five-vehicles.json" },
             { "flow.fixture", "tests/fixtures/flow/phase0-landside.flow.json" },
-            { "render_layout.fixture", "tests/fixtures/render/phase1-layout.json" },
+            { "render_layout.fixture", "tests/fixtures/render/playtest-layout.json" },
         };
 
         public int callbackOrder => 0;
