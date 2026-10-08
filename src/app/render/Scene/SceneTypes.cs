@@ -193,6 +193,9 @@ namespace AirportSim.App.Render
 
         /// <summary>A layout jet bridge (Q-130).</summary>
         JetBridge,
+
+        /// <summary>A walker on a jet bridge (Q-132).</summary>
+        BridgePassenger,
     }
 
     /// <summary>What a primitive is, never how it is drawn. Spec: 15 §15.9, §15.16 (Q-130).</summary>
@@ -569,9 +572,19 @@ namespace AirportSim.App.Render
         /// <summary>Where it came from.</summary>
         public SourceRef Source { get; }
 
-        /// <summary>Constructs the primitive.</summary>
+        /// <summary>Height above the ground in world units, at least 0; non-zero only for an airborne aircraft (Q-132).</summary>
+        public float Elevation { get; }
+
+        /// <summary>Constructs the primitive with elevation 0 (07 L10 kept constructor).</summary>
         public DrawPrimitive(PrimitiveKind kind, DrawLayer layer, ColourRole colour, VisualId visual, WorldPoint a, WorldPoint b, float size, WorldPoint facing, Paint paint, SourceRef source)
+            : this(kind, layer, colour, visual, a, b, size, facing, paint, source, 0f)
         {
+        }
+
+        /// <summary>Constructs the primitive.</summary>
+        public DrawPrimitive(PrimitiveKind kind, DrawLayer layer, ColourRole colour, VisualId visual, WorldPoint a, WorldPoint b, float size, WorldPoint facing, Paint paint, SourceRef source, float elevation)
+        {
+            Elevation = elevation;
             Kind = kind;
             Layer = layer;
             Colour = colour;
@@ -699,6 +712,12 @@ namespace AirportSim.App.Render
     {
         /// <summary>Returns the frame for the current tick; rebuilds only if tick, camera or graphics changed.</summary>
         RenderFrame Build(in CameraView camera, in GraphicsSettings graphics);
+
+        /// <summary>
+        /// Returns the frame at the fractional tick of <paramref name="subTickMicroseconds"/> (Q-132); the two-argument overload is this with 0.
+        /// Throws ArgumentOutOfRangeException outside [0, REAL_MICROSECONDS_PER_TICK_1X).
+        /// </summary>
+        RenderFrame Build(in CameraView camera, in GraphicsSettings graphics, long subTickMicroseconds);
     }
 
     /// <summary>Drives render-driven promotion. Spec: 15 §15.7, §15.9.</summary>
@@ -726,5 +745,8 @@ namespace AirportSim.App.Render
     {
         /// <summary>Ticks to Step this frame. Throws ArgumentOutOfRangeException on a negative elapsed or unknown speed.</summary>
         uint Advance(long elapsedRealMicroseconds, bool paused, GameSpeed speed);
+
+        /// <summary>The accumulator after the last Advance, 0 before the first; in [0, REAL_MICROSECONDS_PER_TICK_1X) (Q-132).</summary>
+        long SubTickMicroseconds { get; }
     }
 }

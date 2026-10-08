@@ -3623,3 +3623,28 @@ Answer:      The test. The arithmetic is confirmed (with `cov = 136`,
              235, `StandLeadIn` 199, `StandPad` 137, digits (stroke
              96) and the opaque cells 255.
 Status:      ANSWERED (spec/15-interfaces-render.md#1517-the-2d-art-atlas-and-tessellator-q-130)
+
+### Q-134 — `app.render`: the taxi glide's `α = 0` value in `test_scene_taxiing_aircraft_glides_with_sub_tick`
+Raised by:   worker / T-056
+Blocking:    T-056
+Question:    §15.20 says the factor is converted to `float` and "the float
+             interpolation from `AtNode`'s position then runs exactly as
+             before", and that at `α = 0` the result is bit for bit the
+             merged value. The test asserts, with exact float equality
+             (`Prims.AssertPoint`), that `EdgeProgress = FromRatio(6, 20)`
+             on E1 (node 1 (0,0) to node 2 (100,40)) at `α = 0` draws
+             at exactly `(30, 12)`
+             (`SceneMotionTests.cs` line 246, "the next tick, α = 0").
+             `Raw = 1 288 490 188`, so `(float)(Raw / 2^32)` is
+             0.30000001192092896 (as in the merged code), and the float
+             product `100f × 0.3f` rounds to 30.000002, not 30. The
+             merged code, and the spec's literal rule, give
+             `(30.000002, 12)`. Only a double interpolation, converted to
+             `float` once at the end (30.0), gives `(30, 12)`, which
+             breaks both "runs exactly as before" and "bit for bit the
+             merged value". Which is wrong: the test's expected value or
+             the arithmetic rule?
+Why it matters: the test and §15.20 cannot both hold, and every other
+             test of T-056 passes with the literal rule (86 of 87).
+Answer:
+Status:      OPEN

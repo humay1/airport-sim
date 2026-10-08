@@ -29,9 +29,14 @@ namespace AirportSim.App.Render
         private static readonly long[] AreaMax = { uint.MaxValue, 0, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
         private static readonly string[] AreaKinds = { "apron", "terminal", "pier", "control_tower" };
 
-        private static readonly string[] BridgeKeys = { "id", "x0", "y0", "x1", "y1", "width" };
-        private static readonly long[] BridgeMin = { uint.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue };
-        private static readonly long[] BridgeMax = { uint.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
+        // "stand" is the last key and is present exactly in version 3 files; the parser reads it as optional and the version decides.
+        private static readonly string[] BridgeKeys = { "id", "x0", "y0", "x1", "y1", "width", "stand" };
+        private static readonly long[] BridgeMin = { uint.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, ushort.MinValue };
+        private static readonly long[] BridgeMax = { uint.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, ushort.MaxValue };
+
+        private static readonly string[] WalkwayKeys = { "node", "x0", "y0", "x1", "y1", "width" };
+        private static readonly long[] WalkwayMin = { uint.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue, int.MinValue };
+        private static readonly long[] WalkwayMax = { uint.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
 
         public RenderLayout Load(ReadOnlySpan<byte> file, string sourceName, in AirsideLayout? airside)
         {
@@ -121,20 +126,80 @@ namespace AirportSim.App.Render
                 }
             }
 
-            // 4. against the airside layout, when given.
-            if (airside.HasValue)
-            {
-                CheckAgainstAirside(source, airside.Value, taxi, runways);
-            }
-
-            // 5. scenery, always: area ids, area boxes, control towers, then bridge ids, widths and ends.
             var areas = p.Areas.ToArray();
             var bridges = p.Bridges.ToArray();
+            var walkways = p.Walkways.ToArray();
             Array.Sort(areas, (a, b) => a.Id.CompareTo(b.Id));
             Array.Sort(bridges, (a, b) => a.Id.CompareTo(b.Id));
+            Array.Sort(walkways, (a, b) => a.Node.Value.CompareTo(b.Node.Value));
+
+            // 4. against the airside layout, when given; its last step is the bridges' stands.
+            if (airside.HasValue)
+            {
+                CheckAgainstAirside(source, airside.Value, taxi, runways, bridges);
+            }
+
+            // 5. scenery, always: area ids, area boxes, control towers, then bridge ids, widths, ends and shared stands.
             CheckScenery(source, areas, bridges);
 
-            return new RenderLayout(taxi, runways, boxes, (int)p.StandSize, (int)p.AircraftSize, (int)p.AgentSize, (int)p.TaxiwayWidth, areas, bridges);
+            // 6. walkways, always (Q-132).
+            CheckWalkways(source, walkways, boxes);
+
+            return new RenderLayout(taxi, runways, boxes, (int)p.StandSize, (int)p.AircraftSize, (int)p.AgentSize, (int)p.TaxiwayWidth, areas, bridges, walkways);
+        }
+
+        private static void CheckWalkways(string source, LayoutWalkway[] walkways, FlowNodeBox[] boxes)
+        {
+            // One pass in ascending node, so the lowest failing node is named whichever sub-check fails.
+            for (int i = 0; i < walkways.Length; i++)
+            {
+                LayoutWalkway w = walkways[i];
+                string id = Dec(w.Node.Value);
+                if (i > 0 && walkways[i - 1].Node.Value == w.Node.Value)
+                {
+                    throw Invalid(source, "walkway " + id + " is listed more than once");
+                }
+
+                if (!TryBox(boxes, w.Node, out FlowNodeBox b))
+                {
+                    throw Invalid(source, "walkway " + id + " has no flow node box");
+                }
+
+                if (w.Width <= 0)
+                {
+                    throw Invalid(source, "walkway " + id + " width must be greater than 0");
+                }
+
+                if (w.X0 == w.X1 && w.Y0 == w.Y1)
+                {
+                    throw Invalid(source, "walkway " + id + " must not start and end at the same point");
+                }
+
+                if (!Inside(b, w.X0, w.Y0) || !Inside(b, w.X1, w.Y1))
+                {
+                    throw Invalid(source, "walkway " + id + " must lie inside its flow node box");
+                }
+            }
+        }
+
+        private static bool Inside(in FlowNodeBox b, int x, int y)
+        {
+            return x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY;
+        }
+
+        private static bool TryBox(FlowNodeBox[] boxes, NodeId node, out FlowNodeBox box)
+        {
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                if (boxes[i].Node.Value == node.Value)
+                {
+                    box = boxes[i];
+                    return true;
+                }
+            }
+
+            box = default;
+            return false;
         }
 
         private static void CheckScenery(string source, LayoutArea[] areas, LayoutBridge[] bridges)
@@ -189,9 +254,25 @@ namespace AirportSim.App.Render
                     throw Invalid(source, "bridge " + Dec(b.Id) + " must not start and end at the same point");
                 }
             }
+
+            for (int i = 0; i < bridges.Length; i++)
+            {
+                if (!bridges[i].Stand.HasValue)
+                {
+                    continue;
+                }
+
+                for (int j = i + 1; j < bridges.Length; j++)
+                {
+                    if (bridges[j].Stand.HasValue && bridges[j].Stand!.Value.Value == bridges[i].Stand!.Value.Value)
+                    {
+                        throw Invalid(source, "bridge " + Dec(bridges[j].Id) + " names stand " + Dec(bridges[j].Stand!.Value.Value) + ", which another bridge already serves");
+                    }
+                }
+            }
         }
 
-        private static void CheckAgainstAirside(string source, AirsideLayout airside, TaxiNodePosition[] taxi, RunwayGeometry[] runways)
+        private static void CheckAgainstAirside(string source, AirsideLayout airside, TaxiNodePosition[] taxi, RunwayGeometry[] runways, LayoutBridge[] bridges)
         {
             var nodeIds = new HashSet<ushort>();
             for (int i = 0; i < airside.Nodes.Count; i++)
@@ -262,6 +343,20 @@ namespace AirportSim.App.Render
             {
                 throw Invalid(source, "runway " + Dec((uint)missing) + " has no geometry");
             }
+
+            var standIds = new HashSet<ushort>();
+            for (int i = 0; i < airside.Stands.Count; i++)
+            {
+                standIds.Add(airside.Stands[i].Id.Value);
+            }
+
+            for (int i = 0; i < bridges.Length; i++)
+            {
+                if (bridges[i].Stand.HasValue && !standIds.Contains(bridges[i].Stand!.Value.Value))
+                {
+                    throw Invalid(source, "bridge " + Dec(bridges[i].Id) + " names stand " + Dec(bridges[i].Stand!.Value.Value) + ", which the airside layout lacks");
+                }
+            }
         }
 
         private static string Dec(uint v)
@@ -276,6 +371,8 @@ namespace AirportSim.App.Render
             public readonly List<FlowNodeBox> Boxes = new List<FlowNodeBox>();
             public readonly List<LayoutArea> Areas = new List<LayoutArea>();
             public readonly List<LayoutBridge> Bridges = new List<LayoutBridge>();
+            public readonly List<LayoutWalkway> Walkways = new List<LayoutWalkway>();
+            public int BridgesWithStand;
             public long Version;
             public long StandSize;
             public long AircraftSize;
@@ -309,7 +406,7 @@ namespace AirportSim.App.Render
                 {
                     "schema_version", "taxi_nodes", "runways", "flow_nodes",
                     "stand_size", "aircraft_size", "agent_size", "taxiway_width",
-                    "areas", "bridges",
+                    "areas", "bridges", "walkways",
                 };
                 const int versionOneKeys = 8;
                 var seen = new bool[keys.Length];
@@ -345,9 +442,9 @@ namespace AirportSim.App.Render
                     {
                         case 0:
                             result.Version = ReadInteger(int.MinValue, int.MaxValue, key);
-                            if (result.Version != 1 && result.Version != 2)
+                            if (result.Version != 1 && result.Version != 2 && result.Version != 3)
                             {
-                                throw Fail("schema_version must be 1 or 2");
+                                throw Fail("schema_version must be 1, 2 or 3");
                             }
 
                             break;
@@ -375,8 +472,23 @@ namespace AirportSim.App.Render
                         case 8:
                             ReadArray(AreaKeys, AreaMin, AreaMax, v => result.Areas.Add(new LayoutArea((uint)v[0], (AreaKind)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5])), 1, AreaKinds);
                             break;
+                        case 9:
+                            ReadArray(
+                                BridgeKeys,
+                                BridgeMin,
+                                BridgeMax,
+                                v =>
+                                {
+                                    StandId? stand = v[6] < 0 ? (StandId?)null : new StandId((ushort)v[6]);
+                                    result.BridgesWithStand += v[6] < 0 ? 0 : 1;
+                                    result.Bridges.Add(new LayoutBridge((uint)v[0], (int)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5], stand));
+                                },
+                                -1,
+                                null,
+                                true);
+                            break;
                         default:
-                            ReadArray(BridgeKeys, BridgeMin, BridgeMax, v => result.Bridges.Add(new LayoutBridge((uint)v[0], (int)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5])));
+                            ReadArray(WalkwayKeys, WalkwayMin, WalkwayMax, v => result.Walkways.Add(new LayoutWalkway(new NodeId((uint)v[0]), (int)v[1], (int)v[2], (int)v[3], (int)v[4], (int)v[5])));
                             break;
                     }
 
@@ -395,17 +507,28 @@ namespace AirportSim.App.Render
 
                 for (int i = 0; i < keys.Length; i++)
                 {
-                    if (i >= versionOneKeys && result.Version == 1)
+                    bool required = i < versionOneKeys || (i == 10 ? result.Version == 3 : result.Version >= 2);
+                    if (!required)
                     {
                         if (seen[i])
                         {
-                            throw Fail("unknown key \"" + keys[i] + "\" in a version 1 file");
+                            throw Fail("unknown key \"" + keys[i] + "\" in a version " + result.Version.ToString(CultureInfo.InvariantCulture) + " file");
                         }
                     }
                     else if (!seen[i])
                     {
                         throw Fail("missing key \"" + keys[i] + "\"");
                     }
+                }
+
+                if (result.Version == 3 && result.BridgesWithStand != result.Bridges.Count)
+                {
+                    throw Fail("missing key \"stand\"");
+                }
+
+                if (result.Version == 2 && result.BridgesWithStand != 0)
+                {
+                    throw Fail("unknown key \"stand\" in a version 2 file");
                 }
 
                 SkipSpace();
@@ -417,7 +540,7 @@ namespace AirportSim.App.Render
                 return result;
             }
 
-            private void ReadArray(string[] keys, long[] min, long[] max, Action<long[]> add, int stringKey = -1, string[]? stringValues = null)
+            private void ReadArray(string[] keys, long[] min, long[] max, Action<long[]> add, int stringKey = -1, string[]? stringValues = null, bool lastKeyOptional = false)
             {
                 Expect('[');
                 SkipSpace();
@@ -430,7 +553,7 @@ namespace AirportSim.App.Render
                 while (true)
                 {
                     SkipSpace();
-                    add(ReadRow(keys, min, max, stringKey, stringValues));
+                    add(ReadRow(keys, min, max, stringKey, stringValues, lastKeyOptional));
                     SkipSpace();
                     int c = Next();
                     if (c == ']')
@@ -446,9 +569,14 @@ namespace AirportSim.App.Render
             }
 
             // A row of integers. The value of key number stringKey, when given, is instead one of stringValues, read as its index.
-            private long[] ReadRow(string[] keys, long[] min, long[] max, int stringKey, string[]? stringValues)
+            private long[] ReadRow(string[] keys, long[] min, long[] max, int stringKey, string[]? stringValues, bool lastKeyOptional)
             {
                 var values = new long[keys.Length];
+                if (lastKeyOptional)
+                {
+                    values[keys.Length - 1] = -1;
+                }
+
                 var seen = new bool[keys.Length];
                 Expect('{');
                 SkipSpace();
@@ -507,7 +635,7 @@ namespace AirportSim.App.Render
 
                 for (int i = 0; i < keys.Length; i++)
                 {
-                    if (!seen[i])
+                    if (!seen[i] && !(lastKeyOptional && i == keys.Length - 1))
                     {
                         throw Fail("missing key \"" + keys[i] + "\"");
                     }
