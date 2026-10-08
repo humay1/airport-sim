@@ -8,7 +8,7 @@ namespace AirportSim.App.Render.Tests
     /// <summary>
     /// 15 §15.17 "Budget": Fill over the §15.11 max-tier frame at High, mean ≤
     /// 2.0 ms and p99 ≤ 4.0 ms (Q-131), with §15.11's window and arithmetic, and
-    /// no allocation after the first call.
+    /// no allocation after the first call; with 25 airborne aircraft (Q-132).
     /// </summary>
     public sealed class Art2DBudgetTests
     {
@@ -21,22 +21,32 @@ namespace AirportSim.App.Render.Tests
 
         [Fact]
         [Trait("Category", "Budget")]
-        [Trait("Category", "Slow")] // 07 L11a's prompt: about 19–22 s in a Release run of the T-052 implementation; CI decides afterwards
+        [Trait("Category", "Slow")] // 07 L11a's prompt: about 19–22 s in a Release run of the T-052 implementation, 19 s with T-057's motion scene before T-057; CI decides afterwards
         public void test_art2d_tessellator_fill_within_budget_and_allocates_nothing()
         {
-            var m = new MaxTierScene();
+            // Q-132 (15 §15.22, §15.23): the motion scene, whose approaching and
+            // held arrivals are 25 airborne aircraft (two more fly the final and
+            // the climb), each drawn scaled with a longer shadow.
+            var m = new MaxTierScene(motion: true);
             IPromotionController c = RenderFactory.CreatePromotionController(m.Sources, m.Layout);
             ISceneBuilder b = m.Builder();
             CameraView cam = MaxTierScene.Camera;
             GraphicsSettings high = Gfx.High();
             c.Update(cam, high);
-            RenderFrame frame = b.Build(cam, high);
+            RenderFrame frame = b.Build(cam, high, 0);
 
             // The max-tier frame: 16 promoted boxes of MAX_DRAWN_AGENTS_PER_NODE
             // passengers, every aircraft, the scenery and markings, over the ground.
             List<DrawPrimitive> all = Prims.Copy(frame);
             Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(all, DrawLayer.Agent).Count);
-            Assert.Equal(MaxTierScene.Aircraft, Prims.InLayer(all, DrawLayer.Aircraft).Count);
+            Assert.Equal(m.DrawnAircraft, Prims.InLayer(all, DrawLayer.Aircraft).Count);
+            int airborne = 0;
+            foreach (DrawPrimitive p in Prims.InLayer(all, DrawLayer.Aircraft))
+            {
+                airborne += p.Elevation > 0f && p.Visual >= VisualId.AircraftA && p.Visual <= VisualId.AircraftF ? 1 : 0;
+            }
+
+            Assert.True(airborne >= MaxTierScene.Approaching + MaxTierScene.Held, "the frame has " + airborne + " airborne aircraft, expected at least 25");
 
             Rgba[] roles = ArtFrames.Roles();
             int expected = ArtRef.Fill(frame, roles, false).Count;
