@@ -243,7 +243,12 @@ namespace AirportSim.App.Render.Tests
             s.Host.Tick = 47UL;
             s.Airside.SetTracks(Tracks.Make(401UL, AircraftLegPhase.Taxiing, atNode: SmallScene.Threshold, onEdge: SmallScene.E1, progress: Fx.FromRatio(6, 20), phaseEnteredAt: Entered, dueAt: Entered + 20UL));
             DrawPrimitive next = Motion.Aircraft(Build(b, cam, g, 0), 401UL, "the next tick, α = 0");
-            Prims.AssertPoint(30f, 12f, next.A, "the next tick, α = 0");
+            // At α = 0 the value is the merged one exactly (15 §15.20): t is the
+            // single float rounding of Raw / 2^32, then the float interpolation
+            // from node 1 (0,0) to node 2 (100,40). FromRatio(6, 20) truncates, and
+            // (float) rounds it to 0.3f, so x is 100f × 0.3f = 30.000002f, not 30.
+            float t6 = (float)(Fx.FromRatio(6, 20).Raw / 4294967296.0);
+            Prims.AssertPoint(0f + ((100f - 0f) * t6), 0f + ((40f - 0f) * t6), next.A, "the next tick, α = 0");
             Motion.Near(next.A.X, next.A.Y, Motion.Aircraft(late, 401UL, "α = 99 999").A, "α = 99 999 against the next tick");
             Assert.Empty(s.Guard.Violations);
         }
