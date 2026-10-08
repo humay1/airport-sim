@@ -119,6 +119,7 @@ namespace AirportSim.App.Render.Tests
         public readonly ISimHost Host;
         public readonly IAirsideSystem Airside;
         public readonly IFlowSystem Flow;
+        public readonly IScheduleSystem Schedule;
         public readonly RecordingCheckpointSink Checkpoints = new RecordingCheckpointSink();
 
         /// <summary>16 §16.4's construction order (world; flow; schedule; airside), registered in 08 §8.5's order.</summary>
@@ -131,6 +132,7 @@ namespace AirportSim.App.Render.Tests
             Flow = FlowFactory.CreateSystem(b.Services, graph, world);
             ScheduleTable table = ScheduleFactory.CreateLoader().Load(Repo.Read("tests", "fixtures", "schedule", ScheduleFile), ScheduleFile);
             IScheduleSystem schedule = ScheduleFactory.CreateSystem(b.Services, table, Flow);
+            Schedule = schedule;
             Airside = AirsideFactory.CreateSystem(b.Services, AirsideLayout(), new AirsideRules(10U, 2U), schedule, Flow, false);
             b.Register(world);
             b.Register(schedule);
@@ -197,6 +199,54 @@ namespace AirportSim.App.Render.Tests
     }
 
     /// <summary>
+    /// 12 §12.13's fixture with 19 §19.2c's Q-132 exit lines added in code
+    /// (15 §15.23: the playtest airside file itself changes only in T-058):
+    /// runway 1's "exit_node": 4, junction nodes 4, 5 and 6, and the one-way
+    /// edges 7 (4 to 5), 8 (5 to 6) and 9 (6 to 2), appended at the ends of
+    /// their lists. The size categories are not substituted: the render
+    /// loader reads ids only.
+    /// </summary>
+    internal static class PlaytestAirside
+    {
+        public const string SourceName = "playtest-airside.json";
+
+        public static string Text()
+        {
+            string text = Encoding.UTF8.GetString(Repo.Read("tests", "fixtures", "airside", Phase1Sim.AirsideFile));
+            text = Replace(text, "\"occupancy_ticks\": 10 }", "\"occupancy_ticks\": 10, \"exit_node\": 4 }");
+            text = Replace(
+                text,
+                "{ \"id\": 14, \"kind\": \"stand_position\" }",
+                "{ \"id\": 14, \"kind\": \"stand_position\" },\n    { \"id\": 4, \"kind\": \"junction\" },\n    { \"id\": 5, \"kind\": \"junction\" },\n    { \"id\": 6, \"kind\": \"junction\" }");
+            text = Replace(
+                text,
+                "{ \"id\": 6, \"from\": 3, \"to\": 14, \"traversal_ticks\": 20, \"bidirectional\": true }",
+                "{ \"id\": 6, \"from\": 3, \"to\": 14, \"traversal_ticks\": 20, \"bidirectional\": true },\n"
+                + "    { \"id\": 7, \"from\": 4, \"to\": 5, \"traversal_ticks\": 5, \"bidirectional\": false },\n"
+                + "    { \"id\": 8, \"from\": 5, \"to\": 6, \"traversal_ticks\": 40, \"bidirectional\": false },\n"
+                + "    { \"id\": 9, \"from\": 6, \"to\": 2, \"traversal_ticks\": 10, \"bidirectional\": false }");
+            return text;
+        }
+
+        /// <summary>Parsed by sim.airside's own loader, so checks 4, 5 and 7 of 12 §12.4 have passed.</summary>
+        public static AirsideLayout Layout()
+        {
+            return AirsideFactory.CreateLayoutLoader().Parse(new UTF8Encoding(false).GetBytes(Text()), SourceName);
+        }
+
+        private static string Replace(string text, string from, string to)
+        {
+            int at = text.IndexOf(from, StringComparison.Ordinal);
+            if (at < 0 || text.IndexOf(from, at + 1, StringComparison.Ordinal) >= 0)
+            {
+                throw new InvalidOperationException("the airside fixture does not hold exactly one '" + from + "'");
+            }
+
+            return text.Replace(from, to, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// The 15 §15.12 render layout over the Phase 1 fixtures: a position for
     /// every taxi node of phase1-single-runway.json, geometry for its one
     /// runway, and a box for every node of phase0-landside.flow.json (the
@@ -209,6 +259,8 @@ namespace AirportSim.App.Render.Tests
     /// Version 2 (Q-130): 15 §15.18's scenery, an apron, a terminal enclosing
     /// the landside zones, a satellite pier facing the stands, a control
     /// tower, and a jet bridge from the pier to each stand's aircraft door.
+    ///
+    /// Version 3 (Q-132): 15 §15.23's bridge stands and walkways.
     /// </summary>
     internal static class Phase1RenderLayout
     {
@@ -223,14 +275,25 @@ namespace AirportSim.App.Render.Tests
             };
         }
 
+        /// <summary>Version 3 (Q-132, 15 §15.23): bridge k serves stand k.</summary>
         public static List<LayoutBridge> Bridges()
         {
             return new List<LayoutBridge>
             {
-                new LayoutBridge(1U, 308, -180, 306, -160, 3),
-                new LayoutBridge(2U, 452, -180, 446, -163, 3),
-                new LayoutBridge(3U, 608, -180, 606, -160, 3),
-                new LayoutBridge(4U, 770, -180, 761, -158, 3),
+                new LayoutBridge(1U, 308, -180, 306, -160, 3, new StandId(1)),
+                new LayoutBridge(2U, 452, -180, 446, -163, 3, new StandId(2)),
+                new LayoutBridge(3U, 608, -180, 606, -160, 3, new StandId(3)),
+                new LayoutBridge(4U, 770, -180, 761, -158, 3, new StandId(4)),
+            };
+        }
+
+        /// <summary>Version 3 (Q-132, 15 §15.23): along the middles of corridors 4 and 7.</summary>
+        public static List<LayoutWalkway> Walkways()
+        {
+            return new List<LayoutWalkway>
+            {
+                new LayoutWalkway(new NodeId(4), 300, 230, 380, 230, 40),
+                new LayoutWalkway(new NodeId(7), 600, 230, 680, 230, 40),
             };
         }
 
@@ -255,7 +318,25 @@ namespace AirportSim.App.Render.Tests
                 boxes.Add(new FlowNodeBox(new NodeId(k), x, 200, x + 80, 260, k == 5 || k == 6 ? 200 : 100));
             }
 
-            return new RenderLayout(taxi, runways, boxes, 40, 30, 2, 15, Areas(), Bridges());
+            return new RenderLayout(taxi, runways, boxes, 40, 30, 2, 15, Areas(), Bridges(), Walkways());
+        }
+
+        /// <summary>
+        /// tests/fixtures/render/playtest-layout.json (Q-132, 15 §15.23):
+        /// Build() plus positions for the playtest exit's taxi nodes 4, 5
+        /// and 6, in ascending node order as Load returns them.
+        /// </summary>
+        public static RenderLayout Playtest()
+        {
+            RenderLayout l = Build();
+            var taxi = new List<TaxiNodePosition>(l.TaxiNodes)
+            {
+                new TaxiNodePosition(new TaxiNodeId(4), -1850, 0),
+                new TaxiNodePosition(new TaxiNodeId(5), -1850, -90),
+                new TaxiNodePosition(new TaxiNodeId(6), 0, -90),
+            };
+            taxi.Sort((a, b) => a.Node.Value.CompareTo(b.Node.Value));
+            return new RenderLayout(taxi, l.Runways, l.FlowNodes, l.StandSize, l.AircraftSize, l.AgentSize, l.TaxiwayWidth, l.Areas, l.Bridges, l.Walkways);
         }
     }
 }

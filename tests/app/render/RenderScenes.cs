@@ -15,7 +15,9 @@ namespace AirportSim.App.Render.Tests
             Fx progress = default,
             ushort? stand = null,
             MovementKind kind = MovementKind.Departure,
-            ushort? runway = null)
+            ushort? runway = null,
+            ulong phaseEnteredAt = 0UL,
+            ulong dueAt = ulong.MaxValue)
         {
             return new AircraftTrack(
                 new FlightId(flight),
@@ -26,8 +28,8 @@ namespace AirportSim.App.Render.Tests
                 progress,
                 stand.HasValue ? new StandId(stand.Value) : (StandId?)null,
                 runway.HasValue ? new RunwayId(runway.Value) : (RunwayId?)null,
-                0UL,
-                ulong.MaxValue,
+                phaseEnteredAt,
+                dueAt,
                 ulong.MaxValue,
                 EventRef.None,
                 EventRef.None,
@@ -168,6 +170,15 @@ namespace AirportSim.App.Render.Tests
     /// a terminal and a control tower, a pier per pier node and a bridge per
     /// stand), a schedule naming every tracked flight, a content index whose
     /// types cover all six size categories, and looks with four airlines.
+    ///
+    /// Q-132 (15 §15.23), with motion set: 20 approaching, 5 held and 3
+    /// runway aircraft (flights 101..128, all drawn from tick 1 on, below),
+    /// a walkway along the middle of each of the 16 promoted boxes, whose
+    /// agents' cohorts 1..6 TryGetCohort knows, and a bridge with boarders
+    /// on every stand: each bridge names its stand, the stands of pier 1
+    /// hold arrivals whose rotation 1000 + s boards, the others departures
+    /// that board themselves, each with 12 passengers at a gate. Only
+    /// PierCamera sees bridges below the zoom threshold.
     /// </summary>
     internal sealed class MaxTierScene
     {
@@ -182,6 +193,19 @@ namespace AirportSim.App.Render.Tests
         public const ushort Hub = 100;
         public const int Airlines = 4;
 
+        // Q-132's motion load (15 §15.23).
+        public const int Approaching = 20;
+        public const int Held = 5;
+        public const int OnRunway = 3;
+        public const int MotionAircraft = Approaching + Held + OnRunway;
+        public const ulong FirstApproaching = 101UL;
+        public const ulong FirstHeld = FirstApproaching + Approaching;
+        public const ulong FinalArrival = FirstHeld + Held;
+        public const ulong RolledOutArrival = FinalArrival + 1UL;
+        public const ulong ClimbingDeparture = FinalArrival + 2UL;
+        public const int BoardersPerStand = 12;
+        public const ulong RotationBase = 1000UL;
+
         public readonly CallGuard Guard = new CallGuard();
         public readonly FakeHost Host;
         public readonly FakeAirside Airside;
@@ -190,16 +214,19 @@ namespace AirportSim.App.Render.Tests
         public readonly FakeContent Content;
         public readonly RenderLooks Looks;
         public readonly RenderLayout Layout;
+        public readonly bool Motion;
 
-        public MaxTierScene()
+        public MaxTierScene(bool motion = false)
         {
+            Motion = motion;
             Host = new FakeHost(Guard, 1UL);
             Airside = new FakeAirside(Guard, MakeAirside(out List<TaxiNodePosition> taxi, out List<RunwayGeometry> runways));
-            Flow = new FakeFlow(Guard) { RecordPromotions = false };
+            Flow = new FakeFlow(Guard) { RecordPromotions = false, RecordQueries = false };
             Schedule = new FakeSchedule(Guard) { RecordCalls = false };
             Content = ArtContent.AllSizes(Guard);
             Looks = ArtLooks.WithAirlines(Airlines);
             var boxes = new List<FlowNodeBox>();
+            var walkways = new List<LayoutWalkway>();
             for (uint k = 1; k <= Boxes; k++)
             {
                 int i = (int)k - 1;
@@ -208,9 +235,15 @@ namespace AirportSim.App.Render.Tests
                 boxes.Add(new FlowNodeBox(new NodeId(k), 20 * c, 20 * r, (20 * c) + 10, (20 * r) + 10, 100));
                 int population = Promoted(k) ? PromotedPopulation : (int)((k * 37U) % 150U);
                 Flow.Node(k, population, k % 4U == 0U ? new LaneState(8, 3) : (LaneState?)null);
+                if (Promoted(k))
+                {
+                    walkways.Add(new LayoutWalkway(new NodeId(k), (20 * c) + 1, (20 * r) + 5, (20 * c) + 9, (20 * r) + 5, 4));
+                }
             }
 
-            Layout = new RenderLayout(taxi, runways, boxes, 30, 20, 1, 12, MakeAreas(), MakeBridges());
+            Layout = motion
+                ? new RenderLayout(taxi, runways, boxes, 30, 20, 1, 12, MakeAreas(), MakeBridges(withStands: true), walkways)
+                : new RenderLayout(taxi, runways, boxes, 30, 20, 1, 12, MakeAreas(), MakeBridges(withStands: false));
 
             for (ushort s = 1; s <= Stands; s++)
             {
@@ -222,13 +255,38 @@ namespace AirportSim.App.Render.Tests
             // t0..t6 and is unknown for t7 (15 §15.16).
             for (ulong k = 1; k <= Aircraft; k++)
             {
-                Schedule.Add(k, (uint)(k % 5UL) + 1U, "t" + (k % 8UL).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                string type = "t" + (k % 8UL).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (motion && k <= StandsPerPier)
+                {
+                    Schedule.AddArrival(k, RotationBase + k, (uint)(k % 5UL) + 1U, type);
+                }
+                else
+                {
+                    Schedule.Add(k, (uint)(k % 5UL) + 1U, type);
+                }
             }
 
             var tracks = new List<AircraftTrack>();
             for (ushort s = 1; s <= Stands; s++)
             {
-                tracks.Add(Tracks.Make(s, AircraftLegPhase.OnStand, atNode: StandNode(s), stand: s));
+                MovementKind kind = motion && s <= StandsPerPier ? MovementKind.Arrival : MovementKind.Departure;
+                tracks.Add(Tracks.Make(s, AircraftLegPhase.OnStand, atNode: StandNode(s), stand: s, kind: kind));
+                if (motion)
+                {
+                    Flow.Boarding(kind == MovementKind.Arrival ? RotationBase + s : s, BoardersPerStand);
+                }
+            }
+
+            if (motion)
+            {
+                // The agents of a promoted box are cohorts 1..6 (FakeFlow's
+                // cohorts of 50); their group walks its walkway in 20 ticks.
+                for (ulong cohort = 1; cohort <= 6; cohort++)
+                {
+                    Flow.Cohort(cohort, 0UL, 20UL);
+                }
+
+                AddMotionTracks(tracks);
             }
 
             // 30 taxiing on stand edges, entered from their pier, half way along.
@@ -250,6 +308,16 @@ namespace AirportSim.App.Render.Tests
         }
 
         public static CameraView Camera => Cam.At(35f, 35f, 70f, 1f);
+
+        /// <summary>
+        /// Below the zoom threshold over pier 1's ten bridges, x 5325..5550 and
+        /// y 1540..1590: the view is [5287.5, 5587.5] × [1515, 1615], and pier
+        /// 2's first bridge is at x 5625.
+        /// </summary>
+        public static CameraView PierCamera => Cam.At(5437.5f, 1565f, 100f, 3f);
+
+        /// <summary>Aircraft drawn in every frame from tick 1 on (each gets one TryGetFlight, 15 §15.16).</summary>
+        public int DrawnAircraft => Motion ? Aircraft + MotionAircraft : Aircraft;
 
         public RenderSources Sources => new RenderSources(Host, Airside, Flow, Schedule, Content);
 
@@ -328,7 +396,7 @@ namespace AirportSim.App.Render.Tests
             return areas;
         }
 
-        private static List<LayoutBridge> MakeBridges()
+        private static List<LayoutBridge> MakeBridges(bool withStands)
         {
             var bridges = new List<LayoutBridge>();
             for (int s = 1; s <= Stands; s++)
@@ -336,10 +404,44 @@ namespace AirportSim.App.Render.Tests
                 int p = ((s - 1) / StandsPerPier) + 1;
                 int j = ((s - 1) % StandsPerPier) + 1;
                 int x = 5000 + (300 * p) + (25 * j);
-                bridges.Add(new LayoutBridge((uint)s, x, 1540, x, 1590, 3));
+                bridges.Add(withStands
+                    ? new LayoutBridge((uint)s, x, 1540, x, 1590, 3, new StandId((ushort)s))
+                    : new LayoutBridge((uint)s, x, 1540, x, 1590, 3));
             }
 
             return bridges;
+        }
+
+        /// <summary>
+        /// The motion load, off-graph (15 §15.20). The host starts at tick 1,
+        /// so τ ≥ 0, and every one of them is drawn from then on:
+        /// approaching arrivals have STA 1..15, so their window opened by τ = 0,
+        /// and their runway is predicted (runway 1 has a queue of 2, so it is
+        /// runway 2). At tick 1, the held ones fly their hold, FinalArrival is
+        /// on its final (w &lt; 0.1), RolledOutArrival has O = 0 and is at its
+        /// exit, and ClimbingDeparture has O = 0 and is at its climb end.
+        /// </summary>
+        private static void AddMotionTracks(List<AircraftTrack> tracks)
+        {
+            for (int a = 0; a < Approaching; a++)
+            {
+                tracks.Add(Tracks.Make(FirstApproaching + (ulong)a, AircraftLegPhase.AwaitingApproach, kind: MovementKind.Arrival, dueAt: 1UL + (ulong)(a % 15)));
+            }
+
+            for (int a = 0; a < Held; a++)
+            {
+                tracks.Add(Tracks.Make(FirstHeld + (ulong)a, AircraftLegPhase.HeldForRunway, kind: MovementKind.Arrival, runway: (ushort)((a % Runways) + 1), phaseEnteredAt: 0UL));
+            }
+
+            tracks.Add(Tracks.Make(FinalArrival, AircraftLegPhase.OnRunway, kind: MovementKind.Arrival, runway: 1, phaseEnteredAt: 0UL, dueAt: 10UL));
+            tracks.Add(Tracks.Make(RolledOutArrival, AircraftLegPhase.OnRunway, kind: MovementKind.Arrival, runway: 2, phaseEnteredAt: 0UL, dueAt: 0UL));
+            tracks.Add(Tracks.Make(ClimbingDeparture, AircraftLegPhase.OnRunway, kind: MovementKind.Departure, runway: 3, phaseEnteredAt: 0UL, dueAt: 0UL));
+        }
+
+        /// <summary>Flights drawn with Elevation &gt; 0 at tick 1 (15 §15.20): approaching, held, on the final, climbing.</summary>
+        public static bool AirborneAtTickOne(ulong flight)
+        {
+            return (flight >= FirstApproaching && flight < FinalArrival) || flight == FinalArrival || flight == ClimbingDeparture;
         }
     }
 }

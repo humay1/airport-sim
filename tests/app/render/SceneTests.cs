@@ -177,12 +177,17 @@ namespace AirportSim.App.Render.Tests
             var s = new SmallScene();
 
             // 12 §12.9: an arrival before Landed, and any aircraft on the runway,
-            // has neither AtNode nor OnEdge.
+            // has neither AtNode nor OnEdge. Q-132 (15 §15.20): these have no
+            // Runway, so none has a runway frame; and 305 is an approaching
+            // arrival outside its window (STA 22, so it opens at τ 7, and the
+            // host's CurrentTick 7 gives τ below 7 at every sub-tick).
             s.Airside!.SetTracks(
                 Tracks.Make(301UL, AircraftLegPhase.HeldForRunway, kind: MovementKind.Arrival),
                 Tracks.Make(302UL, AircraftLegPhase.OnRunway, kind: MovementKind.Arrival),
                 Tracks.Make(303UL, AircraftLegPhase.OnRunway),
-                Tracks.Make(304UL, AircraftLegPhase.HeldOnTaxiway, atNode: SmallScene.Junction));
+                Tracks.Make(304UL, AircraftLegPhase.HeldOnTaxiway, atNode: SmallScene.Junction),
+                Tracks.Make(305UL, AircraftLegPhase.AwaitingApproach, kind: MovementKind.Arrival, dueAt: 22UL));
+            Assert.Equal(7UL, s.Host.Tick);
             ISceneBuilder b = s.Builder();
 
             List<DrawPrimitive> all = Build(b, SmallScene.Overview, Gfx.High());
@@ -190,6 +195,11 @@ namespace AirportSim.App.Render.Tests
             Assert.True(aircraft.Count == 1, "only the on-graph aircraft 304 is drawn: " + Prims.Show(aircraft));
             Assert.Equal(304UL, aircraft[0].Source.Id);
             Assert.Equal(SourceKind.Aircraft, aircraft[0].Source.Kind);
+
+            List<DrawPrimitive> late = Prims.Copy(b.Build(SmallScene.Overview, Gfx.High(), RenderConstants.REAL_MICROSECONDS_PER_TICK_1X - 1L));
+            aircraft = Prims.InLayer(late, DrawLayer.Aircraft);
+            Assert.True(aircraft.Count == 1 && aircraft[0].Source.Id == 304UL, "at sub-tick 99 999, still only 304: " + Prims.Show(aircraft));
+            Assert.Empty(s.Guard.Violations);
         }
 
         [Fact]
@@ -611,7 +621,10 @@ namespace AirportSim.App.Render.Tests
         [Fact]
         public void test_scene_calls_only_listed_sim_members()
         {
-            var m = new MaxTierScene();
+            // Q-132: the motion scene, so walkways and bridges reach TryGetCohort,
+            // PopulationForFlight and TryGetOutstanding (15 §15.6), which the
+            // fake answers; KindOf, CohortsAt and every other member still throw.
+            var m = new MaxTierScene(motion: true);
 
             // The controller calls SetPromoted and nothing else (15 §15.6).
             IPromotionController c = RenderFactory.CreatePromotionController(m.Sources, m.Layout);
@@ -630,12 +643,14 @@ namespace AirportSim.App.Render.Tests
             Assert.True(m.Content.AllOfCalls > 0, "the builder did not read Content.AllOf at construction");
             long content = m.Content.Calls;
 
-            CameraView[] cameras = { MaxTierScene.Camera, Cam.Away(), Cam.At(35f, 35f, 500f), MaxTierScene.Camera };
+            CameraView[] cameras = { MaxTierScene.Camera, Cam.Away(), Cam.At(35f, 35f, 500f), MaxTierScene.Camera, MaxTierScene.PierCamera };
             GraphicsSettings[] settings = { Gfx.High(), Gfx.Custom(false, 32, 60, 75, false), Gfx.Custom(true, 1, 15, 50, false) };
-            for (int frame = 0; frame < 24; frame++)
+            long[] subTicks = { 0L, 40000L, 99999L, 1L };
+            for (int frame = 0; frame < 30; frame++)
             {
                 CameraView cam = cameras[frame % cameras.Length];
                 GraphicsSettings g = settings[frame % settings.Length];
+                long sub = subTicks[frame % subTicks.Length];
 
                 long air = m.Airside.QueryCalls;
                 long flow = m.Flow.QueryCalls;
@@ -653,11 +668,14 @@ namespace AirportSim.App.Render.Tests
                 }
 
                 long promotions = m.Flow.SetPromotedCount;
-                b.Build(cam, g);
+                b.Build(cam, g, sub);
                 Assert.Equal(promotions, m.Flow.SetPromotedCount);
                 Assert.Equal(content, m.Content.Calls);
             }
 
+            Assert.True(m.Flow.CohortCalls > 0, "the builder never called TryGetCohort for a walkway");
+            Assert.True(m.Flow.PopulationForFlightCalls > 0, "the builder never called PopulationForFlight for a bridge");
+            Assert.True(m.Flow.OutstandingCalls > 0, "the builder never called TryGetOutstanding for a bridge");
             Assert.True(m.Schedule.FlightCalls > 0, "the builder never called TryGetFlight");
             Assert.Equal(content, m.Content.Calls);
             Assert.Equal(1L, m.Airside.LayoutCalls);
@@ -682,41 +700,58 @@ namespace AirportSim.App.Render.Tests
                 Gfx.Custom(true, 255, 15, 99, false),
             };
 
+            // Q-132: the motion scene, so approaches, holds, finals, climbs and
+            // walkway agents are in the frame, and each comparison is made at
+            // several sub-ticks (15 §15.14 invariant 1, §15.19). Prims.Show
+            // includes Elevation.
+            long[] subTicks = { 0L, 1L, 37500L, 99999L };
+
             // One builder and controller switched through every setting, and a
             // fresh pair per setting: both must give the High non-Agent list.
-            var shared = new MaxTierScene();
+            var shared = new MaxTierScene(motion: true);
             IPromotionController sc = RenderFactory.CreatePromotionController(shared.Sources, shared.Layout);
             ISceneBuilder sb = RenderFactory.CreateSceneBuilder(shared.Sources, shared.Layout);
             sc.Update(MaxTierScene.Camera, Gfx.High());
-            List<DrawPrimitive> reference = Build(sb, MaxTierScene.Camera, Gfx.High());
-            List<string> expected = Prims.Lines(reference, skipAgents: true);
-            Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(reference, DrawLayer.Agent).Count);
+            var expected = new List<List<string>>();
+            foreach (long sub in subTicks)
+            {
+                List<DrawPrimitive> reference = Prims.Copy(sb.Build(MaxTierScene.Camera, Gfx.High(), sub));
+                expected.Add(Prims.Lines(reference, skipAgents: true));
+                Assert.Equal(16 * RenderConst.MaxDrawnAgentsPerNode, Prims.InLayer(reference, DrawLayer.Agent).Count);
+                Assert.Equal(shared.DrawnAircraft, Prims.InLayer(reference, DrawLayer.Aircraft).Count);
+            }
+
+            Assert.NotEqual(expected[0], expected[2]);
 
             foreach (GraphicsSettings g in settings)
             {
-                sc.Update(MaxTierScene.Camera, g);
-                List<DrawPrimitive> switched = Build(sb, MaxTierScene.Camera, g);
-
-                var fresh = new MaxTierScene();
+                var fresh = new MaxTierScene(motion: true);
                 IPromotionController fc = RenderFactory.CreatePromotionController(fresh.Sources, fresh.Layout);
                 ISceneBuilder fb = RenderFactory.CreateSceneBuilder(fresh.Sources, fresh.Layout);
+                sc.Update(MaxTierScene.Camera, g);
                 fc.Update(MaxTierScene.Camera, g);
-                List<DrawPrimitive> alone = Build(fb, MaxTierScene.Camera, g);
-
-                foreach (List<DrawPrimitive> got in new[] { switched, alone })
+                for (int k = 0; k < subTicks.Length; k++)
                 {
-                    List<string> lines = Prims.Lines(got, skipAgents: true);
-                    Assert.True(lines.Count == expected.Count, Gfx.Show(g) + ": " + lines.Count + " non-Agent primitives, High has " + expected.Count);
-                    for (int i = 0; i < lines.Count; i++)
+                    List<DrawPrimitive> switched = Prims.Copy(sb.Build(MaxTierScene.Camera, g, subTicks[k]));
+                    List<DrawPrimitive> alone = Prims.Copy(fb.Build(MaxTierScene.Camera, g, subTicks[k]));
+                    string what = Gfx.Show(g) + ", sub-tick " + subTicks[k];
+                    foreach (List<DrawPrimitive> got in new[] { switched, alone })
                     {
-                        Assert.True(lines[i] == expected[i], Gfx.Show(g) + ": non-Agent primitive " + i + " is " + lines[i] + ", at High " + expected[i]);
-                    }
+                        List<string> lines = Prims.Lines(got, skipAgents: true);
+                        Assert.True(lines.Count == expected[k].Count, what + ": " + lines.Count + " non-Agent primitives, High has " + expected[k].Count);
+                        for (int i = 0; i < lines.Count; i++)
+                        {
+                            Assert.True(lines[i] == expected[k][i], what + ": non-Agent primitive " + i + " is " + lines[i] + ", at High " + expected[k][i]);
+                        }
 
-                    int agents = Prims.InLayer(got, DrawLayer.Agent).Count;
-                    int want = g.DrawAgents ? 16 * g.MaxDrawnAgentsPerNode : 0;
-                    Assert.True(agents == want, Gfx.Show(g) + ": " + agents + " agent dots, expected " + want);
+                        int agents = Prims.InLayer(got, DrawLayer.Agent).Count;
+                        int want = g.DrawAgents ? 16 * g.MaxDrawnAgentsPerNode : 0;
+                        Assert.True(agents == want, what + ": " + agents + " agent dots, expected " + want);
+                    }
                 }
             }
+
+            Assert.Empty(shared.Guard.Violations);
         }
     }
 }

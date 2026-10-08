@@ -19,13 +19,27 @@ namespace AirportSim.App.Render.Tests
         private static readonly GameSpeed[] Speeds = { GameSpeed.X4, GameSpeed.X4, GameSpeed.X2, GameSpeed.X1, GameSpeed.X4 };
 
         /// <summary>
+        /// Q-132: below the zoom threshold over all four bridges of the
+        /// version 3 layout (x 306..770, y −180..−158). The view is
+        /// [238, 838] × [−229, −109], which holds no FlowNodeBox (they start
+        /// at y 200), so it promotes nothing.
+        /// </summary>
+        private static readonly CameraView Pier = Cam.At(538f, -169f, 120f, 5f);
+
+        /// <summary>
         /// The scripted camera: each box in turn, held for 40 frames at one of
         /// four poses, cycling below, at and just above AGENT_ZOOM_THRESHOLD,
-        /// then out of view.
+        /// then out of view. Every fifth segment of 40 frames looks at the
+        /// bridges instead (Q-132), so boarding walkers are drawn.
         /// </summary>
         private static CameraView Script(int frame, IReadOnlyList<FlowNodeBox> boxes)
         {
             int segment = frame / 40;
+            if (segment % 5 == 4)
+            {
+                return Pier;
+            }
+
             FlowNodeBox box = boxes[segment % boxes.Count];
             switch ((segment / boxes.Count) % 4)
             {
@@ -55,6 +69,11 @@ namespace AirportSim.App.Render.Tests
             public GuardedFlow Flow = null!;
             public CallGuard Guard = null!;
             public HashSet<string> GraphicsUsed = new HashSet<string>();
+
+            // Q-132: walkers drawn over the day, and the sub-ticks the frames used.
+            public long BridgeWalkers;
+            public long WalkwayAgents;
+            public HashSet<long> SubTicks = new HashSet<long>();
         }
 
         /// <summary>Runs one sim-day through the frame order; graphics(frame) picks each frame's settings.</summary>
@@ -63,8 +82,12 @@ namespace AirportSim.App.Render.Tests
             var sim = new Phase1Sim();
             var guard = new CallGuard();
             var flow = new GuardedFlow(sim.Flow, guard);
-            var sources = new RenderSources(new GuardedHost(sim.Host, guard), new GuardedAirside(sim.Airside, guard), flow);
+
+            // Q-132: with the schedule, so a stand holding an arrival finds its
+            // rotation's boarding passengers (15 §15.21, condition 3).
+            var sources = new RenderSources(new GuardedHost(sim.Host, guard), new GuardedAirside(sim.Airside, guard), flow, new GuardedSchedule(sim.Schedule, guard), null);
             RenderLayout layout = Phase1RenderLayout.Build();
+            var walkwayNodes = new HashSet<ulong>(layout.Walkways.Select(w => (ulong)w.Node.Value));
             List<FlowNodeBox> boxes = layout.FlowNodes.OrderBy(b => b.Node.Value).ToList();
 
             IPromotionController promotion = RenderFactory.CreatePromotionController(sources, layout);
@@ -107,8 +130,24 @@ namespace AirportSim.App.Render.Tests
                     sim.Host.Step(n);
                 }
 
-                RenderFrame f = scene.Build(camera, g);
+                // Q-132 (15 §15.19, 16 §16.6): the build takes the pacer's sub-tick.
+                long sub = pacer.SubTickMicroseconds;
+                Assert.True(sub >= 0 && sub < RenderConst.RealMicrosecondsPerTick1X, "seed " + inputSeed + ", frame " + frame + ": sub-tick " + sub);
+                result.SubTicks.Add(sub);
+                RenderFrame f = scene.Build(camera, g, sub);
                 Assert.True(f.Tick == sim.Host.CurrentTick, "seed " + inputSeed + ", frame " + frame + ": RenderFrame.Tick " + f.Tick + " but the host is at " + sim.Host.CurrentTick);
+                foreach (DrawPrimitive p in f.Primitives)
+                {
+                    if (p.Source.Kind == SourceKind.BridgePassenger)
+                    {
+                        result.BridgeWalkers++;
+                    }
+                    else if (p.Source.Kind == SourceKind.Agent && walkwayNodes.Contains(p.Source.Id))
+                    {
+                        result.WalkwayAgents++;
+                    }
+                }
+
                 frame++;
             }
 
@@ -141,6 +180,12 @@ namespace AirportSim.App.Render.Tests
             }
 
             Assert.True(rendered.Flow.AgentViewsSeen > 0, what + ": no agent view was ever derived");
+
+            // Q-132 (15 §15.23): the loop built with the pacer's sub-tick, and the
+            // version 3 layout drew walkers on the walkways and the bridges.
+            Assert.True(rendered.SubTicks.Count > 100, what + ": the frames used only " + rendered.SubTicks.Count + " distinct sub-ticks");
+            Assert.True(rendered.WalkwayAgents > 0, what + ": no agent was drawn on a walkway (corridors 4 and 7)");
+            Assert.True(rendered.BridgeWalkers > 0, what + ": no boarding walker was drawn on a bridge");
         }
 
         [Fact]
@@ -155,6 +200,15 @@ namespace AirportSim.App.Render.Tests
             Assert.Equal(new SortedSet<uint>(fixtureNodes.Select(n => n.Node)), boxNodes);
             Assert.Contains(fixtureNodes, n => n.Kind == "queue" && boxNodes.Contains(n.Node));
             Assert.True(Phase1Sim.ScheduleEntryNodes().IsSubsetOf(boxNodes), "a schedule entry node has no FlowNodeBox");
+
+            // Q-132 (15 §15.21, §15.23): every walkway's node is a corridor of the
+            // flow fixture, which the loader cannot check, and both corridors have one.
+            IReadOnlyList<LayoutWalkway> walkways = Phase1RenderLayout.Build().Walkways;
+            Assert.Equal(new[] { 4U, 7U }, walkways.Select(w => w.Node.Value).ToArray());
+            foreach (LayoutWalkway w in walkways)
+            {
+                Assert.True(fixtureNodes.Contains((w.Node.Value, "corridor")), "walkway node " + w.Node.Value + " is not a corridor of " + Phase1Sim.FlowFile);
+            }
 
             LoopResult rendered = RenderedDay(0x0F7A_0020UL, _ => Gfx.High());
             AssertNeutral(rendered, "scripted camera");
