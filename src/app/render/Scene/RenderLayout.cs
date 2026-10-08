@@ -162,10 +162,53 @@ namespace AirportSim.App.Render
         /// <summary>Drawn width.</summary>
         public int Width { get; }
 
-        /// <summary>Constructs the bridge.</summary>
+        /// <summary>The stand the bridge serves; null in version 1 and 2 files (Q-132).</summary>
+        public StandId? Stand { get; }
+
+        /// <summary>Constructs the bridge with no stand (07 L10 kept constructor).</summary>
         public LayoutBridge(uint id, int x0, int y0, int x1, int y1, int width)
+            : this(id, x0, y0, x1, y1, width, null)
         {
+        }
+
+        /// <summary>Constructs the bridge.</summary>
+        public LayoutBridge(uint id, int x0, int y0, int x1, int y1, int width, StandId? stand)
+        {
+            Stand = stand;
             Id = id;
+            X0 = x0;
+            Y0 = y0;
+            X1 = x1;
+            Y1 = y1;
+            Width = width;
+        }
+    }
+
+    /// <summary>The path the agents of a corridor node walk, inside its box. Spec: 15 §15.4, §15.21 (Q-132).</summary>
+    public readonly struct LayoutWalkway
+    {
+        /// <summary>The corridor node.</summary>
+        public NodeId Node { get; }
+
+        /// <summary>Start X.</summary>
+        public int X0 { get; }
+
+        /// <summary>Start Y.</summary>
+        public int Y0 { get; }
+
+        /// <summary>End X.</summary>
+        public int X1 { get; }
+
+        /// <summary>End Y.</summary>
+        public int Y1 { get; }
+
+        /// <summary>Width of the walkway's rectangle.</summary>
+        public int Width { get; }
+
+        /// <summary>Constructs the walkway.</summary>
+        public LayoutWalkway(NodeId node, int x0, int y0, int x1, int y1, int width)
+        {
+            Node = node;
             X0 = x0;
             Y0 = y0;
             X1 = x1;
@@ -217,7 +260,10 @@ namespace AirportSim.App.Render
         {
         }
 
-        /// <summary>Constructs the layout.</summary>
+        /// <summary>Walkways, ascending node id when produced by the loader (Q-132).</summary>
+        public IReadOnlyList<LayoutWalkway> Walkways { get; }
+
+        /// <summary>Constructs the layout with no walkways (07 L10 kept constructor).</summary>
         public RenderLayout(
             IReadOnlyList<TaxiNodePosition> taxiNodes,
             IReadOnlyList<RunwayGeometry> runways,
@@ -228,7 +274,24 @@ namespace AirportSim.App.Render
             int taxiwayWidth,
             IReadOnlyList<LayoutArea> areas,
             IReadOnlyList<LayoutBridge> bridges)
+            : this(taxiNodes, runways, flowNodes, standSize, aircraftSize, agentSize, taxiwayWidth, areas, bridges, Array.Empty<LayoutWalkway>())
         {
+        }
+
+        /// <summary>Constructs the layout.</summary>
+        public RenderLayout(
+            IReadOnlyList<TaxiNodePosition> taxiNodes,
+            IReadOnlyList<RunwayGeometry> runways,
+            IReadOnlyList<FlowNodeBox> flowNodes,
+            int standSize,
+            int aircraftSize,
+            int agentSize,
+            int taxiwayWidth,
+            IReadOnlyList<LayoutArea> areas,
+            IReadOnlyList<LayoutBridge> bridges,
+            IReadOnlyList<LayoutWalkway> walkways)
+        {
+            Walkways = walkways;
             TaxiNodes = taxiNodes;
             Runways = runways;
             FlowNodes = flowNodes;

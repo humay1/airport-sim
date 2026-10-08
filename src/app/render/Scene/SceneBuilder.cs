@@ -64,8 +64,6 @@ namespace AirportSim.App.Render
     /// <summary>Turns polled sim state into a draw list. Spec: 15 §15.5, §15.6, §15.9, §15.14, §15.16.</summary>
     internal sealed class SceneBuilder : ISceneBuilder
     {
-        private const float FixedOne = 4294967296f; // 2^32, the Fx fraction
-
         private readonly ISimHost _host;
         private readonly IAirsideSystem? _airside;
         private readonly IFlowSystem? _flow;
@@ -86,6 +84,11 @@ namespace AirportSim.App.Render
         private readonly Dictionary<ushort, RunwayGeometry> _runwayGeometry = new Dictionary<ushort, RunwayGeometry>();
         private readonly Dictionary<ushort, IntPoint> _noseIn = new Dictionary<ushort, IntPoint>();
         private readonly Dictionary<ContentId, VisualId> _aircraftVisual = new Dictionary<ContentId, VisualId>();
+        private readonly Dictionary<ushort, RunwayFrame> _runwayFrames = new Dictionary<ushort, RunwayFrame>();
+        private readonly ushort[] _runwayOrder; // ascending RunwayId of the airside layout
+        private readonly WalkwayShape[] _walkways;
+        private readonly int[] _boxWalkway; // index into _walkways per box, or -1
+        private readonly BridgeWalk[] _bridgeWalks;
 
         // Scenery and markings are functions of the layout alone, so they are built once, already in draw order.
         private readonly DrawPrimitive[] _aprons;
@@ -115,6 +118,11 @@ namespace AirportSim.App.Render
 
         private bool _hasFrame;
         private ulong _tick;
+        private long _subTick;
+        private double _tau;
+        private double _alpha;
+        private bool _predictedKnown;
+        private int _predicted; // index into _runwayOrder, or -1
         private CameraView _camera;
         private GraphicsSettings _graphics;
         private RenderFrame _frame;
@@ -149,9 +157,12 @@ namespace AirportSim.App.Render
             _laneOpen = new int[_boxes.Length];
 
             BuildScenery(layout, out _aprons, out _buildings, out _bridges);
+            _walkways = BuildWalkways(layout, _boxes, out _boxWalkway);
+            _bridgeWalks = BuildBridgeWalks(layout);
 
             if (_airside == null)
             {
+                _runwayOrder = Array.Empty<ushort>();
                 _runways = Array.Empty<RunwayGeometry>();
                 _edges = Array.Empty<EdgeShape>();
                 _stands = Array.Empty<StandShape>();
@@ -186,10 +197,14 @@ namespace AirportSim.App.Render
             }
 
             AirsideLayout airside = _airside.Layout();
+            _runwayOrder = new ushort[airside.Runways.Count];
             for (int i = 0; i < airside.Runways.Count; i++)
             {
                 _runwayDefs[airside.Runways[i].Id.Value] = airside.Runways[i];
+                _runwayOrder[i] = airside.Runways[i].Id.Value;
             }
+
+            Array.Sort(_runwayOrder);
 
             _edges = new EdgeShape[airside.Edges.Count];
             for (int i = 0; i < _edges.Length; i++)
@@ -215,6 +230,7 @@ namespace AirportSim.App.Render
             _standDrawn = new bool[_stands.Length];
 
             BuildNoseIn();
+            BuildRunwayFrames();
             _runwayMarkings = BuildRunwayMarkings();
             BuildTaxiways(out _taxiSurfaces, out _taxiJunctions, out _taxiCentrelines);
             BuildStandMarkings(out _standLeadIns, out _standLeadInOwner, out _standDigits, out _standDigitOwner);
@@ -227,11 +243,26 @@ namespace AirportSim.App.Render
 
         public RenderFrame Build(in CameraView camera, in GraphicsSettings graphics)
         {
+            return Build(camera, graphics, 0L);
+        }
+
+        public RenderFrame Build(in CameraView camera, in GraphicsSettings graphics, long subTickMicroseconds)
+        {
+            if (subTickMicroseconds < 0 || subTickMicroseconds >= RenderConstants.REAL_MICROSECONDS_PER_TICK_1X)
+            {
+                throw new ArgumentOutOfRangeException(nameof(subTickMicroseconds), "the sub-tick must be in [0, REAL_MICROSECONDS_PER_TICK_1X)");
+            }
+
             ulong tick = _host.CurrentTick;
-            if (_hasFrame && tick == _tick && SameCamera(camera) && SameGraphics(graphics))
+            if (_hasFrame && tick == _tick && subTickMicroseconds == _subTick && SameCamera(camera) && SameGraphics(graphics))
             {
                 return _frame;
             }
+
+            // 15 §15.19: tau, in double; alpha is the elapsed fraction of the next tick.
+            _alpha = subTickMicroseconds / 100000.0;
+            _tau = ((double)tick - 1) + _alpha;
+            _predictedKnown = false;
 
             _buffer.Clear();
             ReadFlow();
@@ -243,9 +274,11 @@ namespace AirportSim.App.Render
             EmitQueueFill();
             EmitLanePips();
             EmitAgents(camera, graphics);
+            EmitBridgeWalkers(camera, graphics);
             EmitAircraft();
 
             _tick = tick;
+            _subTick = subTickMicroseconds;
             _camera = camera;
             _graphics = graphics;
             _frame = new RenderFrame(tick, camera, _buffer, graphics);
@@ -287,9 +320,9 @@ namespace AirportSim.App.Render
             return new WorldPoint((float)x, (float)y);
         }
 
-        private static DrawPrimitive Prim(PrimitiveKind kind, DrawLayer layer, ColourRole colour, VisualId visual, WorldPoint a, WorldPoint b, float size, WorldPoint facing, Paint paint, SourceKind source, ulong id, int sub)
+        private static DrawPrimitive Prim(PrimitiveKind kind, DrawLayer layer, ColourRole colour, VisualId visual, WorldPoint a, WorldPoint b, float size, WorldPoint facing, Paint paint, SourceKind source, ulong id, int sub, float elevation = 0f)
         {
-            return new DrawPrimitive(kind, layer, colour, visual, a, b, size, facing, paint, new SourceRef(source, id, sub));
+            return new DrawPrimitive(kind, layer, colour, visual, a, b, size, facing, paint, new SourceRef(source, id, sub), elevation);
         }
 
         // The exact floor of the square root, in integers.
@@ -842,18 +875,45 @@ namespace AirportSim.App.Render
 
                 IReadOnlyList<AgentView> agents = _flow.AgentsAt(b.Node);
                 int n = agents.Count < cap ? agents.Count : cap;
+                int walkway = _boxWalkway[i];
+                bool haveCohort = false;
+                ulong cohort = 0;
+                double progress = 0;
                 for (int k = 0; k < n; k++)
                 {
+                    PassengerRef r = agents[k].Ref;
+                    uint hash = PassengerHash(r.Cohort.Value, r.Index);
+                    WorldPoint at;
+                    WorldPoint facing = default;
+                    if (walkway >= 0)
+                    {
+                        // 15 §15.21: one TryGetCohort per distinct cohort; the list is sorted by cohort.
+                        if (!haveCohort || r.Cohort.Value != cohort)
+                        {
+                            haveCohort = true;
+                            cohort = r.Cohort.Value;
+                            progress = CohortProgress(r.Cohort);
+                        }
+
+                        WalkwayShape w = _walkways[walkway];
+                        at = WalkwayPosition(w, progress, Fnv(hash, 5));
+                        facing = w.Facing;
+                    }
+                    else
+                    {
+                        at = AgentPosition(b, k);
+                    }
+
                     _buffer.Add(Prim(
                         PrimitiveKind.Dot,
                         DrawLayer.Agent,
                         ColourRole.Agent,
                         VisualId.Passenger,
-                        AgentPosition(b, k),
+                        at,
                         default,
                         _agentSize,
-                        default,
-                        PassengerPaint(agents[k].Ref),
+                        facing,
+                        PaintFromHash(hash),
                         SourceKind.Agent,
                         b.Node.Value,
                         k));
@@ -861,22 +921,137 @@ namespace AirportSim.App.Render
             }
         }
 
-        // 15 §15.16 "Passenger paint": FNV-1a-32 over Cohort (8 bytes LE), Index (4 bytes LE), then the region byte.
-        private Paint PassengerPaint(in PassengerRef r)
+        // 15 §15.21 "The cohort's progress".
+        private double CohortProgress(CohortId id)
+        {
+            if (!_flow!.TryGetCohort(id, out PassengerCohort c))
+            {
+                return 0;
+            }
+
+            if (c.DueAt <= c.EnteredNodeAt)
+            {
+                return 1;
+            }
+
+            double p = (_tau - (double)c.EnteredNodeAt) / (double)(c.DueAt - c.EnteredNodeAt);
+            return p < 0 ? 0 : (p > 1 ? 1 : p);
+        }
+
+        // 15 §15.21 "Placement", in double and converted to float once.
+        private WorldPoint WalkwayPosition(in WalkwayShape w, double p, uint h)
+        {
+            double e = ((((double)(h % 1024U)) / 1023.0) - 0.5) * Math.Max(0.0, w.Width - (double)_agentSize);
+            double a = (((double)((h >> 10) % 1024U)) / 1023.0) * Math.Min(w.Length, 4.0 * w.Width);
+            double s = (p * w.Length) - a;
+            s = s < 0 ? 0 : (s > w.Length ? w.Length : s);
+            double x = (w.X0 + (w.DirX * s)) + (w.NormX * e);
+            double y = (w.Y0 + (w.DirY * s)) + (w.NormY * e);
+            return new WorldPoint((float)x, (float)y);
+        }
+
+        // 15 §15.21 "Walkers on jet bridges (boarding)".
+        private void EmitBridgeWalkers(in CameraView camera, in GraphicsSettings graphics)
+        {
+            if (_airside == null || _flow == null || !graphics.DrawAgents || camera.ViewHeight > (float)RenderConstants.AGENT_ZOOM_THRESHOLD)
+            {
+                return;
+            }
+
+            float halfW = camera.ViewHeight * camera.Aspect / 2f;
+            float halfH = camera.ViewHeight / 2f;
+            for (int i = 0; i < _bridgeWalks.Length; i++)
+            {
+                BridgeWalk b = _bridgeWalks[i];
+                if (!(b.MaxX >= camera.Centre.X - halfW && b.MinX <= camera.Centre.X + halfW && b.MaxY >= camera.Centre.Y - halfH && b.MinY <= camera.Centre.Y + halfH))
+                {
+                    continue;
+                }
+
+                if (!_airside.TryGetStand(b.Stand, out StandState stand) || !stand.Occupant.HasValue)
+                {
+                    continue;
+                }
+
+                FlightId occupant = stand.Occupant.Value;
+                if (!_airside.TryGetTrack(occupant, out AircraftTrack track) || track.Phase != AircraftLegPhase.OnStand)
+                {
+                    continue;
+                }
+
+                FlightId boarding;
+                if (track.Kind == MovementKind.Departure)
+                {
+                    boarding = occupant;
+                }
+                else if (_schedule != null && _schedule.TryGetFlight(occupant, out FlightRecord record) && record.HasRotation)
+                {
+                    boarding = record.Rotation;
+                }
+                else
+                {
+                    continue;
+                }
+
+                int atGate = _flow.PopulationForFlight(boarding, FlowDirection.Departing) - (_flow.TryGetOutstanding(boarding, out OutstandingPassengers outstanding) ? outstanding.Count : 0);
+                if (atGate <= 0)
+                {
+                    continue;
+                }
+
+                int nw = atGate < RenderConstants.MAX_BRIDGE_WALKERS ? atGate : RenderConstants.MAX_BRIDGE_WALKERS;
+                if (graphics.MaxDrawnAgentsPerNode < nw)
+                {
+                    nw = graphics.MaxDrawnAgentsPerNode;
+                }
+
+                double dx = (double)b.X1 - b.X0;
+                double dy = (double)b.Y1 - b.Y0;
+                WorldPoint facing = Pt((long)b.X1 - b.X0, (long)b.Y1 - b.Y0);
+                for (int k = 0; k < nw; k++)
+                {
+                    double c = (_tau / RenderConstants.BRIDGE_WALK_TICKS) + (k / (double)nw);
+                    double m = Math.Floor(c);
+                    double f = c - m;
+                    long mL = (long)Math.Min(m, 9007199254740992.0);
+                    int j = unchecked((int)((mL * RenderConstants.MAX_BRIDGE_WALKERS) + k));
+                    _buffer.Add(Prim(
+                        PrimitiveKind.Dot,
+                        DrawLayer.Agent,
+                        ColourRole.Agent,
+                        VisualId.Passenger,
+                        new WorldPoint((float)(b.X0 + (dx * f)), (float)(b.Y0 + (dy * f))),
+                        default,
+                        _agentSize,
+                        facing,
+                        PaintFromHash(PassengerHash(boarding.Value, j)),
+                        SourceKind.BridgePassenger,
+                        b.Id,
+                        k));
+                }
+            }
+        }
+
+        // 15 §15.16 "Passenger paint": FNV-1a-32 over an id (8 bytes LE) and an index (4 bytes LE); the region byte comes after.
+        private static uint PassengerHash(ulong id, int index)
         {
             uint h = 0x811C9DC5U;
-            ulong cohort = r.Cohort.Value;
             for (int i = 0; i < 8; i++)
             {
-                h = Fnv(h, (byte)(cohort >> (8 * i)));
+                h = Fnv(h, (byte)(id >> (8 * i)));
             }
 
-            uint index = unchecked((uint)r.Index);
+            uint u = unchecked((uint)index);
             for (int i = 0; i < 4; i++)
             {
-                h = Fnv(h, (byte)(index >> (8 * i)));
+                h = Fnv(h, (byte)(u >> (8 * i)));
             }
 
+            return h;
+        }
+
+        private Paint PaintFromHash(uint h)
+        {
             Rgb[] top = _passengerColours[0];
             Rgb[] bottom = _passengerColours[1];
             Rgb[] skin = _passengerColours[2];
@@ -937,6 +1112,7 @@ namespace AirportSim.App.Render
                         break;
                     case AircraftLegPhase.OnRunway:
                     case AircraftLegPhase.Taxiing:
+                    case AircraftLegPhase.AwaitingApproach:
                         colour = ColourRole.AircraftMoving;
                         break;
                     case AircraftLegPhase.OnStand:
@@ -947,7 +1123,20 @@ namespace AirportSim.App.Render
                         continue;
                 }
 
-                if (!TryAircraftPosition(track, out WorldPoint at))
+                float elevation = 0f;
+                WorldPoint facing;
+                WorldPoint at;
+                if (track.AtNode.HasValue || track.OnEdge.HasValue)
+                {
+                    // An approach is off the graph by definition; a track claiming a node is not drawn (15 §15.5).
+                    if (track.Phase == AircraftLegPhase.AwaitingApproach || !TryAircraftPosition(track, out at))
+                    {
+                        continue;
+                    }
+
+                    facing = AircraftFacing(track);
+                }
+                else if (!TryOffGraph(track, out at, out elevation, out facing))
                 {
                     continue;
                 }
@@ -973,11 +1162,12 @@ namespace AirportSim.App.Render
                     at,
                     default,
                     _aircraftSize,
-                    AircraftFacing(track),
+                    facing,
                     paint,
                     SourceKind.Aircraft,
                     track.Flight.Value,
-                    0));
+                    0,
+                    elevation));
             }
         }
 
@@ -1037,7 +1227,15 @@ namespace AirportSim.App.Render
             }
 
             var to = new WorldPoint(toPoint.X, toPoint.Y);
-            float t = track.EdgeProgress.Raw / FixedOne;
+            // 15 §15.20: the sub-tick advances the factor along the edge's traversal time.
+            double progress = track.EdgeProgress.Raw / 4294967296.0;
+            long trav = unchecked((long)track.DueAt - (long)track.PhaseEnteredAt);
+            if (trav > 0)
+            {
+                progress += _alpha / trav;
+            }
+
+            float t = (float)progress;
             t = t < 0f ? 0f : (t > 1f ? 1f : t);
             at = new WorldPoint(from.X + ((to.X - from.X) * t), from.Y + ((to.Y - from.Y) * t));
             return true;
@@ -1138,6 +1336,432 @@ namespace AirportSim.App.Render
 
             node = 0;
             return false;
+        }
+
+        // 15 §15.20 "The runway frame": per runway, from the layout alone, in double.
+        private void BuildRunwayFrames()
+        {
+            for (int i = 0; i < _runways.Length; i++)
+            {
+                RunwayGeometry g = _runways[i];
+                if (!_runwayDefs.TryGetValue(g.Runway.Value, out RunwayDef def)
+                    || !_nodePositions.TryGetValue(def.ThresholdNode.Value, out IntPoint t)
+                    || !_nodePositions.TryGetValue(def.ExitNode.Value, out IntPoint x))
+                {
+                    continue;
+                }
+
+                bool zero = ActiveEndIsZero(g, t);
+                long nx = zero ? g.X0 : g.X1;
+                long ny = zero ? g.Y0 : g.Y1;
+                long fx = zero ? g.X1 : g.X0;
+                long fy = zero ? g.Y1 : g.Y0;
+                long dx = fx - nx;
+                long dy = fy - ny;
+                double lr = Math.Sqrt(((double)dx * dx) + ((double)dy * dy));
+                if (lr == 0)
+                {
+                    continue;
+                }
+
+                double ux = dx / lr;
+                double uy = dy / lr;
+                double tdx = nx + (ux * (lr / 8));
+                double tdy = ny + (uy * (lr / 8));
+                double lox = nx + (ux * (lr * 3 / 4));
+                double loy = ny + (uy * (lr * 3 / 4));
+                _runwayFrames[g.Runway.Value] = new RunwayFrame(
+                    t.X,
+                    t.Y,
+                    x.X,
+                    x.Y,
+                    ux,
+                    uy,
+                    tdx,
+                    tdy,
+                    lox,
+                    loy,
+                    tdx - (ux * RenderConstants.FINAL_FIX_M),
+                    tdy - (uy * RenderConstants.FINAL_FIX_M),
+                    tdx - (ux * RenderConstants.APPROACH_ENTRY_M),
+                    tdy - (uy * RenderConstants.APPROACH_ENTRY_M),
+                    Pt(dx, dy),
+                    Pt(-dx, -dy));
+            }
+        }
+
+        // The predicted runway of an approaching arrival (15 §15.20): the first in ascending id with the smallest queue; once per rebuild.
+        private bool TryPredictedRunway(out RunwayFrame frame)
+        {
+            if (!_predictedKnown)
+            {
+                _predictedKnown = true;
+                _predicted = -1;
+                int best = 0;
+                for (int i = 0; i < _runwayOrder.Length; i++)
+                {
+                    int q = _airside!.RunwayQueueLength(new RunwayId(_runwayOrder[i]));
+                    if (_predicted < 0 || q < best)
+                    {
+                        _predicted = i;
+                        best = q;
+                    }
+                }
+            }
+
+            if (_predicted >= 0 && _runwayFrames.TryGetValue(_runwayOrder[_predicted], out frame))
+            {
+                return true;
+            }
+
+            frame = default;
+            return false;
+        }
+
+        // 15 §15.20 "Off-graph tracks": the row that matches the phase and kind, else not drawn.
+        private bool TryOffGraph(in AircraftTrack track, out WorldPoint at, out float elevation, out WorldPoint facing)
+        {
+            at = default;
+            elevation = 0f;
+            facing = default;
+            RunwayFrame r;
+            if (track.Phase == AircraftLegPhase.AwaitingApproach)
+            {
+                if (track.Kind != MovementKind.Arrival || _tau < (double)track.DueAt - RenderConstants.APPROACH_TICKS || !TryPredictedRunway(out r))
+                {
+                    return false;
+                }
+
+                double v = Clamp01((_tau - ((double)track.DueAt - RenderConstants.APPROACH_TICKS)) / RenderConstants.APPROACH_TICKS);
+                double px = r.AeX + ((r.FfX - r.AeX) * v);
+                double py = r.AeY + ((r.FfY - r.AeY) * v);
+                at = new WorldPoint((float)px, (float)py);
+                elevation = (float)(Dist(px, py, r.TdX, r.TdY) / RenderConstants.GLIDE_RATIO);
+                facing = r.FDep;
+                return true;
+            }
+
+            if (!track.Runway.HasValue || !_runwayFrames.TryGetValue(track.Runway.Value.Value, out r))
+            {
+                return false;
+            }
+
+            if (track.Phase == AircraftLegPhase.HeldForRunway && track.Kind == MovementKind.Arrival)
+            {
+                // The square hold, flown from the final fix to the left of the outbound direction.
+                double s = Math.Max(0.0, _tau - (double)track.PhaseEnteredAt) / RenderConstants.HOLD_LEG_TICKS;
+                double fl = Math.Floor(s);
+                int leg = (int)(fl % 4.0);
+                double frac = s - fl;
+                double lx = r.UY;
+                double ly = -r.UX;
+                const double side = RenderConstants.HOLD_LEG_M;
+                HoldCorner(r, lx, ly, side, leg, out double ax, out double ay);
+                HoldCorner(r, lx, ly, side, (leg + 1) % 4, out double bx, out double by);
+                at = new WorldPoint((float)(ax + ((bx - ax) * frac)), (float)(ay + ((by - ay) * frac)));
+                elevation = (float)((double)RenderConstants.FINAL_FIX_M / RenderConstants.GLIDE_RATIO);
+                WorldPoint g = r.FArr;
+                switch (leg)
+                {
+                    case 0:
+                        facing = new WorldPoint(0f - g.Y, g.X);
+                        break;
+                    case 1:
+                        facing = g;
+                        break;
+                    case 2:
+                        facing = new WorldPoint(g.Y, 0f - g.X);
+                        break;
+                    default:
+                        facing = r.FDep;
+                        break;
+                }
+
+                return true;
+            }
+
+            if (track.Phase != AircraftLegPhase.OnRunway)
+            {
+                return false;
+            }
+
+            double o = (double)unchecked((long)track.DueAt - (long)track.PhaseEnteredAt);
+            double w = o <= 0 ? 1.0 : Clamp01((_tau - (double)track.PhaseEnteredAt) / o);
+            facing = r.FDep;
+            if (track.Kind == MovementKind.Arrival)
+            {
+                if (w <= 0.5)
+                {
+                    double v = 2 * w;
+                    double px = r.FfX + ((r.TdX - r.FfX) * v);
+                    double py = r.FfY + ((r.TdY - r.FfY) * v);
+                    at = new WorldPoint((float)px, (float)py);
+                    elevation = (float)(Dist(px, py, r.TdX, r.TdY) / RenderConstants.GLIDE_RATIO);
+                }
+                else
+                {
+                    double v = (2 * w) - 1;
+                    double k = 1 - ((1 - v) * (1 - v));
+                    at = new WorldPoint((float)(r.TdX + ((r.XX - r.TdX) * k)), (float)(r.TdY + ((r.XY - r.TdY) * k)));
+                }
+
+                return true;
+            }
+
+            if (track.Kind != MovementKind.Departure)
+            {
+                return false;
+            }
+
+            if (w <= 0.5)
+            {
+                double v = 2 * w;
+                double vv = v * v;
+                at = new WorldPoint((float)(r.TX + ((r.LoX - r.TX) * vv)), (float)(r.TY + ((r.LoY - r.TY) * vv)));
+            }
+            else
+            {
+                double v = (2 * w) - 1;
+                double d = RenderConstants.CLIMB_OUT_M * v;
+                at = new WorldPoint((float)(r.LoX + (r.UX * d)), (float)(r.LoY + (r.UY * d)));
+                elevation = (float)(d / RenderConstants.CLIMB_RATIO);
+            }
+
+            return true;
+        }
+
+        // C_k of the hold: C0 = FF, C1 = FF + l S, C2 = C1 - u S, C3 = FF - u S.
+        private static void HoldCorner(in RunwayFrame r, double lx, double ly, double side, int k, out double x, out double y)
+        {
+            switch (k)
+            {
+                case 0:
+                    x = r.FfX;
+                    y = r.FfY;
+                    break;
+                case 1:
+                    x = r.FfX + (lx * side);
+                    y = r.FfY + (ly * side);
+                    break;
+                case 2:
+                    x = (r.FfX + (lx * side)) - (r.UX * side);
+                    y = (r.FfY + (ly * side)) - (r.UY * side);
+                    break;
+                default:
+                    x = r.FfX - (r.UX * side);
+                    y = r.FfY - (r.UY * side);
+                    break;
+            }
+        }
+
+        private static double Clamp01(double x)
+        {
+            return x < 0 ? 0 : (x > 1 ? 1 : x);
+        }
+
+        private static double Dist(double ax, double ay, double bx, double by)
+        {
+            return Math.Sqrt(((ax - bx) * (ax - bx)) + ((ay - by) * (ay - by)));
+        }
+
+        private static WalkwayShape[] BuildWalkwayShapes(in RenderLayout layout)
+        {
+            var list = new List<LayoutWalkway>();
+            if (layout.Walkways != null)
+            {
+                for (int i = 0; i < layout.Walkways.Count; i++)
+                {
+                    list.Add(layout.Walkways[i]);
+                }
+            }
+
+            list.Sort((a, b) => a.Node.Value.CompareTo(b.Node.Value));
+            var shapes = new WalkwayShape[list.Count];
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                shapes[i] = new WalkwayShape(list[i]);
+            }
+
+            return shapes;
+        }
+
+        private static WalkwayShape[] BuildWalkways(in RenderLayout layout, FlowNodeBox[] boxes, out int[] boxWalkway)
+        {
+            WalkwayShape[] shapes = BuildWalkwayShapes(layout);
+            boxWalkway = new int[boxes.Length];
+            for (int b = 0; b < boxes.Length; b++)
+            {
+                boxWalkway[b] = -1;
+                for (int i = 0; i < shapes.Length; i++)
+                {
+                    if (shapes[i].Node == boxes[b].Node.Value && shapes[i].Valid)
+                    {
+                        boxWalkway[b] = i;
+                        break;
+                    }
+                }
+            }
+
+            return shapes;
+        }
+
+        private static BridgeWalk[] BuildBridgeWalks(in RenderLayout layout)
+        {
+            var list = new List<LayoutBridge>();
+            if (layout.Bridges != null)
+            {
+                for (int i = 0; i < layout.Bridges.Count; i++)
+                {
+                    if (layout.Bridges[i].Stand.HasValue)
+                    {
+                        list.Add(layout.Bridges[i]);
+                    }
+                }
+            }
+
+            list.Sort((a, b) => a.Id.CompareTo(b.Id));
+            var walks = new BridgeWalk[list.Count];
+            for (int i = 0; i < walks.Length; i++)
+            {
+                walks[i] = new BridgeWalk(list[i]);
+            }
+
+            return walks;
+        }
+
+        private readonly struct RunwayFrame
+        {
+            public RunwayFrame(long tx, long ty, long xx, long xy, double ux, double uy, double tdx, double tdy, double lox, double loy, double ffx, double ffy, double aex, double aey, WorldPoint fDep, WorldPoint fArr)
+            {
+                TX = tx;
+                TY = ty;
+                XX = xx;
+                XY = xy;
+                UX = ux;
+                UY = uy;
+                TdX = tdx;
+                TdY = tdy;
+                LoX = lox;
+                LoY = loy;
+                FfX = ffx;
+                FfY = ffy;
+                AeX = aex;
+                AeY = aey;
+                FDep = fDep;
+                FArr = fArr;
+            }
+
+            public double TX { get; }
+
+            public double TY { get; }
+
+            public double XX { get; }
+
+            public double XY { get; }
+
+            public double UX { get; }
+
+            public double UY { get; }
+
+            public double TdX { get; }
+
+            public double TdY { get; }
+
+            public double LoX { get; }
+
+            public double LoY { get; }
+
+            public double FfX { get; }
+
+            public double FfY { get; }
+
+            public double AeX { get; }
+
+            public double AeY { get; }
+
+            public WorldPoint FDep { get; }
+
+            public WorldPoint FArr { get; }
+        }
+
+        // A walkway's constants, derived once: its length, unit direction and left normal (15 §15.21).
+        private readonly struct WalkwayShape
+        {
+            public WalkwayShape(in LayoutWalkway w)
+            {
+                Node = w.Node.Value;
+                Width = w.Width;
+                X0 = w.X0;
+                Y0 = w.Y0;
+                double dx = (double)w.X1 - w.X0;
+                double dy = (double)w.Y1 - w.Y0;
+                Length = Math.Sqrt((dx * dx) + (dy * dy));
+                Valid = Length > 0;
+                DirX = Valid ? dx / Length : 0;
+                DirY = Valid ? dy / Length : 0;
+                NormX = -DirY;
+                NormY = DirX;
+                Facing = new WorldPoint((float)((long)w.X1 - w.X0), (float)((long)w.Y1 - w.Y0));
+            }
+
+            public uint Node { get; }
+
+            public bool Valid { get; }
+
+            public int Width { get; }
+
+            public double X0 { get; }
+
+            public double Y0 { get; }
+
+            public double Length { get; }
+
+            public double DirX { get; }
+
+            public double DirY { get; }
+
+            public double NormX { get; }
+
+            public double NormY { get; }
+
+            public WorldPoint Facing { get; }
+        }
+
+        private readonly struct BridgeWalk
+        {
+            public BridgeWalk(in LayoutBridge b)
+            {
+                Id = b.Id;
+                Stand = b.Stand!.Value;
+                X0 = b.X0;
+                Y0 = b.Y0;
+                X1 = b.X1;
+                Y1 = b.Y1;
+                MinX = Math.Min(b.X0, b.X1);
+                MinY = Math.Min(b.Y0, b.Y1);
+                MaxX = Math.Max(b.X0, b.X1);
+                MaxY = Math.Max(b.Y0, b.Y1);
+            }
+
+            public uint Id { get; }
+
+            public StandId Stand { get; }
+
+            public int X0 { get; }
+
+            public int Y0 { get; }
+
+            public int X1 { get; }
+
+            public int Y1 { get; }
+
+            public int MinX { get; }
+
+            public int MinY { get; }
+
+            public int MaxX { get; }
+
+            public int MaxY { get; }
         }
 
         // An integer position or vector. Positions are int32; vectors are differences of them, so long.

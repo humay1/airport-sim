@@ -10,6 +10,8 @@ namespace AirportSim.App.Render
 
         private long _accumulator;
 
+        public long SubTickMicroseconds => _accumulator;
+
         public uint Advance(long elapsedRealMicroseconds, bool paused, GameSpeed speed)
         {
             if (elapsedRealMicroseconds < 0)
