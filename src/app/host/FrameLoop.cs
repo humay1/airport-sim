@@ -52,7 +52,7 @@ namespace AirportSim.App.Host
             }
 
             // 4) the build after Step.
-            RenderFrame render = _scene.Build(in camera, in graphics);
+            RenderFrame render = _scene.Build(in camera, in graphics, _pacer.SubTickMicroseconds);
 
             // 5) write the graphics preference on change only.
             if (!Same(in graphics, in _lastWritten))
