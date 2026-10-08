@@ -242,6 +242,7 @@ namespace AirportSim.App.Render.Tests
         private readonly List<FlowNodeBox> _boxes = new List<FlowNodeBox>();
         private readonly List<LayoutArea> _areas = new List<LayoutArea>();
         private readonly List<LayoutBridge> _bridges = new List<LayoutBridge>();
+        private readonly List<LayoutWalkway> _walkways = new List<LayoutWalkway>();
 
         public ArtScene()
         {
@@ -282,6 +283,13 @@ namespace AirportSim.App.Render.Tests
             return this;
         }
 
+        /// <summary>A RunwayDef with its exit node (12 §12.4, Q-132) and, unless null, its geometry.</summary>
+        public ArtScene RunwayWithExit(ushort id, ushort threshold, ushort exit, int x0, int y0, int x1, int y1, int width, bool geometry = true)
+        {
+            _runways.Add(new RunwayDef(new RunwayId(id), new TaxiNodeId(threshold), 270, 30, 10U, new TaxiNodeId(exit)));
+            return geometry ? Geometry(id, x0, y0, x1, y1, width) : this;
+        }
+
         /// <summary>Layout geometry with no RunwayDef behind it.</summary>
         public ArtScene Geometry(ushort id, int x0, int y0, int x1, int y1, int width)
         {
@@ -314,10 +322,24 @@ namespace AirportSim.App.Render.Tests
             return this;
         }
 
+        /// <summary>A jet bridge serving a stand (Q-132, 15 §15.21).</summary>
+        public ArtScene Bridge(uint id, int x0, int y0, int x1, int y1, int width, ushort stand)
+        {
+            _bridges.Add(new LayoutBridge(id, x0, y0, x1, y1, width, new StandId(stand)));
+            return this;
+        }
+
+        /// <summary>A walkway inside a corridor's box (Q-132, 15 §15.21).</summary>
+        public ArtScene Walkway(uint node, int x0, int y0, int x1, int y1, int width)
+        {
+            _walkways.Add(new LayoutWalkway(new NodeId(node), x0, y0, x1, y1, width));
+            return this;
+        }
+
         public ArtScene Done()
         {
             Airside = new FakeAirside(Guard, new AirsideLayout(_runways, _nodes, _edges, _stands));
-            Layout = new RenderLayout(_positions, _geometry, _boxes, StandSize, AircraftSize, AgentSize, TaxiwayWidth, _areas, _bridges);
+            Layout = new RenderLayout(_positions, _geometry, _boxes, StandSize, AircraftSize, AgentSize, TaxiwayWidth, _areas, _bridges, _walkways);
             return this;
         }
 

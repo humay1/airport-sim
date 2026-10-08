@@ -211,7 +211,21 @@ namespace AirportSim.App.Render.Tests
         public long LaneCalls;
         public long SetPromotedCount;
 
+        // Q-132 (15 §15.6, §15.21): the three members the scene builder may
+        // now call. Each is counted always, and recorded in call order while
+        // RecordQueries is set.
+        public readonly List<ulong> CohortsAsked = new List<ulong>();
+        public readonly List<(ulong Flight, FlowDirection Direction)> PopulationForFlightAsked = new List<(ulong Flight, FlowDirection Direction)>();
+        public readonly List<ulong> OutstandingAsked = new List<ulong>();
+        public bool RecordQueries = true;
+        public long CohortCalls;
+        public long PopulationForFlightCalls;
+        public long OutstandingCalls;
+
         private readonly Dictionary<uint, NodeState> _nodes = new Dictionary<uint, NodeState>();
+        private readonly Dictionary<ulong, PassengerCohort> _cohorts = new Dictionary<ulong, PassengerCohort>();
+        private readonly Dictionary<ulong, int> _departing = new Dictionary<ulong, int>();
+        private readonly Dictionary<ulong, int> _outstanding = new Dictionary<ulong, int>();
 
         public FakeFlow(CallGuard guard)
         {
@@ -219,7 +233,39 @@ namespace AirportSim.App.Render.Tests
         }
 
         /// <summary>Calls the scene builder makes (15 §15.6), SetPromoted excluded.</summary>
-        public long QueryCalls => PopulationCalls + AgentsAtCalls + LaneCalls;
+        public long QueryCalls => PopulationCalls + AgentsAtCalls + LaneCalls + CohortCalls + PopulationForFlightCalls + OutstandingCalls;
+
+        /// <summary>
+        /// A cohort TryGetCohort returns, on a placeholder node and key; the
+        /// scene builder reads only EnteredNodeAt and DueAt (15 §15.21).
+        /// </summary>
+        public FakeFlow Cohort(ulong id, ulong enteredNodeAt, ulong dueAt)
+        {
+            var key = new CohortKey(new FlightId(1UL), FlowDirection.Departing, new ContentId("business"), false, false);
+            _cohorts[id] = new PassengerCohort(new CohortId(id), key, new NodeId(1), 1, enteredNodeAt, dueAt, Fx.Zero);
+            return this;
+        }
+
+        /// <summary>
+        /// PopulationForFlight(flight, Departing) answers departing; any other
+        /// direction answers a different, larger count, so a wrong direction
+        /// shows. TryGetOutstanding answers outstanding when it is given, and
+        /// false otherwise (09 §9.7a: false iff none).
+        /// </summary>
+        public FakeFlow Boarding(ulong flight, int departing, int? outstanding = null)
+        {
+            _departing[flight] = departing;
+            if (outstanding.HasValue)
+            {
+                _outstanding[flight] = outstanding.Value;
+            }
+            else
+            {
+                _outstanding.Remove(flight);
+            }
+
+            return this;
+        }
 
         public SystemId Id => throw Guard.Forbidden("IFlowSystem.Id");
 
@@ -265,7 +311,14 @@ namespace AirportSim.App.Render.Tests
 
         public int PopulationForFlight(FlightId flight, FlowDirection direction)
         {
-            throw Guard.Forbidden("IFlowSystem.PopulationForFlight");
+            PopulationForFlightCalls++;
+            if (RecordQueries)
+            {
+                PopulationForFlightAsked.Add((flight.Value, direction));
+            }
+
+            int departing = _departing.TryGetValue(flight.Value, out int d) ? d : 0;
+            return direction == FlowDirection.Departing ? departing : departing + 1000;
         }
 
         public IReadOnlyList<CohortId> CohortsAt(NodeId node)
@@ -275,12 +328,31 @@ namespace AirportSim.App.Render.Tests
 
         public bool TryGetCohort(CohortId id, out PassengerCohort cohort)
         {
-            throw Guard.Forbidden("IFlowSystem.TryGetCohort");
+            CohortCalls++;
+            if (RecordQueries)
+            {
+                CohortsAsked.Add(id.Value);
+            }
+
+            return _cohorts.TryGetValue(id.Value, out cohort);
         }
 
         public bool TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)
         {
-            throw Guard.Forbidden("IFlowSystem.TryGetOutstanding");
+            OutstandingCalls++;
+            if (RecordQueries)
+            {
+                OutstandingAsked.Add(flight.Value);
+            }
+
+            if (_outstanding.TryGetValue(flight.Value, out int count))
+            {
+                outstanding = new OutstandingPassengers(flight, count, new NodeId(1));
+                return true;
+            }
+
+            outstanding = default;
+            return false;
         }
 
         public bool TryGetLaneState(NodeId node, out LaneState lanes)
@@ -429,6 +501,32 @@ namespace AirportSim.App.Render.Tests
                 Fx.Zero,
                 new ContentId("business"),
                 100,
+                0,
+                0,
+                new NodeId(1));
+            return this;
+        }
+
+        /// <summary>
+        /// An arrival record (Q-132, 15 §15.21): with a rotation when one is
+        /// given, else rotation-less (HasRotation false, Rotation a placeholder
+        /// that names no flight the test uses). PaxCount is 0 (11 §11.1).
+        /// </summary>
+        public FakeSchedule AddArrival(ulong flight, ulong? rotation, uint airline = 1U, string aircraftType = "t2")
+        {
+            _flights[flight] = new FlightRecord(
+                new FlightId(flight),
+                new AirlineId(airline),
+                new ContentId(aircraftType),
+                MovementKind.Arrival,
+                0U,
+                1000UL,
+                0UL,
+                new FlightId(rotation ?? 0xDEADUL),
+                rotation.HasValue,
+                Fx.Zero,
+                new ContentId("business"),
+                0,
                 0,
                 0,
                 new NodeId(1));
@@ -743,7 +841,7 @@ namespace AirportSim.App.Render.Tests
 
         public int PopulationForFlight(FlightId flight, FlowDirection direction)
         {
-            throw _guard.Forbidden("IFlowSystem.PopulationForFlight");
+            return _inner.PopulationForFlight(flight, direction);
         }
 
         public IReadOnlyList<CohortId> CohortsAt(NodeId node)
@@ -753,12 +851,12 @@ namespace AirportSim.App.Render.Tests
 
         public bool TryGetCohort(CohortId id, out PassengerCohort cohort)
         {
-            throw _guard.Forbidden("IFlowSystem.TryGetCohort");
+            return _inner.TryGetCohort(id, out cohort);
         }
 
         public bool TryGetOutstanding(FlightId flight, out OutstandingPassengers outstanding)
         {
-            throw _guard.Forbidden("IFlowSystem.TryGetOutstanding");
+            return _inner.TryGetOutstanding(flight, out outstanding);
         }
 
         public bool TryGetLaneState(NodeId node, out LaneState lanes)
@@ -792,6 +890,58 @@ namespace AirportSim.App.Render.Tests
             IReadOnlyList<AgentView> views = _inner.AgentsAt(node);
             AgentViewsSeen += views.Count;
             return views;
+        }
+    }
+
+    /// <summary>Forwards TryGetFlight, the one sim.schedule member 15 §15.6 lists, to a real sim.</summary>
+    internal sealed class GuardedSchedule : IScheduleSystem
+    {
+        private readonly IScheduleSystem _inner;
+        private readonly CallGuard _guard;
+
+        public GuardedSchedule(IScheduleSystem inner, CallGuard guard)
+        {
+            _inner = inner;
+            _guard = guard;
+        }
+
+        public SystemId Id => throw _guard.Forbidden("IScheduleSystem.Id");
+
+        public string Name => throw _guard.Forbidden("IScheduleSystem.Name");
+
+        public void Tick(in TickContext ctx)
+        {
+            throw _guard.Forbidden("IScheduleSystem.Tick");
+        }
+
+        public ulong ComputeStateHash()
+        {
+            throw _guard.Forbidden("IScheduleSystem.ComputeStateHash");
+        }
+
+        public bool TryGetFlight(FlightId id, out FlightRecord flight)
+        {
+            return _inner.TryGetFlight(id, out flight);
+        }
+
+        public IReadOnlyList<FlightId> PublishedFlights()
+        {
+            throw _guard.Forbidden("IScheduleSystem.PublishedFlights");
+        }
+
+        public IReadOnlyList<FlightId> MovementsBetween(ulong fromInclusive, ulong toExclusive, MovementKind kind)
+        {
+            throw _guard.Forbidden("IScheduleSystem.MovementsBetween");
+        }
+
+        public bool TryGetRotation(FlightId flight, out FlightId counterpart)
+        {
+            throw _guard.Forbidden("IScheduleSystem.TryGetRotation");
+        }
+
+        public int PendingInjectionCount(FlightId flight)
+        {
+            throw _guard.Forbidden("IScheduleSystem.PendingInjectionCount");
         }
     }
 }

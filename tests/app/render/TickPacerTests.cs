@@ -146,6 +146,92 @@ namespace AirportSim.App.Render.Tests
         }
 
         [Fact]
+        public void test_tick_pacer_sub_tick_is_the_remainder()
+        {
+            // Q-132 (15 §15.8): the accumulator after the last Advance, 0 before the first.
+            ITickPacer p = RenderFactory.CreatePacer();
+            Assert.Equal(0L, p.SubTickMicroseconds);
+            Assert.Equal(0L, p.SubTickMicroseconds);
+
+            // The remainder after each call.
+            Assert.Equal(0U, p.Advance(60000, false, GameSpeed.X1));
+            Assert.Equal(60000L, p.SubTickMicroseconds);
+            Assert.Equal(1U, p.Advance(50000, false, GameSpeed.X1));
+            Assert.Equal(10000L, p.SubTickMicroseconds);
+
+            // Unchanged while paused, at any speed and elapsed time.
+            Assert.Equal(0U, p.Advance(1000000, true, GameSpeed.X4));
+            Assert.Equal(0U, p.Advance(0, true, GameSpeed.X1));
+            Assert.Equal(10000L, p.SubTickMicroseconds);
+
+            // Unchanged by a throwing call, paused or not.
+            foreach (bool paused in new[] { false, true })
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() => p.Advance(-1, paused, GameSpeed.X1));
+                Assert.Throws<ArgumentOutOfRangeException>(() => p.Advance(50000, paused, (GameSpeed)3));
+                Assert.Equal(10000L, p.SubTickMicroseconds);
+            }
+
+            // Kept across speed changes: 22 500 at 4x adds 90 000, one tick and 0
+            // left; 12 345 at 2x is 24 690; 37 655 more at 1x is 62 345.
+            Assert.Equal(1U, p.Advance(22500, false, GameSpeed.X4));
+            Assert.Equal(0L, p.SubTickMicroseconds);
+            Assert.Equal(0U, p.Advance(12345, false, GameSpeed.X2));
+            Assert.Equal(24690L, p.SubTickMicroseconds);
+            Assert.Equal(0U, p.Advance(37655, false, GameSpeed.X1));
+            Assert.Equal(62345L, p.SubTickMicroseconds);
+
+            // 0 after a catch-up cap; exactly 3 ticks is not capped and keeps its remainder.
+            Assert.Equal(3U, p.Advance(1000000, false, GameSpeed.X1));
+            Assert.Equal(0L, p.SubTickMicroseconds);
+            Assert.Equal(3U, p.Advance(399999, false, GameSpeed.X1));
+            Assert.Equal(99999L, p.SubTickMicroseconds);
+            Assert.Equal(1U, p.Advance(1, false, GameSpeed.X1));
+            Assert.Equal(0L, p.SubTickMicroseconds);
+
+            // Against §15.8's arithmetic over a long random run: always the model's
+            // accumulator, and always in [0, REAL_MICROSECONDS_PER_TICK_1X).
+            var rng = new SplitMix64(0x5B71_C132UL);
+            GameSpeed[] speeds = { GameSpeed.X1, GameSpeed.X2, GameSpeed.X4 };
+            ITickPacer q = RenderFactory.CreatePacer();
+            long acc = 0;
+            for (int frame = 0; frame < 20000; frame++)
+            {
+                long elapsed = rng.Range(0, 9) == 0 ? rng.Range(100000, 2000000) : rng.Range(0, 120000);
+                bool paused = rng.Range(0, 19) == 0;
+                GameSpeed speed = speeds[rng.Range(0, 2)];
+                if (rng.Range(0, 99) == 0)
+                {
+                    Assert.Throws<ArgumentOutOfRangeException>(() => q.Advance(-elapsed - 1, paused, speed));
+                }
+                else
+                {
+                    uint n = q.Advance(elapsed, paused, speed);
+                    uint expected = 0;
+                    if (!paused)
+                    {
+                        acc += elapsed * (int)speed;
+                        long whole = acc / RenderConst.RealMicrosecondsPerTick1X;
+                        acc -= whole * RenderConst.RealMicrosecondsPerTick1X;
+                        if (whole > RenderConst.MaxCatchupTicksPerFrame)
+                        {
+                            whole = RenderConst.MaxCatchupTicksPerFrame;
+                            acc = 0;
+                        }
+
+                        expected = (uint)whole;
+                    }
+
+                    Assert.True(n == expected, "seed 0x5B71C132, frame " + frame + ": " + n + " ticks, expected " + expected);
+                }
+
+                long sub = q.SubTickMicroseconds;
+                Assert.True(sub == acc, "seed 0x5B71C132, frame " + frame + ": sub-tick " + sub + ", expected " + acc);
+                Assert.True(sub >= 0 && sub < RenderConst.RealMicrosecondsPerTick1X, "seed 0x5B71C132, frame " + frame + ": sub-tick " + sub + " out of range");
+            }
+        }
+
+        [Fact]
         public void test_tick_pacer_rejects_negative_elapsed_and_unknown_speed()
         {
             // Q-098: ArgumentOutOfRangeException naming the parameter, elapsed

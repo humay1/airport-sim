@@ -263,12 +263,12 @@ namespace AirportSim.App.Render.Tests
             return found[0];
         }
 
-        /// <summary>Every field, floats in round-trip form, so equal strings mean equal primitives.</summary>
+        /// <summary>Every field, floats in round-trip form, so equal strings mean equal primitives (Elevation: Q-132).</summary>
         public static string Show(in DrawPrimitive p)
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}/{1}/{2}/{3} A=({4:R},{5:R}) B=({6:R},{7:R}) size={8:R} facing=({9:R},{10:R}) paint={11} src={12}:{13}:{14}",
+                "{0}/{1}/{2}/{3} A=({4:R},{5:R}) B=({6:R},{7:R}) size={8:R} facing=({9:R},{10:R}) paint={11} src={12}:{13}:{14} elev={15:R}",
                 p.Kind,
                 p.Layer,
                 p.Colour,
@@ -283,7 +283,8 @@ namespace AirportSim.App.Render.Tests
                 Show(p.Paint),
                 p.Source.Kind,
                 p.Source.Id,
-                p.Source.Sub);
+                p.Source.Sub,
+                p.Elevation);
         }
 
         /// <summary>15 §15.9's Paint: its five regions in order, then Mark.</summary>
