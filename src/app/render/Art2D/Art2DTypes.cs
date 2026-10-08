@@ -201,6 +201,12 @@ namespace AirportSim.App.Render.Art2D
         /// <summary>World side of one ground tile at the nearest zoom.</summary>
         public const int GROUND_TILE = 64;
 
+        /// <summary>15 §15.22: the elevation, in metres, at which an aircraft is drawn at twice its size (before the cap).</summary>
+        public const int ELEVATION_SCALE_M = 800;
+
+        /// <summary>15 §15.22: the largest size factor an aircraft gets from its elevation.</summary>
+        public const int ELEVATION_SCALE_MAX = 2;
+
         /// <summary>Most ground tiles along either axis.</summary>
         public const int GROUND_TILES_PER_AXIS = 32;
     }
