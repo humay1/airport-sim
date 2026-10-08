@@ -58,6 +58,26 @@ namespace AirportSim.App.Host.Tests
         public const string Phase1Content = "data";
         public const string RenderLayout = "tests/fixtures/render/phase1-layout.json";
 
+        /// <summary>
+        /// phase1-layout.json plus the playtest exit's taxi nodes 4, 5 and 6
+        /// (15 §15.23, Q-132): the render layout that loads against the Phase 1
+        /// bundle's airside.fixture, which has those nodes (19 §19.2c).
+        /// </summary>
+        public const string PlaytestLayout = "tests/fixtures/render/playtest-layout.json";
+
+        /// <summary>16 §16.3's playtest bundle table: bundle file name, then its source.</summary>
+        public static readonly string[,] PlaytestSources =
+        {
+            { "bundle.json", "unity/AirportSim/Scenario/bundle.json" },
+            { "world.fixture", "tests/fixtures/world/phase0-landside.json" },
+            { "schedule.csv", "tests/fixtures/schedule/phase0-200.csv" },
+            { "airside.fixture", "tests/fixtures/harness/checkpoints-phase1/airside.fixture" },
+            { "airside_rules.json", "data/balance/airside_rules.json" },
+            { "turnaround.fixture", "tests/fixtures/turnaround/phase1-five-vehicles.json" },
+            { "flow.fixture", "tests/fixtures/flow/phase0-landside.flow.json" },
+            { "render_layout.fixture", PlaytestLayout },
+        };
+
         /// <summary>Both bundles' bundle.json carry seed "12345" (19 §19.2c "The fixture").</summary>
         public const ulong Seed = 12345;
 
@@ -121,6 +141,21 @@ namespace AirportSim.App.Host.Tests
         public static MemoryBundle Phase1Bundle()
         {
             return FromDirectory(Phase1, Phase1Files);
+        }
+
+        /// <summary>
+        /// The Phase 1 playtest bundle in memory, each file read from its
+        /// 16 §16.3 source, as the build step copies them. Its content is data/.
+        /// </summary>
+        public static MemoryBundle PlaytestBundle()
+        {
+            var bundle = new MemoryBundle();
+            for (int i = 0; i < PlaytestSources.GetLength(0); i++)
+            {
+                bundle.Put(PlaytestSources[i, 0], Repo.Read(PlaytestSources[i, 1]));
+            }
+
+            return bundle;
         }
 
         /// <summary>The Phase 0 checkpoints bundle in memory (19 §19.2c, Q-076).</summary>

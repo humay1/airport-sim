@@ -94,8 +94,9 @@ namespace AirportSim.App.Host.Tests
 
     /// <summary>
     /// The Phase 1 checkpoints bundle composed by ISimComposer over data/, with
-    /// the 15 §15.12 render layout (which matches its airside and flow
-    /// fixtures) as render_layout.fixture, presented by IPresentationComposer.
+    /// the playtest render layout (15 §15.23, which matches its airside fixture's
+    /// exit nodes and its flow fixture) as render_layout.fixture, presented by
+    /// IPresentationComposer.
     /// The ComposedSim handed to presentation is the composed one with its
     /// schedule wrapped, built with the eight-argument constructor (16 §16.4),
     /// or the seven-argument one when the test drops Content.
@@ -120,7 +121,7 @@ namespace AirportSim.App.Host.Tests
                 ? new ComposedSim(Composed.Host, Composed.World, passed, Composed.Airside, Composed.Flow, Composed.Turnaround, Composed.Delay, Composed.Content)
                 : new ComposedSim(Composed.Host, Composed.World, passed, Composed.Airside, Composed.Flow, Composed.Turnaround, Composed.Delay);
 
-            MemoryBundle bundle = B.Phase1Bundle().Put("render_layout.fixture", Repo.Read(B.RenderLayout));
+            MemoryBundle bundle = B.Phase1Bundle().Put("render_layout.fixture", Repo.Read(B.PlaytestLayout));
             IPresentationComposer composer = HostFactory.CreatePresentationComposer();
             Presentation = looks.HasValue
                 ? composer.Compose(sim, bundle, new FakePreferences(), looks.Value)
