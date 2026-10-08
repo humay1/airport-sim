@@ -21,6 +21,9 @@ namespace AirportSim.App.Render.Art2D
         private double _shiftX;
         private double _shiftY;
 
+        // The factor on the primitive's Size for the layer being emitted (15 §15.22).
+        private double _sizeScale = 1.0;
+
         public SpriteTessellator()
         {
             _roleCount = Enum.GetValues(typeof(ColourRole)).Length;
@@ -125,6 +128,12 @@ namespace AirportSim.App.Render.Art2D
                     fy = len == 0.0 ? 1.0 : dy / len;
                 }
 
+                double e = p.Elevation;
+                bool airborne = vi >= (int)VisualId.AircraftA && vi <= (int)VisualId.AircraftF && e > 0.0;
+                double airScale = airborne
+                    ? Math.Min(Art2DConstants.ELEVATION_SCALE_MAX, 1.0 + (e / Art2DConstants.ELEVATION_SCALE_M))
+                    : 1.0;
+
                 for (int li = 0; li < recs.Length; li++)
                 {
                     LayerRec rec = recs[li];
@@ -142,6 +151,21 @@ namespace AirportSim.App.Render.Art2D
 
                     _shiftX = rec.Layer.ShiftX / 100.0;
                     _shiftY = rec.Layer.ShiftY / 100.0;
+                    _sizeScale = 1.0;
+                    if (airborne)
+                    {
+                        if (li == 0)
+                        {
+                            // The Shadow layer keeps its size and slides along (3, -4) / 5 by e / 4.
+                            _shiftX += 0.15 * e;
+                            _shiftY -= 0.2 * e;
+                        }
+                        else
+                        {
+                            _sizeScale = airScale;
+                        }
+                    }
+
                     int first = _count;
                     switch (p.Kind)
                     {
@@ -290,7 +314,7 @@ namespace AirportSim.App.Render.Art2D
             double len = Math.Sqrt((dx * dx) + (dy * dy));
             double rx = fy;
             double ry = -fx;
-            double size = p.Size;
+            double size = p.Size * _sizeScale;
             double h = size / 2.0;
             ref readonly ArtLayer l = ref rec.Layer;
             if (l.Tile > 0)
@@ -341,7 +365,7 @@ namespace AirportSim.App.Render.Art2D
         {
             double cx = p.A.X;
             double cy = p.A.Y;
-            double size = p.Size;
+            double size = p.Size * _sizeScale;
             double rx = fy;
             double ry = -fx;
             int one = Next();

@@ -542,6 +542,12 @@ namespace AirportSim.App.Render.Tests
                 new SourceRef(SourceKind.Aircraft, 1UL, 0));
         }
 
+        /// <summary>The primitive with the given Elevation, through the eleven-field constructor (15 §15.9, Q-132).</summary>
+        public static DrawPrimitive Lifted(in DrawPrimitive p, float elevation)
+        {
+            return new DrawPrimitive(p.Kind, p.Layer, p.Colour, p.Visual, p.A, p.B, p.Size, p.Facing, p.Paint, p.Source, elevation);
+        }
+
         /// <summary>One distinct colour per ColourRole, each with its own alpha.</summary>
         public static Rgba[] Roles()
         {
@@ -592,8 +598,9 @@ namespace AirportSim.App.Render.Tests
     }
 
     /// <summary>
-    /// 15 §15.17 "Tessellation", restated from the spec as the expected output of
-    /// Fill, over ArtTable (the spec's layer table), never over LayersOf.
+    /// 15 §15.17 "Tessellation", with §15.22's elevation rule (Q-132), restated
+    /// from the spec as the expected output of Fill, over ArtTable (the spec's
+    /// layer table), never over LayersOf.
     /// </summary>
     internal static class ArtRef
     {
@@ -651,11 +658,38 @@ namespace AirportSim.App.Render.Tests
             return quads;
         }
 
+        /// <summary>
+        /// 15 §15.22 (Q-132): an aircraft visual with Elevation e &gt; 0 keeps its
+        /// Shadow layer (0) at Size, shifted a further (0.15 e, −0.2 e), and draws
+        /// every other layer at Size × min(2, 1 + e / 800). Anything else: 1 and 0.
+        /// </summary>
+        public static void ElevationRule(in DrawPrimitive p, int layer, out double sizeScale, out double extraX, out double extraY)
+        {
+            double e = p.Elevation;
+            sizeScale = 1.0;
+            extraX = 0.0;
+            extraY = 0.0;
+            if (p.Visual < VisualId.AircraftA || p.Visual > VisualId.AircraftF || !(e > 0.0))
+            {
+                return;
+            }
+
+            if (layer == 0)
+            {
+                extraX = 0.15 * e;
+                extraY = -0.2 * e;
+                return;
+            }
+
+            sizeScale = Math.Min(2.0, 1.0 + (e / 800.0));
+        }
+
         public static void AddPrimitive(List<ExpQuad> quads, in DrawPrimitive p, Rgba[] roles, bool linear, string what)
         {
             List<ArtLayer> layers = ArtTable.Layers(p.Visual);
             for (int li = 0; li < layers.Count; li++)
             {
+                ElevationRule(p, li, out double sizeScale, out double extraX, out double extraY);
                 ArtLayer l = layers[li];
                 if (l.IsLogo && p.Paint.Mark == 0)
                 {
@@ -699,15 +733,15 @@ namespace AirportSim.App.Render.Tests
                         AddBox(quads, p, l, r, lw);
                         break;
                     case PrimitiveKind.Segment:
-                        AddSegment(quads, p, l, r, lw);
+                        AddSegment(quads, p, p.Size * sizeScale, l, r, lw);
                         break;
                     default:
-                        AddDot(quads, p, l, r, lw);
+                        AddDot(quads, p, p.Size * sizeScale, l, r, lw);
                         break;
                 }
 
-                double sx = l.ShiftX / 100.0;
-                double sy = l.ShiftY / 100.0;
+                double sx = (l.ShiftX / 100.0) + extraX;
+                double sy = (l.ShiftY / 100.0) + extraY;
                 for (int q = first; q < quads.Count; q++)
                 {
                     for (int k = 0; k < 4; k++)
@@ -794,7 +828,7 @@ namespace AirportSim.App.Render.Tests
             quads.Add(one);
         }
 
-        private static void AddSegment(List<ExpQuad> quads, in DrawPrimitive p, in ArtLayer l, in AtlasRect r, string what)
+        private static void AddSegment(List<ExpQuad> quads, in DrawPrimitive p, double size, in ArtLayer l, in AtlasRect r, string what)
         {
             double ax = p.A.X;
             double ay = p.A.Y;
@@ -805,7 +839,6 @@ namespace AirportSim.App.Render.Tests
             double fy = len == 0.0 ? 1.0 : dy / len;
             double rx = fy;
             double ry = -fx;
-            double size = p.Size;
             double h = size / 2.0;
             if (l.Tile > 0)
             {
@@ -860,10 +893,10 @@ namespace AirportSim.App.Render.Tests
             quads.Add(one);
         }
 
-        private static void AddDot(List<ExpQuad> quads, in DrawPrimitive p, in ArtLayer l, in AtlasRect r, string what)
+        private static void AddDot(List<ExpQuad> quads, in DrawPrimitive p, double size, in ArtLayer l, in AtlasRect r, string what)
         {
             var one = new ExpQuad(what);
-            double[] c = ArtGeometry.Dot(p.A.X, p.A.Y, p.Size, p.Facing.X, p.Facing.Y, l.MinX, l.MinY, l.MaxX, l.MaxY);
+            double[] c = ArtGeometry.Dot(p.A.X, p.A.Y, size, p.Facing.X, p.Facing.Y, l.MinX, l.MinY, l.MaxX, l.MaxY);
             Array.Copy(c, one.Corners, 8);
             SetUvs(one, r.U0, r.V0, r.U1, r.V1);
             quads.Add(one);
